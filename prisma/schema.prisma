@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+enum JobStatus {
+  todo
+  done
+  unscheduled
+}
+
+model Job {
+  id         Int       @id @default(autoincrement())
+  title      String
+  address    String    @default("")
+  notes      String?
+  notesLog   String    @default("")
+  status     JobStatus @default(todo)
+  visitDate  DateTime?
+  assignedTo String?
+  createdAt  DateTime  @default(now())
+
+  // --- Scheduling / economics ---
+  postcode       String  @default("")   // outward code like TF9, SY13 (for clustering)
+  durationMins   Int     @default(60)   // expected job duration
+  overrunMins    Int     @default(0)    // added when job runs over (Extend)
+  fixed          Boolean @default(false) // customer insisted on specific day/time
+  startTime      String?                // "HH:MM" only used when fixed is true
+  travelMinsHint Int     @default(15)   // default travel buffer between jobs (can override later)
+
+  // --- Frequency / recurring work ---
+  recurrenceEveryWeeks     Int?     // e.g. 2 = fortnightly, 3 = every 3 weeks
+  recurrenceDurationMins   Int?     // e.g. 120 for 2 hours
+  recurrencePreferredDOW   Int?     // 0=Sun, 1=Mon, ... 6=Sat (optional)
+  recurrencePreferredTime  String?  // "HH:MM" (optional)
+  recurrenceActive         Boolean  @default(false)
+}
