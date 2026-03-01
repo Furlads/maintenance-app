@@ -1,109 +1,130 @@
+// app/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-const WORKERS = ["stephen", "jacob", "trev", "kelly"];
+type Me = {
+  authenticated: boolean;
+  name?: string;
+  role?: string;
+  isAdmin?: boolean;
+};
 
 export default function HomePage() {
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
+  const [username, setUsername] = useState("trevor@furlads.com");
+  const [password, setPassword] = useState("");
+  const [msg, setMsg] = useState<string>("");
+  const [me, setMe] = useState<Me>({ authenticated: false });
 
-  useEffect(() => {
-    const saved = localStorage.getItem("workerName") || "";
-    if (saved) {
-      window.location.href = "/today";
-    }
+  const nextParam = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("next") || "";
   }, []);
 
-  function setWorkerAndGo(worker: string) {
-    const cleaned = worker.trim().toLowerCase();
-    if (!cleaned) return;
-    localStorage.setItem("workerName", cleaned);
-    window.location.href = "/today";
+  async function loadMe() {
+    const res = await fetch("/api/auth/me", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include", // <-- IMPORTANT: send cookies
+      headers: { "Cache-Control": "no-store" },
+    });
+
+    const data = (await res.json().catch(() => ({ authenticated: false }))) as Me;
+    setMe(data);
+    return data;
   }
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
+  useEffect(() => {
+    loadMe();
+  }, []);
 
-    const cleaned = name.trim().toLowerCase();
-    if (!cleaned) {
-      setError("Please enter your name.");
+  // If already logged in, leave login screen
+  useEffect(() => {
+    if (me.authenticated) {
+      window.location.href = nextParam || "/today";
+    }
+  }, [me.authenticated, nextParam]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg("");
+
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include", // <-- IMPORTANT: accept Set-Cookie + include cookies
+      body: JSON.stringify({ username, password }),
+      cache: "no-store",
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data?.ok) {
+      setMsg(data?.error || "Login failed");
       return;
     }
 
-    setWorkerAndGo(cleaned);
+    // Now confirm cookie is present by calling /me
+    const after = await loadMe();
+    if (after.authenticated) {
+      window.location.href = nextParam || "/today";
+      return;
+    }
+
+    setMsg("Login succeeded but session cookie was not detected. (Check ma_session cookie)");
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 520 }}>
-      <h1 style={{ marginBottom: 6 }}>Maintenance App</h1>
-      <p style={{ marginTop: 0, opacity: 0.8 }}>
-        Who are you?
-      </p>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 16 }}>
-        {WORKERS.map((w) => (
-          <button
-            key={w}
-            onClick={() => setWorkerAndGo(w)}
-            style={{
-              padding: "16px 12px",
-              borderRadius: 12,
-              border: "1px solid #ddd",
-              background: "#fff",
-              fontSize: 16,
-              fontWeight: 700,
-              textTransform: "capitalize",
-            }}
-          >
-            {w}
-          </button>
-        ))}
+    <main style={{ padding: 24, maxWidth: 720 }}>
+      <div style={{ marginBottom: 12, fontSize: 14 }}>
+        {me.authenticated ? (
+          <>
+            Logged in as: <b>{me.name}</b> • Role: <b>{me.role}</b>
+          </>
+        ) : (
+          <>Not logged in</>
+        )}
       </div>
 
-      <hr style={{ margin: "18px 0" }} />
+      <h1 style={{ marginBottom: 6 }}>Furlads Maintenance Admin</h1>
+      <p style={{ marginTop: 0, opacity: 0.75 }}>Sign in to continue.</p>
 
-      <form onSubmit={submit}>
+      <form onSubmit={submit} style={{ marginTop: 14 }}>
         <label style={{ display: "block", fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
-          Or type a name
+          Username
         </label>
         <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. stephen"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
           style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ddd" }}
         />
 
-        {error && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: 10,
-              background: "#ffe6e6",
-              border: "1px solid #ffb3b3",
-              borderRadius: 10,
-            }}
-          >
-            {error}
-          </div>
-        )}
+        <div style={{ height: 14 }} />
 
-        <button
-          type="submit"
-          style={{ marginTop: 10, width: "100%", padding: "12px 14px", borderRadius: 10 }}
-        >
-          Continue →
+        <label style={{ display: "block", fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
+          Password
+        </label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ddd" }}
+        />
+
+        <button type="submit" style={{ marginTop: 16, width: "100%", padding: "12px 14px", borderRadius: 10 }}>
+          Sign in
         </button>
-      </form>
 
-      <div style={{ marginTop: 18, fontSize: 12, opacity: 0.8 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Kelly shortcuts</div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <a href="/my-visits">Add jobs</a>
-          <a href="/unscheduled">Schedule unscheduled</a>
+        {msg ? (
+          <div style={{ marginTop: 12, padding: 10, border: "1px solid #ddd", borderRadius: 10 }}>
+            {msg}
+          </div>
+        ) : null}
+
+        <div style={{ marginTop: 12, fontSize: 12, opacity: 0.75 }}>
+          First login password is <b>firstname123</b> (e.g. <b>jacob123</b>) then you’ll be asked to change it.
         </div>
-      </div>
+      </form>
     </main>
   );
 }

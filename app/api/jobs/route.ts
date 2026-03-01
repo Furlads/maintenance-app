@@ -1,6 +1,6 @@
 export const runtime = "nodejs";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/prisma/prisma";
 
 function cleanString(value: unknown) {
@@ -22,11 +22,49 @@ function outwardPostcode(address: string) {
   return match[1]; // outward code only (TF9, SY13 etc.)
 }
 
-export async function GET() {
+// Canonical worker keys in DB
+type AssignedToKey = "trev" | "kelly" | "stephen" | "jacob";
+
+function normalizeAssignedTo(raw: string): AssignedToKey | "" {
+  const v = (raw || "").trim().toLowerCase();
+
+  if (!v) return "";
+
+  // allow a few friendly inputs
+  if (v === "trev" || v === "trevor" || v === "trevor fudger") return "trev";
+  if (v === "kelly" || v === "kelly darby") return "kelly";
+  if (v === "stephen" || v === "steve") return "stephen";
+  if (v === "jacob" || v === "jake") return "jacob";
+
+  // already-canonical values
+  if (v === "trev" || v === "kelly" || v === "stephen" || v === "jacob") return v as AssignedToKey;
+
+  // unknown
+  return "";
+}
+
+async function rebuild(worker: string, fromDate: string) {
+  const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+
+  await fetch(`${base}/api/schedule/rebuild`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ worker, fromDate, includeToday: true }),
+  }).catch(() => null);
+}
+
+export async function GET(req: NextRequest) {
   try {
+    const url = new URL(req.url);
+    const assignedToParam = cleanString(url.searchParams.get("assignedTo"));
+
+    const assignedTo = normalizeAssignedTo(assignedToParam);
+
     const jobs = await prisma.job.findMany({
+      where: assignedTo ? { assignedTo } : undefined,
       orderBy: { createdAt: "desc" },
     });
+
     return NextResponse.json(jobs);
   } catch (err) {
     console.error("GET /api/jobs failed:", err);
@@ -41,7 +79,7 @@ export async function POST(req: Request) {
     // REQUIRED
     const title = cleanString(body.title);
     const address = cleanString(body.address);
-    const assignedTo = cleanString(body.assignedTo).toLowerCase();
+    const assignedToRaw = cleanString(body.assignedTo);
 
     // OPTIONAL
     const notes = cleanString(body.notes);
@@ -65,9 +103,12 @@ export async function POST(req: Request) {
     const missing: string[] = [];
     if (!title) missing.push("title");
     if (!address) missing.push("address");
+
+    const assignedTo = normalizeAssignedTo(assignedToRaw);
     if (!assignedTo) missing.push("assignedTo");
+
     if (missing.length > 0) {
-      return NextResponse.json({ error: "Missing required fields", missing }, { status: 400 });
+      return NextResponse.json({ error: "Missing/invalid required fields", missing }, { status: 400 });
     }
 
     const postcode = outwardPostcode(address);
@@ -87,7 +128,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "visitDate must be YYYY-MM-DD if provided" }, { status: 400 });
       }
       visitDate = new Date(visitDateRaw);
-      // If they provided a date, we assume it's a customer-insisted booking
+
+      // If they provided a date, we treat it as customer-insisted
       fixed = true;
 
       if (startTimeRaw) {
@@ -122,7 +164,13 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(job);
+    const fromDate =
+      (visitDate ? visitDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)) ?? "";
+
+    await rebuild(assignedTo, fromDate);
+
+    const refreshed = await prisma.job.findUnique({ where: { id: job.id } });
+    return NextResponse.json(refreshed ?? job);
   } catch (err) {
     console.error("POST /api/jobs failed:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
