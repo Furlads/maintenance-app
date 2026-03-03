@@ -1,178 +1,191 @@
-export const runtime = "nodejs";
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/prisma/prisma";
-
-function cleanString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+function clean(v: unknown) {
+  return typeof v === "string" ? v.trim() : "";
 }
 
-function isValidISODateOnly(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+function cleanCompany(v: unknown) {
+  const c = clean(v).toLowerCase();
+  return c === "threecounties" ? "threecounties" : "furlads";
 }
 
-function isValidHHMM(value: string) {
-  return /^\d{2}:\d{2}$/.test(value);
+function outwardFromPostcode(full: string) {
+  const pc = clean(full).toUpperCase().replace(/\s+/g, " ");
+  if (!pc) return "";
+  const parts = pc.split(" ");
+  if (parts.length >= 2) return parts[0];
+  if (pc.length > 3) return pc.slice(0, pc.length - 3);
+  return pc;
 }
 
-function outwardPostcode(address: string) {
-  const upper = (address || "").toUpperCase();
-  const match = upper.match(/\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})\b/);
-  if (!match) return "";
-  return match[1]; // outward code only (TF9, SY13 etc.)
+function toNumberOrNull(v: any) {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
+  return null;
 }
 
-// Canonical worker keys in DB
-type AssignedToKey = "trev" | "kelly" | "stephen" | "jacob";
-
-function normalizeAssignedTo(raw: string): AssignedToKey | "" {
-  const v = (raw || "").trim().toLowerCase();
-
-  if (!v) return "";
-
-  // allow a few friendly inputs
-  if (v === "trev" || v === "trevor" || v === "trevor fudger") return "trev";
-  if (v === "kelly" || v === "kelly darby") return "kelly";
-  if (v === "stephen" || v === "steve") return "stephen";
-  if (v === "jacob" || v === "jake") return "jacob";
-
-  // already-canonical values
-  if (v === "trev" || v === "kelly" || v === "stephen" || v === "jacob") return v as AssignedToKey;
-
-  // unknown
-  return "";
+function toBool(v: any) {
+  return !!v;
 }
 
-async function rebuild(worker: string, fromDate: string) {
-  const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
-
-  await fetch(`${base}/api/schedule/rebuild`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ worker, fromDate, includeToday: true }),
-  }).catch(() => null);
-}
-
-export async function GET(req: NextRequest) {
-  try {
-    const url = new URL(req.url);
-    const assignedToParam = cleanString(url.searchParams.get("assignedTo"));
-
-    const assignedTo = normalizeAssignedTo(assignedToParam);
-
-    const jobs = await prisma.job.findMany({
-      where: assignedTo ? { assignedTo } : undefined,
-      orderBy: { createdAt: "desc" },
-    });
-
-    return NextResponse.json(jobs);
-  } catch (err) {
-    console.error("GET /api/jobs failed:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+function safePhotoUrls(v: any): string[] {
+  if (Array.isArray(v)) return v.map((x) => clean(x)).filter(Boolean).slice(0, 24);
+  if (typeof v === "string") {
+    const one = clean(v);
+    return one ? [one] : [];
   }
+  return [];
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const company = url.searchParams.get("company");
+  const c = company ? cleanCompany(company) : null;
+
+  const includeDeleted = url.searchParams.get("includeDeleted") === "1";
+
+  const jobs = await prisma.job.findMany({
+    where: {
+      ...(c ? { company: c as any } : {}),
+      ...(includeDeleted ? {} : { deletedAt: null }),
+    } as any,
+    orderBy: { createdAt: "desc" },
+    take: 60,
+  });
+
+  return NextResponse.json(jobs);
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body: any = await req.json().catch(() => ({}));
+    const company = cleanCompany(body.company);
 
-    // REQUIRED
-    const title = cleanString(body.title);
-    const address = cleanString(body.address);
-    const assignedToRaw = cleanString(body.assignedTo);
+    // ✅ schema uses title
+    const title = clean(body.title) || clean(body.customerName) || clean(body.customer_name);
+    if (!title) return NextResponse.json({ error: "Missing: title" }, { status: 400 });
 
-    // OPTIONAL
-    const notes = cleanString(body.notes);
-    const visitDateRaw = cleanString(body.visitDate); // YYYY-MM-DD or blank/null
-    const startTimeRaw = cleanString(body.startTime); // HH:MM optional
-    const durationMinsRaw = body.durationMins;
+    const address = clean(body.address);
+    if (!address) return NextResponse.json({ error: "Missing: address" }, { status: 400 });
 
-    // Recurrence optional
-    const recurrenceActive = body.recurrenceActive === true;
-    const recurrenceEveryWeeks = Number.isFinite(Number(body.recurrenceEveryWeeks))
-      ? Number(body.recurrenceEveryWeeks)
-      : null;
-    const recurrenceDurationMins = Number.isFinite(Number(body.recurrenceDurationMins))
-      ? Number(body.recurrenceDurationMins)
-      : null;
-    const recurrencePreferredDOW = Number.isFinite(Number(body.recurrencePreferredDOW))
-      ? Number(body.recurrencePreferredDOW)
-      : null;
-    const recurrencePreferredTime = cleanString(body.recurrencePreferredTime);
+    const overview = clean(body.overview);
+    const notes = clean(body.notes);
 
-    const missing: string[] = [];
-    if (!title) missing.push("title");
-    if (!address) missing.push("address");
+    const postcodeFull = clean(body.postcodeFull);
+    const postcode = outwardFromPostcode(postcodeFull) || outwardFromPostcode(address);
 
-    const assignedTo = normalizeAssignedTo(assignedToRaw);
-    if (!assignedTo) missing.push("assignedTo");
+    const assignedToKey = clean(body.assignedTo).toLowerCase() || null;
 
-    if (missing.length > 0) {
-      return NextResponse.json({ error: "Missing/invalid required fields", missing }, { status: 400 });
+    // Hard-to-find + W3W + photos
+    const hardToFind = toBool(body.hardToFind);
+    const what3wordsLink = clean(body.what3wordsLink) || "";
+    const photoUrls = safePhotoUrls(body.photoUrls);
+
+    // Backwards compat fields
+    const what3words = clean(body.what3words);
+    const latitude = toNumberOrNull(body.latitude);
+    const longitude = toNumberOrNull(body.longitude);
+
+    // Scheduling
+    const fixed = toBool(body.fixed);
+    const visitDate = clean(body.visitDate) ? new Date(clean(body.visitDate)) : null;
+    const startTime = clean(body.startTime) || null;
+
+    const durationMinsRaw = toNumberOrNull(body.durationMins);
+    const durationMins = typeof durationMinsRaw === "number" ? Math.max(15, Math.round(durationMinsRaw)) : 60;
+
+    // Recurrence
+    const recurrenceActive = toBool(body.recurrenceActive);
+    const recurrenceEveryWeeksRaw = toNumberOrNull(body.recurrenceEveryWeeks);
+    const recurrenceEveryWeeks =
+      recurrenceActive && typeof recurrenceEveryWeeksRaw === "number"
+        ? Math.max(1, Math.round(recurrenceEveryWeeksRaw))
+        : null;
+
+    const recurrenceDurationMinsRaw = toNumberOrNull(body.recurrenceDurationMins);
+    const recurrenceDurationMins =
+      recurrenceActive && typeof recurrenceDurationMinsRaw === "number"
+        ? Math.max(15, Math.round(recurrenceDurationMinsRaw))
+        : null;
+
+    const recurrencePreferredDOWRaw = toNumberOrNull(body.recurrencePreferredDOW);
+    const recurrencePreferredDOW =
+      recurrenceActive && typeof recurrencePreferredDOWRaw === "number"
+        ? Math.max(0, Math.min(6, Math.round(recurrencePreferredDOWRaw)))
+        : null;
+
+    const recurrencePreferredTime = recurrenceActive ? clean(body.recurrencePreferredTime) || null : null;
+
+    // ✅ Resolve worker relation safely (must match company)
+    let assignedWorkerId: number | null = null;
+    let assignedTo: string | null = assignedToKey;
+
+    if (assignedToKey) {
+      const worker = await prisma.worker.findFirst({
+        where: { company: company as any, key: assignedToKey },
+        select: { id: true, key: true },
+      });
+
+      if (!worker) {
+        return NextResponse.json(
+          { error: `Assigned worker "${assignedToKey}" not found for company "${company}".` },
+          { status: 400 }
+        );
+      }
+
+      assignedWorkerId = worker.id;
+      assignedTo = worker.key;
     }
 
-    const postcode = outwardPostcode(address);
+    const status = fixed ? "todo" : "unscheduled";
 
-    const durationMins =
-      Number.isFinite(Number(durationMinsRaw)) && Number(durationMinsRaw) > 0
-        ? Math.round(Number(durationMinsRaw))
-        : 60;
-
-    // Determine fixed vs flexible
-    let visitDate: Date | null = null;
-    let fixed = false;
-    let startTime: string | null = null;
-
-    if (visitDateRaw && visitDateRaw !== "null") {
-      if (!isValidISODateOnly(visitDateRaw)) {
-        return NextResponse.json({ error: "visitDate must be YYYY-MM-DD if provided" }, { status: 400 });
-      }
-      visitDate = new Date(visitDateRaw);
-
-      // If they provided a date, we treat it as customer-insisted
-      fixed = true;
-
-      if (startTimeRaw) {
-        if (!isValidHHMM(startTimeRaw)) {
-          return NextResponse.json({ error: "startTime must be HH:MM if provided" }, { status: 400 });
-        }
-        startTime = startTimeRaw;
-      }
-    }
-
-    const status = visitDate ? "todo" : "unscheduled";
-
-    const job = await prisma.job.create({
+    const created = await prisma.job.create({
       data: {
+        company: company as any,
         title,
+
         address,
         postcode,
-        notes: notes || "",
-        notesLog: "",
-        status,
-        visitDate,
-        assignedTo,
-        durationMins,
-        fixed,
-        startTime,
+        postcodeFull,
 
+        overview,
+        notes,
+        notesLog: "",
+        status: status as any,
+
+        visitDate: fixed ? visitDate : null,
+        startTime: fixed ? startTime : null,
+        fixed,
+        durationMins,
+
+        // back compat
+        what3words,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+
+        // photos + w3w
+        hardToFind,
+        what3wordsLink,
+        photoUrls: photoUrls as any,
+
+        // assignment
+        assignedTo,
+        assignedWorkerId,
+
+        // recurrence
         recurrenceActive,
         recurrenceEveryWeeks,
         recurrenceDurationMins,
         recurrencePreferredDOW,
-        recurrencePreferredTime: recurrencePreferredTime || null,
-      },
+        recurrencePreferredTime,
+
+        deletedAt: null,
+      } as any,
     });
 
-    const fromDate =
-      (visitDate ? visitDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)) ?? "";
-
-    await rebuild(assignedTo, fromDate);
-
-    const refreshed = await prisma.job.findUnique({ where: { id: job.id } });
-    return NextResponse.json(refreshed ?? job);
-  } catch (err) {
-    console.error("POST /api/jobs failed:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json(created);
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Failed to create job." }, { status: 500 });
   }
 }

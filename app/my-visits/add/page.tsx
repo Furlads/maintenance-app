@@ -10,7 +10,25 @@ type Worker = {
   role?: string | null;
   photoUrl?: string | null;
   archivedAt?: string | null;
+
+  // Optional / future-proof fields (depends what your /api/workers returns)
+  business?: string | null;
+  businessName?: string | null;
+  company?: string | null;
+  org?: string | null;
+  businesses?: string[] | null;
 };
+
+type BusinessKey = "furlads" | "threecounties";
+
+const BUSINESS_OPTIONS: { key: BusinessKey; label: string; aliases: string[] }[] = [
+  { key: "furlads", label: "Furlads", aliases: ["furlads", "furlads ltd"] },
+  {
+    key: "threecounties",
+    label: "Three Counties Property Care",
+    aliases: ["three counties", "threecounties", "three counties property care", "threecounties property care"],
+  },
+];
 
 function safeWorkers(data: any): Worker[] {
   const list = Array.isArray(data) ? data : Array.isArray(data?.workers) ? data.workers : [];
@@ -22,6 +40,33 @@ function safeNumber(v: unknown, fallback: number) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function cleanLower(v: unknown) {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function workerBusinessKey(w: Worker): BusinessKey | null {
+  // Try a bunch of possible shapes so this works even if the API differs slightly.
+  const candidates: string[] = [];
+
+  if (typeof w.business === "string") candidates.push(w.business);
+  if (typeof w.businessName === "string") candidates.push(w.businessName);
+  if (typeof w.company === "string") candidates.push(w.company);
+  if (typeof w.org === "string") candidates.push(w.org);
+  if (Array.isArray(w.businesses)) candidates.push(...w.businesses);
+
+  const norm = candidates.map(cleanLower).filter(Boolean);
+
+  if (norm.length === 0) return null;
+
+  for (const opt of BUSINESS_OPTIONS) {
+    for (const c of norm) {
+      if (opt.aliases.some((a) => c.includes(a))) return opt.key;
+    }
+  }
+
+  return null;
+}
+
 export default function AddJobPage() {
   const router = useRouter();
 
@@ -30,13 +75,15 @@ export default function AddJobPage() {
   const [loadingWorkers, setLoadingWorkers] = useState(true);
 
   // form
+  const [business, setBusiness] = useState<BusinessKey | "">("");
   const [title, setTitle] = useState("");
   const [address, setAddress] = useState("");
   const [postcode, setPostcode] = useState("");
   const [notes, setNotes] = useState("");
 
-  // ✅ IMPORTANT: store full worker name
-  const [assignedTo, setAssignedTo] = useState("");
+  // assigned worker (we store both id + name for safety)
+  const [assignedWorkerId, setAssignedWorkerId] = useState<string>("");
+  const [assignedToName, setAssignedToName] = useState<string>("");
 
   const [durationMins, setDurationMins] = useState<number>(120);
 
@@ -72,11 +119,6 @@ export default function AddJobPage() {
         if (cancelled) return;
 
         setWorkers(list);
-
-        // default to first worker
-        if (!assignedTo && list.length > 0) {
-          setAssignedTo(list[0].name);
-        }
       } catch (e: any) {
         if (!cancelled) setErrorMsg(e?.message || "Failed to load workers");
       } finally {
@@ -88,12 +130,51 @@ export default function AddJobPage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const workerOptions = useMemo(() => {
-    return [...workers].sort((a, b) => a.name.localeCompare(b.name));
-  }, [workers]);
+  const filteredWorkers = useMemo(() => {
+    const sorted = [...workers].sort((a, b) => a.name.localeCompare(b.name));
+    if (!business) return sorted;
+
+    // If workers carry business metadata, filter. If not, show all (so we never block Kelly).
+    const anyHasBusinessInfo = sorted.some((w) => workerBusinessKey(w) !== null);
+    if (!anyHasBusinessInfo) return sorted;
+
+    return sorted.filter((w) => workerBusinessKey(w) === business);
+  }, [workers, business]);
+
+  // When business changes, pick a sensible default worker for that business
+  useEffect(() => {
+    if (!business) {
+      setAssignedWorkerId("");
+      setAssignedToName("");
+      return;
+    }
+
+    // If current selection still valid, keep it
+    const stillThere = filteredWorkers.find((w) => w.id === assignedWorkerId);
+    if (stillThere) {
+      setAssignedToName(stillThere.name);
+      return;
+    }
+
+    // Otherwise choose first worker in filtered list
+    const first = filteredWorkers[0];
+    if (first) {
+      setAssignedWorkerId(first.id);
+      setAssignedToName(first.name);
+    } else {
+      setAssignedWorkerId("");
+      setAssignedToName("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business, filteredWorkers.length]);
+
+  // When worker id changes, sync name
+  useEffect(() => {
+    const w = workers.find((x) => x.id === assignedWorkerId);
+    if (w) setAssignedToName(w.name);
+  }, [assignedWorkerId, workers]);
 
   async function submit() {
     setSubmitting(true);
@@ -101,9 +182,10 @@ export default function AddJobPage() {
 
     try {
       const missing: string[] = [];
+      if (!business) missing.push("Business");
       if (!title.trim()) missing.push("Title");
       if (!address.trim()) missing.push("Address");
-      if (!assignedTo.trim()) missing.push("Assigned to");
+      if (!assignedToName.trim()) missing.push("Assigned to");
 
       if (scheduleMode === "fixed" && !visitDate.trim()) missing.push("Visit date");
 
@@ -117,11 +199,17 @@ export default function AddJobPage() {
         postcode.trim().length > 0 ? `${address.trim()}\n${postcode.trim().toUpperCase()}` : address.trim();
 
       const payload: any = {
+        business, // ✅ new (safe if API ignores, useful once stored)
         title: title.trim(),
         address: addressWithPostcode,
         notes: notes.trim(),
-        // ✅ full name saved into job
-        assignedTo: assignedTo.trim(),
+
+        // ✅ keep scheduler compatibility: assignedTo string
+        assignedTo: assignedToName.trim(),
+
+        // ✅ also send workerId for future-proofing
+        assignedWorkerId: assignedWorkerId || null,
+
         durationMins: safeNumber(durationMins, 120),
 
         recurrenceActive: recurrenceActive === true,
@@ -165,6 +253,8 @@ export default function AddJobPage() {
         <div className="rounded-xl border bg-white p-6">
           <div className="text-2xl font-semibold">✅ Job added</div>
           <div className="mt-2 text-sm text-gray-600">
+            Business: <span className="font-semibold">{business ? BUSINESS_OPTIONS.find((b) => b.key === business)?.label : "—"}</span>
+            <span className="mx-2">•</span>
             Assigned to <span className="font-semibold">{created.assignedTo}</span>
           </div>
 
@@ -176,10 +266,7 @@ export default function AddJobPage() {
               Add another job
             </button>
 
-            <button
-              className="rounded border px-4 py-2 text-sm hover:bg-gray-50"
-              onClick={() => router.push("/admin")}
-            >
+            <button className="rounded border px-4 py-2 text-sm hover:bg-gray-50" onClick={() => router.push("/admin")}>
               Dashboard
             </button>
 
@@ -194,6 +281,8 @@ export default function AddJobPage() {
       </div>
     );
   }
+
+  const businessLabel = business ? BUSINESS_OPTIONS.find((b) => b.key === business)?.label : "";
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -214,13 +303,41 @@ export default function AddJobPage() {
       <div className="rounded-lg border bg-white p-4">
         <div className="grid gap-4">
           <div>
+            <label className="mb-1 block text-sm font-medium">Business *</label>
+            <select
+              className="w-full rounded border px-3 py-2 text-sm"
+              value={business}
+              onChange={(e) => setBusiness(e.target.value as any)}
+            >
+              <option value="">Select business…</option>
+              {BUSINESS_OPTIONS.map((b) => (
+                <option key={b.key} value={b.key}>
+                  {b.label}
+                </option>
+              ))}
+            </select>
+            <div className="mt-1 text-xs text-gray-500">This controls which worker list shows up.</div>
+          </div>
+
+          <div>
             <label className="mb-1 block text-sm font-medium">Title *</label>
-            <input className="w-full rounded border px-3 py-2 text-sm" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input
+              className="w-full rounded border px-3 py-2 text-sm"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={businessLabel ? `${businessLabel} — e.g. Quote visit / Maintenance / Site check` : "e.g. Quote visit / Maintenance / Site check"}
+            />
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium">Address *</label>
-            <textarea className="w-full rounded border px-3 py-2 text-sm" rows={3} value={address} onChange={(e) => setAddress(e.target.value)} />
+            <textarea
+              className="w-full rounded border px-3 py-2 text-sm"
+              rows={3}
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="House name/number, street, town"
+            />
           </div>
 
           <div>
@@ -232,31 +349,55 @@ export default function AddJobPage() {
             <label className="mb-1 block text-sm font-medium">Assigned to *</label>
             <select
               className="w-full rounded border px-3 py-2 text-sm"
-              value={assignedTo}
-              onChange={(e) => setAssignedTo(e.target.value)}
-              disabled={loadingWorkers}
+              value={assignedWorkerId}
+              onChange={(e) => setAssignedWorkerId(e.target.value)}
+              disabled={loadingWorkers || !business}
             >
-              {workerOptions.length === 0 ? (
-                <option value="">{loadingWorkers ? "Loading workers..." : "No workers found"}</option>
+              {!business ? (
+                <option value="">Pick business first…</option>
+              ) : filteredWorkers.length === 0 ? (
+                <option value="">
+                  {loadingWorkers ? "Loading workers..." : "No workers found for this business"}
+                </option>
               ) : (
-                workerOptions.map((w) => (
-                  <option key={w.id} value={w.name}>
-                    {w.name}{w.role ? ` — ${w.role}` : ""}
-                  </option>
-                ))
+                <>
+                  <option value="">Select worker…</option>
+                  {filteredWorkers.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}{w.role ? ` — ${w.role}` : ""}
+                    </option>
+                  ))}
+                </>
               )}
             </select>
+
+            <div className="mt-1 text-xs text-gray-500">
+              This list comes from the Workers page (including role). {business ? "Filtered by selected business." : ""}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium">Duration (mins)</label>
-              <input className="w-full rounded border px-3 py-2 text-sm" type="number" min={15} step={15} value={durationMins} onChange={(e) => setDurationMins(safeNumber(e.target.value, 120))} />
+              <input
+                className="w-full rounded border px-3 py-2 text-sm"
+                type="number"
+                min={15}
+                step={15}
+                value={durationMins}
+                onChange={(e) => setDurationMins(safeNumber(e.target.value, 120))}
+              />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium">Notes</label>
-              <input className="w-full rounded border px-3 py-2 text-sm" value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <label className="mb-1 block text-sm font-medium">Notes (visible to worker)</label>
+              <textarea
+                className="w-full rounded border px-3 py-2 text-sm"
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Gate code, access, customer requests, warnings, what to do…"
+              />
             </div>
           </div>
 
@@ -265,12 +406,16 @@ export default function AddJobPage() {
 
             <label className="flex items-start gap-2 text-sm">
               <input type="radio" checked={scheduleMode === "economic"} onChange={() => setScheduleMode("economic")} />
-              <span><b>Economic</b> — no date/time required</span>
+              <span>
+                <b>Economic</b> — no date/time required (default)
+              </span>
             </label>
 
             <label className="mt-2 flex items-start gap-2 text-sm">
               <input type="radio" checked={scheduleMode === "fixed"} onChange={() => setScheduleMode("fixed")} />
-              <span><b>Fixed</b> — customer insists on a set day/time</span>
+              <span>
+                <b>Fixed</b> — customer insists on a set day/time
+              </span>
             </label>
 
             {scheduleMode === "fixed" ? (
@@ -332,7 +477,12 @@ export default function AddJobPage() {
               Cancel
             </button>
 
-            <button className="rounded bg-black px-5 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50" type="button" onClick={submit} disabled={submitting}>
+            <button
+              className="rounded bg-black px-5 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50"
+              type="button"
+              onClick={submit}
+              disabled={submitting}
+            >
               {submitting ? "Adding…" : "Add job"}
             </button>
           </div>

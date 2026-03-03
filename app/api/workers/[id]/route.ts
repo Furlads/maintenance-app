@@ -1,47 +1,103 @@
-import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+export const runtime = "nodejs";
 
-export const runtime = 'nodejs'
+import { NextResponse } from "next/server";
+import prisma from "@/prisma/prisma";
+
+function cleanString(v: unknown) {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function asBoolOrUndef(v: unknown) {
+  return typeof v === "boolean" ? v : undefined;
+}
+
+export async function GET(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await ctx.params;
+    const workerId = Number(id);
+    if (!Number.isFinite(workerId)) {
+      return NextResponse.json({ error: "Invalid worker id" }, { status: 400 });
+    }
+
+    const worker = await prisma.worker.findUnique({
+      where: { id: workerId },
+      select: {
+        id: true,
+        company: true,
+        key: true,
+        name: true,
+        role: true,
+        jobTitle: true,
+        photoUrl: true,
+        schedulable: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!worker) {
+      return NextResponse.json({ error: "Worker not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(worker);
+  } catch (err) {
+    console.error("GET /api/workers/[id] failed:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
 
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  ctx: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params
-
-    if (!id) {
-      return NextResponse.json({ error: 'Missing worker id in URL' }, { status: 400 })
+    const { id } = await ctx.params;
+    const workerId = Number(id);
+    if (!Number.isFinite(workerId)) {
+      return NextResponse.json({ error: "Invalid worker id" }, { status: 400 });
     }
 
-    const body = await req.json().catch(() => ({}))
+    const body = await req.json().catch(() => ({}));
 
-    // ARCHIVE
-    if (body.archive === true) {
-      const worker = await prisma.worker.update({
-        where: { id },
-        data: { archivedAt: new Date() },
-      })
-      return NextResponse.json({ worker })
-    }
+    // Build data object WITHOUT undefined keys
+    const data: any = {};
 
-    // RESTORE
-    if (body.restore === true) {
-      const worker = await prisma.worker.update({
-        where: { id },
-        data: { archivedAt: null },
-      })
-      return NextResponse.json({ worker })
-    }
+    if (typeof body.name === "string") data.name = cleanString(body.name);
+    if (typeof body.role === "string") data.role = cleanString(body.role);
+    if (typeof body.jobTitle === "string") data.jobTitle = cleanString(body.jobTitle);
+    if (typeof body.photoUrl === "string") data.photoUrl = cleanString(body.photoUrl);
 
-    return NextResponse.json(
-      { error: 'Nothing to update. Send { "archive": true } or { "restore": true }' },
-      { status: 400 }
-    )
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || 'Server error archiving/restoring worker' },
-      { status: 500 }
-    )
+    const active = asBoolOrUndef(body.active);
+    if (active !== undefined) data.active = active;
+
+    const schedulable = asBoolOrUndef(body.schedulable);
+    if (schedulable !== undefined) data.schedulable = schedulable;
+
+    const updated = await prisma.worker.update({
+      where: { id: workerId },
+      data,
+      select: {
+        id: true,
+        company: true,
+        key: true,
+        name: true,
+        role: true,
+        jobTitle: true,
+        photoUrl: true,
+        schedulable: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json(updated);
+  } catch (err) {
+    console.error("PATCH /api/workers/[id] failed:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

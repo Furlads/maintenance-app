@@ -1,114 +1,132 @@
-// /app/components/AppHeader.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
-type Me = {
-  authenticated: boolean;
-  name?: string;
-  role?: string;
-  isAdmin?: boolean;
+type CompanyKey = "furlads" | "threecounties";
+
+const COMPANY_NAMES: Record<string, string> = {
+  furlads: "Furlads",
+  threecounties: "Three Counties Property Care",
 };
 
-function avatarSrcFromName(name?: string) {
-  const n = (name || "").trim().toLowerCase();
+const COMPANY_THEME: Record<CompanyKey, { accent: string; accentSoft: string; text: string }> = {
+  furlads: {
+    accent: "#FFD400",
+    accentSoft: "rgba(255, 212, 0, 0.18)",
+    text: "#111",
+  },
+  threecounties: {
+    accent: "#2E5EA8",
+    accentSoft: "rgba(46, 94, 168, 0.14)",
+    text: "#111",
+  },
+};
 
-  // Map session name -> uploaded image path
-  if (n === "trevor fudger" || n.includes("trevor") || n.includes("trev")) return "/uploads/1772185991845-trevor.jpg";
-  if (n === "kelly darby" || n.includes("kelly")) return "/uploads/1772186026876-kelly.jpg";
-  if (n.includes("stephen") || n.includes("steve")) return "/uploads/1772185852194-steve.jpg";
-  if (n.includes("jacob")) return "/uploads/1772185925962-jacob.jpg";
-
-  return "";
+function titleCase(s: string) {
+  return (s || "")
+    .split(" ")
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
 }
 
-export default function AppHeader() {
-  const [me, setMe] = useState<Me>({ authenticated: false });
-  const [imgOk, setImgOk] = useState(true);
+export default function AppHeader(props: { title: string; onRefresh?: () => void }) {
+  const pathname = usePathname();
+  const router = useRouter();
 
-  async function loadMe() {
-    try {
-      const res = await fetch("/api/auth/me", { cache: "no-store" });
-      const data = (await res.json()) as Me;
-      setMe(data);
-      setImgOk(true);
-    } catch {
-      setMe({ authenticated: false });
-    }
-  }
+  const [company, setCompany] = useState<string>("");
+  const [worker, setWorker] = useState<string>("");
+
+  const isChooserPage = pathname === "/choose-company" || pathname === "/choose-worker";
+
+  // We don't want the global banner/header on /today (it has its own in-page header/buttons)
+  const hideOnToday = pathname === "/today";
 
   useEffect(() => {
-    loadMe();
+    // Legacy migration (old key)
+    const legacyWorkerName = localStorage.getItem("workerName") || "";
+    const w = localStorage.getItem("worker") || "";
+    if (!w && legacyWorkerName) {
+      localStorage.setItem("worker", legacyWorkerName.trim().toLowerCase());
+      localStorage.removeItem("workerName");
+    }
+
+    setCompany(localStorage.getItem("company") || "");
+    setWorker(localStorage.getItem("worker") || "");
   }, []);
 
-  async function logout() {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } catch {
-      // ignore
-    }
-    window.location.href = "/login";
+  const theme = useMemo(() => {
+    const key = (company || "") as CompanyKey;
+    return (
+      COMPANY_THEME[key] || {
+        accent: "#ddd",
+        accentSoft: "rgba(0,0,0,0.06)",
+        text: "#111",
+      }
+    );
+  }, [company]);
+
+  function switchUser() {
+    localStorage.removeItem("company");
+    localStorage.removeItem("worker");
+    localStorage.removeItem("workerName");
+    router.replace("/choose-company");
   }
 
-  const src = me.authenticated ? avatarSrcFromName(me.name) : "";
+  // Hide header on chooser pages + today (today renders its own header/buttons)
+  if (isChooserPage || hideOnToday) return null;
+
+  const companyLabel = COMPANY_NAMES[company as CompanyKey] || (company ? titleCase(company) : "—");
+  const workerLabel = worker ? titleCase(worker) : "—";
 
   return (
-    <div style={{ padding: 12, borderBottom: "1px solid #ddd" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {me.authenticated && src && imgOk ? (
-            <img
-              src={src}
-              alt={me.name || "User"}
-              width={34}
-              height={34}
-              onError={() => setImgOk(false)}
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 999,
-                objectFit: "cover",
-                border: "1px solid #ddd",
-              }}
-            />
-          ) : me.authenticated ? (
-            <div
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 999,
-                border: "1px solid #ddd",
-                display: "grid",
-                placeItems: "center",
-                fontWeight: 900,
-                fontSize: 12,
-              }}
-              title={me.name || ""}
-            >
-              {(me.name || "?").trim().slice(0, 1).toUpperCase()}
-            </div>
-          ) : null}
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+      <div>
+        <h1 style={{ marginBottom: 6, color: theme.text }}>
+          <span
+            style={{
+              boxShadow: `inset 0 -0.55em 0 ${theme.accentSoft}`,
+              padding: "0 4px",
+              borderRadius: 6,
+            }}
+          >
+            {props.title}
+          </span>
+        </h1>
 
-          <div style={{ fontSize: 14 }}>
-            {me.authenticated ? (
-              <>
-                Logged in as: <b>{me.name}</b> • Role: <b>{me.role}</b>
-              </>
-            ) : (
-              <>Not logged in</>
-            )}
-          </div>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>
+          <span style={{ color: theme.accent, fontWeight: 800 }}>●</span> Company: <b>{companyLabel}</b> • Worker:{" "}
+          <b>{workerLabel}</b>
         </div>
+      </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {me.authenticated && me.isAdmin ? <Link href="/settings">Settings</Link> : null}
-          {me.authenticated ? (
-            <button onClick={logout} style={{ padding: "6px 10px" }}>
-              Logout
-            </button>
-          ) : null}
-        </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "start" }}>
+        {props.onRefresh ? (
+          <button
+            onClick={props.onRefresh}
+            style={{
+              padding: "8px 10px",
+              border: `1px solid ${theme.accent}`,
+              borderRadius: 10,
+              background: "#fff",
+            }}
+          >
+            Refresh
+          </button>
+        ) : null}
+
+        <button
+          onClick={switchUser}
+          style={{
+            padding: "8px 10px",
+            border: `1px solid ${theme.accent}`,
+            borderRadius: 10,
+            background: "#fff",
+          }}
+        >
+          Switch user
+        </button>
       </div>
     </div>
   );

@@ -10,10 +10,16 @@ import { createSessionToken } from "@/lib/auth/token";
 const COOKIE_NAME = "ma_session";
 const MAX_AGE = 60 * 60 * 24 * 30;
 
-function usernameToFirstName(username: string) {
+function usernameToFirstPart(username: string) {
   const u = String(username || "").trim().toLowerCase();
   const first = u.split("@")[0]?.trim() || "";
+  // "jacob.walters" -> "jacob"
   return first.split(".")[0];
+}
+
+function titleCaseFirst(s: string) {
+  if (!s) return "";
+  return s[0].toUpperCase() + s.slice(1);
 }
 
 function makeSetCookieHeader(value: string) {
@@ -36,24 +42,38 @@ export async function POST(req: Request) {
     const username = String(body?.username || "");
     const password = String(body?.password || "");
 
-    const firstName = usernameToFirstName(username);
-    if (!firstName || !password) {
+    const userKey = usernameToFirstPart(username);
+    if (!userKey || !password) {
       return NextResponse.json({ ok: false, error: "Missing username/password" }, { status: 400 });
     }
 
+    // ✅ Prefer stable Worker.key (trev/kelly/jacob/stephen)
+    // Fallback to name-startsWith for older DB rows / transitional data.
     const worker = await prisma.worker.findFirst({
       where: {
         archivedAt: null,
-        name: { startsWith: firstName[0].toUpperCase() + firstName.slice(1) },
+        OR: [
+          { key: userKey }, // preferred
+          { name: { startsWith: titleCaseFirst(userKey) } }, // fallback
+        ],
       },
-      select: { id: true, name: true, role: true, passwordHash: true },
+      select: {
+        id: true,
+        name: true,
+        role: true,     // display label only
+        key: true,      // stable key
+        access: true,   // ADMIN | STAFF
+        passwordHash: true,
+        mustChangePassword: true,
+      },
     });
 
     if (!worker) {
       return NextResponse.json({ ok: false, error: "Invalid login" }, { status: 401 });
     }
 
-    const fallback = `${firstName}123`;
+    // Test fallback password: key123 (e.g. trev123, jacob123)
+    const fallback = `${userKey}123`;
 
     let ok = false;
     if (worker.passwordHash) {
@@ -66,14 +86,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid login" }, { status: 401 });
     }
 
+    // ✅ Put stable identity + access in the session token
     const token = createSessionToken({
       workerId: worker.id,
       workerName: worker.name,
-      role: worker.role || undefined,
+      workerKey: worker.key,
+      access: worker.access, // "ADMIN" | "STAFF"
+      role: worker.role || undefined, // optional display string
     });
 
     const res = NextResponse.json(
-      { ok: true, worker: { id: worker.id, name: worker.name, role: worker.role } },
+      {
+        ok: true,
+        worker: {
+          id: worker.id,
+          name: worker.name,
+          role: worker.role,
+          key: worker.key,
+          access: worker.access,
+          mustChangePassword: worker.mustChangePassword,
+        },
+      },
       { status: 200 }
     );
 

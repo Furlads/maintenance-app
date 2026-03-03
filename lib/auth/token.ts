@@ -1,10 +1,36 @@
 // lib/auth/token.ts
 import crypto from "crypto";
 
+/**
+ * ACCESS LEVELS
+ * - Use this for permission gating (admin-only routes, editing workers/settings, etc.)
+ * - Keep `role` as a display label if you want ("Director", "Office", "Installer")
+ */
+export type AccessLevel = "ADMIN" | "STAFF";
+
 export type SessionPayload = {
   workerId: string | number;
   workerName: string;
+
+  /**
+   * Stable worker key used across the app (matches Worker.key)
+   * Example: "trev", "kelly", "stephen", "jacob"
+   */
+  workerKey?: string;
+
+  /**
+   * Stable access for permissions
+   */
+  access?: AccessLevel;
+
+  /**
+   * Optional display label (legacy / UI only)
+   */
   role?: string;
+
+  /**
+   * Issued-at timestamp (ms since epoch)
+   */
   iat: number;
 };
 
@@ -47,12 +73,21 @@ function safeEqual(a: string, b: string) {
   }
 }
 
+function isAccessLevel(v: unknown): v is AccessLevel {
+  return v === "ADMIN" || v === "STAFF";
+}
+
+/**
+ * Accepts BOTH:
+ * - legacy tokens that only have workerId/workerName/role/iat
+ * - new tokens that also include workerKey/access
+ */
 function parsePayload(payloadB64u: string): SessionPayload | null {
   try {
     const json = base64urlDecodeToBuffer(payloadB64u).toString("utf8");
-    const obj = JSON.parse(json) as SessionPayload;
+    const obj = JSON.parse(json) as Partial<SessionPayload> & Record<string, unknown>;
 
-    const wid = (obj as any)?.workerId;
+    const wid = obj?.workerId;
 
     if (
       !obj ||
@@ -63,13 +98,34 @@ function parsePayload(payloadB64u: string): SessionPayload | null {
       return null;
     }
 
-    return obj;
+    // Optional fields: validate lightly, but never reject legacy tokens
+    const workerKey =
+      typeof obj.workerKey === "string" && obj.workerKey.trim() ? obj.workerKey.trim() : undefined;
+
+    const access = isAccessLevel(obj.access) ? obj.access : undefined;
+
+    const role = typeof obj.role === "string" && obj.role.trim() ? obj.role : undefined;
+
+    return {
+      workerId: wid,
+      workerName: obj.workerName,
+      workerKey,
+      access,
+      role,
+      iat: obj.iat,
+    };
   } catch {
     return null;
   }
 }
 
-export function createSessionToken(input: Omit<SessionPayload, "iat">) {
+/**
+ * Creates a signed session token.
+ * Keep it simple: base64url(payload).base64url(hmac(payload, secret))
+ */
+export function createSessionToken(
+  input: Omit<SessionPayload, "iat">
+) {
   const secret = getAnySecret();
   if (!secret) throw new Error("SESSION_SECRET (or AUTH_SECRET) not set");
 

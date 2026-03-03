@@ -1,599 +1,1217 @@
-// app/today/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-
-type Who = "Kelly" | "Trev" | "Stephen" | "Jacob" | "";
-
-type Me = {
-  authenticated: boolean;
-  name?: string;
-  role?: string;
-  isAdmin?: boolean;
-};
 
 type Job = {
-  id: string;
+  id: number;
   title: string;
   address: string;
-  postcode: string;
-  phone?: string | null;
-  notes?: string | null;
+  status: string;
+  visitDate: string | null;
+  startTime: string | null;
+  assignedTo: string | null;
   notesLog: string;
-  status: "todo" | "done" | "unscheduled";
-  visitDate?: string | null;
-  startTime?: string | null;
-  assignedTo: string;
-  fixed: boolean;
   durationMins: number;
   overrunMins: number;
-  arrivedAt?: string | null;
-  finishedAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
+  fixed: boolean;
+  what3words?: string;
 };
 
-function startOfToday() {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-}
-function endOfToday() {
-  const d = startOfToday();
-  const e = new Date(d);
-  e.setDate(e.getDate() + 1);
-  return e;
-}
-function yyyyMmDd(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-function mapsLink(address: string, postcode: string) {
-  const q = encodeURIComponent(`${address}\n${postcode}`.trim());
-  return `https://www.google.com/maps/search/?api=1&query=${q}`;
-}
-async function copyToClipboard(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
+type ChasMessage = {
+  id: number;
+  createdAt: string;
+  company: string;
+  worker: string;
+  jobId: number | null;
+  question: string;
+  answer: string;
+  imageDataUrl: string;
+};
+
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function normalizePhoneForTel(raw: string) {
-  const trimmed = (raw || "").trim();
-  if (!trimmed) return "";
-  const plus = trimmed.startsWith("+") ? "+" : "";
-  const digits = trimmed.replace(/[^\d]/g, "");
-  return digits ? `${plus}${digits}` : "";
+function gbDate(d: Date) {
+  return d.toLocaleDateString("en-GB");
 }
 
-function findPhoneNumberInText(text: string) {
-  if (!text) return null;
-  const candidates = text.match(/(\+?\d[\d\s().-]{7,}\d)/g);
-  if (!candidates) return null;
-
-  for (const c of candidates) {
-    const tel = normalizePhoneForTel(c);
-    if (!tel) continue;
-    const digits = tel.replace(/[^\d]/g, "");
-    if (digits.length >= 10 && digits.length <= 15) {
-      return { display: c.trim(), tel: tel.startsWith("+") ? tel : digits };
-    }
-  }
-  return null;
+function gbTimeLabel(job: Job) {
+  if (!job.visitDate) return "";
+  const day = gbDate(new Date(job.visitDate));
+  const t = job.startTime ? ` ${job.startTime}` : "";
+  return `${day}${t}`;
 }
 
-function getJobPhone(job: Job) {
-  const fromField = (job.phone ?? "").trim();
-  if (fromField) {
-    const tel = normalizePhoneForTel(fromField);
-    const digits = tel.replace(/[^\d]/g, "");
-    return { display: fromField, tel: tel.startsWith("+") ? tel : digits || tel };
-  }
-
-  const sources = [job.notes ?? "", job.notesLog ?? "", job.address ?? ""].filter(Boolean);
-  for (const s of sources) {
-    const found = findPhoneNumberInText(s);
-    if (found) return found;
-  }
-  return null;
+function gbDateTimeStamp(d: Date) {
+  return d.toLocaleString("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-function readWhoFromStorage(): Who {
-  try {
-    const v = (window.localStorage.getItem("who") || "").trim();
-    if (v === "Kelly" || v === "Trev" || v === "Stephen" || v === "Jacob") return v;
-    return "";
-  } catch {
-    return "";
-  }
+function minsToHm(totalMins: number) {
+  const m = Math.max(0, Math.round(totalMins));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return h > 0 ? `${h}h ${r}m` : `${r}m`;
 }
 
-function saveWhoToStorage(who: Who) {
-  try {
-    window.localStorage.setItem("who", who);
-  } catch {
-    // ignore
-  }
-}
-
-function whoFromMe(me: Me): Who {
-  const n = String(me?.name || "").toLowerCase();
-  if (n.includes("trevor")) return "Trev";
-  if (n.includes("kelly")) return "Kelly";
-  if (n.includes("stephen") || n.includes("steve")) return "Stephen";
-  if (n.includes("jacob")) return "Jacob";
-  return "";
+async function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function TodayPage() {
-  const router = useRouter();
-
-  const [who, setWho] = useState<Who>(""); // selected user
-  const [booted, setBooted] = useState(false);
+  const [worker, setWorker] = useState<string>("");
+  const [company, setCompany] = useState<string>("furlads");
 
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState<string>("");
+  const [jobsError, setJobsError] = useState<string>("");
 
-  const [todayLabel, setTodayLabel] = useState<string>("");
+  // Notes UI
+  const [openJobId, setOpenJobId] = useState<number | null>(null);
+  const [noteText, setNoteText] = useState<string>("");
+  const [busyJobId, setBusyJobId] = useState<number | null>(null);
 
-  const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
-  const notesRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
-  const mapWindows = useRef<Record<string, Window | null>>({});
+  // Workday (Three Counties)
+  const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const [checkInAtIso, setCheckInAtIso] = useState<string>("");
+  const [workdayError, setWorkdayError] = useState<string>("");
 
-  const isTrev = who === "Trev";
-  const todayStart = useMemo(() => startOfToday(), []);
-  const todayEnd = useMemo(() => endOfToday(), []);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutNotes, setCheckoutNotes] = useState("");
+  const [checkoutFiles, setCheckoutFiles] = useState<File[]>([]);
+  const [checkoutPreviews, setCheckoutPreviews] = useState<string[]>([]);
+  const [checkoutJobId, setCheckoutJobId] = useState<number | null>(null);
 
-  async function loadMe(): Promise<Me> {
-    try {
-      const res = await fetch("/api/auth/me", { cache: "no-store" });
-      const data = (await res.json()) as Me;
-      return data;
-    } catch {
-      return { authenticated: false };
-    }
+  // Chas UI (LOCKED — do not refactor)
+  const [chasOpen, setChasOpen] = useState(false);
+  const [chasMessages, setChasMessages] = useState<ChasMessage[]>([]);
+  const [chasInput, setChasInput] = useState("");
+  const [chasBusy, setChasBusy] = useState(false);
+  const [chasError, setChasError] = useState("");
+  const [chasJobId, setChasJobId] = useState<number | null>(null);
+  const [chasImageDataUrl, setChasImageDataUrl] = useState<string>("");
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  const isThreeCounties = String(company).toLowerCase() === "threecounties";
+
+  const palette = useMemo(() => {
+    return isThreeCounties
+      ? {
+          // Three Counties
+          bgTop: "#0b6b2e",
+          bgMid: "#25a244",
+          bgBottom: "#f3fdf6",
+          card: "#ffffff",
+          ink: "#071a2a",
+          sub: "rgba(7,26,42,0.70)",
+          line: "rgba(7,26,42,0.12)",
+          brand: "#16a34a",
+          brandDark: "#15803d",
+          soft: "#ecfdf3",
+        }
+      : {
+          // Furlads
+          bgTop: "#facc15",
+          bgMid: "#fde047",
+          bgBottom: "#fff9db",
+          card: "#ffffff",
+          ink: "#0b0b0b",
+          sub: "rgba(11,11,11,0.70)",
+          line: "rgba(11,11,11,0.14)",
+          brand: "#111111",
+          brandDark: "#000000",
+          soft: "#fff7cc",
+        };
+  }, [isThreeCounties]);
+
+  const styles = useMemo(() => {
+    const shadow = "0 12px 34px rgba(0,0,0,0.06)";
+
+    const card: React.CSSProperties = {
+      borderRadius: 18,
+      border: `1px solid ${palette.line}`,
+      background: palette.card,
+      boxShadow: shadow,
+    };
+
+    const btnBase: React.CSSProperties = {
+      padding: "10px 12px",
+      borderRadius: 14,
+      border: `1px solid ${palette.line}`,
+      background: "#fff",
+      fontWeight: 950,
+      cursor: "pointer",
+      userSelect: "none",
+      minHeight: 44,
+    };
+
+    const btnBrand: React.CSSProperties = {
+      padding: "10px 12px",
+      borderRadius: 14,
+      border: "none",
+      background: `linear-gradient(180deg, ${palette.brand} 0%, ${palette.brandDark} 100%)`,
+      color: "#fff",
+      fontWeight: 950,
+      cursor: "pointer",
+      userSelect: "none",
+      minHeight: 44,
+    };
+
+    const btnDanger: React.CSSProperties = {
+      padding: "10px 12px",
+      borderRadius: 14,
+      border: `1px solid ${palette.line}`,
+      background: "#fff",
+      fontWeight: 950,
+      cursor: "pointer",
+      userSelect: "none",
+      minHeight: 44,
+      opacity: 0.9,
+    };
+
+    return {
+      page: {
+        minHeight: "100vh",
+        background: `linear-gradient(180deg, ${palette.bgTop} 0%, ${palette.bgMid} 26%, ${palette.bgBottom} 100%)`,
+        padding: 16,
+        color: palette.ink,
+      } as React.CSSProperties,
+      container: { maxWidth: 640, margin: "0 auto" } as React.CSSProperties,
+      card,
+      btnBase,
+      btnBrand,
+      btnDanger,
+      sub: { fontSize: 12, color: palette.sub } as React.CSSProperties,
+      badge: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 10px",
+        borderRadius: 999,
+        border: `1px solid ${palette.line}`,
+        background: palette.soft,
+        fontWeight: 950,
+        fontSize: 12,
+        color: palette.ink,
+      } as React.CSSProperties,
+    };
+  }, [palette]);
+
+  function switchUser() {
+    const ok = window.confirm("Switch user?\n\nThis will take you back to company selection.");
+    if (!ok) return;
+
+    localStorage.removeItem("workerName");
+    localStorage.removeItem("worker");
+    localStorage.removeItem("company");
+    window.location.href = "/choose-company";
   }
 
-  async function logoutAndGoLogin() {
+  function workdayStorageKey(kind: "activeJobId" | "checkInAtIso") {
+    const w = (worker || "").toLowerCase().trim();
+    const c = (company || "").toLowerCase().trim();
+    return `workday:${c}:${w}:${kind}`;
+  }
+
+  function readWorkdayState() {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      const aj = localStorage.getItem(workdayStorageKey("activeJobId"));
+      const ci = localStorage.getItem(workdayStorageKey("checkInAtIso")) || "";
+      setActiveJobId(aj ? Number(aj) : null);
+      setCheckInAtIso(ci);
     } catch {
       // ignore
     }
+  }
+
+  function writeWorkdayState(nextActiveJobId: number | null, nextCheckInAtIso: string) {
     try {
-      window.localStorage.removeItem("who");
+      if (nextActiveJobId === null) localStorage.removeItem(workdayStorageKey("activeJobId"));
+      else localStorage.setItem(workdayStorageKey("activeJobId"), String(nextActiveJobId));
+
+      if (!nextCheckInAtIso) localStorage.removeItem(workdayStorageKey("checkInAtIso"));
+      else localStorage.setItem(workdayStorageKey("checkInAtIso"), nextCheckInAtIso);
     } catch {
       // ignore
     }
-    window.location.href = "/login";
   }
 
-  // ✅ On mount: prefer session identity, fallback to storage
-  useEffect(() => {
-    setTodayLabel(yyyyMmDd(new Date()));
+  async function loadJobs() {
+    setJobsError("");
+    try {
+      const res = await fetch("/api/jobs", { cache: "no-store" });
+      const data = await res.json();
 
-    (async () => {
-      const me = await loadMe();
-      const sessionWho = me.authenticated ? whoFromMe(me) : "";
-      const storedWho = readWhoFromStorage();
-      const chosen = sessionWho || storedWho || "";
-      if (chosen) saveWhoToStorage(chosen);
-      setWho(chosen);
-      setBooted(true);
-
-      // If not logged in, bounce to /login (proxy should do this too, but keep it explicit)
-      if (!me.authenticated) {
-        window.location.href = "/login";
+      if (!Array.isArray(data)) {
+        setJobs([]);
+        setJobsError("Jobs API did not return an array.");
+        return;
       }
-    })();
+
+      setJobs(data);
+    } catch (e: any) {
+      setJobs([]);
+      setJobsError(String(e?.message || e));
+    }
+  }
+
+  async function loadChasThread() {
+    if (!company || !worker) return;
+    try {
+      const res = await fetch(
+        `/api/chas/thread?company=${encodeURIComponent(company)}&worker=${encodeURIComponent(worker)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (Array.isArray(data)) setChasMessages(data);
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    const savedWorker = localStorage.getItem("worker") || localStorage.getItem("workerName") || "";
+    const savedCompany = localStorage.getItem("company") || "furlads";
+
+    if (!savedWorker) {
+      // keep locked identity flow intact (don’t change chooser logic)
+      window.location.href = "/choose-company";
+      return;
+    }
+
+    setWorker(savedWorker);
+    setCompany(savedCompany);
+
+    loadJobs();
   }, []);
 
-  async function fetchJobs(currentWho: Who) {
-    setLoading(true);
-    setMsg("");
-
-    try {
-      const params = new URLSearchParams();
-      if (currentWho && currentWho !== "Trev") params.set("assignedTo", currentWho);
-
-      const res = await fetch(`/api/jobs?${params.toString()}`, { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Failed to load jobs");
-
-      const list = Array.isArray(data) ? data : Array.isArray(data.jobs) ? data.jobs : [];
-      setJobs(list);
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to load jobs");
-      setJobs([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    if (worker && company) readWorkdayState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worker, company]);
 
   useEffect(() => {
-    if (!who) return;
-    fetchJobs(who);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [who]);
+    if (chasOpen) {
+      loadChasThread();
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+    }
+  }, [chasOpen]);
 
-  async function rebuild(scopeAssignedTo?: string) {
-    await fetch("/api/schedule/rebuild", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: scopeAssignedTo ? JSON.stringify({ assignedTo: scopeAssignedTo }) : "",
-    });
+  useEffect(() => {
+    if (chasOpen) {
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+    }
+  }, [chasMessages, chasOpen]);
+
+  const todaysJobs = useMemo(() => {
+    const w = worker.toLowerCase().trim();
+    if (!w) return [];
+
+    const today = new Date();
+    const list = Array.isArray(jobs) ? jobs : [];
+
+    return list
+      .filter((j) => {
+        if (w === "trev") return true;
+        return (j.assignedTo ?? "").toLowerCase() === w;
+      })
+      .filter((j) => {
+        if (!j.visitDate) return false;
+        const vd = new Date(j.visitDate);
+        const isToday = isSameDay(vd, today);
+        const isOverdue = vd < today && !isSameDay(vd, today);
+        return isToday || (isOverdue && j.status !== "done");
+      })
+      .sort((a, b) => {
+        if (a.status === "done" && b.status !== "done") return 1;
+        if (a.status !== "done" && b.status === "done") return -1;
+
+        const ad = a.visitDate ? new Date(a.visitDate).getTime() : 0;
+        const bd = b.visitDate ? new Date(b.visitDate).getTime() : 0;
+        if (ad !== bd) return ad - bd;
+
+        const at = a.startTime ?? "99:99";
+        const bt = b.startTime ?? "99:99";
+        return at.localeCompare(bt);
+      });
+  }, [jobs, worker]);
+
+  const currentJob = useMemo(() => {
+    if (todaysJobs.length === 0) return null;
+    if (activeJobId) {
+      const found = todaysJobs.find((j) => j.id === activeJobId);
+      if (found) return found;
+    }
+    const nextUp = todaysJobs.find((j) => j.status !== "done");
+    return nextUp || todaysJobs[0];
+  }, [todaysJobs, activeJobId]);
+
+  const nextJob = useMemo(() => {
+    if (!currentJob) return null;
+    const idx = todaysJobs.findIndex((j) => j.id === currentJob.id);
+    if (idx < 0) return null;
+    for (let i = idx + 1; i < todaysJobs.length; i++) {
+      if (todaysJobs[i].status !== "done") return todaysJobs[i];
+    }
+    return null;
+  }, [todaysJobs, currentJob]);
+
+  function cardStyle(job: Job) {
+    const now = new Date();
+    if (job.status === "done") return { background: "#ffdddd", border: "1px solid #ffaaaa" };
+
+    if (job.visitDate) {
+      const vd = new Date(job.visitDate);
+      if (vd < now && !isSameDay(vd, now)) return { background: "#fff3cd", border: "1px solid #ffeeba" };
+      if (isSameDay(vd, now)) return { background: "#ddffdd", border: "1px solid #aaffaa" };
+    }
+
+    return { background: "#fff", border: "1px solid #ddd" };
   }
 
-  async function patchJob(id: string, body: any) {
-    setMsg("");
-    const res = await fetch(`/api/jobs/${id}`, {
+  async function toggleDone(id: number) {
+    setBusyJobId(id);
+    try {
+      await fetch(`/api/jobs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toggleStatus: true }),
+      });
+    } finally {
+      setBusyJobId(null);
+      loadJobs();
+    }
+  }
+
+  async function submitNote(jobId: number) {
+    const cleaned = noteText.trim();
+    if (!cleaned) return;
+
+    setBusyJobId(jobId);
+    try {
+      await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appendNote: cleaned, noteAuthor: worker }),
+      });
+      setNoteText("");
+    } finally {
+      setBusyJobId(null);
+      loadJobs();
+    }
+  }
+
+  async function appendStampedNote(jobId: number, message: string) {
+    await fetch(`/api/jobs/${jobId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appendNote: message, noteAuthor: worker }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error ?? "Update failed");
-    return data.job as Job;
   }
 
-  function openMapForJob(job: Job) {
-    const url = mapsLink(job.address, job.postcode);
-    const w = window.open(url, "_blank");
-    mapWindows.current[job.id] = w ?? null;
-    setMsg("🗺️ Opened Maps");
+  async function extendJob(jobId: number, mins: number, note: string) {
+    await fetch(`/api/jobs/${jobId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ extendMins: mins, appendNote: note, noteAuthor: worker }),
+    });
   }
 
-  async function markArrived(job: Job) {
-    try {
-      await patchJob(job.id, { arrivedNow: true });
+  function openNavigationToNext(fromJob: Job | null, toJob: Job | null) {
+    if (!toJob?.address) return;
+    const origin = fromJob?.address ? `&origin=${encodeURIComponent(fromJob.address)}` : "";
+    const url = `https://www.google.com/maps/dir/?api=1${origin}&destination=${encodeURIComponent(toJob.address)}&travelmode=driving`;
+    window.location.href = url;
+  }
 
-      const w = mapWindows.current[job.id];
-      if (w && !w.closed) w.close();
-      mapWindows.current[job.id] = null;
-
-      await fetchJobs(who);
-
-      const el = notesRefs.current[job.id];
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        el.focus();
-      }
-
-      setMsg("✅ Arrived logged");
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to mark arrived");
+  async function handleCheckIn() {
+    setWorkdayError("");
+    if (!isThreeCounties) return;
+    if (!currentJob) {
+      setWorkdayError("No current job found to check into.");
+      return;
     }
-  }
-
-  async function finishAndNavigateNext(job: Job, visibleList: Job[]) {
-    if (!isTrev && !job.arrivedAt) {
-      setMsg("⚠️ You must tap “I’m here” first (arrival timestamp required).");
-      const el = notesRefs.current[job.id];
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        el.focus();
-      }
+    if (!currentJob.address) {
+      setWorkdayError("This job has no address yet.");
       return;
     }
 
+    const now = new Date();
+    const iso = now.toISOString();
+
+    setBusyJobId(currentJob.id);
     try {
-      await patchJob(job.id, { finishedNow: true });
-      await fetchJobs(who);
+      setActiveJobId(currentJob.id);
+      setCheckInAtIso(iso);
+      writeWorkdayState(currentJob.id, iso);
 
-      const idx = visibleList.findIndex((j) => j.id === job.id);
-      const next = idx >= 0 ? visibleList[idx + 1] : null;
+      await appendStampedNote(currentJob.id, `Checked in ✅ (${gbDateTimeStamp(now)})`);
 
-      if (next) {
-        openMapForJob(next);
-        setMsg("✅ Finished logged — opening next job in Maps");
-      } else {
-        setMsg("✅ Finished logged — no next job");
-      }
+      setOpenJobId(currentJob.id);
+      setNoteText("");
     } catch (e: any) {
-      setMsg(e?.message ?? "Failed to finish");
+      setWorkdayError(String(e?.message || e));
+    } finally {
+      setBusyJobId(null);
+      loadJobs();
     }
   }
 
-  async function toggleDoneEnforced(job: Job) {
-    if (!isTrev && job.status !== "done" && !job.finishedAt) {
-      setMsg("⚠️ You must tap “I’m finished → Next job” before marking this job done.");
+  function startCheckoutFlow() {
+    setWorkdayError("");
+    if (!isThreeCounties) return;
+    if (!currentJob) {
+      setWorkdayError("No current job found to check out of.");
+      return;
+    }
+    if (!checkInAtIso || activeJobId !== currentJob.id) {
+      setWorkdayError("You’re not checked in to the current job yet. Tap “I’m here” first.");
       return;
     }
 
+    setCheckoutJobId(currentJob.id);
+    setCheckoutNotes("");
+    setCheckoutFiles([]);
+    setCheckoutPreviews([]);
+    setCheckoutOpen(true);
+  }
+
+  async function confirmCheckout() {
+    setWorkdayError("");
+    const jobId = checkoutJobId;
+    if (!jobId) return;
+
+    const notes = checkoutNotes.trim();
+    if (!notes) {
+      setWorkdayError("Please add end-of-job notes before checking out.");
+      return;
+    }
+
+    const started = checkInAtIso ? new Date(checkInAtIso) : null;
+    const ended = new Date();
+    const mins =
+      started && !isNaN(started.getTime()) ? Math.max(1, Math.round((ended.getTime() - started.getTime()) / 60000)) : 0;
+
+    const photoNames = checkoutFiles.map((f) => f.name).filter(Boolean);
+    const photoPart = photoNames.length ? ` • Photos: ${photoNames.join(", ")}` : "";
+
+    setBusyJobId(jobId);
     try {
-      await patchJob(job.id, { toggleStatus: true });
-      await fetchJobs(who);
+      await appendStampedNote(
+        jobId,
+        `Checked out ✅ (${gbDateTimeStamp(ended)}) • Time on job: ${minsToHm(mins)} • Notes: ${notes}${photoPart}`
+      );
+
+      setActiveJobId(null);
+      setCheckInAtIso("");
+      writeWorkdayState(null, "");
+
+      setCheckoutOpen(false);
+      setCheckoutJobId(null);
+
+      await loadJobs();
+
+      if (nextJob) openNavigationToNext(currentJob, nextJob);
     } catch (e: any) {
-      setMsg(e?.message ?? "Failed to toggle status");
+      setWorkdayError(String(e?.message || e));
+    } finally {
+      setBusyJobId(null);
+      loadJobs();
     }
   }
 
-  async function onExtend(job: Job, mins: number) {
+  async function handleRunningOver() {
+    setWorkdayError("");
+    if (!isThreeCounties) return;
+    if (!currentJob) {
+      setWorkdayError("No current job found.");
+      return;
+    }
+
+    const raw = window.prompt("How many extra minutes do you need? (e.g. 15, 30, 45, 60)", "30");
+    if (!raw) return;
+    const mins = Number(raw);
+    if (!Number.isFinite(mins) || mins <= 0) {
+      setWorkdayError("Please enter a valid number of minutes.");
+      return;
+    }
+
+    const reason = (window.prompt("Reason (optional)", "") || "").trim();
+    const note = `Running over ⏱️ +${Math.round(mins)} mins${reason ? ` • ${reason}` : ""}`;
+
+    setBusyJobId(currentJob.id);
     try {
-      await patchJob(job.id, { extendMins: mins });
-      await fetchJobs(who);
+      await extendJob(currentJob.id, Math.round(mins), note);
     } catch (e: any) {
-      setMsg(e?.message ?? "Failed to extend");
+      setWorkdayError(String(e?.message || e));
+    } finally {
+      setBusyJobId(null);
+      loadJobs();
     }
   }
 
-  async function onAddNote(job: Job) {
-    const text = (noteDraft[job.id] ?? "").trim();
+  async function handleExtraWork() {
+    setWorkdayError("");
+    if (!isThreeCounties) return;
+    if (!currentJob) {
+      setWorkdayError("No current job found.");
+      return;
+    }
+
+    const request = (window.prompt("What extra work does the customer want?", "") || "").trim();
+    if (!request) return;
+
+    const estimate = (window.prompt("Rough estimate (optional) — e.g. £150 or 2 hours", "") || "").trim();
+    const note = `Customer wants extra work ➕ • ${request}${estimate ? ` • Estimate: ${estimate}` : ""}`;
+
+    setBusyJobId(currentJob.id);
+    try {
+      await appendStampedNote(currentJob.id, note);
+    } catch (e: any) {
+      setWorkdayError(String(e?.message || e));
+    } finally {
+      setBusyJobId(null);
+      loadJobs();
+    }
+  }
+
+  async function sendToChas() {
+    setChasError("");
+    const text = chasInput.trim();
     if (!text) return;
 
+    setChasBusy(true);
     try {
-      await patchJob(job.id, { appendNote: text });
-      setNoteDraft((prev) => ({ ...prev, [job.id]: "" }));
-      await fetchJobs(who);
+      const res = await fetch("/api/chas/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company,
+          worker,
+          jobId: chasJobId,
+          question: text,
+          imageDataUrl: chasImageDataUrl || "",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        const msg =
+          (data?.status ? `(${data.status}) ` : "") +
+          (data?.error || "OpenAI request failed") +
+          (data?.detail ? `\n${String(data.detail).slice(0, 500)}` : "");
+        setChasError(msg);
+        return;
+      }
+
+      setChasImageDataUrl("");
+      setChasInput("");
+      await loadChasThread();
     } catch (e: any) {
-      setMsg(e?.message ?? "Failed to add note");
+      setChasError(String(e?.message || e));
+    } finally {
+      setChasBusy(false);
     }
   }
 
-  const visible = useMemo(() => {
-    const todoScheduled = jobs.filter((j) => j.status === "todo" && j.visitDate);
-    const todayAndOverdue = todoScheduled.filter((j) => new Date(j.visitDate as string) < todayEnd);
+  const bubbleUser: React.CSSProperties = {
+    background: "#111",
+    color: "#fff",
+    padding: "10px 12px",
+    borderRadius: 16,
+    maxWidth: "85%",
+    whiteSpace: "pre-wrap",
+    lineHeight: 1.4,
+    fontSize: 14,
+  };
 
-    todayAndOverdue.sort((a, b) => {
-      const ad = new Date(a.visitDate as string).getTime();
-      const bd = new Date(b.visitDate as string).getTime();
-      if (ad !== bd) return ad - bd;
-      return (a.startTime ?? "").localeCompare(b.startTime ?? "");
-    });
-
-    const doneToday = jobs.filter((j) => {
-      if (j.status !== "done" || !j.visitDate) return false;
-      const vd = new Date(j.visitDate);
-      return vd >= todayStart && vd < todayEnd;
-    });
-
-    return { todayAndOverdue, doneToday };
-  }, [jobs, todayEnd, todayStart]);
-
-  // ✅ If no who yet, show chooser IN PLACE
-  if (!booted || !who) {
-    return (
-      <div style={{ padding: 16, maxWidth: 520, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 24, fontWeight: 900 }}>Maintenance App</h1>
-        <div style={{ marginTop: 10, opacity: 0.75 }}>Who are you?</div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-          {(["Stephen", "Jacob", "Trev", "Kelly"] as Who[]).map((name) => (
-            <button
-              key={name}
-              onClick={() => {
-                saveWhoToStorage(name);
-                setWho(name);
-              }}
-              style={{
-                padding: "14px 12px",
-                borderRadius: 14,
-                border: "1px solid #ccc",
-                fontWeight: 900,
-                fontSize: 18,
-                background: "white",
-              }}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 18, opacity: 0.7, fontSize: 12 }}>
-          If this keeps resetting on iPhone, make sure you’re not in Private Browsing and try refreshing once.
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <button
-            onClick={logoutAndGoLogin}
-            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", width: "100%" }}
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const rebuildLabel = isTrev ? "Rebuild all" : "Rebuild my diary";
-  const rebuildScope = isTrev ? undefined : who;
+  const bubbleChas: React.CSSProperties = {
+    background: "#f3f3f3",
+    color: "#111",
+    padding: "10px 12px",
+    borderRadius: 16,
+    maxWidth: "85%",
+    whiteSpace: "pre-wrap",
+    lineHeight: 1.4,
+    fontSize: 14,
+    border: "1px solid #e6e6e6",
+  };
 
   return (
-    <div style={{ padding: 16, maxWidth: 860, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 900 }}>{isTrev ? "Overview (Trev)" : `${who}'s Jobs`}</h1>
-          <div style={{ opacity: 0.75, marginTop: 2 }}>
-            Today: <b>{todayLabel || "…"}</b>
+    <main style={styles.page}>
+      <div style={styles.container}>
+        {/* Page title row (no duplicate header — global header stays) */}
+        <div style={{ ...styles.card, padding: 14 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 950, color: palette.sub }}>Today</div>
+              <div style={{ fontSize: 22, fontWeight: 980, marginTop: 2 }}>Work list</div>
+              <div style={{ marginTop: 4, ...styles.sub }}>
+                {gbDate(new Date())}
+                {worker ? (
+                  <>
+                    {" "}
+                    • Worker: <b style={{ color: palette.ink }}>{worker}</b>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={() => setChasOpen(true)} style={styles.btnBase}>
+                Ask Chas 💬
+              </button>
+
+              {/* ✅ New: Book follow-up button (minimal change) */}
+              <button
+                onClick={() => {
+                  window.location.href = "/book-follow-up";
+                }}
+                style={styles.btnBase}
+              >
+                Book follow-up ➕
+              </button>
+
+              <button onClick={loadJobs} style={styles.btnBase}>
+                Refresh
+              </button>
+              <button onClick={switchUser} style={styles.btnDanger}>
+                Switch user ↩︎
+              </button>
+            </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button
-            onClick={logoutAndGoLogin}
-            style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #ccc" }}
-          >
-            Logout / Switch user
-          </button>
+        {/* Workday actions (Three Counties only) */}
+        {isThreeCounties ? (
+          <div style={{ marginTop: 14, ...styles.card, padding: 14, background: palette.soft }}>
+            <div style={{ fontSize: 12, fontWeight: 950, color: palette.sub }}>Workday actions</div>
+            <div style={{ marginTop: 6, ...styles.sub }}>Start 08:30 • 7h shift • 20m break • 30m prep • travel included</div>
 
-          <button
-            onClick={() => router.push("/my-visits")}
-            style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #ccc" }}
-          >
-            /my-visits
-          </button>
+           <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+  <button
+    onClick={handleCheckIn}
+    disabled={!currentJob || busyJobId === (currentJob?.id ?? -1)}
+    style={{
+      ...styles.btnBrand,
+      opacity: !currentJob || busyJobId === (currentJob?.id ?? -1) ? 0.7 : 1,
+    }}
+  >
+    I’m here ✅
+  </button>
 
-          <button
-            onClick={async () => {
-              setMsg("Rebuilding diary…");
-              try {
-                await rebuild(rebuildScope);
-                await fetchJobs(who);
-                setMsg("✅ Diary rebuilt");
-              } catch {
-                setMsg("Rebuild failed");
-              }
-            }}
-            style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #111", fontWeight: 900 }}
-          >
-            {rebuildLabel}
-          </button>
-        </div>
-      </div>
+  <button
+    onClick={startCheckoutFlow}
+    disabled={!currentJob || busyJobId === (currentJob?.id ?? -1)}
+    style={{
+      ...styles.btnBrand,
+      background: "linear-gradient(180deg, #111 0%, #000 100%)",
+      opacity: !currentJob || busyJobId === (currentJob?.id ?? -1) ? 0.7 : 1,
+    }}
+  >
+    I’m done 🏁
+  </button>
 
-      {msg && (
-        <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "1px solid #ddd" }}>
-          {msg}
-        </div>
-      )}
+  <button onClick={handleRunningOver} disabled={!currentJob} style={styles.btnBase}>
+    Running over ⏱️
+  </button>
 
-      {loading ? (
-        <div style={{ marginTop: 14 }}>Loading jobs…</div>
-      ) : (
-        <>
-          <h2 style={{ marginTop: 18, marginBottom: 10, fontSize: 16, fontWeight: 900 }}>
-            Today + Overdue (TODO){" "}
-            <span style={{ fontSize: 12, opacity: 0.7 }}>({visible.todayAndOverdue.length})</span>
-          </h2>
+  {/* ✅ NEW: Extra visit booking */}
+  <button
+    onClick={() => {
+      const id = currentJob?.id;
+      if (!id) return;
+      window.location.href = `/book-follow-up?jobId=${id}&preset=extra-visit&when=nextbest`;
+    }}
+    disabled={!currentJob}
+    style={styles.btnBase}
+  >
+    Need extra visit ➕
+  </button>
 
-          {visible.todayAndOverdue.length === 0 ? (
-            <div style={{ padding: 12, borderRadius: 14, border: "1px dashed #ccc", opacity: 0.85 }}>
-              Nothing due today or overdue 🎉
+  <button onClick={handleExtraWork} disabled={!currentJob} style={styles.btnBase}>
+    Customer wants extra ➕
+  </button>
+
+  <button onClick={() => setChasOpen(true)} style={styles.btnBase}>
+    Need help? Ask Chas 💬
+  </button>
+</div>
+
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <span style={styles.badge}>
+                Current:{" "}
+                {currentJob ? (
+                  <>
+                    #{currentJob.id} • {currentJob.address || "(no address yet)"}
+                  </>
+                ) : (
+                  "—"
+                )}
+              </span>
+
+              <span style={styles.badge}>
+                Checked in:{" "}
+                {checkInAtIso ? (
+                  <>
+                    {new Date(checkInAtIso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} • Job #
+                    {activeJobId ?? "—"}
+                  </>
+                ) : (
+                  "No"
+                )}
+              </span>
+
+              <span style={styles.badge}>
+                Next: {nextJob ? `#${nextJob.id} • ${nextJob.address || "(no address yet)"}` : "None"}
+              </span>
+            </div>
+
+            {workdayError ? (
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 16, border: "1px solid #f2c2c2", background: "#ffecec" }}>
+                <div style={{ fontWeight: 900, marginBottom: 4, fontSize: 12 }}>Workday action failed</div>
+                <div style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>{workdayError}</div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {jobsError ? (
+          <div style={{ marginTop: 14, padding: 12, borderRadius: 16, border: "1px solid #f2c2c2", background: "#ffecec" }}>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Jobs failed to load</div>
+            <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{jobsError}</div>
+          </div>
+        ) : null}
+
+        {/* Jobs list */}
+        <div style={{ marginTop: 14 }}>
+          {todaysJobs.length === 0 ? (
+            <div style={{ ...styles.card, padding: 14 }}>
+              <div style={{ fontWeight: 950, marginBottom: 6, fontSize: 16 }}>No jobs scheduled</div>
+              <div style={{ fontSize: 13, color: palette.sub }}>
+                Tap <b style={{ color: palette.ink }}>Ask Chas</b> anytime — even with nothing scheduled.
+              </div>
             </div>
           ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              {visible.todayAndOverdue.map((job) => {
-                const phone = getJobPhone(job);
-                const canFinish = isTrev || !!job.arrivedAt;
-                const canMarkDone = isTrev || !!job.finishedAt || job.status === "done";
+            todaysJobs.map((job) => (
+              <div key={job.id} style={{ padding: 12, marginBottom: 12, borderRadius: 16, ...cardStyle(job) }}>
+                <div style={{ cursor: "pointer" }} onClick={() => setOpenJobId(openJobId === job.id ? null : job.id)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <strong style={{ textDecoration: job.status === "done" ? "line-through" : "none" }}>{job.title}</strong>
+                    <span style={{ fontSize: 12, opacity: 0.75 }}>{String(job.status).toUpperCase()}</span>
+                  </div>
 
-                return (
-                  <div key={job.id} style={{ padding: 12, borderRadius: 14, border: "1px solid #ddd" }}>
-                    <div style={{ fontWeight: 900, fontSize: 16 }}>
-                      {job.title}{" "}
-                      <span style={{ fontSize: 12, opacity: 0.7 }}>
-                        {job.fixed ? "(fixed)" : "(economic)"}
+                  <div style={{ marginTop: 6 }}>
+                    <b>Address:</b> {job.address || "(no address yet)"}
+                    {job.what3words ? (
+                      <span style={{ marginLeft: 10, fontSize: 12, opacity: 0.8 }}>
+                        • <b>w3w</b>: {job.what3words}
                       </span>
-                    </div>
+                    ) : null}
+                  </div>
 
-                    <div style={{ marginTop: 10, fontSize: 13, whiteSpace: "pre-wrap" }}>{job.address}</div>
-                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                      Postcode: <b>{job.postcode}</b>
-                    </div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: palette.sub }}>
+                    When: {gbTimeLabel(job)} • Assigned: {job.assignedTo ?? "none"} • Duration:{" "}
+                    {job.durationMins + (job.overrunMins ?? 0)} mins {job.fixed ? "• FIXED" : ""}
+                  </div>
 
-                    {!isTrev && (
-                      <div style={{ marginTop: 10, padding: 10, borderRadius: 12, border: "1px solid #eee", fontSize: 12 }}>
-                        {!job.arrivedAt && <div style={{ fontWeight: 900 }}>✅ Required: tap “I’m here” when you arrive.</div>}
-                        {job.arrivedAt && !job.finishedAt && (
-                          <div style={{ fontWeight: 900 }}>✅ Required: tap “I’m finished” before marking done.</div>
-                        )}
-                      </div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: palette.sub }}>Tap job to open notes</div>
+                </div>
+
+                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => {
+                      setChasJobId(job.id);
+                      setChasOpen(true);
+                    }}
+                    style={styles.btnBase}
+                  >
+                    Ask Chas about this job 💬
+                  </button>
+
+                  <button onClick={() => toggleDone(job.id)} disabled={busyJobId === job.id} style={styles.btnBase}>
+                    {busyJobId === job.id ? "Working..." : job.status === "done" ? "Undo" : "Mark as Done"}
+                  </button>
+                </div>
+
+                {openJobId === job.id ? (
+                  <div style={{ marginTop: 12, padding: 12, background: "#ffffffaa", borderRadius: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>Notes history</div>
+
+                    {job.notesLog ? (
+                      <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>{job.notesLog}</pre>
+                    ) : (
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>No notes yet.</div>
                     )}
 
-                    <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <button onClick={() => openMapForJob(job)} style={btn(true, true)}>Navigate</button>
-                      <button onClick={() => markArrived(job)} style={btn(true, true)}>I'm here</button>
-
-                      <button
-                        onClick={canFinish ? () => finishAndNavigateNext(job, visible.todayAndOverdue) : undefined}
-                        disabled={!canFinish}
-                        style={btn(canFinish, true)}
-                      >
-                        I'm finished → Next job
-                      </button>
-
-                      <button
-                        onClick={canMarkDone ? () => toggleDoneEnforced(job) : undefined}
-                        disabled={!canMarkDone}
-                        style={btn(canMarkDone, false)}
-                      >
-                        {job.status === "done" ? "Undo done" : "Mark done"}
-                      </button>
-
-                      {job.status !== "done" && (
-                        <>
-                          <button onClick={() => onExtend(job, 30)} style={btn(true, false)}>Extend +30</button>
-                          <button onClick={() => onExtend(job, 60)} style={btn(true, false)}>Extend +60</button>
-                        </>
-                      )}
-
-                      <button
-                        onClick={async () => {
-                          const ok = await copyToClipboard(`${job.address}\n${job.postcode}`.trim());
-                          setMsg(ok ? "✅ Address copied" : "Couldn’t copy");
-                        }}
-                        style={btn(true, false)}
-                      >
-                        Copy address
-                      </button>
-
-                      {phone && (
-                        <a
-                          href={`tel:${phone.tel}`}
-                          style={{
-                            display: "inline-block",
-                            padding: "8px 12px",
-                            borderRadius: 10,
-                            border: "1px solid #ccc",
-                            textDecoration: "none",
-                            color: "inherit",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Call
-                        </a>
-                      )}
-                    </div>
-
-                    <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                      <div style={{ fontWeight: 900, fontSize: 13 }}>Notes</div>
+                    <div style={{ marginTop: 10 }}>
                       <textarea
-                        ref={(el) => (notesRefs.current[job.id] = el)}
-                        value={noteDraft[job.id] ?? ""}
-                        onChange={(e) => setNoteDraft((p) => ({ ...p, [job.id]: e.target.value }))}
-                        rows={2}
-                        placeholder="What needs doing / progress…"
-                        style={{ padding: 10, borderRadius: 12, border: "1px solid #ccc" }}
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                        placeholder="Add issue / note"
+                        style={{ width: "100%", padding: 10, height: 90, borderRadius: 12, border: "1px solid #ddd" }}
                       />
                       <button
-                        onClick={() => onAddNote(job)}
-                        disabled={!(noteDraft[job.id] ?? "").trim()}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 10,
-                          border: "1px solid #ccc",
-                          width: "fit-content",
-                          opacity: (noteDraft[job.id] ?? "").trim() ? 1 : 0.5,
-                        }}
+                        onClick={() => submitNote(job.id)}
+                        disabled={busyJobId === job.id}
+                        style={{ marginTop: 8, ...styles.btnBase }}
                       >
-                        Save note
+                        {busyJobId === job.id ? "Saving..." : "Submit note"}
                       </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                ) : null}
+              </div>
+            ))
           )}
-        </>
-      )}
-    </div>
-  );
-}
+        </div>
+      </div>
 
-function btn(enabled: boolean, strong?: boolean) {
-  return {
-    padding: "8px 12px",
-    borderRadius: 10,
-    border: strong ? "1px solid #111" : "1px solid #ccc",
-    fontWeight: strong ? 900 : 600,
-    opacity: enabled ? 1 : 0.35,
-    cursor: enabled ? "pointer" : "not-allowed",
-    background: "white",
-  } as React.CSSProperties;
+      {/* Checkout Modal (Three Counties) */}
+      {checkoutOpen ? (
+        <div
+          onClick={() => setCheckoutOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 12,
+            zIndex: 60,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 720,
+              background: "#fff",
+              borderRadius: 18,
+              border: "1px solid #e6e6e6",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ padding: 12, borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ fontWeight: 1000 }}>Check-out 🏁</div>
+                <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                  Job #{checkoutJobId ?? "—"} • Worker <b>{worker}</b>
+                </div>
+              </div>
+
+              <button onClick={() => setCheckoutOpen(false)} style={{ padding: "8px 10px", borderRadius: 12 }}>
+                Close
+              </button>
+            </div>
+
+            <div style={{ padding: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>End-of-job notes (required)</div>
+              <textarea
+                value={checkoutNotes}
+                onChange={(e) => setCheckoutNotes(e.target.value)}
+                placeholder="What was done, issues, materials used, anything Kelly needs…"
+                style={{ width: "100%", padding: 10, height: 120, borderRadius: 12, border: "1px solid #ddd" }}
+              />
+
+              <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 900 }}>Photos (optional)</div>
+                  <div style={{ fontSize: 12, opacity: 0.65 }}>These will be listed in the note for now.</div>
+                </div>
+
+                <label
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #ddd",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                    userSelect: "none",
+                  }}
+                >
+                  Add photos 📸
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple
+                    style={{ display: "none" }}
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (!files.length) return;
+
+                      setCheckoutFiles(files);
+
+                      try {
+                        const previews: string[] = [];
+                        for (const f of files.slice(0, 4)) previews.push(await fileToDataUrl(f));
+                        setCheckoutPreviews(previews);
+                      } catch {
+                        setCheckoutPreviews([]);
+                      }
+
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+
+              {checkoutFiles.length ? (
+                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+                  <b>{checkoutFiles.length}</b> photo(s) selected
+                  <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {checkoutPreviews.map((src, i) => (
+                      <img
+                        key={i}
+                        src={src}
+                        alt="preview"
+                        style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 12, border: "1px solid #ddd" }}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCheckoutFiles([]);
+                      setCheckoutPreviews([]);
+                    }}
+                    style={{ marginTop: 8, padding: "8px 10px", borderRadius: 12 }}
+                  >
+                    Remove photos
+                  </button>
+                </div>
+              ) : null}
+
+              {workdayError ? <div style={{ marginTop: 10, color: "crimson", fontSize: 13, whiteSpace: "pre-wrap" }}>{workdayError}</div> : null}
+
+              <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={() => setCheckoutOpen(false)} style={{ padding: "10px 12px", borderRadius: 12 }}>
+                  Cancel
+                </button>
+
+                <button
+                  onClick={confirmCheckout}
+                  disabled={busyJobId === checkoutJobId}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #111",
+                    background: "#111",
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    opacity: busyJobId === checkoutJobId ? 0.7 : 1,
+                  }}
+                >
+                  {busyJobId === checkoutJobId ? "Saving…" : "Confirm check-out"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Chas Modal (LOCKED — unchanged) */}
+      {chasOpen ? (
+        <div
+          onClick={() => setChasOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 12,
+            zIndex: 50,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 900,
+              height: "80vh",
+              background: "#fff",
+              borderRadius: 18,
+              border: "1px solid #e6e6e6",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ padding: 12, borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ fontWeight: 1000 }}>Chas 💬</div>
+                <div style={{ fontSize: 12, opacity: 0.7 }}>
+                  Thread for <b>{worker}</b> today • logged for Kelly
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "start", flexWrap: "wrap" }}>
+                <select
+                  value={chasJobId ?? ""}
+                  onChange={(e) => setChasJobId(e.target.value ? Number(e.target.value) : null)}
+                  style={{ padding: "8px 10px", borderRadius: 12, border: "1px solid #ddd" }}
+                >
+                  <option value="">No job context</option>
+                  {todaysJobs.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      #{j.id} — {j.title}
+                    </option>
+                  ))}
+                </select>
+
+                <button onClick={() => setChasOpen(false)} style={{ padding: "8px 10px", borderRadius: 12 }}>
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, padding: 12, overflowY: "auto", background: "#fafafa" }}>
+              {chasMessages.length === 0 ? (
+                <div style={{ opacity: 0.75, fontSize: 13, lineHeight: 1.4 }}>
+                  Ask Chas anything. Add a photo if you want plant ID / “can I cut this” advice.
+                </div>
+              ) : null}
+
+              {chasMessages.map((m) => (
+                <div key={m.id} style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <div style={bubbleUser}>
+                      {m.question}
+                      {m.imageDataUrl ? (
+                        <div style={{ marginTop: 8 }}>
+                          <img
+                            src={m.imageDataUrl}
+                            alt="attached"
+                            style={{ width: 240, maxWidth: "100%", borderRadius: 12, display: "block" }}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 8 }}>
+                    <div style={bubbleChas}>{m.answer || "…"}</div>
+                  </div>
+                </div>
+              ))}
+
+              <div ref={chatEndRef} />
+            </div>
+
+            <div style={{ padding: 12, borderTop: "1px solid #eee", background: "#fff" }}>
+              {chasImageDataUrl ? (
+                <div style={{ marginBottom: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <img
+                    src={chasImageDataUrl}
+                    alt="preview"
+                    style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 12, border: "1px solid #ddd" }}
+                  />
+                  <button type="button" onClick={() => setChasImageDataUrl("")} style={{ padding: "8px 10px", borderRadius: 12 }}>
+                    Remove photo
+                  </button>
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                <label
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #ddd",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                    userSelect: "none",
+                  }}
+                >
+                  📸
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: "none" }}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const url = await fileToDataUrl(f);
+                      setChasImageDataUrl(url);
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+
+                <textarea
+                  value={chasInput}
+                  onChange={(e) => setChasInput(e.target.value)}
+                  placeholder="Message Chas…"
+                  style={{
+                    flex: 1,
+                    minHeight: 44,
+                    maxHeight: 110,
+                    padding: 10,
+                    borderRadius: 14,
+                    border: "1px solid #ddd",
+                    resize: "none",
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (!chasBusy) sendToChas();
+                    }
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={sendToChas}
+                  disabled={chasBusy}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #111",
+                    background: "#111",
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    opacity: chasBusy ? 0.7 : 1,
+                  }}
+                >
+                  {chasBusy ? "…" : "Send"}
+                </button>
+              </div>
+
+              {chasError ? <div style={{ marginTop: 8, color: "crimson", fontSize: 13, whiteSpace: "pre-wrap" }}>{chasError}</div> : null}
+
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.65 }}>Enter to send • Shift+Enter for new line</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </main>
+  );
 }
