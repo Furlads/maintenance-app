@@ -220,7 +220,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
       extendMinsUpdate = Math.round(extendValue)
     }
 
-    if (typeof (body as any).appendNote === 'string' && (body as any).appendNote.trim()) {
+    if (
+      typeof (body as any).appendNote === 'string' &&
+      (body as any).appendNote.trim()
+    ) {
       const currentNotes =
         notesUpdate !== undefined
           ? notesUpdate
@@ -246,30 +249,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
             : ''
 
       notesUpdate = `${currentNotes}${overrunLine}`
-
-      const currentOverrun =
-        typeof (existing as any).overrunMins === 'number'
-          ? (existing as any).overrunMins
-          : 0
-
-      const updated = await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          title: typeof (body as any).title === 'string' ? (body as any).title : undefined,
-          address:
-            typeof (body as any).address === 'string' ? (body as any).address : undefined,
-          notes: notesUpdate,
-          status: statusUpdate,
-          visitDate: visitDateUpdate,
-          startTime: startTimeUpdate,
-          durationMinutes: durationMinutesUpdate,
-          arrivedAt: arrivedAtUpdate,
-          finishedAt: finishedAtUpdate,
-          overrunMins: currentOverrun + extendMinsUpdate
-        }
-      })
-
-      return NextResponse.json(updated)
     }
 
     const updated = await prisma.job.update({
