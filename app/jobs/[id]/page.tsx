@@ -54,9 +54,21 @@ export default function JobPage() {
   const [photos, setPhotos] = useState<JobPhoto[]>([])
   const [label, setLabel] = useState('Before')
   const [uploading, setUploading] = useState(false)
+  const [deletingPhotoId, setDeletingPhotoId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [photoMessage, setPhotoMessage] = useState('')
+
+  async function loadPhotos() {
+    const res = await fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
+
+    if (!res.ok) {
+      throw new Error('Failed to load photos')
+    }
+
+    const data = await res.json()
+    setPhotos(Array.isArray(data) ? data : [])
+  }
 
   useEffect(() => {
     async function loadJob() {
@@ -64,8 +76,8 @@ export default function JobPage() {
         setError('')
 
         const [jobRes, photoRes] = await Promise.all([
-          fetch('/api/jobs'),
-          fetch(`/api/jobs/${id}/photos`)
+          fetch('/api/jobs', { cache: 'no-store' }),
+          fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
         ])
 
         if (!jobRes.ok) {
@@ -118,9 +130,7 @@ export default function JobPage() {
         })
       })
 
-      const res = await fetch(`/api/jobs/${id}/photos`)
-      const data = await res.json()
-      setPhotos(Array.isArray(data) ? data : [])
+      await loadPhotos()
       setPhotoMessage('Photo uploaded successfully.')
 
       event.target.value = ''
@@ -129,6 +139,34 @@ export default function JobPage() {
       setPhotoMessage('Failed to upload photo.')
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function handleDeletePhoto(photoId: number) {
+    const confirmed = window.confirm('Delete this photo?')
+
+    if (!confirmed) return
+
+    setDeletingPhotoId(photoId)
+    setPhotoMessage('')
+
+    try {
+      const res = await fetch(`/api/job-photos/${photoId}`, {
+        method: 'DELETE'
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Failed to delete photo')
+      }
+
+      await loadPhotos()
+      setPhotoMessage('Photo deleted successfully.')
+    } catch (error) {
+      console.error(error)
+      setPhotoMessage('Failed to delete photo.')
+    } finally {
+      setDeletingPhotoId(null)
     }
   }
 
@@ -291,38 +329,61 @@ export default function JobPage() {
           }}
         >
           {photos.map((photo) => (
-            <a
+            <div
               key={photo.id}
-              href={photo.imageUrl}
-              target="_blank"
-              rel="noreferrer"
               style={{
-                display: 'block',
                 border: '1px solid #ddd',
                 borderRadius: 10,
-                padding: 12,
-                textDecoration: 'none',
-                color: 'inherit'
+                padding: 12
               }}
             >
-              <img
-                src={photo.imageUrl}
-                alt={photo.label || 'Job photo'}
+              <a
+                href={photo.imageUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'block',
+                  textDecoration: 'none',
+                  color: 'inherit'
+                }}
+              >
+                <img
+                  src={photo.imageUrl}
+                  alt={photo.label || 'Job photo'}
+                  style={{
+                    width: '100%',
+                    height: 180,
+                    objectFit: 'cover',
+                    borderRadius: 8,
+                    marginBottom: 10
+                  }}
+                />
+
+                <p style={{ margin: '4px 0' }}>
+                  <strong>Label:</strong> {photo.label || 'None'}
+                </p>
+
+                <p style={{ margin: '4px 0 12px 0' }}>Tap to open full size</p>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => handleDeletePhoto(photo.id)}
+                disabled={deletingPhotoId === photo.id}
                 style={{
                   width: '100%',
-                  height: 180,
-                  objectFit: 'cover',
+                  padding: '10px 12px',
                   borderRadius: 8,
-                  marginBottom: 10
+                  border: '1px solid #d33',
+                  background: '#fff',
+                  color: '#d33',
+                  cursor: deletingPhotoId === photo.id ? 'not-allowed' : 'pointer',
+                  opacity: deletingPhotoId === photo.id ? 0.6 : 1
                 }}
-              />
-
-              <p style={{ margin: '4px 0' }}>
-                <strong>Label:</strong> {photo.label || 'None'}
-              </p>
-
-              <p style={{ margin: '4px 0' }}>Tap to open full size</p>
-            </a>
+              >
+                {deletingPhotoId === photo.id ? 'Deleting...' : 'Delete Photo'}
+              </button>
+            </div>
           ))}
         </div>
       </section>
