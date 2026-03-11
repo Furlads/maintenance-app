@@ -254,11 +254,11 @@ export default function TodayPage() {
   }, [])
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
+    const timer = window.setInterval(() => {
       setNow(new Date())
     }, 1000)
 
-    return () => window.clearInterval(interval)
+    return () => window.clearInterval(timer)
   }, [])
 
   const workerJobs = useMemo(() => {
@@ -272,6 +272,7 @@ export default function TodayPage() {
   }, [jobs, workerId])
 
   const visibleJobs = useMemo<TimedJob[]>(() => {
+    const now = new Date()
     let runningCursor: Date | null = null
 
     const timedJobsBase = workerJobs.map((job) => {
@@ -511,13 +512,13 @@ export default function TodayPage() {
       <div
         style={{
           marginBottom: 16,
-          padding: '12px 14px',
+          padding: '12px 16px',
           borderRadius: 10,
           border: '1px solid #ddd',
           background: '#f9f9f9'
         }}
       >
-        <div style={{ fontSize: 14, opacity: 0.75, marginBottom: 4 }}>Current time</div>
+        <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 4 }}>Current time</div>
         <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.1 }}>
           {formatLiveNow(now)}
         </div>
