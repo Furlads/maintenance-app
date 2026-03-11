@@ -239,6 +239,37 @@ export default function TodayPage() {
     }
   }
 
+  async function handleUndoStart(jobId: number) {
+    try {
+      setBusyJobId(jobId)
+      setError('')
+
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          arrivedAt: null,
+          status: 'todo'
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to undo start')
+      }
+
+      await loadJobs()
+    } catch (err) {
+      console.error(err)
+      setError('Failed to undo start.')
+    } finally {
+      setBusyJobId(null)
+    }
+  }
+
   async function handleUndoDone(jobId: number) {
     try {
       setBusyJobId(jobId)
@@ -526,22 +557,41 @@ export default function TodayPage() {
                 )}
 
                 {job.isStarted && (
-                  <button
-                    type="button"
-                    onClick={() => handleFinishJob(job.id)}
-                    disabled={busyJobId === job.id}
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: 8,
-                      border: '1px solid #ccc',
-                      background: '#fff',
-                      color: 'inherit',
-                      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                      opacity: busyJobId === job.id ? 0.6 : 1
-                    }}
-                  >
-                    {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleFinishJob(job.id)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        color: 'inherit',
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                        opacity: busyJobId === job.id ? 0.6 : 1
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleUndoStart(job.id)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        color: 'inherit',
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                        opacity: busyJobId === job.id ? 0.6 : 1
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : 'Undo Start'}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
