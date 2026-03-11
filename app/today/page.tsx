@@ -3,67 +3,49 @@
 import { useEffect, useState } from 'react'
 
 export default function TodayPage() {
-  const [workerName, setWorkerName] = useState('')
+  const [jobs, setJobs] = useState<any[]>([])
+  const [workerName, setWorkerName] = useState<string | null>(null)
 
   useEffect(() => {
-    const savedName = localStorage.getItem('workerName') || ''
-    setWorkerName(savedName)
-  }, [])
+    const name = localStorage.getItem('workerName')
+    setWorkerName(name)
 
-  function logout() {
-    localStorage.removeItem('workerId')
-    localStorage.removeItem('workerName')
-    window.location.href = '/'
-  }
+    fetch('/api/jobs')
+      .then(res => res.json())
+      .then(data => setJobs(data))
+  }, [])
 
   return (
     <main style={{ padding: 40, fontFamily: 'sans-serif' }}>
-      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Today</h1>
+      <h1 style={{ fontSize: 28, marginBottom: 12 }}>
+        Today
+      </h1>
 
-      <p style={{ fontSize: 18, marginBottom: 24 }}>
-        Logged in as: <strong>{workerName || 'Unknown worker'}</strong>
-      </p>
+      {workerName && (
+        <p style={{ marginBottom: 20 }}>
+          Logged in as <strong>{workerName}</strong>
+        </p>
+      )}
 
-      <div
-        style={{
-          maxWidth: 500,
-          padding: 20,
-          border: '1px solid #ddd',
-          borderRadius: 12,
-          marginBottom: 20
-        }}
-      >
-        <h2 style={{ fontSize: 22, marginBottom: 12 }}>Today&apos;s Jobs</h2>
-        <p>No jobs yet.</p>
+      <div style={{ maxWidth: 600 }}>
+        {jobs.length === 0 && <p>No jobs yet.</p>}
+
+        {jobs.map(job => (
+          <div
+            key={job.id}
+            style={{
+              padding: 16,
+              border: '1px solid #ddd',
+              borderRadius: 10,
+              marginBottom: 12
+            }}
+          >
+            <strong>{job.title}</strong>
+            <p>{job.address}</p>
+            <small>Status: {job.status}</small>
+          </div>
+        ))}
       </div>
-
-      <div
-        style={{
-          maxWidth: 500,
-          padding: 20,
-          border: '1px solid #ddd',
-          borderRadius: 12,
-          marginBottom: 20
-        }}
-      >
-        <h2 style={{ fontSize: 22, marginBottom: 12 }}>Upcoming Jobs</h2>
-        <p>No upcoming jobs yet.</p>
-      </div>
-
-      <button
-        onClick={logout}
-        style={{
-          padding: 14,
-          minWidth: 180,
-          fontSize: 16,
-          borderRadius: 10,
-          border: '1px solid #ccc',
-          background: '#000',
-          color: '#fff'
-        }}
-      >
-        Log Out
-      </button>
     </main>
   )
 }
