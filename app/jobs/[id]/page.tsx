@@ -291,12 +291,18 @@ export default function JobPage() {
           }}
         >
           {photos.map((photo) => (
-            <div
+            <a
               key={photo.id}
+              href={photo.imageUrl}
+              target="_blank"
+              rel="noreferrer"
               style={{
+                display: 'block',
                 border: '1px solid #ddd',
                 borderRadius: 10,
-                padding: 12
+                padding: 12,
+                textDecoration: 'none',
+                color: 'inherit'
               }}
             >
               <img
@@ -314,7 +320,9 @@ export default function JobPage() {
               <p style={{ margin: '4px 0' }}>
                 <strong>Label:</strong> {photo.label || 'None'}
               </p>
-            </div>
+
+              <p style={{ margin: '4px 0' }}>Tap to open full size</p>
+            </a>
           ))}
         </div>
       </section>
