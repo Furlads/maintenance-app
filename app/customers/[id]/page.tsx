@@ -47,6 +47,8 @@ export default function CustomerPage() {
     return <p style={{ padding: 20 }}>Customer not found</p>
   }
 
+  const navigationQuery = customer.postcode || customer.address || ''
+
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 700 }}>
       <h1 style={{ fontSize: 28, marginBottom: 20 }}>{customer.name}</h1>
@@ -100,9 +102,9 @@ export default function CustomerPage() {
           </a>
         )}
 
-        {customer.postcode && (
+        {navigationQuery && (
           <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(customer.postcode)}`}
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationQuery)}`}
             target="_blank"
             rel="noreferrer"
             style={{
