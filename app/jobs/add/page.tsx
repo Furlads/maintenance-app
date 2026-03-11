@@ -1,7 +1,6 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 
 type Customer = {
   id: number
@@ -9,11 +8,8 @@ type Customer = {
 }
 
 export default function AddJobPage() {
-  const searchParams = useSearchParams()
-  const customerIdFromUrl = searchParams.get('customerId') || ''
-
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [customerId, setCustomerId] = useState(customerIdFromUrl)
+  const [customerId, setCustomerId] = useState('')
   const [title, setTitle] = useState('')
   const [address, setAddress] = useState('')
   const [notes, setNotes] = useState('')
@@ -22,6 +18,10 @@ export default function AddJobPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const customerIdFromUrl = params.get('customerId') || ''
+    setCustomerId(customerIdFromUrl)
+
     async function loadCustomers() {
       try {
         const res = await fetch('/api/customers')
