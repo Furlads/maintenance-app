@@ -90,13 +90,17 @@ export default function JobsPage() {
       {!loading &&
         !error &&
         jobs.map((job) => (
-          <div
+          <a
             key={job.id}
+            href={`/jobs/${job.id}`}
             style={{
+              display: 'block',
               padding: 16,
               border: '1px solid #ddd',
               borderRadius: 10,
-              marginBottom: 12
+              marginBottom: 12,
+              textDecoration: 'none',
+              color: 'inherit'
             }}
           >
             <h2 style={{ margin: '0 0 8px 0', fontSize: 20 }}>{job.title}</h2>
@@ -134,7 +138,7 @@ export default function JobsPage() {
                     .join(', ')
                 : 'Nobody assigned'}
             </p>
-          </div>
+          </a>
         ))}
     </main>
   )
