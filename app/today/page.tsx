@@ -156,24 +156,90 @@ export default function TodayPage() {
       return status !== 'done' && status !== 'completed'
     })
 
-    const nextJobId = unfinished.length > 0 ? unfinished[0].id : null
+    const activeStartedJob = unfinished.find((job) => !!job.arrivedAt && !job.finishedAt)
+    const nextWaitingJob =
+      !activeStartedJob
+        ? unfinished.find((job) => !job.arrivedAt && !job.finishedAt) || null
+        : null
 
     return workerJobs.map((job) => {
       const status = String(job.status || '').toLowerCase()
-      const isDone = status === 'done' || status === 'completed'
-      const isNext = !isDone && job.id === nextJobId
-      const isWaiting = !isDone && job.id !== nextJobId
+      const isDone = status === 'done' || status === 'completed' || !!job.finishedAt
+      const isStarted = !!job.arrivedAt && !job.finishedAt && !isDone
+      const isNext = !isDone && !isStarted && nextWaitingJob?.id === job.id
+      const isWaiting = !isDone && !isStarted && !isNext
 
       return {
         ...job,
         isDone,
+        isStarted,
         isNext,
         isWaiting
       }
     })
   }, [workerJobs])
 
-  async function handleToggleDone(jobId: number) {
+  async function handleStartJob(jobId: number) {
+    try {
+      setBusyJobId(jobId)
+      setError('')
+
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'start'
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to start job')
+      }
+
+      await loadJobs()
+    } catch (err) {
+      console.error(err)
+      setError('Failed to start job.')
+    } finally {
+      setBusyJobId(null)
+    }
+  }
+
+  async function handleFinishJob(jobId: number) {
+    try {
+      setBusyJobId(jobId)
+      setError('')
+
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'finish'
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to finish job')
+      }
+
+      await loadJobs()
+    } catch (err) {
+      console.error(err)
+      setError('Failed to finish job.')
+    } finally {
+      setBusyJobId(null)
+    }
+  }
+
+  async function handleUndoDone(jobId: number) {
     try {
       setBusyJobId(jobId)
       setError('')
@@ -191,13 +257,13 @@ export default function TodayPage() {
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        throw new Error(data?.error || 'Failed to update job status')
+        throw new Error(data?.error || 'Failed to undo job')
       }
 
       await loadJobs()
     } catch (err) {
       console.error(err)
-      setError('Failed to update job status.')
+      setError('Failed to undo job.')
     } finally {
       setBusyJobId(null)
     }
@@ -271,7 +337,7 @@ export default function TodayPage() {
                 background: '#ddffdd',
                 border: '1px solid #7bd77b'
               }
-            : job.isNext
+            : job.isStarted || job.isNext
               ? {
                   background: '#fff3cd',
                   border: '1px solid #f0c36d'
@@ -292,7 +358,14 @@ export default function TodayPage() {
                   ...cardStyle
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    alignItems: 'center'
+                  }}
+                >
                   <div>
                     <h2 style={{ margin: '0 0 8px 0', fontSize: 18 }}>{job.title}</h2>
 
@@ -311,7 +384,7 @@ export default function TodayPage() {
 
                   <button
                     type="button"
-                    onClick={() => handleToggleDone(job.id)}
+                    onClick={() => handleUndoDone(job.id)}
                     disabled={busyJobId === job.id}
                     style={{
                       padding: '12px 16px',
@@ -361,7 +434,11 @@ export default function TodayPage() {
 
               <p style={{ margin: '4px 0' }}>
                 <strong>Status:</strong>{' '}
-                {job.isNext ? 'Travelling' : 'Waiting to start'}
+                {job.isStarted
+                  ? 'In progress'
+                  : job.isNext
+                    ? 'Travelling'
+                    : 'Waiting to start'}
               </p>
 
               <p style={{ margin: '4px 0' }}>
@@ -371,6 +448,12 @@ export default function TodayPage() {
               {job.notes && (
                 <p style={{ margin: '4px 0' }}>
                   <strong>Notes:</strong> {job.notes}
+                </p>
+              )}
+
+              {job.isStarted && (
+                <p style={{ margin: '4px 0' }}>
+                  <strong>Started:</strong> {formatTime(startedAt)}
                 </p>
               )}
 
@@ -423,22 +506,43 @@ export default function TodayPage() {
                   </a>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => handleToggleDone(job.id)}
-                  disabled={busyJobId === job.id}
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    border: '1px solid #ccc',
-                    background: '#fff',
-                    color: 'inherit',
-                    cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                    opacity: busyJobId === job.id ? 0.6 : 1
-                  }}
-                >
-                  {busyJobId === job.id ? 'Updating...' : 'Mark Done'}
-                </button>
+                {!job.isStarted && !job.isWaiting && (
+                  <button
+                    type="button"
+                    onClick={() => handleStartJob(job.id)}
+                    disabled={busyJobId === job.id}
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: 8,
+                      border: '1px solid #ccc',
+                      background: '#fff',
+                      color: 'inherit',
+                      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                      opacity: busyJobId === job.id ? 0.6 : 1
+                    }}
+                  >
+                    {busyJobId === job.id ? 'Updating...' : 'Start Job'}
+                  </button>
+                )}
+
+                {job.isStarted && (
+                  <button
+                    type="button"
+                    onClick={() => handleFinishJob(job.id)}
+                    disabled={busyJobId === job.id}
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: 8,
+                      border: '1px solid #ccc',
+                      background: '#fff',
+                      color: 'inherit',
+                      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                      opacity: busyJobId === job.id ? 0.6 : 1
+                    }}
+                  >
+                    {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
+                  </button>
+                )}
               </div>
             </div>
           )
