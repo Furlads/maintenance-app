@@ -9,12 +9,22 @@ type Customer = {
   postcode: string | null
 }
 
+type Worker = {
+  id: number
+  firstName: string
+  lastName: string
+  active: boolean
+}
+
 export default function AddJobPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [workers, setWorkers] = useState<Worker[]>([])
   const [customerId, setCustomerId] = useState('')
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
   const [status, setStatus] = useState('Scheduled')
+  const [jobType, setJobType] = useState('Quote')
+  const [assignedTo, setAssignedTo] = useState<number[]>([])
   const [useDifferentAddress, setUseDifferentAddress] = useState(false)
   const [jobAddress, setJobAddress] = useState('')
   const [message, setMessage] = useState('')
@@ -25,18 +35,30 @@ export default function AddJobPage() {
     const customerIdFromUrl = params.get('customerId') || ''
     setCustomerId(customerIdFromUrl)
 
-    async function loadCustomers() {
+    async function loadData() {
       try {
-        const res = await fetch('/api/customers')
-        const data = await res.json()
-        setCustomers(Array.isArray(data) ? data : [])
+        const [customerRes, workerRes] = await Promise.all([
+          fetch('/api/customers'),
+          fetch('/api/workers')
+        ])
+
+        const customerData = await customerRes.json()
+        const workerData = await workerRes.json()
+
+        setCustomers(Array.isArray(customerData) ? customerData : [])
+        setWorkers(
+          Array.isArray(workerData)
+            ? workerData.filter((worker) => worker.active)
+            : []
+        )
       } catch (error) {
         console.error(error)
         setCustomers([])
+        setWorkers([])
       }
     }
 
-    loadCustomers()
+    loadData()
   }, [])
 
   const selectedCustomer = useMemo(() => {
@@ -51,6 +73,14 @@ export default function AddJobPage() {
   }, [selectedCustomer])
 
   const finalAddress = useDifferentAddress ? jobAddress : defaultCustomerAddress
+
+  function toggleWorker(workerId: number) {
+    setAssignedTo((prev) =>
+      prev.includes(workerId)
+        ? prev.filter((id) => id !== workerId)
+        : [...prev, workerId]
+    )
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -68,7 +98,9 @@ export default function AddJobPage() {
           title,
           address: finalAddress,
           notes,
-          status
+          status,
+          jobType,
+          assignedTo
         })
       })
 
@@ -79,8 +111,10 @@ export default function AddJobPage() {
       setTitle('')
       setNotes('')
       setStatus('Scheduled')
+      setJobType('Quote')
       setUseDifferentAddress(false)
       setJobAddress('')
+      setAssignedTo([])
       setMessage('Job saved successfully.')
     } catch (error) {
       console.error(error)
@@ -136,6 +170,25 @@ export default function AddJobPage() {
           />
         </div>
 
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', marginBottom: 6 }}>Job Type</label>
+          <select
+            value={jobType}
+            onChange={(e) => setJobType(e.target.value)}
+            style={{
+              width: '100%',
+              padding: 12,
+              border: '1px solid #ccc',
+              borderRadius: 8
+            }}
+          >
+            <option value="Quote">Quote</option>
+            <option value="Maintenance">Maintenance</option>
+            <option value="Landscaping">Landscaping</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
         {selectedCustomer && (
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', marginBottom: 6 }}>Customer Address</label>
@@ -182,6 +235,33 @@ export default function AddJobPage() {
             />
           </div>
         )}
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', marginBottom: 10 }}>Assigned To</label>
+
+          {workers.length === 0 && (
+            <p style={{ margin: 0 }}>No active workers found.</p>
+          )}
+
+          {workers.map((worker) => (
+            <label
+              key={worker.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 8
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={assignedTo.includes(worker.id)}
+                onChange={() => toggleWorker(worker.id)}
+              />
+              {worker.firstName} {worker.lastName}
+            </label>
+          ))}
+        </div>
 
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: 'block', marginBottom: 6 }}>Notes</label>
