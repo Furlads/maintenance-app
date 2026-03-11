@@ -1,19 +1,22 @@
 'use client'
 
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 
 type Customer = {
   id: number
   name: string
+  address: string | null
+  postcode: string | null
 }
 
 export default function AddJobPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerId, setCustomerId] = useState('')
   const [title, setTitle] = useState('')
-  const [address, setAddress] = useState('')
   const [notes, setNotes] = useState('')
   const [status, setStatus] = useState('Scheduled')
+  const [useDifferentAddress, setUseDifferentAddress] = useState(false)
+  const [jobAddress, setJobAddress] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -36,6 +39,19 @@ export default function AddJobPage() {
     loadCustomers()
   }, [])
 
+  const selectedCustomer = useMemo(() => {
+    return customers.find((customer) => String(customer.id) === customerId) || null
+  }, [customers, customerId])
+
+  const defaultCustomerAddress = useMemo(() => {
+    if (!selectedCustomer) return ''
+
+    const parts = [selectedCustomer.address, selectedCustomer.postcode].filter(Boolean)
+    return parts.join('\n')
+  }, [selectedCustomer])
+
+  const finalAddress = useDifferentAddress ? jobAddress : defaultCustomerAddress
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
@@ -50,7 +66,7 @@ export default function AddJobPage() {
         body: JSON.stringify({
           customerId: Number(customerId),
           title,
-          address,
+          address: finalAddress,
           notes,
           status
         })
@@ -61,9 +77,10 @@ export default function AddJobPage() {
       }
 
       setTitle('')
-      setAddress('')
       setNotes('')
       setStatus('Scheduled')
+      setUseDifferentAddress(false)
+      setJobAddress('')
       setMessage('Job saved successfully.')
     } catch (error) {
       console.error(error)
@@ -82,7 +99,11 @@ export default function AddJobPage() {
           <label style={{ display: 'block', marginBottom: 6 }}>Customer</label>
           <select
             value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
+            onChange={(e) => {
+              setCustomerId(e.target.value)
+              setUseDifferentAddress(false)
+              setJobAddress('')
+            }}
             required
             style={{
               width: '100%',
@@ -115,20 +136,52 @@ export default function AddJobPage() {
           />
         </div>
 
+        {selectedCustomer && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', marginBottom: 6 }}>Customer Address</label>
+            <textarea
+              value={defaultCustomerAddress}
+              readOnly
+              rows={3}
+              style={{
+                width: '100%',
+                padding: 12,
+                border: '1px solid #ccc',
+                borderRadius: 8,
+                backgroundColor: '#f7f7f7'
+              }}
+            />
+          </div>
+        )}
+
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 6 }}>Address</label>
-          <textarea
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            rows={3}
-            style={{
-              width: '100%',
-              padding: 12,
-              border: '1px solid #ccc',
-              borderRadius: 8
-            }}
-          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={useDifferentAddress}
+              onChange={(e) => setUseDifferentAddress(e.target.checked)}
+            />
+            Job is at a different address
+          </label>
         </div>
+
+        {useDifferentAddress && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', marginBottom: 6 }}>Job Address</label>
+            <textarea
+              value={jobAddress}
+              onChange={(e) => setJobAddress(e.target.value)}
+              rows={3}
+              required={useDifferentAddress}
+              style={{
+                width: '100%',
+                padding: 12,
+                border: '1px solid #ccc',
+                borderRadius: 8
+              }}
+            />
+          </div>
+        )}
 
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: 'block', marginBottom: 6 }}>Notes</label>
