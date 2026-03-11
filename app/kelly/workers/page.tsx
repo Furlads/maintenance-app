@@ -10,6 +10,7 @@ type Worker = {
   role: string;
   jobTitle?: string | null;
   photoUrl: string;
+  phone?: string; // ✅ NEW
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -82,6 +83,16 @@ function safeRole(role: string): RoleOption {
   return hit ?? "Worker";
 }
 
+function whatsappUrlFromPhone(phoneRaw: string, displayName?: string) {
+  const p = clean(phoneRaw);
+  if (!p) return "";
+  // Keep digits only (wa.me needs digits, no +, spaces etc)
+  const digits = p.replace(/[^\d]/g, "");
+  if (!digits) return "";
+  const msg = encodeURIComponent(`Hi ${clean(displayName) || ""}`.trim());
+  return `https://wa.me/${digits}?text=${msg}`;
+}
+
 async function uploadPhoto(file: File): Promise<string> {
   const fd = new FormData();
   fd.append("file", file);
@@ -120,6 +131,7 @@ export default function KellyWorkersPage() {
   const [addRole, setAddRole] = useState<RoleOption>("Worker");
   const [addJobTitle, setAddJobTitle] = useState("");
   const [addPhotoUrl, setAddPhotoUrl] = useState("");
+  const [addPhone, setAddPhone] = useState(""); // ✅ NEW
   const [addActive, setAddActive] = useState(true);
   const [addUploading, setAddUploading] = useState(false);
   const addFileRef = useRef<HTMLInputElement | null>(null);
@@ -132,6 +144,7 @@ export default function KellyWorkersPage() {
   const [editRole, setEditRole] = useState<RoleOption>("Worker");
   const [editJobTitle, setEditJobTitle] = useState("");
   const [editPhotoUrl, setEditPhotoUrl] = useState("");
+  const [editPhone, setEditPhone] = useState(""); // ✅ NEW
   const [editActive, setEditActive] = useState(true);
   const [editUploading, setEditUploading] = useState(false);
   const editFileRef = useRef<HTMLInputElement | null>(null);
@@ -261,7 +274,7 @@ export default function KellyWorkersPage() {
     if (!term) return list;
 
     return list.filter((w) => {
-      const hay = `${w.name} ${w.role} ${w.jobTitle || ""} ${w.key}`.toLowerCase();
+      const hay = `${w.name} ${w.role} ${w.jobTitle || ""} ${w.key} ${w.phone || ""}`.toLowerCase();
       return hay.includes(term);
     });
   }, [workers, q, showArchived]);
@@ -320,6 +333,7 @@ export default function KellyWorkersPage() {
           role: addRole,
           jobTitle: clean(addJobTitle) || "",
           photoUrl: clean(addPhotoUrl) || "",
+          phone: clean(addPhone) || "", // ✅ NEW
           active: !!addActive,
         }),
       });
@@ -333,6 +347,7 @@ export default function KellyWorkersPage() {
       setAddRole("Worker");
       setAddJobTitle("");
       setAddPhotoUrl("");
+      setAddPhone(""); // ✅ NEW
       setAddActive(true);
       if (addFileRef.current) addFileRef.current.value = "";
 
@@ -351,6 +366,7 @@ export default function KellyWorkersPage() {
     setEditRole(safeRole(w.role));
     setEditJobTitle(w.jobTitle || "");
     setEditPhotoUrl(w.photoUrl || "");
+    setEditPhone(w.phone || ""); // ✅ NEW
     setEditActive(!!w.active);
     if (editFileRef.current) editFileRef.current.value = "";
     setEditOpen(true);
@@ -379,6 +395,7 @@ export default function KellyWorkersPage() {
           role: editRole,
           jobTitle: clean(editJobTitle) || "",
           photoUrl: clean(editPhotoUrl) || "",
+          phone: clean(editPhone) || "", // ✅ NEW
           active: !!editActive,
         }),
       });
@@ -518,6 +535,20 @@ export default function KellyWorkersPage() {
               </div>
             </div>
 
+            {/* ✅ NEW: phone */}
+            <div>
+              <div style={label}>Phone (WhatsApp)</div>
+              <input
+                value={addPhone}
+                onChange={(e) => setAddPhone(e.target.value)}
+                style={input}
+                placeholder="e.g. 07903 192711 or +44 7903 192711"
+              />
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+                Tip: any format is fine — WhatsApp button uses digits only.
+              </div>
+            </div>
+
             <div>
               <div style={label}>Photo</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -586,6 +617,7 @@ export default function KellyWorkersPage() {
                         <span style={pillAccent}>Role: {w.role || "Worker"}</span>
                         <span style={pill}>Title: {w.jobTitle || "—"}</span>
                         <span style={{ ...pill, background: w.active ? "#eaffea" : "#fff1f1" }}>{w.active ? "Active" : "Archived"}</span>
+                        {w.phone ? <span style={pill}>📞 {w.phone}</span> : null}
                       </div>
                     </div>
 
@@ -659,6 +691,35 @@ export default function KellyWorkersPage() {
               <div>
                 <div style={label}>Job title (shown to them)</div>
                 <input value={editJobTitle} onChange={(e) => setEditJobTitle(e.target.value)} style={input} />
+              </div>
+
+              {/* ✅ NEW: phone + WhatsApp */}
+              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr auto" }}>
+                <div>
+                  <div style={label}>Phone (WhatsApp)</div>
+                  <input
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    style={input}
+                    placeholder="e.g. 07903 192711 or +44 7903 192711"
+                  />
+                </div>
+
+                <div style={{ display: "grid", alignContent: "end" }}>
+                  <button
+                    type="button"
+                    style={btn}
+                    disabled={!clean(editPhone)}
+                    onClick={() => {
+                      const url = whatsappUrlFromPhone(editPhone, editName);
+                      if (!url) return;
+                      window.open(url, "_blank");
+                    }}
+                    title={!clean(editPhone) ? "Add a phone number first" : "Open WhatsApp"}
+                  >
+                    WhatsApp ↗
+                  </button>
+                </div>
               </div>
 
               <div>
