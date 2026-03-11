@@ -1,6 +1,5 @@
 'use client'
 
-import { upload } from '@vercel/blob/client'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
@@ -90,7 +89,7 @@ export default function JobPage() {
 
         const jobData = await jobRes.json()
         const jobs = Array.isArray(jobData) ? jobData : []
-        const foundJob = jobs.find((item) => item.id === id) || null
+        const foundJob = jobs.find((item: Job) => item.id === id) || null
         setJob(foundJob)
 
         const photoData = await photoRes.json()
@@ -120,19 +119,32 @@ export default function JobPage() {
     setPhotoMessage('')
 
     try {
-      await upload(file.name, file, {
-        access: 'public',
-        handleUploadUrl: '/api/blob/upload',
-        clientPayload: JSON.stringify({
-          jobId: id,
-          workerId: workerId ? Number(workerId) : null,
-          label
-        })
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('label', label)
+
+      if (workerId) {
+        formData.append('workerId', workerId)
+      }
+
+      const res = await fetch(`/api/jobs/${id}/photos`, {
+        method: 'POST',
+        body: formData
       })
 
-      await loadPhotos()
-      setPhotoMessage('Photo uploaded successfully.')
+      const data = await res.json().catch(() => null)
 
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to upload photo')
+      }
+
+      if (data && typeof data === 'object' && typeof data.id === 'number') {
+        setPhotos((current) => [data as JobPhoto, ...current])
+      } else {
+        await loadPhotos()
+      }
+
+      setPhotoMessage('Photo uploaded successfully.')
       event.target.value = ''
     } catch (error) {
       console.error(error)
@@ -160,7 +172,7 @@ export default function JobPage() {
         throw new Error(data?.error || 'Failed to delete photo')
       }
 
-      await loadPhotos()
+      setPhotos((current) => current.filter((photo) => photo.id !== photoId))
       setPhotoMessage('Photo deleted successfully.')
     } catch (error) {
       console.error(error)
