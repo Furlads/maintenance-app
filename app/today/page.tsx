@@ -78,6 +78,23 @@ function formatClockTime(value?: Date | null) {
   })
 }
 
+function formatLiveNow(value: Date) {
+  return value.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
+function formatLiveDate(value: Date) {
+  return value.toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  })
+}
+
 function formatDurationMinutes(start?: string | null, end?: string | null) {
   if (!start || !end) return '—'
 
@@ -198,6 +215,7 @@ export default function TodayPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
+  const [now, setNow] = useState(new Date())
 
   async function loadJobs() {
     try {
@@ -235,6 +253,14 @@ export default function TodayPage() {
     loadJobs()
   }, [])
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(new Date())
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [])
+
   const workerJobs = useMemo(() => {
     if (!workerId) return []
 
@@ -246,7 +272,6 @@ export default function TodayPage() {
   }, [jobs, workerId])
 
   const visibleJobs = useMemo<TimedJob[]>(() => {
-    const now = new Date()
     let runningCursor: Date | null = null
 
     const timedJobsBase = workerJobs.map((job) => {
@@ -311,7 +336,7 @@ export default function TodayPage() {
         isWaiting
       }
     })
-  }, [workerJobs])
+  }, [workerJobs, now])
 
   async function handleStartJob(jobId: number) {
     try {
@@ -482,6 +507,22 @@ export default function TodayPage() {
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>Today</h1>
+
+      <div
+        style={{
+          marginBottom: 16,
+          padding: '12px 14px',
+          borderRadius: 10,
+          border: '1px solid #ddd',
+          background: '#f9f9f9'
+        }}
+      >
+        <div style={{ fontSize: 14, opacity: 0.75, marginBottom: 4 }}>Current time</div>
+        <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.1 }}>
+          {formatLiveNow(now)}
+        </div>
+        <div style={{ fontSize: 14, marginTop: 4 }}>{formatLiveDate(now)}</div>
+      </div>
 
       {workerName && (
         <p style={{ marginTop: 0, marginBottom: 20 }}>
