@@ -32,6 +32,68 @@ type Job = {
   createdAt: string
   customer: Customer
   assignments: JobAssignment[]
+  visitDate?: string | null
+  startTime?: string | null
+  arrivedAt?: string | null
+  finishedAt?: string | null
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatDurationMinutes(start?: string | null, end?: string | null) {
+  if (!start || !end) return '—'
+
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return '—'
+  }
+
+  const diffMs = endDate.getTime() - startDate.getTime()
+
+  if (diffMs <= 0) return '—'
+
+  const totalMinutes = Math.round(diffMs / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  const mins = totalMinutes % 60
+
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m`
+  }
+
+  if (hours > 0) {
+    return `${hours}h`
+  }
+
+  return `${mins}m`
+}
+
+function jobSortValue(job: Job) {
+  const datePart = job.visitDate ? new Date(job.visitDate).getTime() : 0
+
+  if (!job.startTime) return datePart
+
+  const [hours, minutes] = job.startTime.split(':').map(Number)
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return datePart
+  }
+
+  return datePart + hours * 60 * 60 * 1000 + minutes * 60 * 1000
 }
 
 export default function TodayPage() {
@@ -81,17 +143,35 @@ export default function TodayPage() {
   const workerJobs = useMemo(() => {
     if (!workerId) return []
 
-    return jobs.filter((job) => {
-      const assignedToWorker = job.assignments.some(
-        (assignment) => assignment.workerId === workerId
+    return jobs
+      .filter((job) =>
+        job.assignments.some((assignment) => assignment.workerId === workerId)
       )
-
-      const status = String(job.status || '').toLowerCase()
-      const isCompleted = status === 'completed' || status === 'done'
-
-      return assignedToWorker && !isCompleted
-    })
+      .sort((a, b) => jobSortValue(a) - jobSortValue(b))
   }, [jobs, workerId])
+
+  const visibleJobs = useMemo(() => {
+    const unfinished = workerJobs.filter((job) => {
+      const status = String(job.status || '').toLowerCase()
+      return status !== 'done' && status !== 'completed'
+    })
+
+    const nextJobId = unfinished.length > 0 ? unfinished[0].id : null
+
+    return workerJobs.map((job) => {
+      const status = String(job.status || '').toLowerCase()
+      const isDone = status === 'done' || status === 'completed'
+      const isNext = !isDone && job.id === nextJobId
+      const isWaiting = !isDone && job.id !== nextJobId
+
+      return {
+        ...job,
+        isDone,
+        isNext,
+        isWaiting
+      }
+    })
+  }, [workerJobs])
 
   async function handleToggleDone(jobId: number) {
     try {
@@ -114,19 +194,7 @@ export default function TodayPage() {
         throw new Error(data?.error || 'Failed to update job status')
       }
 
-      setJobs((currentJobs) =>
-        currentJobs.map((job) => {
-          if (job.id !== jobId) return job
-
-          const currentStatus = String(job.status || '').toLowerCase()
-          const nextStatus = currentStatus === 'done' ? 'todo' : 'done'
-
-          return {
-            ...job,
-            status: nextStatus
-          }
-        })
-      )
+      await loadJobs()
     } catch (err) {
       console.error(err)
       setError('Failed to update job status.')
@@ -184,24 +252,93 @@ export default function TodayPage() {
         <p>No worker selected. Go back and choose a worker first.</p>
       )}
 
-      {!loading && !error && workerId && workerJobs.length === 0 && (
+      {!loading && !error && workerId && visibleJobs.length === 0 && (
         <p>No open jobs assigned to you.</p>
       )}
 
       {!loading &&
         !error &&
-        workerJobs.map((job) => {
+        visibleJobs.map((job) => {
           const navigationQuery =
             job.customer?.postcode || job.address || job.customer?.address || ''
+
+          const startedAt = job.arrivedAt || null
+          const completedAt = job.finishedAt || null
+          const totalTime = formatDurationMinutes(startedAt, completedAt)
+
+          const cardStyle: React.CSSProperties = job.isDone
+            ? {
+                background: '#ddffdd',
+                border: '1px solid #7bd77b'
+              }
+            : job.isNext
+              ? {
+                  background: '#fff3cd',
+                  border: '1px solid #f0c36d'
+                }
+              : {
+                  background: '#ffe5e5',
+                  border: '1px solid #f2aaaa'
+                }
+
+          if (job.isDone) {
+            return (
+              <div
+                key={job.id}
+                style={{
+                  padding: 16,
+                  borderRadius: 10,
+                  marginBottom: 12,
+                  ...cardStyle
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                  <div>
+                    <h2 style={{ margin: '0 0 8px 0', fontSize: 18 }}>{job.title}</h2>
+
+                    <p style={{ margin: '4px 0', fontSize: 14 }}>
+                      <strong>Job completed:</strong> {formatTime(completedAt)}
+                    </p>
+
+                    <p style={{ margin: '4px 0', fontSize: 14 }}>
+                      <strong>Job started:</strong> {formatTime(startedAt)}
+                    </p>
+
+                    <p style={{ margin: '4px 0', fontSize: 14 }}>
+                      <strong>Total time on site:</strong> {totalTime}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleToggleDone(job.id)}
+                    disabled={busyJobId === job.id}
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: 8,
+                      border: '1px solid #2f8f2f',
+                      background: '#fff',
+                      color: '#2f8f2f',
+                      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                      opacity: busyJobId === job.id ? 0.6 : 1,
+                      minWidth: 110
+                    }}
+                  >
+                    {busyJobId === job.id ? 'Updating...' : 'Undo'}
+                  </button>
+                </div>
+              </div>
+            )
+          }
 
           return (
             <div
               key={job.id}
               style={{
                 padding: 16,
-                border: '1px solid #ddd',
                 borderRadius: 10,
-                marginBottom: 12
+                marginBottom: 12,
+                ...cardStyle
               }}
             >
               <a
@@ -223,7 +360,8 @@ export default function TodayPage() {
               </p>
 
               <p style={{ margin: '4px 0' }}>
-                <strong>Status:</strong> {job.status}
+                <strong>Status:</strong>{' '}
+                {job.isNext ? 'Travelling' : 'Waiting to start'}
               </p>
 
               <p style={{ margin: '4px 0' }}>
@@ -244,7 +382,8 @@ export default function TodayPage() {
                     borderRadius: 8,
                     border: '1px solid #ccc',
                     textDecoration: 'none',
-                    color: 'inherit'
+                    color: 'inherit',
+                    background: '#fff'
                   }}
                 >
                   Open Job
@@ -258,7 +397,8 @@ export default function TodayPage() {
                       borderRadius: 8,
                       border: '1px solid #ccc',
                       textDecoration: 'none',
-                      color: 'inherit'
+                      color: 'inherit',
+                      background: '#fff'
                     }}
                   >
                     Call Customer
@@ -275,7 +415,8 @@ export default function TodayPage() {
                       borderRadius: 8,
                       border: '1px solid #ccc',
                       textDecoration: 'none',
-                      color: 'inherit'
+                      color: 'inherit',
+                      background: '#fff'
                     }}
                   >
                     Navigate
