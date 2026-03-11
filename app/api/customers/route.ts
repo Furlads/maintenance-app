@@ -22,8 +22,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const name =
-      typeof body.name === 'string' ? body.name.trim() : ''
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
 
     if (!name) {
       return NextResponse.json(

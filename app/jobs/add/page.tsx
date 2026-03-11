@@ -101,19 +101,24 @@ export default function AddJobPage() {
     )
   }
 
-  async function handleAddCustomer(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
+  async function handleAddCustomer() {
     setCustomerLoading(true)
     setCustomerMessage('')
 
     try {
+      const name = newCustomerName.trim()
+
+      if (!name) {
+        throw new Error('Customer name is required')
+      }
+
       const res = await fetch('/api/customers', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          name: newCustomerName,
+          name,
           phone: newCustomerPhone,
           address: newCustomerAddress,
           postcode: newCustomerPostcode
@@ -286,80 +291,78 @@ export default function AddJobPage() {
               Add New Customer
             </h2>
 
-            <form onSubmit={handleAddCustomer}>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', marginBottom: 6 }}>Name</label>
-                <input
-                  value={newCustomerName}
-                  onChange={(e) => setNewCustomerName(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: 12,
-                    border: '1px solid #ccc',
-                    borderRadius: 8
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', marginBottom: 6 }}>Phone</label>
-                <input
-                  value={newCustomerPhone}
-                  onChange={(e) => setNewCustomerPhone(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: 12,
-                    border: '1px solid #ccc',
-                    borderRadius: 8
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', marginBottom: 6 }}>Address</label>
-                <textarea
-                  value={newCustomerAddress}
-                  onChange={(e) => setNewCustomerAddress(e.target.value)}
-                  rows={3}
-                  style={{
-                    width: '100%',
-                    padding: 12,
-                    border: '1px solid #ccc',
-                    borderRadius: 8
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', marginBottom: 6 }}>Postcode</label>
-                <input
-                  value={newCustomerPostcode}
-                  onChange={(e) => setNewCustomerPostcode(e.target.value.toUpperCase())}
-                  style={{
-                    width: '100%',
-                    padding: 12,
-                    border: '1px solid #ccc',
-                    borderRadius: 8
-                  }}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={customerLoading}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6 }}>Name</label>
+              <input
+                value={newCustomerName}
+                onChange={(e) => setNewCustomerName(e.target.value)}
                 style={{
-                  padding: '12px 16px',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer'
+                  width: '100%',
+                  padding: 12,
+                  border: '1px solid #ccc',
+                  borderRadius: 8
                 }}
-              >
-                {customerLoading ? 'Saving Customer...' : 'Save Customer'}
-              </button>
+              />
+            </div>
 
-              {customerMessage && <p style={{ marginTop: 12 }}>{customerMessage}</p>}
-            </form>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6 }}>Phone</label>
+              <input
+                value={newCustomerPhone}
+                onChange={(e) => setNewCustomerPhone(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: 12,
+                  border: '1px solid #ccc',
+                  borderRadius: 8
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6 }}>Address</label>
+              <textarea
+                value={newCustomerAddress}
+                onChange={(e) => setNewCustomerAddress(e.target.value)}
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: 12,
+                  border: '1px solid #ccc',
+                  borderRadius: 8
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6 }}>Postcode</label>
+              <input
+                value={newCustomerPostcode}
+                onChange={(e) => setNewCustomerPostcode(e.target.value.toUpperCase())}
+                style={{
+                  width: '100%',
+                  padding: 12,
+                  border: '1px solid #ccc',
+                  borderRadius: 8
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAddCustomer}
+              disabled={customerLoading}
+              style={{
+                padding: '12px 16px',
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer'
+              }}
+            >
+              {customerLoading ? 'Saving Customer...' : 'Save Customer'}
+            </button>
+
+            {customerMessage && <p style={{ marginTop: 12 }}>{customerMessage}</p>}
           </div>
         )}
 
