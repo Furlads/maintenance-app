@@ -355,13 +355,22 @@ export default function TodayPage() {
 
       {!loading &&
         !error &&
-        visibleJobs.map((job) => {
+        visibleJobs.map((job, index) => {
           const navigationQuery =
             job.customer?.postcode || job.address || job.customer?.address || ''
 
           const startedAt = job.arrivedAt || null
           const completedAt = job.finishedAt || null
           const totalTime = formatDurationMinutes(startedAt, completedAt)
+
+          const firstCollapsedHeadlineIndex = visibleJobs.findIndex(
+            (item) => item.isWaiting
+          )
+
+          const shouldCollapseToHeadline =
+            job.isWaiting &&
+            firstCollapsedHeadlineIndex !== -1 &&
+            index > firstCollapsedHeadlineIndex
 
           const cardStyle: React.CSSProperties = job.isDone
             ? {
@@ -431,6 +440,32 @@ export default function TodayPage() {
                     {busyJobId === job.id ? 'Updating...' : 'Undo'}
                   </button>
                 </div>
+              </div>
+            )
+          }
+
+          if (shouldCollapseToHeadline) {
+            return (
+              <div
+                key={job.id}
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  marginBottom: 8,
+                  border: '1px solid #ddd',
+                  background: '#f9f9f9'
+                }}
+              >
+                <a
+                  href={`/jobs/${job.id}`}
+                  style={{
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    display: 'block'
+                  }}
+                >
+                  <h2 style={{ margin: 0, fontSize: 16 }}>{job.title}</h2>
+                </a>
               </div>
             )
           }
