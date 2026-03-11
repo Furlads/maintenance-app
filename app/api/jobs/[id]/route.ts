@@ -3,10 +3,8 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
-type Ctx = { params: Promise<{ id: string }> }
-
-function nowGB() {
-  return new Date().toLocaleString('en-GB')
+type Ctx = {
+  params: Promise<{ id: string }>
 }
 
 function clean(value: unknown) {
@@ -21,51 +19,13 @@ function isValidHHMM(value: string) {
   return /^\d{2}:\d{2}$/.test(value)
 }
 
-function outwardPostcode(address: string) {
-  const upper = (address || '').toUpperCase()
-  const match = upper.match(/\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})\b/)
-  if (!match) return ''
-  return match[1]
-}
-
-function addWeeks(d: Date, weeks: number) {
-  const x = new Date(d)
-  x.setDate(x.getDate() + weeks * 7)
-  return x
-}
-
-function adjustToDOWOnOrAfter(d: Date, dow: number) {
-  const x = new Date(d)
-
-  for (let i = 0; i < 7; i++) {
-    if (x.getDay() === dow) return x
-    x.setDate(x.getDate() + 1)
-  }
-
-  return x
-}
-
-async function rebuild(worker: string, fromDate: string) {
-  await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'}/api/schedule/rebuild`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ worker, fromDate, includeToday: true })
-    }
-  ).catch(() => null)
-}
-
-export async function GET(_: Request, ctx: Ctx) {
+export async function GET(_req: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
-    const jobId = parseInt(id, 10)
+    const jobId = Number(id)
 
-    if (!jobId) {
-      return NextResponse.json(
-        { error: 'Invalid job id', received: id },
-        { status: 400 }
-      )
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      return NextResponse.json({ error: 'Invalid job id' }, { status: 400 })
     }
 
     const job = await prisma.job.findUnique({
@@ -90,16 +50,13 @@ export async function GET(_: Request, ctx: Ctx) {
 export async function PATCH(req: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
-    const jobId = parseInt(id, 10)
+    const jobId = Number(id)
 
-    if (!jobId) {
-      return NextResponse.json(
-        { error: 'Invalid job id', received: id },
-        { status: 400 }
-      )
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      return NextResponse.json({ error: 'Invalid job id' }, { status: 400 })
     }
 
-    const body = await req.json().catch(() => ({} as any))
+    const body = await req.json().catch(() => ({}))
 
     const existing = await prisma.job.findUnique({
       where: { id: jobId }
@@ -109,232 +66,96 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
     }
 
-    const action = clean(body.action).toLowerCase()
+    let nextStatus = existing.status
 
-    // ===== Status logic =====
-    let newStatus = existing.status
+    const requestedStatus = clean((body as any).status).toLowerCase()
 
-    const requestedStatus = clean(body.status).toLowerCase()
-
-    if (
-      requestedStatus === 'todo' ||
-      requestedStatus === 'done' ||
-      requestedStatus === 'unscheduled'
-    ) {
-      newStatus = requestedStatus as any
-    } else if (body.toggleStatus === true) {
-      newStatus = existing.status === 'done' ? ('todo' as any) : ('done' as any)
+    if (requestedStatus === 'todo' || requestedStatus === 'done') {
+      nextStatus = requestedStatus
+    } else if ((body as any).toggleStatus === true) {
+      nextStatus = String(existing.status).toLowerCase() === 'done' ? 'todo' : 'done'
     }
-
-    // ===== Append notes =====
-    const appendNote = clean(body.appendNote)
-    const noteAuthor = clean(body.noteAuthor) || 'unknown'
-    let newNotesLog: string | undefined = undefined
-
-    if (appendNote) {
-      const line = `[${nowGB()}] ${noteAuthor}: ${appendNote}`
-      newNotesLog = existing.notesLog ? `${existing.notesLog}\n${line}` : line
-    }
-
-    // ===== Scheduling inputs =====
-    const fixedRequested = body.fixed === true
-    const visitDateRaw = clean(body.visitDate)
-    const startTimeRaw = clean(body.startTime)
 
     let visitDateUpdate: Date | null | undefined = undefined
     let startTimeUpdate: string | null | undefined = undefined
-    let fixedUpdate: boolean | undefined = undefined
+    let durationMinutesUpdate: number | null | undefined = undefined
 
-    if (visitDateRaw === 'null') visitDateUpdate = null
+    if ('visitDate' in (body as any)) {
+      const visitDateRaw = clean((body as any).visitDate)
 
-    if (visitDateRaw && visitDateRaw !== 'null') {
-      if (!isValidISODateOnly(visitDateRaw)) {
-        return NextResponse.json(
-          { error: 'visitDate must be YYYY-MM-DD if provided' },
-          { status: 400 }
-        )
+      if ((body as any).visitDate === null || visitDateRaw === '') {
+        visitDateUpdate = null
+      } else {
+        if (!isValidISODateOnly(visitDateRaw)) {
+          return NextResponse.json(
+            { error: 'visitDate must be YYYY-MM-DD' },
+            { status: 400 }
+          )
+        }
+
+        visitDateUpdate = new Date(visitDateRaw)
       }
-
-      visitDateUpdate = new Date(visitDateRaw)
     }
 
-    if (startTimeRaw) {
-      if (!isValidHHMM(startTimeRaw)) {
-        return NextResponse.json(
-          { error: 'startTime must be HH:MM if provided' },
-          { status: 400 }
-        )
+    if ('startTime' in (body as any)) {
+      const startTimeRaw = clean((body as any).startTime)
+
+      if ((body as any).startTime === null || startTimeRaw === '') {
+        startTimeUpdate = null
+      } else {
+        if (!isValidHHMM(startTimeRaw)) {
+          return NextResponse.json(
+            { error: 'startTime must be HH:MM' },
+            { status: 400 }
+          )
+        }
+
+        startTimeUpdate = startTimeRaw
       }
-
-      startTimeUpdate = startTimeRaw
-    } else if ('startTime' in body && !startTimeRaw) {
-      startTimeUpdate = null
     }
 
-    if ('fixed' in body) {
-      fixedUpdate = fixedRequested
+    if ('durationMinutes' in (body as any)) {
+      if ((body as any).durationMinutes === null || (body as any).durationMinutes === '') {
+        durationMinutesUpdate = null
+      } else {
+        const durationValue = Number((body as any).durationMinutes)
+
+        if (!Number.isFinite(durationValue) || durationValue <= 0) {
+          return NextResponse.json(
+            { error: 'durationMinutes must be a positive number' },
+            { status: 400 }
+          )
+        }
+
+        durationMinutesUpdate = Math.round(durationValue)
+      }
     }
 
-    // ===== Extend time (overrun) =====
-    const extendMins =
-      Number.isFinite(Number(body.extendMins)) && Number(body.extendMins) > 0
-        ? Math.round(Number(body.extendMins))
-        : 0
+    let notesUpdate: string | null | undefined = undefined
 
-    let overrunUpdate: number | undefined = undefined
-
-    if (extendMins > 0) {
-      overrunUpdate = (existing.overrunMins ?? 0) + extendMins
+    if ('notes' in (body as any)) {
+      notesUpdate =
+        typeof (body as any).notes === 'string' ? (body as any).notes : null
     }
 
-    // ===== Address update => postcode =====
-    let postcodeUpdate: string | undefined = undefined
-
-    if (typeof body.address === 'string') {
-      postcodeUpdate = outwardPostcode(body.address)
-    }
-
-    // ===== Duration update =====
-    let durationUpdate: number | undefined = undefined
-
-    if (
-      Number.isFinite(Number(body.durationMins)) &&
-      Number(body.durationMins) > 0
-    ) {
-      durationUpdate = Math.round(Number(body.durationMins))
-    }
-
-    // ===== Worker timing actions =====
-    let arrivedAtUpdate: Date | null | undefined = undefined
-    let finishedAtUpdate: Date | null | undefined = undefined
-
-    if (action === 'arrived') {
-      arrivedAtUpdate = existing.arrivedAt ?? new Date()
-      finishedAtUpdate = null
-    }
-
-    if (action === 'finished') {
-      finishedAtUpdate = new Date()
-    }
-
-    // If undoing from done back to todo, clear finishedAt so the job becomes live again.
-    if (body.toggleStatus === true && existing.status === 'done' && newStatus === 'todo') {
-      finishedAtUpdate = null
+    if (typeof (body as any).appendNote === 'string' && (body as any).appendNote.trim()) {
+      const currentNotes = existing.notes ? `${existing.notes}\n` : ''
+      notesUpdate = `${currentNotes}${(body as any).appendNote.trim()}`
     }
 
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: newStatus as any,
-        title: typeof body.title === 'string' ? body.title : undefined,
-        address: typeof body.address === 'string' ? body.address : undefined,
-        postcode: postcodeUpdate,
-        assignedTo:
-          typeof body.assignedTo === 'string'
-            ? body.assignedTo.toLowerCase()
-            : body.assignedTo === null
-              ? null
-              : undefined,
+        title: typeof (body as any).title === 'string' ? (body as any).title : undefined,
+        address:
+          typeof (body as any).address === 'string' ? (body as any).address : undefined,
+        notes: notesUpdate,
+        status: nextStatus,
         visitDate: visitDateUpdate,
-        fixed: fixedUpdate,
         startTime: startTimeUpdate,
-        notesLog: typeof newNotesLog === 'string' ? newNotesLog : undefined,
-        durationMins: durationUpdate,
-        overrunMins: overrunUpdate,
-        arrivedAt: arrivedAtUpdate,
-        finishedAt: finishedAtUpdate,
-
-        recurrenceActive:
-          typeof body.recurrenceActive === 'boolean'
-            ? body.recurrenceActive
-            : undefined,
-        recurrenceEveryWeeks:
-          Number.isFinite(Number(body.recurrenceEveryWeeks))
-            ? Number(body.recurrenceEveryWeeks)
-            : undefined,
-        recurrenceDurationMins:
-          Number.isFinite(Number(body.recurrenceDurationMins))
-            ? Number(body.recurrenceDurationMins)
-            : undefined,
-        recurrencePreferredDOW:
-          Number.isFinite(Number(body.recurrencePreferredDOW))
-            ? Number(body.recurrencePreferredDOW)
-            : undefined,
-        recurrencePreferredTime:
-          typeof body.recurrencePreferredTime === 'string'
-            ? body.recurrencePreferredTime
-            : undefined
+        durationMinutes: durationMinutesUpdate
       }
     })
-
-    if (
-      body.toggleStatus === true &&
-      updated.status === 'done' &&
-      updated.recurrenceActive &&
-      updated.recurrenceEveryWeeks
-    ) {
-      const base = updated.visitDate ? new Date(updated.visitDate) : new Date()
-      let next = addWeeks(base, updated.recurrenceEveryWeeks)
-
-      if (Number.isFinite(Number(updated.recurrencePreferredDOW))) {
-        next = adjustToDOWOnOrAfter(next, Number(updated.recurrencePreferredDOW))
-      }
-
-      const nextDuration =
-        updated.recurrenceDurationMins ?? updated.durationMins ?? 60
-
-      const prefTime = updated.recurrencePreferredTime
-        ? clean(updated.recurrencePreferredTime)
-        : ''
-
-      const nextFixed = !!prefTime
-
-      await prisma.job.create({
-        data: {
-          title: updated.title,
-          address: updated.address,
-          postcode: updated.postcode || outwardPostcode(updated.address),
-          notes: updated.notes ?? '',
-          notesLog: '',
-          status: nextFixed ? 'todo' : 'unscheduled',
-          visitDate: nextFixed ? next : null,
-          assignedTo: updated.assignedTo,
-          durationMins: nextDuration,
-          overrunMins: 0,
-          fixed: nextFixed,
-          startTime: nextFixed ? prefTime : null,
-
-          recurrenceActive: updated.recurrenceActive,
-          recurrenceEveryWeeks: updated.recurrenceEveryWeeks,
-          recurrenceDurationMins: updated.recurrenceDurationMins,
-          recurrencePreferredDOW: updated.recurrencePreferredDOW,
-          recurrencePreferredTime: updated.recurrencePreferredTime
-        }
-      })
-    }
-
-    const worker = (updated.assignedTo ?? '').toLowerCase()
-    const rebuildFrom = updated.visitDate ? new Date(updated.visitDate) : new Date()
-    const fromDate = rebuildFrom.toISOString().slice(0, 10)
-
-    const shouldRebuild =
-      !!worker &&
-      (
-        body.toggleStatus === true ||
-        action === 'arrived' ||
-        action === 'finished' ||
-        extendMins > 0 ||
-        typeof body.assignedTo === 'string' ||
-        typeof body.address === 'string' ||
-        'visitDate' in body ||
-        'startTime' in body ||
-        'fixed' in body ||
-        Number.isFinite(Number(body.durationMins))
-      )
-
-    if (shouldRebuild) {
-      await rebuild(worker, fromDate)
-    }
 
     return NextResponse.json(updated)
   } catch (error) {
