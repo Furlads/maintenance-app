@@ -6,6 +6,7 @@ export default function AddCustomerPage() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
+  const [postcode, setPostcode] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -23,7 +24,8 @@ export default function AddCustomerPage() {
         body: JSON.stringify({
           name,
           phone,
-          address
+          address,
+          postcode
         })
       })
 
@@ -34,6 +36,7 @@ export default function AddCustomerPage() {
       setName('')
       setPhone('')
       setAddress('')
+      setPostcode('')
       setMessage('Customer saved successfully.')
     } catch (error) {
       console.error(error)
@@ -83,6 +86,20 @@ export default function AddCustomerPage() {
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             rows={4}
+            style={{
+              width: '100%',
+              padding: 12,
+              border: '1px solid #ccc',
+              borderRadius: 8
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', marginBottom: 6 }}>Postcode</label>
+          <input
+            value={postcode}
+            onChange={(e) => setPostcode(e.target.value.toUpperCase())}
             style={{
               width: '100%',
               padding: 12,
