@@ -236,7 +236,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
       notesUpdate = `${currentNotes}${(body as any).appendNote.trim()}`
     }
 
+    let overrunUpdate: number | undefined = undefined
+
     if (extendMinsUpdate !== undefined) {
+      const currentOverrun = existing.overrunMins ?? 0
+      overrunUpdate = currentOverrun + extendMinsUpdate
+
       const overrunLine = `Running over by ${extendMinsUpdate} minutes`
 
       const currentNotes =
@@ -263,7 +268,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
         startTime: startTimeUpdate,
         durationMinutes: durationMinutesUpdate,
         arrivedAt: arrivedAtUpdate,
-        finishedAt: finishedAtUpdate
+        finishedAt: finishedAtUpdate,
+        overrunMins: overrunUpdate
       }
     })
 
