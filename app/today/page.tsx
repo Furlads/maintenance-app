@@ -300,6 +300,51 @@ export default function TodayPage() {
     }
   }
 
+  async function handleExtendJob(jobId: number, minutes: number) {
+    try {
+      setBusyJobId(jobId)
+      setError('')
+
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          extendMins: minutes
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to extend job')
+      }
+
+      await loadJobs()
+    } catch (err) {
+      console.error(err)
+      setError('Failed to extend job.')
+    } finally {
+      setBusyJobId(null)
+    }
+  }
+
+  async function handleOtherExtendJob(jobId: number) {
+    const value = window.prompt('How many extra minutes?', '90')
+
+    if (value === null) return
+
+    const minutes = Number(value)
+
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      window.alert('Please enter a valid number of minutes.')
+      return
+    }
+
+    await handleExtendJob(jobId, Math.round(minutes))
+  }
+
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>Today</h1>
@@ -625,6 +670,91 @@ export default function TodayPage() {
                       }}
                     >
                       {busyJobId === job.id ? 'Updating...' : 'Undo Start'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleExtendJob(job.id, 15)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        color: 'inherit',
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                        opacity: busyJobId === job.id ? 0.6 : 1
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : '+15'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleExtendJob(job.id, 30)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        color: 'inherit',
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                        opacity: busyJobId === job.id ? 0.6 : 1
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : '+30'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleExtendJob(job.id, 45)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        color: 'inherit',
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                        opacity: busyJobId === job.id ? 0.6 : 1
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : '+45'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleExtendJob(job.id, 60)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        color: 'inherit',
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                        opacity: busyJobId === job.id ? 0.6 : 1
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : '+60'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOtherExtendJob(job.id)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        color: 'inherit',
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                        opacity: busyJobId === job.id ? 0.6 : 1
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : 'Other'}
                     </button>
                   </>
                 )}
