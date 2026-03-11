@@ -2,16 +2,23 @@ import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
 export async function GET() {
-  try {
-    const jobs = await prisma.job.findMany()
+  const jobs = await prisma.job.findMany({
+    orderBy: { createdAt: 'desc' }
+  })
 
-    return NextResponse.json(jobs)
-  } catch (error) {
-    console.error('GET /api/jobs error:', error)
+  return NextResponse.json(jobs)
+}
 
-    return NextResponse.json(
-      { error: 'Failed to load jobs' },
-      { status: 500 }
-    )
-  }
+export async function POST() {
+  const job = await prisma.job.create({
+    data: {
+      title: 'Test Garden Job',
+      address: 'Market Drayton',
+      notes: 'First test job',
+      status: 'Scheduled',
+      customerId: 1
+    }
+  })
+
+  return NextResponse.json(job)
 }
