@@ -179,7 +179,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
 
     if ('durationMinutes' in (body as any)) {
-      if ((body as any).durationMinutes === null || (body as any).durationMinutes === '') {
+      if (
+        (body as any).durationMinutes === null ||
+        (body as any).durationMinutes === ''
+      ) {
         durationMinutesUpdate = null
       } else {
         const durationValue = Number((body as any).durationMinutes)
@@ -202,9 +205,71 @@ export async function PATCH(req: Request, ctx: Ctx) {
         typeof (body as any).notes === 'string' ? (body as any).notes : null
     }
 
+    let extendMinsUpdate: number | undefined = undefined
+
+    if ('extendMins' in (body as any)) {
+      const extendValue = Number((body as any).extendMins)
+
+      if (!Number.isFinite(extendValue) || extendValue <= 0) {
+        return NextResponse.json(
+          { error: 'extendMins must be a positive number' },
+          { status: 400 }
+        )
+      }
+
+      extendMinsUpdate = Math.round(extendValue)
+    }
+
     if (typeof (body as any).appendNote === 'string' && (body as any).appendNote.trim()) {
-      const currentNotes = existing.notes ? `${existing.notes}\n` : ''
+      const currentNotes =
+        notesUpdate !== undefined
+          ? notesUpdate
+            ? `${notesUpdate}\n`
+            : ''
+          : existing.notes
+            ? `${existing.notes}\n`
+            : ''
+
       notesUpdate = `${currentNotes}${(body as any).appendNote.trim()}`
+    }
+
+    if (extendMinsUpdate !== undefined) {
+      const overrunLine = `Running over by ${extendMinsUpdate} minutes`
+
+      const currentNotes =
+        notesUpdate !== undefined
+          ? notesUpdate
+            ? `${notesUpdate}\n`
+            : ''
+          : existing.notes
+            ? `${existing.notes}\n`
+            : ''
+
+      notesUpdate = `${currentNotes}${overrunLine}`
+
+      const currentOverrun =
+        typeof (existing as any).overrunMins === 'number'
+          ? (existing as any).overrunMins
+          : 0
+
+      const updated = await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          title: typeof (body as any).title === 'string' ? (body as any).title : undefined,
+          address:
+            typeof (body as any).address === 'string' ? (body as any).address : undefined,
+          notes: notesUpdate,
+          status: statusUpdate,
+          visitDate: visitDateUpdate,
+          startTime: startTimeUpdate,
+          durationMinutes: durationMinutesUpdate,
+          arrivedAt: arrivedAtUpdate,
+          finishedAt: finishedAtUpdate,
+          overrunMins: currentOverrun + extendMinsUpdate
+        }
+      })
+
+      return NextResponse.json(updated)
     }
 
     const updated = await prisma.job.update({
