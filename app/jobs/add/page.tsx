@@ -35,6 +35,14 @@ export default function AddJobPage() {
   const [preferredDay, setPreferredDay] = useState('')
   const [preferredTimeBand, setPreferredTimeBand] = useState('Anytime')
 
+  const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [newCustomerName, setNewCustomerName] = useState('')
+  const [newCustomerPhone, setNewCustomerPhone] = useState('')
+  const [newCustomerAddress, setNewCustomerAddress] = useState('')
+  const [newCustomerPostcode, setNewCustomerPostcode] = useState('')
+  const [customerLoading, setCustomerLoading] = useState(false)
+  const [customerMessage, setCustomerMessage] = useState('')
+
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -93,6 +101,56 @@ export default function AddJobPage() {
     )
   }
 
+  async function handleAddCustomer(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setCustomerLoading(true)
+    setCustomerMessage('')
+
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: newCustomerName,
+          phone: newCustomerPhone,
+          address: newCustomerAddress,
+          postcode: newCustomerPostcode
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to save customer')
+      }
+
+      if (!data || typeof data.id !== 'number') {
+        throw new Error('Customer was created but no customer was returned')
+      }
+
+      setCustomers((prev) => [data, ...prev])
+      setCustomerId(String(data.id))
+      setUseDifferentAddress(false)
+      setJobAddress('')
+
+      setNewCustomerName('')
+      setNewCustomerPhone('')
+      setNewCustomerAddress('')
+      setNewCustomerPostcode('')
+      setShowAddCustomer(false)
+      setCustomerMessage('Customer added and selected.')
+    } catch (error) {
+      console.error(error)
+      setCustomerMessage(
+        error instanceof Error ? error.message : 'Failed to save customer.'
+      )
+    } finally {
+      setCustomerLoading(false)
+    }
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
@@ -126,12 +184,14 @@ export default function AddJobPage() {
             ? Number(maintenanceFrequency)
             : null,
           timePreferenceMode: isRegularMaintenance ? timePreferenceMode : null,
-          preferredDay: isRegularMaintenance && useSpecificVisitPreference
-            ? preferredDay
-            : null,
-          preferredTimeBand: isRegularMaintenance && useSpecificVisitPreference
-            ? preferredTimeBand
-            : null
+          preferredDay:
+            isRegularMaintenance && useSpecificVisitPreference
+              ? preferredDay
+              : null,
+          preferredTimeBand:
+            isRegularMaintenance && useSpecificVisitPreference
+              ? preferredTimeBand
+              : null
         })
       })
 
@@ -193,6 +253,115 @@ export default function AddJobPage() {
             ))}
           </select>
         </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddCustomer((prev) => !prev)
+              setCustomerMessage('')
+            }}
+            style={{
+              padding: '12px 16px',
+              borderRadius: 8,
+              border: '1px solid #ccc',
+              background: '#fff',
+              cursor: 'pointer'
+            }}
+          >
+            {showAddCustomer ? 'Close New Customer' : 'Add New Customer'}
+          </button>
+        </div>
+
+        {showAddCustomer && (
+          <div
+            style={{
+              marginBottom: 20,
+              padding: 16,
+              border: '1px solid #ddd',
+              borderRadius: 10
+            }}
+          >
+            <h2 style={{ fontSize: 20, marginTop: 0, marginBottom: 12 }}>
+              Add New Customer
+            </h2>
+
+            <form onSubmit={handleAddCustomer}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', marginBottom: 6 }}>Name</label>
+                <input
+                  value={newCustomerName}
+                  onChange={(e) => setNewCustomerName(e.target.value)}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: 12,
+                    border: '1px solid #ccc',
+                    borderRadius: 8
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', marginBottom: 6 }}>Phone</label>
+                <input
+                  value={newCustomerPhone}
+                  onChange={(e) => setNewCustomerPhone(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: 12,
+                    border: '1px solid #ccc',
+                    borderRadius: 8
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', marginBottom: 6 }}>Address</label>
+                <textarea
+                  value={newCustomerAddress}
+                  onChange={(e) => setNewCustomerAddress(e.target.value)}
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: 12,
+                    border: '1px solid #ccc',
+                    borderRadius: 8
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', marginBottom: 6 }}>Postcode</label>
+                <input
+                  value={newCustomerPostcode}
+                  onChange={(e) => setNewCustomerPostcode(e.target.value.toUpperCase())}
+                  style={{
+                    width: '100%',
+                    padding: 12,
+                    border: '1px solid #ccc',
+                    borderRadius: 8
+                  }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={customerLoading}
+                style={{
+                  padding: '12px 16px',
+                  border: 'none',
+                  borderRadius: 8,
+                  cursor: 'pointer'
+                }}
+              >
+                {customerLoading ? 'Saving Customer...' : 'Save Customer'}
+              </button>
+
+              {customerMessage && <p style={{ marginTop: 12 }}>{customerMessage}</p>}
+            </form>
+          </div>
+        )}
 
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: 'block', marginBottom: 6 }}>Job Title</label>
