@@ -272,7 +272,7 @@ export default function TodayPage() {
   }, [jobs, workerId])
 
   const visibleJobs = useMemo<TimedJob[]>(() => {
-    const now = new Date()
+    const currentNow = new Date()
     let runningCursor: Date | null = null
 
     const timedJobsBase = workerJobs.map((job) => {
@@ -293,12 +293,12 @@ export default function TodayPage() {
       } else if (isStarted) {
         etaStart = job.arrivedAt
           ? new Date(job.arrivedAt)
-          : getLaterDate(runningCursor, earliestWorkingStart) || now
+          : getLaterDate(runningCursor, earliestWorkingStart) || currentNow
 
         etaFinish = addMinutes(etaStart, plannedMinutes)
 
-        if (etaFinish.getTime() < now.getTime()) {
-          etaFinish = now
+        if (etaFinish.getTime() < currentNow.getTime()) {
+          etaFinish = currentNow
         }
 
         runningCursor = etaFinish
