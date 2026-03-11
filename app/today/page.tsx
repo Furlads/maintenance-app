@@ -86,7 +86,8 @@ export default function TodayPage() {
         (assignment) => assignment.workerId === workerId
       )
 
-      const isCompleted = job.status.toLowerCase() === 'completed'
+      const status = String(job.status || '').toLowerCase()
+      const isCompleted = status === 'completed' || status === 'done'
 
       return assignedToWorker && !isCompleted
     })
