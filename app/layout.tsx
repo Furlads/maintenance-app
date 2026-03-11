@@ -1,18 +1,23 @@
-// app/layout.tsx
-import "./globals.css";
-import type { Metadata } from "next";
+import BottomNav from './components/BottomNav'
 
-export const metadata: Metadata = {
-  title: "Maintenance Admin",
-  description: "Furlads & Three Counties Property Care admin",
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="en">
-      <body className="bg-gray-50 text-gray-900">
-        <main>{children}</main>
+      <body
+        style={{
+          margin: 0,
+          paddingBottom: 70,
+          fontFamily: 'sans-serif'
+        }}
+      >
+        {children}
+
+        <BottomNav />
       </body>
     </html>
-  );
+  )
 }
