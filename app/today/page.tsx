@@ -34,8 +34,20 @@ type Job = {
   assignments: JobAssignment[]
   visitDate?: string | null
   startTime?: string | null
+  durationMinutes?: number | null
+  overrunMins?: number | null
   arrivedAt?: string | null
   finishedAt?: string | null
+}
+
+type TimedJob = Job & {
+  isDone: boolean
+  isStarted: boolean
+  isNext: boolean
+  isWaiting: boolean
+  etaStart: Date | null
+  etaFinish: Date | null
+  plannedMinutes: number
 }
 
 function formatTime(value?: string | null) {
@@ -48,6 +60,19 @@ function formatTime(value?: string | null) {
   }
 
   return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatClockTime(value?: Date | null) {
+  if (!value) return '—'
+
+  if (Number.isNaN(value.getTime())) {
+    return '—'
+  }
+
+  return value.toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit'
   })
@@ -94,6 +119,56 @@ function jobSortValue(job: Job) {
   }
 
   return datePart + hours * 60 * 60 * 1000 + minutes * 60 * 1000
+}
+
+function combineVisitDateAndTime(
+  visitDate?: string | null,
+  startTime?: string | null
+) {
+  if (!visitDate) return null
+
+  const base = new Date(visitDate)
+
+  if (Number.isNaN(base.getTime())) {
+    return null
+  }
+
+  if (!startTime) {
+    return base
+  }
+
+  const [hours, minutes] = startTime.split(':').map(Number)
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return base
+  }
+
+  const combined = new Date(base)
+  combined.setHours(hours, minutes, 0, 0)
+
+  return combined
+}
+
+function addMinutes(date: Date, minutes: number) {
+  return new Date(date.getTime() + minutes * 60000)
+}
+
+function getLaterDate(a: Date | null, b: Date | null) {
+  if (!a) return b
+  if (!b) return a
+  return a.getTime() >= b.getTime() ? a : b
+}
+
+function getPlannedMinutes(job: Job) {
+  const base = typeof job.durationMinutes === 'number' && job.durationMinutes > 0
+    ? job.durationMinutes
+    : 60
+
+  const overrun = typeof job.overrunMins === 'number' && job.overrunMins > 0
+    ? job.overrunMins
+    : 0
+
+  return base + overrun
 }
 
 export default function TodayPage() {
@@ -150,29 +225,67 @@ export default function TodayPage() {
       .sort((a, b) => jobSortValue(a) - jobSortValue(b))
   }, [jobs, workerId])
 
-  const visibleJobs = useMemo(() => {
-    const unfinished = workerJobs.filter((job) => {
-      const status = String(job.status || '').toLowerCase()
-      return status !== 'done' && status !== 'completed'
-    })
+  const visibleJobs = useMemo<TimedJob[]>(() => {
+    const now = new Date()
+    let runningCursor: Date | null = null
 
-    const activeStartedJob = unfinished.find((job) => !!job.arrivedAt && !job.finishedAt)
-    const nextWaitingJob =
-      !activeStartedJob
-        ? unfinished.find((job) => !job.arrivedAt && !job.finishedAt) || null
-        : null
-
-    return workerJobs.map((job) => {
+    const timedJobsBase = workerJobs.map((job) => {
       const status = String(job.status || '').toLowerCase()
       const isDone = status === 'done' || status === 'completed' || !!job.finishedAt
       const isStarted = !!job.arrivedAt && !job.finishedAt && !isDone
-      const isNext = !isDone && !isStarted && nextWaitingJob?.id === job.id
-      const isWaiting = !isDone && !isStarted && !isNext
+      const plannedMinutes = getPlannedMinutes(job)
+      const scheduledStart = combineVisitDateAndTime(job.visitDate, job.startTime)
+
+      let etaStart: Date | null = null
+      let etaFinish: Date | null = null
+
+      if (isDone) {
+        etaStart = job.arrivedAt ? new Date(job.arrivedAt) : scheduledStart
+        etaFinish = job.finishedAt ? new Date(job.finishedAt) : null
+        runningCursor = etaFinish || runningCursor
+      } else if (isStarted) {
+        etaStart = job.arrivedAt
+          ? new Date(job.arrivedAt)
+          : getLaterDate(runningCursor, scheduledStart) || now
+
+        etaFinish = addMinutes(etaStart, plannedMinutes)
+
+        if (etaFinish.getTime() < now.getTime()) {
+          etaFinish = now
+        }
+
+        runningCursor = etaFinish
+      } else {
+        etaStart = getLaterDate(runningCursor, scheduledStart)
+        etaFinish = etaStart ? addMinutes(etaStart, plannedMinutes) : null
+        runningCursor = etaFinish || runningCursor
+      }
 
       return {
         ...job,
         isDone,
         isStarted,
+        isNext: false,
+        isWaiting: false,
+        etaStart,
+        etaFinish,
+        plannedMinutes
+      }
+    })
+
+    const unfinished = timedJobsBase.filter((job) => !job.isDone)
+    const activeStartedJob = unfinished.find((job) => job.isStarted)
+    const nextWaitingJob =
+      !activeStartedJob
+        ? unfinished.find((job) => !job.isStarted) || null
+        : null
+
+    return timedJobsBase.map((job) => {
+      const isNext = !job.isDone && !job.isStarted && nextWaitingJob?.id === job.id
+      const isWaiting = !job.isDone && !job.isStarted && !isNext
+
+      return {
+        ...job,
         isNext,
         isWaiting
       }
@@ -511,6 +624,10 @@ export default function TodayPage() {
                 >
                   <h2 style={{ margin: 0, fontSize: 16 }}>{job.title}</h2>
                 </a>
+
+                <p style={{ margin: '6px 0 0 0', fontSize: 13 }}>
+                  <strong>ETA start:</strong> {formatClockTime(job.etaStart)}
+                </p>
               </div>
             )
           }
@@ -554,6 +671,15 @@ export default function TodayPage() {
 
               <p style={{ margin: '4px 0' }}>
                 <strong>Address:</strong> {job.address}
+              </p>
+
+              <p style={{ margin: '4px 0' }}>
+                <strong>{job.isStarted ? 'ETA finish:' : 'ETA start:'}</strong>{' '}
+                {formatClockTime(job.isStarted ? job.etaFinish : job.etaStart)}
+              </p>
+
+              <p style={{ margin: '4px 0' }}>
+                <strong>Planned time:</strong> {job.plannedMinutes} mins
               </p>
 
               {job.notes && (
