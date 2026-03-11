@@ -1,72 +1,103 @@
+export const runtime = 'nodejs'
+
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
-export async function POST(request: Request): Promise<NextResponse> {
+type UploadPayload = {
+  jobId: number
+  workerId: number | null
+  label: string | null
+}
+
+function safeParsePayload(value: string | null | undefined): UploadPayload | null {
+  if (!value) return null
+
+  try {
+    const parsed = JSON.parse(value)
+
+    const jobId =
+      typeof parsed?.jobId === 'number'
+        ? parsed.jobId
+        : Number(parsed?.jobId)
+
+    const workerId =
+      parsed?.workerId === null || parsed?.workerId === undefined || parsed?.workerId === ''
+        ? null
+        : typeof parsed.workerId === 'number'
+          ? parsed.workerId
+          : Number(parsed.workerId)
+
+    const label =
+      typeof parsed?.label === 'string' && parsed.label.trim()
+        ? parsed.label.trim()
+        : null
+
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      return null
+    }
+
+    if (workerId !== null && (!Number.isInteger(workerId) || workerId <= 0)) {
+      return null
+    }
+
+    return {
+      jobId,
+      workerId,
+      label
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function POST(request: Request) {
   try {
     const body = (await request.json()) as HandleUploadBody
 
-    const response = await handleUpload({
+    const jsonResponse = await handleUpload({
       body,
       request,
       onBeforeGenerateToken: async (_pathname, clientPayload) => {
-        const payload = clientPayload ? JSON.parse(clientPayload) : {}
+        const payload = safeParsePayload(clientPayload)
 
-        const jobId = Number(payload.jobId)
-        const workerId = payload.workerId ? Number(payload.workerId) : null
-        const label = payload.label ? String(payload.label) : null
-
-        if (!jobId) {
-          throw new Error('jobId is required')
-        }
-
-        const job = await prisma.job.findUnique({
-          where: { id: jobId },
-          select: { id: true }
-        })
-
-        if (!job) {
-          throw new Error('Job not found')
+        if (!payload) {
+          throw new Error('Invalid upload payload')
         }
 
         return {
           allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp'],
           addRandomSuffix: true,
-          tokenPayload: JSON.stringify({
-            jobId,
-            workerId,
-            label
-          })
+          tokenPayload: JSON.stringify(payload)
         }
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
-        const payload =
-          typeof tokenPayload === 'string'
-            ? JSON.parse(tokenPayload)
-            : tokenPayload
+        const payload = safeParsePayload(tokenPayload)
 
-        const jobId = Number(payload.jobId)
-        const workerId = payload.workerId ? Number(payload.workerId) : null
-        const label = payload.label ? String(payload.label) : null
+        if (!payload) {
+          throw new Error('Invalid token payload')
+        }
 
         await prisma.jobPhoto.create({
           data: {
-            jobId,
-            uploadedByWorkerId: workerId,
-            label,
+            jobId: payload.jobId,
+            uploadedByWorkerId: payload.workerId,
+            label: payload.label,
             imageUrl: blob.url
           }
         })
       }
     })
 
-    return NextResponse.json(response)
+    return NextResponse.json(jsonResponse)
   } catch (error) {
-    console.error('POST /api/blob/upload error:', error)
+    console.error('POST /api/blob/upload failed:', error)
 
     return NextResponse.json(
-      { error: 'Failed to upload photo' },
-      { status: 500 }
+      {
+        error: error instanceof Error ? error.message : 'Upload failed'
+      },
+      { status: 400 }
     )
   }
 }
