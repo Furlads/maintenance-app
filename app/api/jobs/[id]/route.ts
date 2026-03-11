@@ -32,6 +32,19 @@ function parseOptionalDateTime(value: unknown): Date | null | undefined {
   return date
 }
 
+function hhmmToMinutes(value: string) {
+  const [hours, minutes] = value.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+function minutesToHHMM(totalMinutes: number) {
+  const safeMinutes = Math.max(0, totalMinutes)
+  const hours = Math.floor(safeMinutes / 60)
+  const mins = safeMinutes % 60
+
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+}
+
 export async function GET(_req: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
@@ -72,7 +85,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const body = await req.json().catch(() => ({}))
 
     const existing = await prisma.job.findUnique({
-      where: { id: jobId }
+      where: { id: jobId },
+      include: {
+        assignments: true
+      }
     })
 
     if (!existing) {
@@ -259,9 +275,14 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
-        title: typeof (body as any).title === 'string' ? (body as any).title : undefined,
+        title:
+          typeof (body as any).title === 'string'
+            ? (body as any).title
+            : undefined,
         address:
-          typeof (body as any).address === 'string' ? (body as any).address : undefined,
+          typeof (body as any).address === 'string'
+            ? (body as any).address
+            : undefined,
         notes: notesUpdate,
         status: statusUpdate,
         visitDate: visitDateUpdate,
@@ -272,6 +293,69 @@ export async function PATCH(req: Request, ctx: Ctx) {
         overrunMins: overrunUpdate
       }
     })
+
+    if (
+      extendMinsUpdate !== undefined &&
+      existing.visitDate &&
+      existing.startTime &&
+      existing.assignments.length > 0
+    ) {
+      const sharedWorkerIds = existing.assignments.map((assignment) => assignment.workerId)
+      const currentJobStartMinutes = hhmmToMinutes(existing.startTime)
+      const visitDateStart = new Date(existing.visitDate)
+      const visitDateEnd = new Date(existing.visitDate)
+      visitDateEnd.setDate(visitDateEnd.getDate() + 1)
+
+      const laterJobs = await prisma.job.findMany({
+        where: {
+          id: { not: jobId },
+          visitDate: {
+            gte: visitDateStart,
+            lt: visitDateEnd
+          },
+          startTime: {
+            not: null
+          },
+          arrivedAt: null,
+          finishedAt: null,
+          assignments: {
+            some: {
+              workerId: {
+                in: sharedWorkerIds
+              }
+            }
+          }
+        },
+        orderBy: [
+          { visitDate: 'asc' },
+          { startTime: 'asc' }
+        ]
+      })
+
+      const jobsToPush = laterJobs.filter((job) => {
+        if (!job.startTime) return false
+        return hhmmToMinutes(job.startTime) > currentJobStartMinutes
+      })
+
+      if (jobsToPush.length > 0) {
+        await prisma.$transaction(
+          jobsToPush.map((job) => {
+            const oldStartMinutes = hhmmToMinutes(job.startTime as string)
+            const newStartTime = minutesToHHMM(oldStartMinutes + extendMinsUpdate)
+            const currentNotes = job.notes ? `${job.notes}\n` : ''
+            const pushNote = `Start time pushed back by ${extendMinsUpdate} minutes due to earlier overrun`
+
+            return prisma.job.update({
+              where: { id: job.id },
+              data: {
+                startTime: newStartTime,
+                notes: `${currentNotes}${pushNote}`
+              }
+            })
+          })
+        )
+      }
+    }
 
     return NextResponse.json(updated)
   } catch (error) {
