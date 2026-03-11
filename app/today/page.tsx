@@ -160,15 +160,35 @@ function getLaterDate(a: Date | null, b: Date | null) {
 }
 
 function getPlannedMinutes(job: Job) {
-  const base = typeof job.durationMinutes === 'number' && job.durationMinutes > 0
-    ? job.durationMinutes
-    : 60
+  const base =
+    typeof job.durationMinutes === 'number' && job.durationMinutes > 0
+      ? job.durationMinutes
+      : 60
 
-  const overrun = typeof job.overrunMins === 'number' && job.overrunMins > 0
-    ? job.overrunMins
-    : 0
+  const overrun =
+    typeof job.overrunMins === 'number' && job.overrunMins > 0
+      ? job.overrunMins
+      : 0
 
   return base + overrun
+}
+
+function getPrepFinishForJob(job: Job) {
+  const baseDate = job.visitDate ? new Date(job.visitDate) : new Date()
+
+  if (Number.isNaN(baseDate.getTime())) {
+    return null
+  }
+
+  const prepFinish = new Date(baseDate)
+  prepFinish.setHours(9, 0, 0, 0)
+
+  return prepFinish
+}
+
+function getEarliestWorkingStart(job: Job, scheduledStart: Date | null) {
+  const prepFinish = getPrepFinishForJob(job)
+  return getLaterDate(prepFinish, scheduledStart)
 }
 
 export default function TodayPage() {
@@ -235,6 +255,7 @@ export default function TodayPage() {
       const isStarted = !!job.arrivedAt && !job.finishedAt && !isDone
       const plannedMinutes = getPlannedMinutes(job)
       const scheduledStart = combineVisitDateAndTime(job.visitDate, job.startTime)
+      const earliestWorkingStart = getEarliestWorkingStart(job, scheduledStart)
 
       let etaStart: Date | null = null
       let etaFinish: Date | null = null
@@ -246,7 +267,7 @@ export default function TodayPage() {
       } else if (isStarted) {
         etaStart = job.arrivedAt
           ? new Date(job.arrivedAt)
-          : getLaterDate(runningCursor, scheduledStart) || now
+          : getLaterDate(runningCursor, earliestWorkingStart) || now
 
         etaFinish = addMinutes(etaStart, plannedMinutes)
 
@@ -256,7 +277,7 @@ export default function TodayPage() {
 
         runningCursor = etaFinish
       } else {
-        etaStart = getLaterDate(runningCursor, scheduledStart)
+        etaStart = getLaterDate(runningCursor, earliestWorkingStart)
         etaFinish = etaStart ? addMinutes(etaStart, plannedMinutes) : null
         runningCursor = etaFinish || runningCursor
       }
