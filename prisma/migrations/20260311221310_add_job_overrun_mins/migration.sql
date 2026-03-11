@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Job" ADD COLUMN     "overrunMins" INTEGER NOT NULL DEFAULT 0;
