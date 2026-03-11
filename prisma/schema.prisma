@@ -16,20 +16,20 @@ model Company {
 }
 
 model Worker {
-  id          Int             @id @default(autoincrement())
-  firstName   String
-  lastName    String
-  jobTitle    String
-  accessLevel String
-  phone       String?
-  email       String?
-  active      Boolean         @default(true)
-  createdAt   DateTime        @default(now())
+  id           Int             @id @default(autoincrement())
+  firstName    String
+  lastName     String
+  jobTitle     String
+  accessLevel  String
+  phone        String?
+  email        String?
+  active       Boolean         @default(true)
+  createdAt    DateTime        @default(now())
 
-  companies   WorkerCompany[]
-  notes       JobNote[]
-
+  companies    WorkerCompany[]
+  notes        JobNote[]
   assignedJobs JobAssignment[]
+  uploadedPhotos JobPhoto[]
 }
 
 model WorkerCompany {
@@ -71,6 +71,7 @@ model Job {
   customer        Customer        @relation(fields: [customerId], references: [id])
   jobNotes        JobNote[]
   assignments     JobAssignment[]
+  photos          JobPhoto[]
 }
 
 model JobAssignment {
@@ -94,4 +95,16 @@ model JobNote {
 
   job               Job      @relation(fields: [jobId], references: [id])
   worker            Worker?  @relation(fields: [createdByWorkerId], references: [id])
+}
+
+model JobPhoto {
+  id                Int      @id @default(autoincrement())
+  jobId             Int
+  uploadedByWorkerId Int?
+  label             String?
+  imageUrl          String
+  createdAt         DateTime @default(now())
+
+  job               Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  uploadedByWorker  Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
 }
