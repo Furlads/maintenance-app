@@ -40,6 +40,28 @@ export default function TodayPage() {
   const [workerName, setWorkerName] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [busyJobId, setBusyJobId] = useState<number | null>(null)
+
+  async function loadJobs() {
+    try {
+      setError('')
+
+      const res = await fetch('/api/jobs', { cache: 'no-store' })
+
+      if (!res.ok) {
+        throw new Error('Failed to load jobs')
+      }
+
+      const data = await res.json()
+      setJobs(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error(err)
+      setJobs([])
+      setError('Failed to load jobs.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     const savedWorkerId = localStorage.getItem('workerId')
@@ -51,27 +73,6 @@ export default function TodayPage() {
 
     if (savedWorkerName) {
       setWorkerName(savedWorkerName)
-    }
-
-    async function loadJobs() {
-      try {
-        setError('')
-
-        const res = await fetch('/api/jobs')
-
-        if (!res.ok) {
-          throw new Error('Failed to load jobs')
-        }
-
-        const data = await res.json()
-        setJobs(Array.isArray(data) ? data : [])
-      } catch (err) {
-        console.error(err)
-        setJobs([])
-        setError('Failed to load jobs.')
-      } finally {
-        setLoading(false)
-      }
     }
 
     loadJobs()
@@ -90,6 +91,48 @@ export default function TodayPage() {
       return assignedToWorker && !isCompleted
     })
   }, [jobs, workerId])
+
+  async function handleToggleDone(jobId: number) {
+    try {
+      setBusyJobId(jobId)
+      setError('')
+
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          toggleStatus: true
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to update job status')
+      }
+
+      setJobs((currentJobs) =>
+        currentJobs.map((job) => {
+          if (job.id !== jobId) return job
+
+          const currentStatus = String(job.status || '').toLowerCase()
+          const nextStatus = currentStatus === 'done' ? 'todo' : 'done'
+
+          return {
+            ...job,
+            status: nextStatus
+          }
+        })
+      )
+    } catch (err) {
+      console.error(err)
+      setError('Failed to update job status.')
+    } finally {
+      setBusyJobId(null)
+    }
+  }
 
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
@@ -237,6 +280,23 @@ export default function TodayPage() {
                     Navigate
                   </a>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => handleToggleDone(job.id)}
+                  disabled={busyJobId === job.id}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: 8,
+                    border: '1px solid #ccc',
+                    background: '#fff',
+                    color: 'inherit',
+                    cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                    opacity: busyJobId === job.id ? 0.6 : 1
+                  }}
+                >
+                  {busyJobId === job.id ? 'Updating...' : 'Mark Done'}
+                </button>
               </div>
             </div>
           )
