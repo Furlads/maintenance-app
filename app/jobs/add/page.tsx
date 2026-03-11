@@ -27,6 +27,14 @@ export default function AddJobPage() {
   const [assignedTo, setAssignedTo] = useState<number[]>([])
   const [useDifferentAddress, setUseDifferentAddress] = useState(false)
   const [jobAddress, setJobAddress] = useState('')
+  const [durationMinutes, setDurationMinutes] = useState('60')
+
+  const [visitPattern, setVisitPattern] = useState('one-off')
+  const [maintenanceFrequency, setMaintenanceFrequency] = useState('2')
+  const [timePreferenceMode, setTimePreferenceMode] = useState('best-fit')
+  const [preferredDay, setPreferredDay] = useState('')
+  const [preferredTimeBand, setPreferredTimeBand] = useState('Anytime')
+
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -73,6 +81,9 @@ export default function AddJobPage() {
   }, [selectedCustomer])
 
   const finalAddress = useDifferentAddress ? jobAddress : defaultCustomerAddress
+  const isRegularMaintenance =
+    jobType === 'Maintenance' && visitPattern === 'regular-maintenance'
+  const useSpecificVisitPreference = timePreferenceMode === 'specific'
 
   function toggleWorker(workerId: number) {
     setAssignedTo((prev) =>
@@ -88,6 +99,12 @@ export default function AddJobPage() {
     setMessage('')
 
     try {
+      const parsedDuration = Number(durationMinutes)
+
+      if (!Number.isFinite(parsedDuration) || parsedDuration <= 0) {
+        throw new Error('Expected time must be greater than 0')
+      }
+
       const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: {
@@ -100,7 +117,21 @@ export default function AddJobPage() {
           notes,
           status,
           jobType,
-          assignedTo
+          assignedTo,
+          durationMinutes: parsedDuration,
+
+          visitPattern,
+          isRegularMaintenance,
+          maintenanceFrequencyWeeks: isRegularMaintenance
+            ? Number(maintenanceFrequency)
+            : null,
+          timePreferenceMode: isRegularMaintenance ? timePreferenceMode : null,
+          preferredDay: isRegularMaintenance && useSpecificVisitPreference
+            ? preferredDay
+            : null,
+          preferredTimeBand: isRegularMaintenance && useSpecificVisitPreference
+            ? preferredTimeBand
+            : null
         })
       })
 
@@ -115,10 +146,18 @@ export default function AddJobPage() {
       setUseDifferentAddress(false)
       setJobAddress('')
       setAssignedTo([])
+      setDurationMinutes('60')
+      setVisitPattern('one-off')
+      setMaintenanceFrequency('2')
+      setTimePreferenceMode('best-fit')
+      setPreferredDay('')
+      setPreferredTimeBand('Anytime')
       setMessage('Job saved successfully.')
     } catch (error) {
       console.error(error)
-      setMessage('Failed to save job.')
+      setMessage(
+        error instanceof Error ? error.message : 'Failed to save job.'
+      )
     } finally {
       setLoading(false)
     }
@@ -174,7 +213,14 @@ export default function AddJobPage() {
           <label style={{ display: 'block', marginBottom: 6 }}>Job Type</label>
           <select
             value={jobType}
-            onChange={(e) => setJobType(e.target.value)}
+            onChange={(e) => {
+              const nextType = e.target.value
+              setJobType(nextType)
+
+              if (nextType !== 'Maintenance') {
+                setVisitPattern('one-off')
+              }
+            }}
             style={{
               width: '100%',
               padding: 12,
@@ -188,6 +234,173 @@ export default function AddJobPage() {
             <option value="Other">Other</option>
           </select>
         </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', marginBottom: 6 }}>
+            Expected Time (minutes)
+          </label>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            {[30, 45, 60, 90, 120].map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                onClick={() => setDurationMinutes(String(minutes))}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: durationMinutes === String(minutes) ? '#eee' : '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                {minutes} mins
+              </button>
+            ))}
+          </div>
+
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={durationMinutes}
+            onChange={(e) => setDurationMinutes(e.target.value)}
+            required
+            style={{
+              width: '100%',
+              padding: 12,
+              border: '1px solid #ccc',
+              borderRadius: 8
+            }}
+          />
+        </div>
+
+        {jobType === 'Maintenance' && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: 16,
+              border: '1px solid #ddd',
+              borderRadius: 10
+            }}
+          >
+            <h2 style={{ fontSize: 20, marginTop: 0, marginBottom: 12 }}>
+              Visit Pattern
+            </h2>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6 }}>
+                Is this a one-off or regular maintenance job?
+              </label>
+              <select
+                value={visitPattern}
+                onChange={(e) => setVisitPattern(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: 12,
+                  border: '1px solid #ccc',
+                  borderRadius: 8
+                }}
+              >
+                <option value="one-off">One-off job</option>
+                <option value="regular-maintenance">Regular maintenance</option>
+              </select>
+            </div>
+
+            {isRegularMaintenance && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', marginBottom: 6 }}>
+                    How regular does it need to be?
+                  </label>
+                  <select
+                    value={maintenanceFrequency}
+                    onChange={(e) => setMaintenanceFrequency(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: 12,
+                      border: '1px solid #ccc',
+                      borderRadius: 8
+                    }}
+                  >
+                    <option value="1">Weekly</option>
+                    <option value="2">Fortnightly</option>
+                    <option value="4">Every 4 weeks</option>
+                    <option value="8">Every 8 weeks</option>
+                    <option value="12">Every 12 weeks</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', marginBottom: 6 }}>
+                    Visit preference
+                  </label>
+                  <select
+                    value={timePreferenceMode}
+                    onChange={(e) => setTimePreferenceMode(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: 12,
+                      border: '1px solid #ccc',
+                      borderRadius: 8
+                    }}
+                  >
+                    <option value="best-fit">Drop into the diary in the best place</option>
+                    <option value="specific">Customer wants a specific day / time</option>
+                  </select>
+                </div>
+
+                {useSpecificVisitPreference && (
+                  <>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ display: 'block', marginBottom: 6 }}>
+                        Preferred day
+                      </label>
+                      <select
+                        value={preferredDay}
+                        onChange={(e) => setPreferredDay(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: 12,
+                          border: '1px solid #ccc',
+                          borderRadius: 8
+                        }}
+                      >
+                        <option value="">Select preferred day</option>
+                        <option value="Monday">Monday</option>
+                        <option value="Tuesday">Tuesday</option>
+                        <option value="Wednesday">Wednesday</option>
+                        <option value="Thursday">Thursday</option>
+                        <option value="Friday">Friday</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: 8 }}>
+                      <label style={{ display: 'block', marginBottom: 6 }}>
+                        Preferred time of day
+                      </label>
+                      <select
+                        value={preferredTimeBand}
+                        onChange={(e) => setPreferredTimeBand(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: 12,
+                          border: '1px solid #ccc',
+                          borderRadius: 8
+                        }}
+                      >
+                        <option value="Morning">Morning</option>
+                        <option value="Midday">Midday</option>
+                        <option value="Afternoon">Afternoon</option>
+                        <option value="Anytime">Anytime</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {selectedCustomer && (
           <div style={{ marginBottom: 16 }}>
