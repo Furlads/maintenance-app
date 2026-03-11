@@ -106,11 +106,7 @@ export default function AddCustomerPage() {
         </button>
       </form>
 
-      {message && (
-        <p style={{ marginTop: 16 }}>
-          {message}
-        </p>
-      )}
+      {message && <p style={{ marginTop: 16 }}>{message}</p>}
     </main>
   )
 }
