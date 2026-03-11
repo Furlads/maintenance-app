@@ -14,19 +14,43 @@ type Customer = {
   createdAt: string
 }
 
+type Job = {
+  id: number
+  customerId: number
+  title: string
+  address: string | null
+  notes: string | null
+  status: string
+  createdAt: string
+}
+
 export default function CustomerPage() {
   const params = useParams()
   const id = params.id
 
   const [customer, setCustomer] = useState<Customer | null>(null)
+  const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function loadCustomer() {
+    async function loadPageData() {
       try {
-        const res = await fetch(`/api/customers/${id}`)
-        const data = await res.json()
-        setCustomer(data)
+        const [customerRes, jobsRes] = await Promise.all([
+          fetch(`/api/customers/${id}`),
+          fetch('/api/jobs')
+        ])
+
+        const customerData = await customerRes.json()
+        const jobsData = await jobsRes.json()
+
+        setCustomer(customerData)
+
+        const customerId = Number(id)
+        const filteredJobs = Array.isArray(jobsData)
+          ? jobsData.filter((job) => job.customerId === customerId)
+          : []
+
+        setJobs(filteredJobs)
       } catch (error) {
         console.error(error)
       } finally {
@@ -35,7 +59,7 @@ export default function CustomerPage() {
     }
 
     if (id) {
-      loadCustomer()
+      loadPageData()
     }
   }, [id])
 
@@ -86,7 +110,7 @@ export default function CustomerPage() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
         {customer.phone && (
           <a
             href={`tel:${customer.phone}`}
@@ -132,6 +156,30 @@ export default function CustomerPage() {
           Add Job
         </a>
       </div>
+
+      <section>
+        <h2 style={{ fontSize: 22, marginBottom: 16 }}>Jobs</h2>
+
+        {jobs.length === 0 && <p>No jobs yet for this customer.</p>}
+
+        {jobs.map((job) => (
+          <div
+            key={job.id}
+            style={{
+              border: '1px solid #ddd',
+              padding: 16,
+              borderRadius: 10,
+              marginBottom: 12
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px 0', fontSize: 18 }}>{job.title}</h3>
+
+            {job.address && <p style={{ margin: '4px 0' }}>Address: {job.address}</p>}
+            {job.notes && <p style={{ margin: '4px 0' }}>Notes: {job.notes}</p>}
+            <p style={{ margin: '4px 0' }}>Status: {job.status}</p>
+          </div>
+        ))}
+      </section>
     </main>
   )
 }
