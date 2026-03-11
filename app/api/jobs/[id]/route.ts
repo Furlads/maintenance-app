@@ -11,14 +11,6 @@ function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function isValidISODateOnly(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value)
-}
-
-function isValidHHMM(value: string) {
-  return /^\d{2}:\d{2}$/.test(value)
-}
-
 export async function GET(_req: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
@@ -38,7 +30,7 @@ export async function GET(_req: Request, ctx: Ctx) {
 
     return NextResponse.json(job)
   } catch (error) {
-    console.error('GET /api/jobs/[id] failed:', error)
+    console.error('GET job failed:', error)
 
     return NextResponse.json(
       { error: 'Failed to load job' },
@@ -66,100 +58,52 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
     }
 
-    let nextStatus = existing.status
+    const action = clean((body as any).action).toLowerCase()
 
-    const requestedStatus = clean((body as any).status).toLowerCase()
+    let statusUpdate: string | undefined = undefined
+    let arrivedUpdate: Date | null | undefined = undefined
+    let finishedUpdate: Date | null | undefined = undefined
 
-    if (requestedStatus === 'todo' || requestedStatus === 'done') {
-      nextStatus = requestedStatus
-    } else if ((body as any).toggleStatus === true) {
-      nextStatus = String(existing.status).toLowerCase() === 'done' ? 'todo' : 'done'
+    // worker arrives on site
+    if (action === 'start') {
+      arrivedUpdate = new Date()
+      statusUpdate = 'in_progress'
     }
 
-    let visitDateUpdate: Date | null | undefined = undefined
-    let startTimeUpdate: string | null | undefined = undefined
-    let durationMinutesUpdate: number | null | undefined = undefined
+    // worker finishes job
+    if (action === 'finish') {
+      finishedUpdate = new Date()
+      statusUpdate = 'done'
+    }
 
-    if ('visitDate' in (body as any)) {
-      const visitDateRaw = clean((body as any).visitDate)
+    // toggle done / undo
+    if ((body as any).toggleStatus === true) {
+      const isDone = String(existing.status).toLowerCase() === 'done'
 
-      if ((body as any).visitDate === null || visitDateRaw === '') {
-        visitDateUpdate = null
+      statusUpdate = isDone ? 'todo' : 'done'
+
+      if (isDone) {
+        finishedUpdate = null
       } else {
-        if (!isValidISODateOnly(visitDateRaw)) {
-          return NextResponse.json(
-            { error: 'visitDate must be YYYY-MM-DD' },
-            { status: 400 }
-          )
-        }
-
-        visitDateUpdate = new Date(visitDateRaw)
+        finishedUpdate = new Date()
       }
-    }
-
-    if ('startTime' in (body as any)) {
-      const startTimeRaw = clean((body as any).startTime)
-
-      if ((body as any).startTime === null || startTimeRaw === '') {
-        startTimeUpdate = null
-      } else {
-        if (!isValidHHMM(startTimeRaw)) {
-          return NextResponse.json(
-            { error: 'startTime must be HH:MM' },
-            { status: 400 }
-          )
-        }
-
-        startTimeUpdate = startTimeRaw
-      }
-    }
-
-    if ('durationMinutes' in (body as any)) {
-      if ((body as any).durationMinutes === null || (body as any).durationMinutes === '') {
-        durationMinutesUpdate = null
-      } else {
-        const durationValue = Number((body as any).durationMinutes)
-
-        if (!Number.isFinite(durationValue) || durationValue <= 0) {
-          return NextResponse.json(
-            { error: 'durationMinutes must be a positive number' },
-            { status: 400 }
-          )
-        }
-
-        durationMinutesUpdate = Math.round(durationValue)
-      }
-    }
-
-    let notesUpdate: string | null | undefined = undefined
-
-    if ('notes' in (body as any)) {
-      notesUpdate =
-        typeof (body as any).notes === 'string' ? (body as any).notes : null
-    }
-
-    if (typeof (body as any).appendNote === 'string' && (body as any).appendNote.trim()) {
-      const currentNotes = existing.notes ? `${existing.notes}\n` : ''
-      notesUpdate = `${currentNotes}${(body as any).appendNote.trim()}`
     }
 
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
         title: typeof (body as any).title === 'string' ? (body as any).title : undefined,
-        address:
-          typeof (body as any).address === 'string' ? (body as any).address : undefined,
-        notes: notesUpdate,
-        status: nextStatus,
-        visitDate: visitDateUpdate,
-        startTime: startTimeUpdate,
-        durationMinutes: durationMinutesUpdate
+        address: typeof (body as any).address === 'string' ? (body as any).address : undefined,
+        notes: typeof (body as any).notes === 'string' ? (body as any).notes : undefined,
+        status: statusUpdate,
+        arrivedAt: arrivedUpdate,
+        finishedAt: finishedUpdate
       }
     })
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('PATCH /api/jobs/[id] failed:', error)
+    console.error('PATCH job failed:', error)
 
     return NextResponse.json(
       { error: 'Failed to update job' },
