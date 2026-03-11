@@ -16,19 +16,19 @@ model Company {
 }
 
 model Worker {
-  id           Int             @id @default(autoincrement())
-  firstName    String
-  lastName     String
-  jobTitle     String
-  accessLevel  String
-  phone        String?
-  email        String?
-  active       Boolean         @default(true)
-  createdAt    DateTime        @default(now())
+  id             Int             @id @default(autoincrement())
+  firstName      String
+  lastName       String
+  jobTitle       String
+  accessLevel    String
+  phone          String?
+  email          String?
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
 
-  companies    WorkerCompany[]
-  notes        JobNote[]
-  assignedJobs JobAssignment[]
+  companies      WorkerCompany[]
+  notes          JobNote[]
+  assignedJobs   JobAssignment[]
   uploadedPhotos JobPhoto[]
 }
 
@@ -65,6 +65,8 @@ model Job {
   visitDate       DateTime?
   startTime       String?
   durationMinutes Int?
+  arrivedAt       DateTime?
+  finishedAt      DateTime?
   status          String          @default("unscheduled")
   createdAt       DateTime        @default(now())
 
@@ -98,13 +100,13 @@ model JobNote {
 }
 
 model JobPhoto {
-  id                Int      @id @default(autoincrement())
-  jobId             Int
+  id                 Int      @id @default(autoincrement())
+  jobId              Int
   uploadedByWorkerId Int?
-  label             String?
-  imageUrl          String
-  createdAt         DateTime @default(now())
+  label              String?
+  imageUrl           String
+  createdAt          DateTime @default(now())
 
-  job               Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  uploadedByWorker  Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
+  job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  uploadedByWorker   Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
 }
