@@ -60,13 +60,17 @@ export default function CustomersPage() {
 
       {!loading &&
         customers.map((customer) => (
-          <div
+          <a
             key={customer.id}
+            href={`/customers/${customer.id}`}
             style={{
+              display: 'block',
               padding: 16,
               border: '1px solid #ddd',
               borderRadius: 10,
-              marginBottom: 12
+              marginBottom: 12,
+              textDecoration: 'none',
+              color: 'inherit'
             }}
           >
             <h2 style={{ margin: '0 0 8px 0', fontSize: 20 }}>{customer.name}</h2>
@@ -75,7 +79,7 @@ export default function CustomersPage() {
             {customer.address && <p style={{ margin: '4px 0' }}>Address: {customer.address}</p>}
             {customer.postcode && <p style={{ margin: '4px 0' }}>Postcode: {customer.postcode}</p>}
             {customer.notes && <p style={{ margin: '4px 0' }}>Notes: {customer.notes}</p>}
-          </div>
+          </a>
         ))}
     </main>
   )
