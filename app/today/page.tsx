@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import WorkerMenu from '@/app/components/WorkerMenu'
 
 type Worker = {
   id: number
@@ -680,7 +681,18 @@ Ran out of time`,
 
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
-      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Today</h1>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'start',
+          gap: 12,
+          marginBottom: 8
+        }}
+      >
+        <h1 style={{ fontSize: 28, marginBottom: 0 }}>Today</h1>
+        <WorkerMenu />
+      </div>
 
       <div
         style={{

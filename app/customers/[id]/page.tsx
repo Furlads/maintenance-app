@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import CustomerHistory from './CustomerHistory'
+import WorkerMenu from '@/app/components/WorkerMenu'
 
 type Customer = {
   id: number
@@ -76,7 +77,18 @@ export default function CustomerPage() {
 
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 700 }}>
-      <h1 style={{ fontSize: 28, marginBottom: 20 }}>{customer.name}</h1>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'start',
+          gap: 12,
+          marginBottom: 20
+        }}
+      >
+        <h1 style={{ fontSize: 28, marginBottom: 0 }}>{customer.name}</h1>
+        <WorkerMenu />
+      </div>
 
       <div
         style={{
