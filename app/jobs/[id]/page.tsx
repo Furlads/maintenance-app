@@ -831,8 +831,12 @@ Heavy rain made it unsafe`,
             </>
           )}
 
-          <a
-            href="/jobs/add"
+<a
+  href={`/jobs/add?customerId=${job.customer?.id}&title=${encodeURIComponent(
+    job.title
+  )}&address=${encodeURIComponent(job.address || '')}&postcode=${encodeURIComponent(
+    job.customer?.postcode || ''
+  )}&jobType=${encodeURIComponent(job.jobType || '')}`}
             style={{
               padding: '12px 16px',
               borderRadius: 8,

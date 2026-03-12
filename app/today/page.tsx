@@ -54,6 +54,15 @@ type TimedJob = Job & {
   plannedMinutes: number
 }
 
+type ChasUiMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  createdAt: string
+  imageDataUrl?: string
+  jobId?: number | null
+}
+
 function formatTime(value?: string | null) {
   if (!value) return '—'
 
@@ -270,6 +279,32 @@ function getLiveWorkedMinutes(job: Job, currentNow: Date) {
   return Math.max(0, totalMinutes - pausedMinutes - livePausedMinutes)
 }
 
+function chasStorageKey(workerName: string) {
+  const worker = (workerName || 'unknown').trim().toLowerCase()
+  const today = new Date().toISOString().slice(0, 10)
+  return `chas-thread-${worker}-${today}`
+}
+
+function formatChasTimestamp(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function TodayPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [workerId, setWorkerId] = useState<number | null>(null)
@@ -278,6 +313,15 @@ export default function TodayPage() {
   const [error, setError] = useState('')
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
   const [now, setNow] = useState(new Date())
+
+  const [chasOpen, setChasOpen] = useState(false)
+  const [chasQuestion, setChasQuestion] = useState('')
+  const [chasBusy, setChasBusy] = useState(false)
+  const [chasError, setChasError] = useState('')
+  const [chasMessages, setChasMessages] = useState<ChasUiMessage[]>([])
+  const [chasSelectedJobId, setChasSelectedJobId] = useState<number | null>(null)
+  const [chasImageDataUrl, setChasImageDataUrl] = useState('')
+  const [chasImageName, setChasImageName] = useState('')
 
   async function loadJobs() {
     try {
@@ -322,6 +366,23 @@ export default function TodayPage() {
 
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (!workerName) return
+
+    try {
+      const raw = localStorage.getItem(chasStorageKey(workerName))
+      if (!raw) {
+        setChasMessages([])
+        return
+      }
+
+      const parsed = JSON.parse(raw)
+      setChasMessages(Array.isArray(parsed) ? parsed : [])
+    } catch {
+      setChasMessages([])
+    }
+  }, [workerName])
 
   const workerJobs = useMemo(() => {
     if (!workerId) return []
@@ -427,6 +488,26 @@ export default function TodayPage() {
     if (!activeJob) return visibleJobs
     return visibleJobs.filter((job) => job.id !== activeJob.id)
   }, [visibleJobs, activeJob])
+
+  useEffect(() => {
+    if (!chasSelectedJobId) {
+      if (activeJob) {
+        setChasSelectedJobId(activeJob.id)
+      } else if (listJobs.length > 0) {
+        setChasSelectedJobId(listJobs[0].id)
+      }
+    }
+  }, [activeJob, listJobs, chasSelectedJobId])
+
+  function persistChasMessages(nextMessages: ChasUiMessage[]) {
+    setChasMessages(nextMessages)
+
+    if (!workerName) return
+
+    try {
+      localStorage.setItem(chasStorageKey(workerName), JSON.stringify(nextMessages))
+    } catch {}
+  }
 
   async function handleStartJob(jobId: number) {
     try {
@@ -724,6 +805,108 @@ Heavy rain made it unsafe`,
     await handleExtendJob(jobId, Math.round(minutes))
   }
 
+  async function handleChasImageChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0]
+
+    if (!file) return
+
+    try {
+      const dataUrl = await fileToDataUrl(file)
+      setChasImageDataUrl(dataUrl)
+      setChasImageName(file.name)
+    } catch (err) {
+      console.error(err)
+      setChasError('Failed to load image.')
+    } finally {
+      event.target.value = ''
+    }
+  }
+
+  function clearChasImage() {
+    setChasImageDataUrl('')
+    setChasImageName('')
+  }
+
+  async function handleSendChasMessage() {
+    const question = chasQuestion.trim()
+
+    if (!question) {
+      setChasError('Please type a message for Chas.')
+      return
+    }
+
+    const selectedJobId = chasSelectedJobId ?? activeJob?.id ?? null
+    const company = localStorage.getItem('company') || 'furlads'
+
+    const userMessage: ChasUiMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      text: question,
+      createdAt: new Date().toISOString(),
+      imageDataUrl: chasImageDataUrl || undefined,
+      jobId: selectedJobId
+    }
+
+    const nextMessages = [...chasMessages, userMessage]
+    persistChasMessages(nextMessages)
+
+    setChasBusy(true)
+    setChasError('')
+
+    try {
+      const res = await fetch('/api/chas/ask', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          company,
+          worker: workerName,
+          workerId,
+          jobId: selectedJobId,
+          question,
+          imageDataUrl: chasImageDataUrl || ''
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to ask Chas')
+      }
+
+      const answer =
+        typeof data?.answer === 'string'
+          ? data.answer
+          : typeof data?.reply === 'string'
+            ? data.reply
+            : typeof data?.message === 'string'
+              ? data.message
+              : typeof data?.result === 'string'
+                ? data.result
+                : 'Chas did not return a reply.'
+
+      const assistantMessage: ChasUiMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        text: answer,
+        createdAt: new Date().toISOString(),
+        jobId: selectedJobId
+      }
+
+      persistChasMessages([...nextMessages, assistantMessage])
+      setChasQuestion('')
+      clearChasImage()
+    } catch (err) {
+      console.error(err)
+      setChasError('Failed to get a reply from Chas.')
+    } finally {
+      setChasBusy(false)
+    }
+  }
+
   function renderPrimaryAction(job: TimedJob) {
     const commonStyle: React.CSSProperties = {
       padding: '14px 18px',
@@ -778,6 +961,13 @@ Heavy rain made it unsafe`,
 
     return null
   }
+
+  const chasJobOptions = useMemo(() => {
+    return visibleJobs.map((job) => ({
+      id: job.id,
+      label: `${job.title} — ${job.customer?.name || 'Unknown customer'}`
+    }))
+  }, [visibleJobs])
 
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
@@ -966,11 +1156,29 @@ Heavy rain made it unsafe`,
             borderRadius: 8,
             border: '1px solid #ccc',
             textDecoration: 'none',
-            color: 'inherit'
+            color: 'inherit',
+            marginRight: 10
           }}
         >
           View Customers
         </a>
+
+        <button
+          type="button"
+          onClick={() => setChasOpen(true)}
+          style={{
+            display: 'inline-block',
+            padding: '12px 16px',
+            borderRadius: 8,
+            border: '1px solid #111',
+            background: '#111',
+            color: '#fff',
+            cursor: 'pointer',
+            fontWeight: 700
+          }}
+        >
+          Chas 💬
+        </button>
       </div>
 
       {loading && <p>Loading jobs...</p>}
@@ -1441,6 +1649,319 @@ Heavy rain made it unsafe`,
             </div>
           )
         })}
+
+      {chasOpen && (
+        <div
+          onClick={() => setChasOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            padding: 12,
+            zIndex: 1000
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 760,
+              maxHeight: '88vh',
+              overflow: 'hidden',
+              background: '#fff',
+              borderRadius: 16,
+              border: '1px solid #ddd',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            <div
+              style={{
+                padding: 16,
+                borderBottom: '1px solid #eee',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 12
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>Chas 💬</div>
+                <div style={{ fontSize: 13, opacity: 0.7 }}>
+                  Ask for help from site
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setChasOpen(false)}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 999,
+                  border: '1px solid #ddd',
+                  background: '#fff',
+                  cursor: 'pointer',
+                  fontSize: 20
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: 16, borderBottom: '1px solid #eee' }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                Job context
+              </label>
+
+              <select
+                value={chasSelectedJobId ?? ''}
+                onChange={(e) =>
+                  setChasSelectedJobId(
+                    e.target.value ? Number(e.target.value) : null
+                  )
+                }
+                style={{
+                  width: '100%',
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  background: '#fff'
+                }}
+              >
+                <option value="">No specific job</option>
+                {chasJobOptions.map((job) => (
+                  <option key={job.id} value={job.id}>
+                    {job.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: 16,
+                background: '#fafafa'
+              }}
+            >
+              {chasMessages.length === 0 && (
+                <div
+                  style={{
+                    padding: 14,
+                    borderRadius: 12,
+                    background: '#fff',
+                    border: '1px solid #eee',
+                    fontSize: 14
+                  }}
+                >
+                  Ask Chas anything from site. For example:
+                  <div style={{ marginTop: 8, opacity: 0.8 }}>
+                    • What plant is this?
+                    <br />
+                    • How should I cut this hedge?
+                    <br />
+                    • What’s the safest way to tackle this?
+                    <br />
+                    • Help me explain this issue to Kelly
+                  </div>
+                </div>
+              )}
+
+              {chasMessages.map((message) => (
+                <div
+                  key={message.id}
+                  style={{
+                    marginBottom: 12,
+                    display: 'flex',
+                    justifyContent:
+                      message.role === 'user' ? 'flex-end' : 'flex-start'
+                  }}
+                >
+                  <div
+                    style={{
+                      maxWidth: '85%',
+                      padding: 12,
+                      borderRadius: 12,
+                      background: message.role === 'user' ? '#111' : '#fff',
+                      color: message.role === 'user' ? '#fff' : '#111',
+                      border:
+                        message.role === 'user'
+                          ? '1px solid #111'
+                          : '1px solid #e5e5e5'
+                    }}
+                  >
+                    {message.imageDataUrl && (
+                      <img
+                        src={message.imageDataUrl}
+                        alt="Attached"
+                        style={{
+                          width: '100%',
+                          maxWidth: 220,
+                          borderRadius: 8,
+                          marginBottom: 8,
+                          display: 'block'
+                        }}
+                      />
+                    )}
+
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
+                      {message.text}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: 11,
+                        opacity: 0.7
+                      }}
+                    >
+                      {formatChasTimestamp(message.createdAt)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: 16, borderTop: '1px solid #eee' }}>
+              {chasImageDataUrl && (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: 12,
+                    borderRadius: 10,
+                    border: '1px solid #ddd',
+                    background: '#fafafa'
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 8,
+                      gap: 12
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>
+                      Attached image{chasImageName ? `: ${chasImageName}` : ''}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={clearChasImage}
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <img
+                    src={chasImageDataUrl}
+                    alt="Preview"
+                    style={{
+                      width: 140,
+                      height: 140,
+                      objectFit: 'cover',
+                      borderRadius: 10,
+                      border: '1px solid #ddd'
+                    }}
+                  />
+                </div>
+              )}
+
+              <textarea
+                value={chasQuestion}
+                onChange={(e) => setChasQuestion(e.target.value)}
+                placeholder="Ask Chas for help from site..."
+                style={{
+                  width: '100%',
+                  minHeight: 100,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  fontSize: 15
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    if (!chasBusy) {
+                      handleSendChasMessage()
+                    }
+                  }
+                }}
+              />
+
+              {chasError && (
+                <div style={{ marginTop: 8, color: '#b00020', fontSize: 13 }}>
+                  {chasError}
+                </div>
+              )}
+
+              <div
+                style={{
+                  marginTop: 12,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap'
+                }}
+              >
+                <label
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: 8,
+                    border: '1px solid #ccc',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    display: 'inline-block'
+                  }}
+                >
+                  Add Photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleChasImageChange}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleSendChasMessage}
+                  disabled={chasBusy}
+                  style={{
+                    padding: '12px 18px',
+                    borderRadius: 10,
+                    border: '1px solid #111',
+                    background: '#111',
+                    color: '#fff',
+                    cursor: chasBusy ? 'not-allowed' : 'pointer',
+                    opacity: chasBusy ? 0.7 : 1,
+                    fontWeight: 700,
+                    minWidth: 130
+                  }}
+                >
+                  {chasBusy ? 'Sending...' : 'Send to Chas'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
