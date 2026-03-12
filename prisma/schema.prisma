@@ -66,8 +66,13 @@ model Job {
   startTime       String?
   durationMinutes Int?
   overrunMins     Int             @default(0)
+
   arrivedAt       DateTime?
   finishedAt      DateTime?
+
+  pausedAt        DateTime?
+  pausedMinutes   Int             @default(0)
+
   status          String          @default("unscheduled")
   createdAt       DateTime        @default(now())
 
