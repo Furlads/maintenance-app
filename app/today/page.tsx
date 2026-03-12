@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import WorkerMenu from '@/app/components/WorkerMenu'
 
 type Worker = {
@@ -322,6 +322,7 @@ export default function TodayPage() {
   const [chasSelectedJobId, setChasSelectedJobId] = useState<number | null>(null)
   const [chasImageDataUrl, setChasImageDataUrl] = useState('')
   const [chasImageName, setChasImageName] = useState('')
+  const chasMessagesEndRef = useRef<HTMLDivElement | null>(null)
 
   async function loadJobs() {
     try {
@@ -383,6 +384,19 @@ export default function TodayPage() {
       setChasMessages([])
     }
   }, [workerName])
+
+  useEffect(() => {
+    if (!chasOpen) return
+
+    const timeout = window.setTimeout(() => {
+      chasMessagesEndRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end'
+      })
+    }, 50)
+
+    return () => window.clearTimeout(timeout)
+  }, [chasOpen, chasMessages, chasBusy])
 
   const workerJobs = useMemo(() => {
     if (!workerId) return []
@@ -816,6 +830,7 @@ Heavy rain made it unsafe`,
       const dataUrl = await fileToDataUrl(file)
       setChasImageDataUrl(dataUrl)
       setChasImageName(file.name)
+      setChasError('')
     } catch (err) {
       console.error(err)
       setChasError('Failed to load image.')
@@ -971,6 +986,13 @@ Heavy rain made it unsafe`,
 
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
+      <style>{`
+        @keyframes chasDotBounce {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.28; }
+          40% { transform: translateY(-4px); opacity: 1; }
+        }
+      `}</style>
+
       <div
         style={{
           display: 'flex',
@@ -1656,9 +1678,9 @@ Heavy rain made it unsafe`,
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.45)',
+            background: 'rgba(0,0,0,0.5)',
             display: 'flex',
-            alignItems: 'flex-end',
+            alignItems: 'center',
             justifyContent: 'center',
             padding: 12,
             zIndex: 1000
@@ -1668,30 +1690,33 @@ Heavy rain made it unsafe`,
             onClick={(event) => event.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: 760,
-              maxHeight: '88vh',
+              maxWidth: 820,
+              height: '86vh',
               overflow: 'hidden',
               background: '#fff',
-              borderRadius: 16,
+              borderRadius: 20,
               border: '1px solid #ddd',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              boxShadow: '0 24px 70px rgba(0,0,0,0.22)'
             }}
           >
             <div
               style={{
                 padding: 16,
-                borderBottom: '1px solid #eee',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                gap: 12
+                gap: 12,
+                background: 'linear-gradient(180deg, #111 0%, #1b1b1b 100%)',
+                color: '#fff'
               }}
             >
               <div>
-                <div style={{ fontSize: 20, fontWeight: 700 }}>Chas 💬</div>
-                <div style={{ fontSize: 13, opacity: 0.7 }}>
-                  Ask for help from site
+                <div style={{ fontSize: 20, fontWeight: 800 }}>Chas 💬</div>
+                <div style={{ fontSize: 13, opacity: 0.8 }}>
+                  Friendly on-site help
                 </div>
               </div>
 
@@ -1699,11 +1724,12 @@ Heavy rain made it unsafe`,
                 type="button"
                 onClick={() => setChasOpen(false)}
                 style={{
-                  width: 40,
-                  height: 40,
+                  width: 42,
+                  height: 42,
                   borderRadius: 999,
-                  border: '1px solid #ddd',
-                  background: '#fff',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  background: 'transparent',
+                  color: '#fff',
                   cursor: 'pointer',
                   fontSize: 20
                 }}
@@ -1712,7 +1738,13 @@ Heavy rain made it unsafe`,
               </button>
             </div>
 
-            <div style={{ padding: 16, borderBottom: '1px solid #eee' }}>
+            <div
+              style={{
+                padding: 16,
+                borderBottom: '1px solid #eee',
+                background: '#fff'
+              }}
+            >
               <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
                 Job context
               </label>
@@ -1727,7 +1759,7 @@ Heavy rain made it unsafe`,
                 style={{
                   width: '100%',
                   padding: 12,
-                  borderRadius: 10,
+                  borderRadius: 12,
                   border: '1px solid #ccc',
                   background: '#fff'
                 }}
@@ -1746,28 +1778,32 @@ Heavy rain made it unsafe`,
                 flex: 1,
                 overflowY: 'auto',
                 padding: 16,
-                background: '#fafafa'
+                background: 'linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%)'
               }}
             >
               {chasMessages.length === 0 && (
                 <div
                   style={{
-                    padding: 14,
-                    borderRadius: 12,
-                    background: '#fff',
-                    border: '1px solid #eee',
-                    fontSize: 14
+                    padding: 16,
+                    borderRadius: 16,
+                    background: '#fffdf3',
+                    border: '1px solid #f0e2a1',
+                    fontSize: 14,
+                    lineHeight: 1.5,
+                    maxWidth: 520
                   }}
                 >
-                  Ask Chas anything from site. For example:
-                  <div style={{ marginTop: 8, opacity: 0.8 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                    Ask Chas anything from site
+                  </div>
+                  <div style={{ opacity: 0.85 }}>
                     • What plant is this?
                     <br />
                     • How should I cut this hedge?
                     <br />
                     • What’s the safest way to tackle this?
                     <br />
-                    • Help me explain this issue to Kelly
+                    • Customer wants a rough price
                   </div>
                 </div>
               )}
@@ -1776,7 +1812,7 @@ Heavy rain made it unsafe`,
                 <div
                   key={message.id}
                   style={{
-                    marginBottom: 12,
+                    marginBottom: 14,
                     display: 'flex',
                     justifyContent:
                       message.role === 'user' ? 'flex-end' : 'flex-start'
@@ -1784,15 +1820,19 @@ Heavy rain made it unsafe`,
                 >
                   <div
                     style={{
-                      maxWidth: '85%',
-                      padding: 12,
-                      borderRadius: 12,
-                      background: message.role === 'user' ? '#111' : '#fff',
+                      maxWidth: '86%',
+                      padding: 13,
+                      borderRadius: 16,
+                      background: message.role === 'user' ? '#111' : '#fffdf5',
                       color: message.role === 'user' ? '#fff' : '#111',
                       border:
                         message.role === 'user'
                           ? '1px solid #111'
-                          : '1px solid #e5e5e5'
+                          : '1px solid #eee0a2',
+                      boxShadow:
+                        message.role === 'user'
+                          ? '0 10px 24px rgba(0,0,0,0.12)'
+                          : '0 10px 24px rgba(0,0,0,0.05)'
                     }}
                   >
                     {message.imageDataUrl && (
@@ -1802,20 +1842,20 @@ Heavy rain made it unsafe`,
                         style={{
                           width: '100%',
                           maxWidth: 220,
-                          borderRadius: 8,
+                          borderRadius: 10,
                           marginBottom: 8,
                           display: 'block'
                         }}
                       />
                     )}
 
-                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
                       {message.text}
                     </div>
 
                     <div
                       style={{
-                        marginTop: 6,
+                        marginTop: 8,
                         fontSize: 11,
                         opacity: 0.7
                       }}
@@ -1825,17 +1865,87 @@ Heavy rain made it unsafe`,
                   </div>
                 </div>
               ))}
+
+              {chasBusy && (
+                <div
+                  style={{
+                    marginBottom: 14,
+                    display: 'flex',
+                    justifyContent: 'flex-start'
+                  }}
+                >
+                  <div
+                    style={{
+                      maxWidth: '86%',
+                      padding: 13,
+                      borderRadius: 16,
+                      background: '#fffdf5',
+                      color: '#111',
+                      border: '1px solid #eee0a2',
+                      boxShadow: '0 10px 24px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                      Chas is thinking...
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 999,
+                          background: '#111',
+                          animation: 'chasDotBounce 1.2s infinite'
+                        }}
+                      />
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 999,
+                          background: '#111',
+                          animation: 'chasDotBounce 1.2s infinite',
+                          animationDelay: '0.15s'
+                        }}
+                      />
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 999,
+                          background: '#111',
+                          animation: 'chasDotBounce 1.2s infinite',
+                          animationDelay: '0.3s'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                      This can take a few seconds on longer replies.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div ref={chasMessagesEndRef} />
             </div>
 
-            <div style={{ padding: 16, borderTop: '1px solid #eee' }}>
+            <div
+              style={{
+                padding: 16,
+                borderTop: '1px solid #eee',
+                background: '#fff'
+              }}
+            >
               {chasImageDataUrl && (
                 <div
                   style={{
                     marginBottom: 12,
                     padding: 12,
-                    borderRadius: 10,
-                    border: '1px solid #ddd',
-                    background: '#fafafa'
+                    borderRadius: 12,
+                    border: '1px solid #eadc97',
+                    background: '#fff8d9'
                   }}
                 >
                   <div
@@ -1854,12 +1964,14 @@ Heavy rain made it unsafe`,
                     <button
                       type="button"
                       onClick={clearChasImage}
+                      disabled={chasBusy}
                       style={{
                         padding: '8px 10px',
                         borderRadius: 8,
                         border: '1px solid #ccc',
                         background: '#fff',
-                        cursor: 'pointer'
+                        cursor: chasBusy ? 'not-allowed' : 'pointer',
+                        opacity: chasBusy ? 0.6 : 1
                       }}
                     >
                       Remove
@@ -1880,83 +1992,102 @@ Heavy rain made it unsafe`,
                 </div>
               )}
 
-              <textarea
-                value={chasQuestion}
-                onChange={(e) => setChasQuestion(e.target.value)}
-                placeholder="Ask Chas for help from site..."
-                style={{
-                  width: '100%',
-                  minHeight: 100,
-                  padding: 12,
-                  borderRadius: 10,
-                  border: '1px solid #ccc',
-                  resize: 'vertical',
-                  fontFamily: 'inherit',
-                  fontSize: 15
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault()
-                    if (!chasBusy) {
-                      handleSendChasMessage()
-                    }
-                  }
-                }}
-              />
-
-              {chasError && (
-                <div style={{ marginTop: 8, color: '#b00020', fontSize: 13 }}>
-                  {chasError}
-                </div>
-              )}
-
               <div
                 style={{
-                  marginTop: 12,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                  flexWrap: 'wrap'
+                  padding: 10,
+                  borderRadius: 18,
+                  border: '1px solid #e3e3e3',
+                  background: '#fafafa',
+                  boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
                 }}
               >
-                <label
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    border: '1px solid #ccc',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    display: 'inline-block'
-                  }}
-                >
-                  Add Photo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleChasImageChange}
-                    style={{ display: 'none' }}
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={handleSendChasMessage}
+                <textarea
+                  value={chasQuestion}
+                  onChange={(e) => setChasQuestion(e.target.value)}
+                  placeholder="Ask Chas for help from site..."
                   disabled={chasBusy}
                   style={{
-                    padding: '12px 18px',
-                    borderRadius: 10,
-                    border: '1px solid #111',
-                    background: '#111',
-                    color: '#fff',
-                    cursor: chasBusy ? 'not-allowed' : 'pointer',
-                    opacity: chasBusy ? 0.7 : 1,
-                    fontWeight: 700,
-                    minWidth: 130
+                    width: '100%',
+                    minHeight: 90,
+                    padding: 12,
+                    borderRadius: 14,
+                    border: '1px solid #d8d8d8',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    fontSize: 15,
+                    background: chasBusy ? '#f4f4f4' : '#fff'
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault()
+                      if (!chasBusy) {
+                        handleSendChasMessage()
+                      }
+                    }
+                  }}
+                />
+
+                {chasError && (
+                  <div style={{ marginTop: 8, color: '#b00020', fontSize: 13 }}>
+                    {chasError}
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 12,
+                    flexWrap: 'wrap'
                   }}
                 >
-                  {chasBusy ? 'Sending...' : 'Send to Chas'}
-                </button>
+                  <label
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: 10,
+                      border: '1px solid #ccc',
+                      background: '#fff',
+                      cursor: chasBusy ? 'not-allowed' : 'pointer',
+                      display: 'inline-block',
+                      opacity: chasBusy ? 0.6 : 1,
+                      fontWeight: 600
+                    }}
+                  >
+                    📸 Add Photo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleChasImageChange}
+                      style={{ display: 'none' }}
+                      disabled={chasBusy}
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleSendChasMessage}
+                    disabled={chasBusy || !chasQuestion.trim()}
+                    style={{
+                      padding: '12px 18px',
+                      borderRadius: 12,
+                      border: '1px solid #111',
+                      background: '#111',
+                      color: '#fff',
+                      cursor: chasBusy || !chasQuestion.trim() ? 'not-allowed' : 'pointer',
+                      opacity: chasBusy || !chasQuestion.trim() ? 0.7 : 1,
+                      fontWeight: 700,
+                      minWidth: 150
+                    }}
+                  >
+                    {chasBusy ? 'Chas is typing...' : 'Send to Chas'}
+                  </button>
+                </div>
+
+                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>
+                  Press Enter to send • Shift+Enter for a new line
+                </div>
               </div>
             </div>
           </div>
