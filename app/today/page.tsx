@@ -127,6 +127,23 @@ function formatDurationMinutes(start?: string | null, end?: string | null) {
   return `${mins}m`
 }
 
+function formatMinutes(totalMinutes: number) {
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return '0m'
+
+  const hours = Math.floor(totalMinutes / 60)
+  const mins = totalMinutes % 60
+
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m`
+  }
+
+  if (hours > 0) {
+    return `${hours}h`
+  }
+
+  return `${mins}m`
+}
+
 function jobSortValue(job: Job) {
   const datePart = job.visitDate ? new Date(job.visitDate).getTime() : 0
 
@@ -214,6 +231,20 @@ function getPrepFinishForJob(job: Job) {
 function getEarliestWorkingStart(job: Job, scheduledStart: Date | null) {
   const prepFinish = getPrepFinishForJob(job)
   return getLaterDate(prepFinish, scheduledStart)
+}
+
+function getPausedLiveMinutes(job: Job, currentNow: Date) {
+  if (!job.pausedAt) return 0
+
+  const pausedAtDate = new Date(job.pausedAt)
+
+  if (Number.isNaN(pausedAtDate.getTime())) return 0
+
+  const diffMs = currentNow.getTime() - pausedAtDate.getTime()
+
+  if (diffMs <= 0) return 0
+
+  return Math.round(diffMs / 60000)
 }
 
 export default function TodayPage() {
@@ -316,9 +347,10 @@ export default function TodayPage() {
           ? new Date(job.arrivedAt)
           : getLaterDate(runningCursor, earliestWorkingStart) || currentNow
 
-        etaFinish = job.pausedAt
-          ? addMinutes(new Date(job.pausedAt), plannedMinutes)
-          : addMinutes(etaStart, plannedMinutes)
+        const pausedLiveMinutes = getPausedLiveMinutes(job, currentNow)
+        const pausedAtDate = new Date(job.pausedAt as string)
+
+        etaFinish = addMinutes(pausedAtDate, plannedMinutes + pausedLiveMinutes)
 
         runningCursor = etaFinish
       } else {
@@ -479,6 +511,60 @@ export default function TodayPage() {
     } catch (err) {
       console.error(err)
       setError('Failed to resume job.')
+    } finally {
+      setBusyJobId(null)
+    }
+  }
+
+  async function handleCannotComplete(jobId: number) {
+    const reason = window.prompt(
+      `Why couldn't the job be completed?
+
+Examples:
+No access
+Weather
+Customer cancelled
+Need materials
+Ran out of time`,
+      'No access'
+    )
+
+    if (reason === null) return
+
+    const trimmedReason = reason.trim()
+
+    if (!trimmedReason) {
+      window.alert('Please enter a reason.')
+      return
+    }
+
+    try {
+      setBusyJobId(jobId)
+      setError('')
+
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          appendNote: `Job could not be completed: ${trimmedReason}`,
+          status: 'todo',
+          pausedAt: null,
+          finishedAt: null
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to update job')
+      }
+
+      await loadJobs()
+    } catch (err) {
+      console.error(err)
+      setError("Failed to mark job as couldn't complete.")
     } finally {
       setBusyJobId(null)
     }
@@ -671,6 +757,7 @@ export default function TodayPage() {
           const pausedAt = job.pausedAt || null
           const completedAt = job.finishedAt || null
           const totalTime = formatDurationMinutes(startedAt, completedAt)
+          const livePausedMinutes = job.isPaused ? getPausedLiveMinutes(job, now) : 0
 
           const firstCollapsedHeadlineIndex = visibleJobs.findIndex(
             (item) => item.isWaiting
@@ -835,6 +922,12 @@ export default function TodayPage() {
                 <strong>Planned time:</strong> {job.plannedMinutes} mins
               </p>
 
+              {job.isPaused && (
+                <p style={{ margin: '4px 0' }}>
+                  <strong>Paused live:</strong> {formatMinutes(livePausedMinutes)}
+                </p>
+              )}
+
               {job.notes && (
                 <p style={{ margin: '4px 0' }}>
                   <strong>Notes:</strong> {job.notes}
@@ -961,6 +1054,23 @@ export default function TodayPage() {
                       }}
                     >
                       {busyJobId === job.id ? 'Updating...' : 'Pause Work'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCannotComplete(job.id)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#ffe5e5',
+                        color: 'inherit',
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                        opacity: busyJobId === job.id ? 0.6 : 1
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : "Couldn't Complete"}
                     </button>
 
                     <button
@@ -1101,6 +1211,23 @@ export default function TodayPage() {
                       }}
                     >
                       {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCannotComplete(job.id)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: '#ffe5e5',
+                        color: 'inherit',
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+                        opacity: busyJobId === job.id ? 0.6 : 1
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : "Couldn't Complete"}
                     </button>
 
                     <button
