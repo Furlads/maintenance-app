@@ -54,19 +54,6 @@ type TimedJob = Job & {
   plannedMinutes: number
 }
 
-const CANNOT_COMPLETE_REASONS = [
-  'No access',
-  'Customer not home',
-  'Weather',
-  'Need materials',
-  'Ran out of time',
-  'Unsafe to continue',
-  'Machinery issue',
-  'Blocked by other trades',
-  'Needs revisit',
-  'Other'
-]
-
 function formatTime(value?: string | null) {
   if (!value) return '—'
 
@@ -259,22 +246,6 @@ function getPausedLiveMinutes(job: Job, currentNow: Date) {
   if (diffMs <= 0) return 0
 
   return Math.round(diffMs / 60000)
-}
-
-function buildCannotCompleteNote(reason: string, extraNotes: string, workerName: string) {
-  const parts = [`Job could not be completed: ${reason}`]
-
-  if (extraNotes) {
-    parts.push(`Details: ${extraNotes}`)
-  }
-
-  if (workerName) {
-    parts.push(`Reported by: ${workerName}`)
-  }
-
-  parts.push(`Recorded at: ${new Date().toLocaleString('en-GB')}`)
-
-  return parts.join(' | ')
 }
 
 export default function TodayPage() {
@@ -547,50 +518,40 @@ export default function TodayPage() {
   }
 
   async function handleCannotComplete(jobId: number) {
-    const reasonOptions = CANNOT_COMPLETE_REASONS.map(
-      (reason, index) => `${index + 1}. ${reason}`
-    ).join('\n')
-
     const reasonInput = window.prompt(
-      `Select the reason number or type the reason:\n\n${reasonOptions}`,
-      '1'
+      `Why couldn't the job be completed?
+
+Examples:
+No access
+Customer cancelled
+Need materials
+Ran out of time
+Weather stopped work`,
+      ''
     )
 
     if (reasonInput === null) return
 
-    const trimmedReasonInput = reasonInput.trim()
+    const reason = reasonInput.trim()
 
-    if (!trimmedReasonInput) {
+    if (!reason) {
       window.alert('Please enter a reason.')
       return
     }
 
-    let chosenReason = trimmedReasonInput
+    const detailsInput = window.prompt(
+      `Add any extra details if needed (optional)
 
-    const asNumber = Number(trimmedReasonInput)
-
-    if (
-      Number.isInteger(asNumber) &&
-      asNumber >= 1 &&
-      asNumber <= CANNOT_COMPLETE_REASONS.length
-    ) {
-      chosenReason = CANNOT_COMPLETE_REASONS[asNumber - 1]
-    }
-
-    if (!chosenReason) {
-      window.alert('Please enter a valid reason.')
-      return
-    }
-
-    const extraNotesInput = window.prompt(
-      'Add extra details if needed (optional):\n\nExamples:\nGate locked\nCustomer asked us to return Friday\nHeavy rain stopped work',
+Examples:
+Gate locked
+Customer asked us to return next week
+Heavy rain made it unsafe`,
       ''
     )
 
-    if (extraNotesInput === null) return
+    if (detailsInput === null) return
 
-    const extraNotes = extraNotesInput.trim()
-    const appendNote = buildCannotCompleteNote(chosenReason, extraNotes, workerName)
+    const details = detailsInput.trim()
 
     try {
       setBusyJobId(jobId)
@@ -602,10 +563,10 @@ export default function TodayPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          appendNote,
-          status: 'todo',
-          pausedAt: null,
-          finishedAt: null
+          action: 'cannot_complete',
+          reason,
+          details,
+          workerName
         })
       })
 
@@ -616,8 +577,6 @@ export default function TodayPage() {
       }
 
       await loadJobs()
-
-      window.alert('Cannot complete reason saved.')
     } catch (err) {
       console.error(err)
       setError("Failed to mark job as couldn't complete.")
