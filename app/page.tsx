@@ -1,18 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type Worker = {
   id: number
   firstName: string
   lastName: string
+  active?: boolean
 }
 
 export default function Page() {
   const [workers, setWorkers] = useState<Worker[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null)
+
+  const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
+  const [pin, setPin] = useState('')
+  const [pinBusy, setPinBusy] = useState(false)
+  const [pinError, setPinError] = useState('')
 
   useEffect(() => {
     async function loadWorkers() {
@@ -40,11 +45,73 @@ export default function Page() {
     loadWorkers()
   }, [])
 
-  function selectWorker(worker: Worker) {
-    setSelectedWorkerId(worker.id)
-    localStorage.setItem('workerId', worker.id.toString())
-    localStorage.setItem('workerName', `${worker.firstName} ${worker.lastName}`)
-    window.location.href = '/today'
+  const sortedWorkers = useMemo(() => {
+    return [...workers].sort((a, b) => {
+      const aName = `${a.firstName || ''} ${a.lastName || ''}`.trim()
+      const bName = `${b.firstName || ''} ${b.lastName || ''}`.trim()
+      return aName.localeCompare(bName)
+    })
+  }, [workers])
+
+  function openPinForWorker(worker: Worker) {
+    setSelectedWorker(worker)
+    setPin('')
+    setPinError('')
+  }
+
+  function closePin() {
+    setSelectedWorker(null)
+    setPin('')
+    setPinError('')
+    setPinBusy(false)
+  }
+
+  async function handlePinLogin() {
+    if (!selectedWorker) return
+
+    const cleanPin = pin.trim()
+
+    if (!cleanPin) {
+      setPinError('Enter your PIN.')
+      return
+    }
+
+    setPinBusy(true)
+    setPinError('')
+
+    try {
+      const res = await fetch('/api/auth/pin-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          workerId: selectedWorker.id,
+          pin: cleanPin
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'PIN not accepted.')
+      }
+
+      const workerName =
+        typeof data?.worker?.name === 'string' && data.worker.name.trim()
+          ? data.worker.name.trim()
+          : `${selectedWorker.firstName} ${selectedWorker.lastName}`.trim()
+
+      localStorage.setItem('workerId', String(selectedWorker.id))
+      localStorage.setItem('workerName', workerName)
+
+      window.location.href = '/today'
+    } catch (err: any) {
+      console.error(err)
+      setPinError(String(err?.message || 'PIN not accepted.'))
+    } finally {
+      setPinBusy(false)
+    }
   }
 
   return (
@@ -52,43 +119,42 @@ export default function Page() {
       style={{
         minHeight: '100vh',
         padding: '24px 16px 40px',
-        fontFamily: 'sans-serif',
+        fontFamily: 'Arial, Helvetica, sans-serif',
         background:
-          'linear-gradient(180deg, #f4f4f2 0%, #efefe9 55%, #f8f8f5 100%)',
-        color: '#1c1c1c'
+          'linear-gradient(180deg, #f7f5ef 0%, #f2f4ef 48%, #f8f8f6 100%)',
+        color: '#111'
       }}
     >
       <div
         style={{
           width: '100%',
-          maxWidth: 520,
+          maxWidth: 560,
           margin: '0 auto'
         }}
       >
         <div
           style={{
             textAlign: 'center',
-            marginBottom: 24,
-            paddingTop: 10
+            marginBottom: 22,
+            paddingTop: 8
           }}
         >
           <div
             style={{
-              marginBottom: 12,
-              lineHeight: 1,
-              display: 'flex',
+              display: 'inline-flex',
+              alignItems: 'center',
               justifyContent: 'center',
-              alignItems: 'baseline',
+              gap: 10,
               flexWrap: 'wrap',
-              gap: 8
+              marginBottom: 12
             }}
           >
             <span
               style={{
-                fontSize: 42,
-                fontWeight: 800,
-                color: '#d59000',
-                letterSpacing: '-0.03em'
+                fontSize: 34,
+                fontWeight: 900,
+                letterSpacing: '-0.03em',
+                color: '#c69214'
               }}
             >
               Furlads
@@ -96,20 +162,20 @@ export default function Page() {
 
             <span
               style={{
-                fontSize: 30,
-                fontWeight: 700,
-                color: '#b97800'
+                fontSize: 20,
+                fontWeight: 800,
+                color: '#767676'
               }}
             >
-              &
+              ×
             </span>
 
             <span
               style={{
-                fontSize: 42,
-                fontWeight: 800,
-                color: '#1f5a37',
-                letterSpacing: '-0.03em'
+                fontSize: 30,
+                fontWeight: 900,
+                letterSpacing: '-0.03em',
+                color: '#245c3b'
               }}
             >
               Three Counties
@@ -118,9 +184,10 @@ export default function Page() {
 
           <h1
             style={{
-              fontSize: 28,
-              margin: '0 0 10px 0',
-              fontWeight: 800
+              margin: '0 0 8px 0',
+              fontSize: 30,
+              lineHeight: 1.1,
+              fontWeight: 900
             }}
           >
             Who&apos;s using the app?
@@ -131,52 +198,41 @@ export default function Page() {
               margin: 0,
               fontSize: 15,
               lineHeight: 1.5,
-              color: '#4f4f4f'
+              color: '#575757'
             }}
           >
-            Tap your name to continue.
+            Tap your name, then enter your PIN.
           </p>
         </div>
 
         <div
           style={{
-            marginBottom: 20,
+            marginBottom: 18,
             padding: 14,
             borderRadius: 18,
-            background: '#ffffff',
             border: '1px solid rgba(0,0,0,0.08)',
+            background: '#ffffff',
             boxShadow: '0 10px 30px rgba(0,0,0,0.05)'
           }}
         >
           <div
             style={{
-              display: 'flex',
-              gap: 8,
-              alignItems: 'center',
+              fontSize: 14,
+              fontWeight: 800,
               marginBottom: 6
             }}
           >
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 999,
-                background: '#1f5a37',
-                display: 'inline-block'
-              }}
-            />
-            <span style={{ fontSize: 14, fontWeight: 700 }}>Mobile-friendly access</span>
+            Test login
           </div>
 
           <div
             style={{
               fontSize: 14,
-              lineHeight: 1.5,
-              color: '#5a5a5a'
+              color: '#5e5e5e',
+              lineHeight: 1.5
             }}
           >
-            This page is set up for quick worker access on site. We can add PIN,
-            Face ID, or fingerprint login next without disturbing the working data.
+            While you&apos;re testing, everyone can use PIN <strong>1234</strong>.
           </div>
         </div>
 
@@ -185,11 +241,10 @@ export default function Page() {
             style={{
               padding: 18,
               borderRadius: 18,
-              background: '#ffffff',
               border: '1px solid rgba(0,0,0,0.08)',
-              textAlign: 'center',
-              fontSize: 15,
-              boxShadow: '0 10px 30px rgba(0,0,0,0.05)'
+              background: '#fff',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
+              textAlign: 'center'
             }}
           >
             Loading workers...
@@ -199,61 +254,55 @@ export default function Page() {
         {!loading && error && (
           <div
             style={{
-              padding: 18,
+              padding: 16,
               borderRadius: 18,
+              border: '1px solid #e2b7b7',
               background: '#fff5f5',
-              border: '1px solid #e4b7b7',
-              color: '#8a1f1f',
-              fontSize: 15
+              color: '#8d1f1f'
             }}
           >
             {error}
           </div>
         )}
 
-        {!loading && !error && workers.length === 0 && (
+        {!loading && !error && sortedWorkers.length === 0 && (
           <div
             style={{
               padding: 18,
               borderRadius: 18,
-              background: '#ffffff',
               border: '1px solid rgba(0,0,0,0.08)',
-              textAlign: 'center',
-              fontSize: 15,
-              boxShadow: '0 10px 30px rgba(0,0,0,0.05)'
+              background: '#fff',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
+              textAlign: 'center'
             }}
           >
             No workers found.
           </div>
         )}
 
-        {!loading && !error && workers.length > 0 && (
+        {!loading && !error && sortedWorkers.length > 0 && (
           <div
             style={{
               display: 'grid',
               gap: 14
             }}
           >
-            {workers.map((worker, index) => {
-              const initials = `${worker.firstName?.[0] || ''}${worker.lastName?.[0] || ''}`
-
-              const isBusy = selectedWorkerId === worker.id
-              const useGoldStyle = index % 2 === 0
+            {sortedWorkers.map((worker, index) => {
+              const initials = `${worker.firstName?.[0] || ''}${worker.lastName?.[0] || ''}` || 'W'
+              const useGold = index % 2 === 0
 
               return (
                 <button
                   key={worker.id}
                   type="button"
-                  onClick={() => selectWorker(worker)}
-                  disabled={selectedWorkerId !== null}
+                  onClick={() => openPinForWorker(worker)}
                   style={{
                     width: '100%',
                     padding: 0,
                     border: 'none',
                     background: 'transparent',
-                    cursor: selectedWorkerId !== null ? 'not-allowed' : 'pointer',
                     textAlign: 'left',
-                    opacity: selectedWorkerId !== null && !isBusy ? 0.72 : 1
+                    cursor: 'pointer'
                   }}
                 >
                   <div
@@ -261,40 +310,40 @@ export default function Page() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 14,
-                      padding: '16px 16px',
-                      borderRadius: 20,
-                      background: '#ffffff',
+                      padding: '16px',
+                      borderRadius: 22,
                       border: '1px solid rgba(0,0,0,0.08)',
+                      background: '#fff',
                       boxShadow: '0 12px 30px rgba(0,0,0,0.06)'
                     }}
                   >
                     <div
                       style={{
-                        width: 54,
-                        height: 54,
-                        borderRadius: 16,
+                        width: 58,
+                        height: 58,
+                        borderRadius: 18,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 18,
-                        fontWeight: 800,
                         flexShrink: 0,
-                        background: useGoldStyle ? '#f3d58a' : '#d7eadc',
-                        color: useGoldStyle ? '#8a5700' : '#1f5a37',
-                        border: useGoldStyle
-                          ? '1px solid rgba(184,120,0,0.18)'
-                          : '1px solid rgba(31,90,55,0.18)'
+                        fontSize: 19,
+                        fontWeight: 900,
+                        background: useGold ? '#f5deb0' : '#d9e9de',
+                        color: useGold ? '#8a5a00' : '#245c3b',
+                        border: useGold
+                          ? '1px solid rgba(198,146,20,0.22)'
+                          : '1px solid rgba(36,92,59,0.18)'
                       }}
                     >
-                      {initials || 'W'}
+                      {initials}
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
-                          fontSize: 19,
-                          fontWeight: 800,
-                          color: '#181818',
+                          fontSize: 20,
+                          fontWeight: 900,
+                          color: '#171717',
                           marginBottom: 4
                         }}
                       >
@@ -304,7 +353,7 @@ export default function Page() {
                       <div
                         style={{
                           fontSize: 14,
-                          color: '#5f5f5f'
+                          color: '#666'
                         }}
                       >
                         Tap to continue
@@ -314,12 +363,11 @@ export default function Page() {
                     <div
                       style={{
                         fontSize: 14,
-                        fontWeight: 700,
-                        color: useGoldStyle ? '#b97800' : '#1f5a37',
-                        whiteSpace: 'nowrap'
+                        fontWeight: 800,
+                        color: useGold ? '#b17e07' : '#245c3b'
                       }}
                     >
-                      {isBusy ? 'Opening...' : 'Open'}
+                      Open
                     </div>
                   </div>
                 </button>
@@ -328,6 +376,173 @@ export default function Page() {
           </div>
         )}
       </div>
+
+      {selectedWorker && (
+        <div
+          onClick={closePin}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.48)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            padding: 12,
+            zIndex: 1000
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 520,
+              borderRadius: 22,
+              background: '#fff',
+              border: '1px solid rgba(0,0,0,0.08)',
+              boxShadow: '0 24px 60px rgba(0,0,0,0.22)',
+              padding: 18
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'start',
+                gap: 12,
+                marginBottom: 14
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 900,
+                    marginBottom: 6
+                  }}
+                >
+                  Enter PIN
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 14,
+                    color: '#5f5f5f',
+                    lineHeight: 1.5
+                  }}
+                >
+                  {selectedWorker.firstName} {selectedWorker.lastName}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closePin}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 999,
+                  border: '1px solid #ddd',
+                  background: '#fff',
+                  cursor: 'pointer',
+                  fontSize: 20,
+                  lineHeight: 1
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              autoFocus
+              value={pin}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, '')
+                setPin(value)
+                setPinError('')
+              }}
+              placeholder="Enter PIN"
+              style={{
+                width: '100%',
+                padding: '16px 14px',
+                borderRadius: 14,
+                border: '1px solid #d5d5d5',
+                fontSize: 24,
+                letterSpacing: '0.35em',
+                textAlign: 'center',
+                outline: 'none',
+                marginBottom: 10
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !pinBusy) {
+                  event.preventDefault()
+                  handlePinLogin()
+                }
+              }}
+            />
+
+            {pinError && (
+              <div
+                style={{
+                  marginBottom: 10,
+                  fontSize: 14,
+                  color: '#b00020'
+                }}
+              >
+                {pinError}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                flexWrap: 'wrap'
+              }}
+            >
+              <button
+                type="button"
+                onClick={handlePinLogin}
+                disabled={pinBusy || pin.trim().length === 0}
+                style={{
+                  flex: 1,
+                  minWidth: 180,
+                  padding: '14px 16px',
+                  borderRadius: 14,
+                  border: '1px solid #111',
+                  background: '#111',
+                  color: '#fff',
+                  fontWeight: 800,
+                  cursor:
+                    pinBusy || pin.trim().length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: pinBusy || pin.trim().length === 0 ? 0.7 : 1
+                }}
+              >
+                {pinBusy ? 'Checking...' : 'Continue'}
+              </button>
+
+              <button
+                type="button"
+                onClick={closePin}
+                disabled={pinBusy}
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: 14,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: pinBusy ? 'not-allowed' : 'pointer',
+                  opacity: pinBusy ? 0.7 : 1
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
