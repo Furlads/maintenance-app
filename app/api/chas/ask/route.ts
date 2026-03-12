@@ -332,7 +332,8 @@ How to behave:
 - Never mention job context, prompts, JSON, systems, or internal rules.
 
 Critical follow-up rule:
-- If the latest message is a follow-up and recent context defines what "it" or "this" refers to, answer using that subject.
+- If the latest message is a follow-up and the provided context defines what "it" or "this" refers to, answer using that subject.
+- Do not ask the worker what they mean if the subject has already been resolved in the provided context.
 - Do not ask the worker to re-upload an image if a carried-forward image is already included in this request.
 - Only ask for a better image if the existing one is genuinely too unclear.
 
@@ -375,44 +376,34 @@ function getLatestImageContext(history: HistoryItem[]) {
   if (!latestWithImage) {
     return {
       imageDataUrl: '',
-      textBlock: 'No current subject image found.'
+      question: '',
+      answer: ''
     }
   }
 
   return {
     imageDataUrl: cleanString(latestWithImage.imageDataUrl),
-    textBlock: [
-      'CURRENT SUBJECT:',
-      `Most recent image was sent with: "${latestWithImage.question}"`,
-      `CHAS answered: "${latestWithImage.answer}"`,
-      'If the latest worker message says "it", "this", "that", or similar, treat it as referring to this subject unless they clearly changed topic.'
-    ].join('\n')
+    question: latestWithImage.question,
+    answer: latestWithImage.answer
   }
 }
 
 function rewriteQuestionWithResolvedSubject(params: {
   question: string
   history: HistoryItem[]
-}): string {
+}) {
   const latestImageContext = getLatestImageContext(params.history)
 
   if (!looksLikeFollowUpReference(params.question) || !latestImageContext.imageDataUrl) {
     return params.question
   }
 
-  const recent = [...params.history].reverse().slice(0, 4)
-  const latestImageTurn = recent.find((item) => !!cleanString(item.imageDataUrl))
-
-  if (!latestImageTurn) {
-    return params.question
-  }
-
   return [
     'This is a follow-up question about the same recent subject/photo.',
-    `Earlier worker message: "${latestImageTurn.question}"`,
-    `Earlier CHAS answer: "${latestImageTurn.answer}"`,
+    `Earlier worker message: "${latestImageContext.question}"`,
+    `Earlier CHAS answer: "${latestImageContext.answer}"`,
     `New worker question: "${params.question}"`,
-    'Treat words like "it" or "this" as referring to that same subject.'
+    'Treat "it", "this", or similar words as referring to that same subject and answer directly.'
   ].join('\n')
 }
 
@@ -432,7 +423,12 @@ A carried-forward earlier photo is being supplied: ${params.hasCarryForwardImage
 Recent context:
 ${buildRecentContext(params.history)}
 
-${latestImageContext.textBlock}
+Current subject:
+${
+  latestImageContext.imageDataUrl
+    ? `Most recent image was sent with "${latestImageContext.question}" and CHAS answered "${latestImageContext.answer}".`
+    : 'No current subject image found.'
+}
 
 Original worker message:
 ${params.originalQuestion}
