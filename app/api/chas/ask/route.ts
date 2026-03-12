@@ -44,13 +44,6 @@ function normaliseText(value: unknown) {
   return value.replace(/\s+/g, ' ').trim()
 }
 
-function clampConfidence(value: unknown): number {
-  if (typeof value !== 'number' || Number.isNaN(value)) return 0.5
-  if (value < 0) return 0
-  if (value > 1) return 1
-  return value
-}
-
 function startOfToday() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -61,10 +54,6 @@ function endOfToday() {
   const d = new Date()
   d.setHours(23, 59, 59, 999)
   return d
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
 }
 
 function isGreetingOrCasualMessage(text: string): boolean {
@@ -112,7 +101,7 @@ function isGreetingOrCasualMessage(text: string): boolean {
 function looksLikePlantQuestion(text: string): boolean {
   const lower = text.toLowerCase()
 
-  const words = [
+  return [
     'plant',
     'tree',
     'shrub',
@@ -128,15 +117,13 @@ function looksLikePlantQuestion(text: string): boolean {
     'leaves',
     'branch',
     'branches'
-  ]
-
-  return words.some((word) => lower.includes(word))
+  ].some((word) => lower.includes(word))
 }
 
 function looksLikePricingQuestion(text: string): boolean {
   const lower = text.toLowerCase()
 
-  const words = [
+  return [
     'price',
     'quote',
     'cost',
@@ -145,15 +132,13 @@ function looksLikePricingQuestion(text: string): boolean {
     'guide price',
     'what would you charge',
     'what do you reckon'
-  ]
-
-  return words.some((word) => lower.includes(word))
+  ].some((word) => lower.includes(word))
 }
 
 function looksLikeSafetyQuestion(text: string): boolean {
   const lower = text.toLowerCase()
 
-  const words = [
+  return [
     'safe',
     'unsafe',
     'dangerous',
@@ -166,14 +151,74 @@ function looksLikeSafetyQuestion(text: string): boolean {
     'electric',
     'gas',
     'structural'
-  ]
+  ].some((word) => lower.includes(word))
+}
 
-  return words.some((word) => lower.includes(word))
+function classifyIntent(question: string, answer: string): ChasModelResponse {
+  const q = question.toLowerCase()
+  const a = answer.toLowerCase()
+
+  if (looksLikeSafetyQuestion(question) || a.includes('unsafe') || a.includes('stop') || a.includes('risk')) {
+    return {
+      answer,
+      intent: 'safety',
+      confidence: 0.72,
+      escalateTo:
+        a.includes('trevor') || a.includes('higher risk') ? 'trevor' : 'none',
+      safetyFlag: true
+    }
+  }
+
+  if (looksLikePlantQuestion(question)) {
+    return {
+      answer,
+      intent: 'plant_id',
+      confidence: 0.72,
+      escalateTo: 'none',
+      safetyFlag: a.includes('nest') || a.includes('birds') || a.includes('check before cutting')
+    }
+  }
+
+  if (looksLikePricingQuestion(question)) {
+    return {
+      answer,
+      intent: 'pricing_guide',
+      confidence: 0.7,
+      escalateTo: a.includes('kelly') ? 'kelly' : 'none',
+      safetyFlag: false
+    }
+  }
+
+  if (a.includes('trevor should') || a.includes('check with trevor')) {
+    return {
+      answer,
+      intent: 'escalation',
+      confidence: 0.7,
+      escalateTo: 'trevor',
+      safetyFlag: true
+    }
+  }
+
+  if (a.includes('kelly') && (a.includes('quote') || a.includes('confirm'))) {
+    return {
+      answer,
+      intent: 'quote_support',
+      confidence: 0.68,
+      escalateTo: 'kelly',
+      safetyFlag: false
+    }
+  }
+
+  return {
+    answer,
+    intent: 'general',
+    confidence: 0.68,
+    escalateTo: 'none',
+    safetyFlag: false
+  }
 }
 
 function buildFallback(question: string): ChasModelResponse {
-  const lower = question.toLowerCase()
-
   if (isGreetingOrCasualMessage(question)) {
     return {
       answer: 'Yeah all good 👍 What do you need help with?',
@@ -187,7 +232,7 @@ function buildFallback(question: string): ChasModelResponse {
   if (looksLikePlantQuestion(question)) {
     return {
       answer:
-        'I can help with that — send me a photo if you can and I’ll give you the best steer. If there are nests or anything sensitive going on, check before cutting.',
+        'I can help with that — send me a photo if you can and I’ll give you the best steer. If there are nests or birds about, check before cutting.',
       intent: 'plant_id',
       confidence: 0.55,
       escalateTo: 'none',
@@ -226,58 +271,8 @@ function buildFallback(question: string): ChasModelResponse {
   }
 }
 
-function validateModelResponse(parsed: unknown, question: string): ChasModelResponse {
-  if (!isObject(parsed)) {
-    return buildFallback(question)
-  }
-
-  const answer = normaliseText(parsed.answer)
-  const intent = normaliseText(parsed.intent)
-  const escalateTo = normaliseText(parsed.escalateTo)
-
-  const safeIntent: ChasIntent = (
-    [
-      'general',
-      'plant_id',
-      'pricing_guide',
-      'safety',
-      'quote_support',
-      'escalation'
-    ] as const
-  ).includes(intent as ChasIntent)
-    ? (intent as ChasIntent)
-    : 'general'
-
-  const safeEscalateTo: ChasEscalateTo =
-    escalateTo === 'kelly' || escalateTo === 'trevor' || escalateTo === 'none'
-      ? (escalateTo as ChasEscalateTo)
-      : 'none'
-
-  return {
-    answer: answer || buildFallback(question).answer,
-    intent: safeIntent,
-    confidence: clampConfidence(parsed.confidence),
-    escalateTo: safeEscalateTo,
-    safetyFlag: typeof parsed.safetyFlag === 'boolean' ? parsed.safetyFlag : false
-  }
-}
-
-function buildMessages(params: {
-  question: string
-  hasImage: boolean
-  history: HistoryItem[]
-}) {
-  const historyText =
-    params.history.length > 0
-      ? params.history
-          .map(
-            (item, index) =>
-              `Turn ${index + 1} worker: ${item.question}\nTurn ${index + 1} CHAS: ${item.answer}`
-          )
-          .join('\n\n')
-      : 'No previous CHAS messages today.'
-
-  const developerMessage = `
+function buildInstructions() {
+  return `
 You are CHAS, the always-online office teammate for Furlads.
 
 You should sound like a helpful guy in the office chatting to the lads on site.
@@ -319,8 +314,24 @@ Important:
 - If you are unsure, say so honestly and ask for a photo if that would genuinely help.
 - Keep answers concise enough for someone on site to read quickly.
 `.trim()
+}
 
-  const userMessage = `
+function buildInput(params: {
+  question: string
+  hasImage: boolean
+  history: HistoryItem[]
+}) {
+  const historyText =
+    params.history.length > 0
+      ? params.history
+          .map(
+            (item, index) =>
+              `Turn ${index + 1} worker: ${item.question}\nTurn ${index + 1} CHAS: ${item.answer}`
+          )
+          .join('\n\n')
+      : 'No previous CHAS messages today.'
+
+  return `
 Photo attached: ${params.hasImage ? 'yes' : 'no'}
 
 Conversation so far today:
@@ -328,16 +339,42 @@ ${historyText}
 
 Latest worker message:
 ${params.question}
-`.trim()
 
-  return { developerMessage, userMessage }
+Reply as CHAS with a normal helpful message only.
+`.trim()
 }
 
-async function callOpenAIStructured(params: {
-  developerMessage: string
-  userMessage: string
+function extractResponseText(data: any): string {
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
+    return data.output_text.trim()
+  }
+
+  if (Array.isArray(data?.output)) {
+    const texts: string[] = []
+
+    for (const item of data.output) {
+      if (item?.type !== 'message') continue
+      if (!Array.isArray(item?.content)) continue
+
+      for (const content of item.content) {
+        if (content?.type === 'output_text' && typeof content?.text === 'string') {
+          texts.push(content.text)
+        }
+      }
+    }
+
+    const joined = texts.join('\n').trim()
+    if (joined) return joined
+  }
+
+  return ''
+}
+
+async function callOpenAI(params: {
+  instructions: string
+  input: string
   imageDataUrl?: string
-}): Promise<ChasModelResponse> {
+}): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY
 
   if (!apiKey) {
@@ -346,24 +383,27 @@ async function callOpenAIStructured(params: {
 
   const model = process.env.CHAS_MODEL || process.env.OPENAI_MODEL || 'gpt-4.1-mini'
 
-  const userContent: Array<Record<string, unknown>> = [
+  const inputItems: Array<Record<string, unknown>> = [
     {
-      type: 'text',
-      text: params.userMessage
+      role: 'user',
+      content: [
+        {
+          type: 'input_text',
+          text: params.input
+        }
+      ]
     }
   ]
 
   const cleanImage = cleanString(params.imageDataUrl)
   if (cleanImage) {
-    userContent.push({
-      type: 'image_url',
-      image_url: {
-        url: cleanImage
-      }
+    ;(inputItems[0].content as Array<Record<string, unknown>>).push({
+      type: 'input_image',
+      image_url: cleanImage
     })
   }
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -371,49 +411,9 @@ async function callOpenAIStructured(params: {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.5,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'chas_response',
-          strict: true,
-          schema: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              answer: { type: 'string' },
-              intent: {
-                type: 'string',
-                enum: [
-                  'general',
-                  'plant_id',
-                  'pricing_guide',
-                  'safety',
-                  'quote_support',
-                  'escalation'
-                ]
-              },
-              confidence: { type: 'number' },
-              escalateTo: {
-                type: 'string',
-                enum: ['none', 'kelly', 'trevor']
-              },
-              safetyFlag: { type: 'boolean' }
-            },
-            required: ['answer', 'intent', 'confidence', 'escalateTo', 'safetyFlag']
-          }
-        }
-      },
-      messages: [
-        {
-          role: 'developer',
-          content: params.developerMessage
-        },
-        {
-          role: 'user',
-          content: userContent
-        }
-      ]
+      instructions: params.instructions,
+      input: inputItems,
+      temperature: 0.5
     })
   })
 
@@ -423,14 +423,13 @@ async function callOpenAIStructured(params: {
   }
 
   const data = await response.json()
-  const content = data?.choices?.[0]?.message?.content
+  const text = extractResponseText(data)
 
-  if (typeof content !== 'string' || !content.trim()) {
-    throw new Error('Model returned no structured content')
+  if (!text) {
+    throw new Error('Model returned no text output')
   }
 
-  const parsed = JSON.parse(content)
-  return validateModelResponse(parsed, params.userMessage)
+  return text
 }
 
 export async function POST(req: NextRequest) {
@@ -473,17 +472,18 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    const promptParts = buildMessages({
-      question,
-      hasImage: !!imageDataUrl,
-      history
-    })
-
-    const parsed = await callOpenAIStructured({
-      developerMessage: promptParts.developerMessage,
-      userMessage: promptParts.userMessage,
+    const rawAnswer = await callOpenAI({
+      instructions: buildInstructions(),
+      input: buildInput({
+        question,
+        hasImage: !!imageDataUrl,
+        history
+      }),
       imageDataUrl
     })
+
+    const cleanAnswer = normaliseText(rawAnswer)
+    const parsed = classifyIntent(question, cleanAnswer || buildFallback(question).answer)
 
     await prisma.chasMessage.create({
       data: {
@@ -511,22 +511,14 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('POST /api/chas/ask failed', error)
 
-    const safeFallback: ChasModelResponse = {
-      answer: 'No worries — send me a bit more and I’ll help.',
-      intent: 'general',
-      confidence: 0.2,
-      escalateTo: 'none',
-      safetyFlag: false
-    }
-
     return NextResponse.json(
       {
         ok: false,
-        answer: safeFallback.answer,
-        intent: safeFallback.intent,
-        confidence: safeFallback.confidence,
-        escalateTo: safeFallback.escalateTo,
-        safetyFlag: safeFallback.safetyFlag
+        answer: 'No worries — send me a bit more and I’ll help.',
+        intent: 'general',
+        confidence: 0.2,
+        escalateTo: 'none',
+        safetyFlag: false
       },
       { status: 200 }
     )
