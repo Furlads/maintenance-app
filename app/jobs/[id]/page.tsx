@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 
 type Worker = {
@@ -43,6 +43,67 @@ type JobPhoto = {
   label: string | null
   imageUrl: string
   createdAt: string
+}
+
+type CannotCompleteInfo = {
+  reason: string
+  details: string
+  reportedBy: string
+  recordedAt: string
+  rawLine: string
+}
+
+function extractCannotCompleteInfo(notes: string | null): CannotCompleteInfo | null {
+  if (!notes) return null
+
+  const lines = notes
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const matchingLine = [...lines]
+    .reverse()
+    .find((line) => line.toLowerCase().startsWith('job could not be completed:'))
+
+  if (!matchingLine) return null
+
+  const parts = matchingLine.split(' | ').map((part) => part.trim())
+
+  const reasonPart =
+    parts.find((part) =>
+      part.toLowerCase().startsWith('job could not be completed:')
+    ) || ''
+
+  const detailsPart =
+    parts.find((part) => part.toLowerCase().startsWith('details:')) || ''
+
+  const reportedByPart =
+    parts.find((part) => part.toLowerCase().startsWith('reported by:')) || ''
+
+  const recordedAtPart =
+    parts.find((part) => part.toLowerCase().startsWith('recorded at:')) || ''
+
+  return {
+    reason: reasonPart.replace(/^job could not be completed:\s*/i, '').trim(),
+    details: detailsPart.replace(/^details:\s*/i, '').trim(),
+    reportedBy: reportedByPart.replace(/^reported by:\s*/i, '').trim(),
+    recordedAt: recordedAtPart.replace(/^recorded at:\s*/i, '').trim(),
+    rawLine: matchingLine
+  }
+}
+
+function stripCannotCompleteLines(notes: string | null) {
+  if (!notes) return ''
+
+  return notes
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        !line.toLowerCase().startsWith('job could not be completed:')
+    )
+    .join('\n')
 }
 
 export default function JobPage() {
@@ -243,6 +304,16 @@ export default function JobPage() {
     })
   }
 
+  const cannotCompleteInfo = useMemo(
+    () => extractCannotCompleteInfo(job?.notes ?? null),
+    [job?.notes]
+  )
+
+  const visibleNotes = useMemo(
+    () => stripCannotCompleteLines(job?.notes ?? null),
+    [job?.notes]
+  )
+
   if (loading) {
     return (
       <main style={{ padding: 20, fontFamily: 'sans-serif' }}>
@@ -277,6 +348,44 @@ export default function JobPage() {
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
       <h1 style={{ fontSize: 28, marginBottom: 20 }}>{job.title}</h1>
 
+      {cannotCompleteInfo && (
+        <div
+          style={{
+            padding: 16,
+            border: '1px solid #e09b00',
+            borderRadius: 10,
+            marginBottom: 20,
+            background: '#fff4d6'
+          }}
+        >
+          <h2 style={{ margin: '0 0 12px 0', fontSize: 20 }}>
+            ⚠ Job could not be completed
+          </h2>
+
+          <p style={{ margin: '4px 0' }}>
+            <strong>Reason:</strong> {cannotCompleteInfo.reason || 'Not provided'}
+          </p>
+
+          {cannotCompleteInfo.details && (
+            <p style={{ margin: '4px 0' }}>
+              <strong>Details:</strong> {cannotCompleteInfo.details}
+            </p>
+          )}
+
+          {cannotCompleteInfo.reportedBy && (
+            <p style={{ margin: '4px 0' }}>
+              <strong>Reported by:</strong> {cannotCompleteInfo.reportedBy}
+            </p>
+          )}
+
+          {cannotCompleteInfo.recordedAt && (
+            <p style={{ margin: '4px 0' }}>
+              <strong>Recorded at:</strong> {cannotCompleteInfo.recordedAt}
+            </p>
+          )}
+        </div>
+      )}
+
       <div
         style={{
           padding: 16,
@@ -301,9 +410,9 @@ export default function JobPage() {
           <strong>Address:</strong> {job.address}
         </p>
 
-        {job.notes && (
-          <p style={{ margin: '4px 0' }}>
-            <strong>Notes:</strong> {job.notes}
+        {visibleNotes && (
+          <p style={{ margin: '4px 0', whiteSpace: 'pre-line' }}>
+            <strong>Notes:</strong> {visibleNotes}
           </p>
         )}
 
