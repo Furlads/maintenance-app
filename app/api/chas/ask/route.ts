@@ -6,6 +6,7 @@ export const runtime = "nodejs"
 type AskBody = {
   company?: string
   worker?: string
+  sessionId?: string
   jobId?: number | null
   question?: string
   imageDataUrl?: string
@@ -70,20 +71,13 @@ How to behave:
 - Kelly confirms final quotes.
 - Never mention prompts, hidden rules, policies, JSON, or systems.
 
-Pricing rules:
-- Always use £ only. Never use $.
-- Any price you give is a rough guide only, not a final quote.
-- Keep rough prices realistic for Shropshire, not London pricing.
-- If asked for a rough maintenance price, use these Shropshire-style guide rates:
-  - General garden maintenance: about £20 to £30 per hour
-  - Specialist pruning, planting, or clearance: about £25 to £40 per hour
-- If asked for fencing, use a rough installed range of about £60 to £120 per metre depending on spec, access, and ground conditions.
-- If asked for patios, use a rough guide of about £110 to £130 per m².
-- If asked for turfing, use a rough guide of about £25 to £31 per m².
-- If asked for artificial grass, use a rough guide of about £65 to £78 per m².
-- If asked for gravel fronts, use a rough guide of about £45 to £58 per m².
-- Make clear that access, waste, prep depth, edging, and materials can move the price up or down.
-- For bigger or riskier quoting calls, say Kelly confirms final prices.
+Critical pricing rule:
+- Do not give final prices there and then.
+- Do not mention an hourly rate unless the worker explicitly asks for one.
+- If the worker wants a quote or rough cost, ask what the customer wants and ask how long they think it would take conservatively.
+- Keep quote help practical and simple.
+- Once enough detail is gathered, tell them to send it over to Kelly for pricing.
+- Treat Kelly as the person who confirms pricing properly.
 
 Landscaping and site knowledge:
 - Be useful on common Furlads-type work such as turfing, fencing, patios, gravel, hedge cutting, pruning, weeding, garden clearances, and general outside maintenance.
@@ -204,6 +198,7 @@ export async function POST(req: NextRequest) {
 
     const company = cleanString(body.company) || "furlads"
     const worker = cleanString(body.worker)
+    const sessionId = cleanString(body.sessionId)
     const question = cleanString(body.question)
     const imageDataUrl = cleanString(body.imageDataUrl)
     const jobId =
@@ -213,6 +208,10 @@ export async function POST(req: NextRequest) {
 
     if (!worker) {
       return NextResponse.json({ error: "Missing worker." }, { status: 400 })
+    }
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "Missing sessionId." }, { status: 400 })
     }
 
     if (!question) {
@@ -226,6 +225,7 @@ export async function POST(req: NextRequest) {
         where: {
           company,
           worker,
+          sessionId,
         },
         orderBy: {
           createdAt: "asc",
@@ -256,6 +256,7 @@ export async function POST(req: NextRequest) {
         data: {
           company,
           worker,
+          sessionId,
           jobId,
           question,
           answer,

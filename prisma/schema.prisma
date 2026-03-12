@@ -122,6 +122,7 @@ model ChasMessage {
   id                    Int      @id @default(autoincrement())
   company               String
   worker                String
+  sessionId             String?
   jobId                 Int?
   question              String
   answer                String
@@ -150,6 +151,7 @@ model ChasMessage {
   job                   Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
   @@index([company, worker, createdAt])
+  @@index([company, worker, sessionId, createdAt])
   @@index([jobId])
   @@index([enquiryReadyForKelly, createdAt])
   @@index([conversationId])

@@ -279,12 +279,6 @@ function getLiveWorkedMinutes(job: Job, currentNow: Date) {
   return Math.max(0, totalMinutes - pausedMinutes - livePausedMinutes)
 }
 
-function chasStorageKey(workerName: string) {
-  const worker = (workerName || 'unknown').trim().toLowerCase()
-  const today = new Date().toISOString().slice(0, 10)
-  return `chas-thread-${worker}-${today}`
-}
-
 function formatChasTimestamp(value: string) {
   const date = new Date(value)
 
@@ -294,6 +288,14 @@ function formatChasTimestamp(value: string) {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+function createChasSessionId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `chas-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -315,12 +317,24 @@ export default function TodayPage() {
   const [now, setNow] = useState(new Date())
 
   const [chasOpen, setChasOpen] = useState(false)
+  const [chasSessionId, setChasSessionId] = useState<string>('')
   const [chasQuestion, setChasQuestion] = useState('')
   const [chasBusy, setChasBusy] = useState(false)
   const [chasError, setChasError] = useState('')
   const [chasMessages, setChasMessages] = useState<ChasUiMessage[]>([])
   const [chasImageDataUrl, setChasImageDataUrl] = useState('')
   const [chasImageName, setChasImageName] = useState('')
+  const [showQuoteForm, setShowQuoteForm] = useState(false)
+  const [quoteBusy, setQuoteBusy] = useState(false)
+  const [quoteMessage, setQuoteMessage] = useState('')
+  const [quoteCustomerName, setQuoteCustomerName] = useState('')
+  const [quoteCustomerPhone, setQuoteCustomerPhone] = useState('')
+  const [quoteCustomerEmail, setQuoteCustomerEmail] = useState('')
+  const [quoteCustomerAddress, setQuoteCustomerAddress] = useState('')
+  const [quoteCustomerPostcode, setQuoteCustomerPostcode] = useState('')
+  const [quoteWorkSummary, setQuoteWorkSummary] = useState('')
+  const [quoteEstimatedTime, setQuoteEstimatedTime] = useState('')
+  const [quoteNotes, setQuoteNotes] = useState('')
   const chasMessagesEndRef = useRef<HTMLDivElement | null>(null)
 
   async function loadJobs() {
@@ -366,23 +380,6 @@ export default function TodayPage() {
 
     return () => window.clearInterval(timer)
   }, [])
-
-  useEffect(() => {
-    if (!workerName) return
-
-    try {
-      const raw = localStorage.getItem(chasStorageKey(workerName))
-      if (!raw) {
-        setChasMessages([])
-        return
-      }
-
-      const parsed = JSON.parse(raw)
-      setChasMessages(Array.isArray(parsed) ? parsed : [])
-    } catch {
-      setChasMessages([])
-    }
-  }, [workerName])
 
   useEffect(() => {
     if (!chasOpen) return
@@ -502,14 +499,100 @@ export default function TodayPage() {
     return visibleJobs.filter((job) => job.id !== activeJob.id)
   }, [visibleJobs, activeJob])
 
-  function persistChasMessages(nextMessages: ChasUiMessage[]) {
-    setChasMessages(nextMessages)
+  function resetQuoteForm() {
+    setQuoteCustomerName('')
+    setQuoteCustomerPhone('')
+    setQuoteCustomerEmail('')
+    setQuoteCustomerAddress('')
+    setQuoteCustomerPostcode('')
+    setQuoteWorkSummary('')
+    setQuoteEstimatedTime('')
+    setQuoteNotes('')
+  }
 
-    if (!workerName) return
+  function resetChasState() {
+    setChasMessages([])
+    setChasQuestion('')
+    setChasBusy(false)
+    setChasError('')
+    setChasImageDataUrl('')
+    setChasImageName('')
+    setShowQuoteForm(false)
+    setQuoteBusy(false)
+    setQuoteMessage('')
+    resetQuoteForm()
+    setChasSessionId(createChasSessionId())
+  }
+
+  function openChas() {
+    resetChasState()
+    setChasOpen(true)
+  }
+
+  function closeChas() {
+    setChasOpen(false)
+    resetChasState()
+  }
+
+  function buildChatTranscript() {
+    return chasMessages
+      .map((message) => `${message.role === 'user' ? 'Worker' : 'CHAS'}: ${message.text}`)
+      .join(' | ')
+  }
+
+  async function handleSendQuoteRequest() {
+    const company = localStorage.getItem('company') || 'furlads'
+    setQuoteBusy(true)
+    setQuoteMessage('')
 
     try {
-      localStorage.setItem(chasStorageKey(workerName), JSON.stringify(nextMessages))
-    } catch {}
+      const res = await fetch('/api/chas/quote-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          company,
+          worker: workerName,
+          sessionId: chasSessionId,
+          customerName: quoteCustomerName,
+          customerPhone: quoteCustomerPhone,
+          customerEmail: quoteCustomerEmail,
+          customerAddress: quoteCustomerAddress,
+          customerPostcode: quoteCustomerPostcode,
+          workSummary: quoteWorkSummary,
+          estimatedTimeText: quoteEstimatedTime,
+          notes: quoteNotes,
+          imageDataUrl: chasImageDataUrl || '',
+          chatTranscript: buildChatTranscript()
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Failed to send quote request.')
+      }
+
+      setQuoteMessage('Sent to Kelly for pricing.')
+      setShowQuoteForm(false)
+
+      const assistantMessage: ChasUiMessage = {
+        id: `assistant-quote-${Date.now()}`,
+        role: 'assistant',
+        text: 'Nice one — I’ve sent that over to Kelly for pricing.',
+        createdAt: new Date().toISOString()
+      }
+
+      setChasMessages((prev) => [...prev, assistantMessage])
+      resetQuoteForm()
+      clearChasImage()
+    } catch (err: any) {
+      console.error(err)
+      setQuoteMessage(String(err?.message || 'Failed to send quote request.'))
+    } finally {
+      setQuoteBusy(false)
+    }
   }
 
   async function handleStartJob(jobId: number) {
@@ -820,6 +903,7 @@ Heavy rain made it unsafe`,
       setChasImageDataUrl(dataUrl)
       setChasImageName(file.name)
       setChasError('')
+      setQuoteMessage('')
     } catch (err) {
       console.error(err)
       setChasError('Failed to load image.')
@@ -852,11 +936,11 @@ Heavy rain made it unsafe`,
       jobId: null
     }
 
-    const nextMessages = [...chasMessages, userMessage]
-    persistChasMessages(nextMessages)
+    setChasMessages((prev) => [...prev, userMessage])
 
     setChasBusy(true)
     setChasError('')
+    setQuoteMessage('')
 
     try {
       const res = await fetch('/api/chas/ask', {
@@ -867,6 +951,7 @@ Heavy rain made it unsafe`,
         body: JSON.stringify({
           company,
           worker: workerName,
+          sessionId: chasSessionId,
           workerId,
           question,
           imageDataUrl: chasImageDataUrl || ''
@@ -898,7 +983,7 @@ Heavy rain made it unsafe`,
         jobId: null
       }
 
-      persistChasMessages([...nextMessages, assistantMessage])
+      setChasMessages((prev) => [...prev, assistantMessage])
       setChasQuestion('')
       clearChasImage()
     } catch (err) {
@@ -1167,7 +1252,7 @@ Heavy rain made it unsafe`,
 
         <button
           type="button"
-          onClick={() => setChasOpen(true)}
+          onClick={openChas}
           style={{
             display: 'inline-block',
             padding: '12px 16px',
@@ -1654,11 +1739,11 @@ Heavy rain made it unsafe`,
 
       {chasOpen && (
         <div
-          onClick={() => setChasOpen(false)}
+          onClick={closeChas}
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.55)',
+            background: 'rgba(0,0,0,0.5)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1670,20 +1755,20 @@ Heavy rain made it unsafe`,
             onClick={(event) => event.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: 860,
-              height: '88vh',
+              maxWidth: 820,
+              height: '86vh',
               overflow: 'hidden',
               background: '#fff',
-              borderRadius: 22,
+              borderRadius: 20,
               border: '1px solid #ddd',
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: '0 28px 80px rgba(0,0,0,0.24)'
+              boxShadow: '0 24px 70px rgba(0,0,0,0.22)'
             }}
           >
             <div
               style={{
-                padding: 18,
+                padding: 16,
                 borderBottom: '1px solid rgba(255,255,255,0.08)',
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -1694,41 +1779,15 @@ Heavy rain made it unsafe`,
               }}
             >
               <div>
-                <div
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '6px 10px',
-                    borderRadius: 999,
-                    border: '1px solid rgba(255,255,255,0.14)',
-                    background: 'rgba(255,255,255,0.08)',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    marginBottom: 10
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 999,
-                      background: '#d7ff76',
-                      display: 'inline-block'
-                    }}
-                  />
-                  Always online
-                </div>
-
-                <div style={{ fontSize: 22, fontWeight: 800 }}>Chas 💬</div>
+                <div style={{ fontSize: 20, fontWeight: 800 }}>Chas 💬</div>
                 <div style={{ fontSize: 13, opacity: 0.8 }}>
-                  Like the office lad who’s always about to help
+                  Friendly on-site help
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => setChasOpen(false)}
+                onClick={closeChas}
                 style={{
                   width: 42,
                   height: 42,
@@ -1749,33 +1808,32 @@ Heavy rain made it unsafe`,
                 flex: 1,
                 overflowY: 'auto',
                 padding: 16,
-                background: 'linear-gradient(180deg, #fafafa 0%, #f4f4f4 100%)'
+                background: 'linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%)'
               }}
             >
               {chasMessages.length === 0 && (
                 <div
                   style={{
-                    padding: 18,
-                    borderRadius: 18,
+                    padding: 16,
+                    borderRadius: 16,
                     background: '#fffdf3',
                     border: '1px solid #f0e2a1',
                     fontSize: 14,
-                    lineHeight: 1.6,
-                    maxWidth: 560,
-                    boxShadow: '0 10px 24px rgba(0,0,0,0.04)'
+                    lineHeight: 1.5,
+                    maxWidth: 520
                   }}
                 >
                   <div style={{ fontWeight: 800, marginBottom: 8 }}>
                     Ask Chas anything from site
                   </div>
-                  <div style={{ opacity: 0.88 }}>
-                    • Rough guide price for a small job
-                    <br />
+                  <div style={{ opacity: 0.85 }}>
                     • What plant is this?
+                    <br />
+                    • How should I cut this hedge?
                     <br />
                     • What’s the safest way to tackle this?
                     <br />
-                    • Help pulling customer details together for Kelly
+                    • Need to send a quote request to Kelly
                   </div>
                 </div>
               )}
@@ -1793,8 +1851,8 @@ Heavy rain made it unsafe`,
                   <div
                     style={{
                       maxWidth: '86%',
-                      padding: 14,
-                      borderRadius: 18,
+                      padding: 13,
+                      borderRadius: 16,
                       background: message.role === 'user' ? '#111' : '#fffdf5',
                       color: message.role === 'user' ? '#fff' : '#111',
                       border:
@@ -1803,7 +1861,7 @@ Heavy rain made it unsafe`,
                           : '1px solid #eee0a2',
                       boxShadow:
                         message.role === 'user'
-                          ? '0 12px 28px rgba(0,0,0,0.12)'
+                          ? '0 10px 24px rgba(0,0,0,0.12)'
                           : '0 10px 24px rgba(0,0,0,0.05)'
                     }}
                   >
@@ -1812,18 +1870,18 @@ Heavy rain made it unsafe`,
                         src={message.imageDataUrl}
                         alt="Attached"
                         style={{
-                          width: '100%',
-                          maxWidth: 130,
-                          maxHeight: 130,
+                          width: 96,
+                          height: 96,
                           objectFit: 'cover',
-                          borderRadius: 12,
-                          marginBottom: 10,
-                          display: 'block'
+                          borderRadius: 10,
+                          marginBottom: 8,
+                          display: 'block',
+                          border: '1px solid rgba(0,0,0,0.08)'
                         }}
                       />
                     )}
 
-                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
                       {message.text}
                     </div>
 
@@ -1851,8 +1909,8 @@ Heavy rain made it unsafe`,
                   <div
                     style={{
                       maxWidth: '86%',
-                      padding: 14,
-                      borderRadius: 18,
+                      padding: 13,
+                      borderRadius: 16,
                       background: '#fffdf5',
                       color: '#111',
                       border: '1px solid #eee0a2',
@@ -1860,7 +1918,7 @@ Heavy rain made it unsafe`,
                     }}
                   >
                     <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                      Chas is typing...
+                      Chas is thinking...
                     </div>
 
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1894,6 +1952,10 @@ Heavy rain made it unsafe`,
                         }}
                       />
                     </div>
+
+                    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                      This can take a few seconds on longer replies.
+                    </div>
                   </div>
                 </div>
               )}
@@ -1908,12 +1970,193 @@ Heavy rain made it unsafe`,
                 background: '#fff'
               }}
             >
+              {showQuoteForm && (
+                <div
+                  style={{
+                    marginBottom: 14,
+                    padding: 14,
+                    borderRadius: 14,
+                    border: '1px solid #ddd',
+                    background: '#fafafa'
+                  }}
+                >
+                  <div style={{ fontWeight: 800, marginBottom: 10 }}>
+                    Quote request for Kelly
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: 10,
+                      gridTemplateColumns: '1fr'
+                    }}
+                  >
+                    <input
+                      value={quoteCustomerName}
+                      onChange={(e) => setQuoteCustomerName(e.target.value)}
+                      placeholder="Customer name"
+                      style={{
+                        padding: 12,
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        fontSize: 14
+                      }}
+                    />
+
+                    <input
+                      value={quoteCustomerPhone}
+                      onChange={(e) => setQuoteCustomerPhone(e.target.value)}
+                      placeholder="Customer phone"
+                      style={{
+                        padding: 12,
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        fontSize: 14
+                      }}
+                    />
+
+                    <input
+                      value={quoteCustomerEmail}
+                      onChange={(e) => setQuoteCustomerEmail(e.target.value)}
+                      placeholder="Customer email (optional)"
+                      style={{
+                        padding: 12,
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        fontSize: 14
+                      }}
+                    />
+
+                    <input
+                      value={quoteCustomerAddress}
+                      onChange={(e) => setQuoteCustomerAddress(e.target.value)}
+                      placeholder="Customer address"
+                      style={{
+                        padding: 12,
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        fontSize: 14
+                      }}
+                    />
+
+                    <input
+                      value={quoteCustomerPostcode}
+                      onChange={(e) => setQuoteCustomerPostcode(e.target.value)}
+                      placeholder="Customer postcode"
+                      style={{
+                        padding: 12,
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        fontSize: 14
+                      }}
+                    />
+
+                    <textarea
+                      value={quoteWorkSummary}
+                      onChange={(e) => setQuoteWorkSummary(e.target.value)}
+                      placeholder="What does the customer want doing?"
+                      style={{
+                        minHeight: 90,
+                        padding: 12,
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        fontFamily: 'inherit',
+                        fontSize: 14,
+                        resize: 'vertical'
+                      }}
+                    />
+
+                    <input
+                      value={quoteEstimatedTime}
+                      onChange={(e) => setQuoteEstimatedTime(e.target.value)}
+                      placeholder="How long do you think it will take conservatively?"
+                      style={{
+                        padding: 12,
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        fontSize: 14
+                      }}
+                    />
+
+                    <textarea
+                      value={quoteNotes}
+                      onChange={(e) => setQuoteNotes(e.target.value)}
+                      placeholder="Extra notes for Kelly (optional)"
+                      style={{
+                        minHeight: 80,
+                        padding: 12,
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        fontFamily: 'inherit',
+                        fontSize: 14,
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
+
+                  {quoteMessage && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        fontSize: 13,
+                        color: quoteMessage.includes('Sent') ? '#1b5e20' : '#b00020'
+                      }}
+                    >
+                      {quoteMessage}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      display: 'flex',
+                      gap: 10,
+                      flexWrap: 'wrap'
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={handleSendQuoteRequest}
+                      disabled={quoteBusy}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 10,
+                        border: '1px solid #111',
+                        background: '#111',
+                        color: '#fff',
+                        cursor: quoteBusy ? 'not-allowed' : 'pointer',
+                        opacity: quoteBusy ? 0.7 : 1,
+                        fontWeight: 700
+                      }}
+                    >
+                      {quoteBusy ? 'Sending...' : 'Send to Kelly'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowQuoteForm(false)}
+                      disabled={quoteBusy}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        cursor: quoteBusy ? 'not-allowed' : 'pointer',
+                        opacity: quoteBusy ? 0.7 : 1
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {chasImageDataUrl && (
                 <div
                   style={{
                     marginBottom: 12,
                     padding: 12,
-                    borderRadius: 14,
+                    borderRadius: 12,
                     border: '1px solid #eadc97',
                     background: '#fff8d9'
                   }}
@@ -1934,14 +2177,14 @@ Heavy rain made it unsafe`,
                     <button
                       type="button"
                       onClick={clearChasImage}
-                      disabled={chasBusy}
+                      disabled={chasBusy || quoteBusy}
                       style={{
                         padding: '8px 10px',
                         borderRadius: 8,
                         border: '1px solid #ccc',
                         background: '#fff',
-                        cursor: chasBusy ? 'not-allowed' : 'pointer',
-                        opacity: chasBusy ? 0.6 : 1
+                        cursor: chasBusy || quoteBusy ? 'not-allowed' : 'pointer',
+                        opacity: chasBusy || quoteBusy ? 0.6 : 1
                       }}
                     >
                       Remove
@@ -1965,7 +2208,7 @@ Heavy rain made it unsafe`,
               <div
                 style={{
                   padding: 10,
-                  borderRadius: 20,
+                  borderRadius: 18,
                   border: '1px solid #e3e3e3',
                   background: '#fafafa',
                   boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
@@ -1974,11 +2217,11 @@ Heavy rain made it unsafe`,
                 <textarea
                   value={chasQuestion}
                   onChange={(e) => setChasQuestion(e.target.value)}
-                  placeholder="Message Chas..."
+                  placeholder="Ask Chas for help from site..."
                   disabled={chasBusy}
                   style={{
                     width: '100%',
-                    minHeight: 96,
+                    minHeight: 90,
                     padding: 12,
                     borderRadius: 14,
                     border: '1px solid #d8d8d8',
@@ -2013,27 +2256,47 @@ Heavy rain made it unsafe`,
                     flexWrap: 'wrap'
                   }}
                 >
-                  <label
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: 10,
-                      border: '1px solid #ccc',
-                      background: '#fff',
-                      cursor: chasBusy ? 'not-allowed' : 'pointer',
-                      display: 'inline-block',
-                      opacity: chasBusy ? 0.6 : 1,
-                      fontWeight: 600
-                    }}
-                  >
-                    📸 Add Photo
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleChasImageChange}
-                      style={{ display: 'none' }}
-                      disabled={chasBusy}
-                    />
-                  </label>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <label
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        cursor: chasBusy ? 'not-allowed' : 'pointer',
+                        display: 'inline-block',
+                        opacity: chasBusy ? 0.6 : 1,
+                        fontWeight: 600
+                      }}
+                    >
+                      📸 Add Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleChasImageChange}
+                        style={{ display: 'none' }}
+                        disabled={chasBusy}
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowQuoteForm((prev) => !prev)
+                        setQuoteMessage('')
+                      }}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 10,
+                        border: '1px solid #ccc',
+                        background: '#fff',
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      {showQuoteForm ? 'Hide Quote Form' : 'Quote for Kelly'}
+                    </button>
+                  </div>
 
                   <button
                     type="button"
