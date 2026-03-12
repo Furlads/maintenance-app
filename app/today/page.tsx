@@ -109,6 +109,22 @@ function formatLiveDate(value: Date) {
   })
 }
 
+function formatShortDate(value: string | null | undefined) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  return date.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short'
+  })
+}
+
 function formatDurationMinutes(start?: string | null, end?: string | null) {
   if (!start || !end) return '—'
 
@@ -308,6 +324,18 @@ async function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
+function getInitials(name: string) {
+  const cleaned = name.trim()
+  if (!cleaned) return '?'
+
+  const parts = cleaned.split(/\s+/).filter(Boolean)
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase()
+  }
+
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase()
+}
+
 const colours = {
   ink: '#111111',
   inkSoft: '#2b2b2b',
@@ -315,7 +343,6 @@ const colours = {
   panel: '#ffffff',
   page: '#f4f5f7',
   muted: '#6b7280',
-  yellow: '#facc15',
   yellowSoft: '#fff7d6',
   greenSoft: '#e8f8ea',
   greenLine: '#7bc586',
@@ -513,6 +540,9 @@ export default function TodayPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [workerId, setWorkerId] = useState<number | null>(null)
   const [workerName, setWorkerName] = useState<string>('')
+  const [workerPhotoUrl, setWorkerPhotoUrl] = useState<string>('')
+  const [companyKey, setCompanyKey] = useState<string>('furlads')
+  const [logoHidden, setLogoHidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
@@ -582,6 +612,11 @@ export default function TodayPage() {
   useEffect(() => {
     const savedWorkerId = localStorage.getItem('workerId')
     const savedWorkerName = localStorage.getItem('workerName')
+    const savedWorkerPhotoUrl =
+      localStorage.getItem('workerPhotoUrl') ||
+      localStorage.getItem('photoUrl') ||
+      ''
+    const savedCompany = (localStorage.getItem('company') || 'furlads').toLowerCase()
 
     if (savedWorkerId) {
       setWorkerId(Number(savedWorkerId))
@@ -590,6 +625,12 @@ export default function TodayPage() {
     if (savedWorkerName) {
       setWorkerName(savedWorkerName)
     }
+
+    if (savedWorkerPhotoUrl) {
+      setWorkerPhotoUrl(savedWorkerPhotoUrl)
+    }
+
+    setCompanyKey(savedCompany)
 
     loadJobs()
     loadCustomers()
@@ -729,6 +770,34 @@ export default function TodayPage() {
     return listJobs.filter((job) => job.isDone)
   }, [listJobs])
 
+  const progressCounts = useMemo(() => {
+    const todayTotal = visibleJobs.length
+    const completed = visibleJobs.filter((job) => job.isDone).length
+    const left = visibleJobs.filter((job) => !job.isDone).length
+
+    return {
+      todayTotal,
+      completed,
+      left
+    }
+  }, [visibleJobs])
+
+  const upcomingJobs = useMemo(() => {
+    const nowTime = now.getTime()
+
+    return workerJobs
+      .filter((job) => {
+        if (!job.visitDate) return false
+        if (job.finishedAt) return false
+
+        const dateTime = combineVisitDateAndTime(job.visitDate, job.startTime)
+        if (!dateTime) return false
+
+        return dateTime.getTime() > nowTime
+      })
+      .slice(0, 8)
+  }, [workerJobs, now])
+
   const filteredQuoteCustomers = useMemo(() => {
     const q = quoteCustomerSearch.trim().toLowerCase()
 
@@ -754,6 +823,11 @@ export default function TodayPage() {
       customers.find((customer) => String(customer.id) === quoteSelectedCustomerId) || null
     )
   }, [customers, quoteSelectedCustomerId])
+
+  const companyLogoSrc =
+    companyKey.includes('three')
+      ? '/three-counties-logo.png'
+      : '/furlads-logo.png'
 
   useEffect(() => {
     if (quoteCustomerMode !== 'existing') return
@@ -1350,22 +1424,28 @@ Heavy rain made it unsafe`,
               justifyContent: 'space-between',
               alignItems: 'flex-start',
               gap: 12,
-              marginBottom: 16
+              marginBottom: 16,
+              flexWrap: 'wrap'
             }}
           >
             <div>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 800,
-                  letterSpacing: 1,
-                  textTransform: 'uppercase',
-                  opacity: 0.78,
-                  marginBottom: 6
-                }}
-              >
-                Furlads worker view
-              </div>
+              {!logoHidden && (
+                <div style={{ marginBottom: 10 }}>
+                  <img
+                    src={companyLogoSrc}
+                    alt="Company logo"
+                    onError={() => setLogoHidden(true)}
+                    style={{
+                      height: 42,
+                      width: 'auto',
+                      display: 'block',
+                      maxWidth: 180,
+                      objectFit: 'contain'
+                    }}
+                  />
+                </div>
+              )}
+
               <h1
                 style={{
                   margin: 0,
@@ -1378,25 +1458,125 @@ Heavy rain made it unsafe`,
               </h1>
             </div>
 
-            <WorkerMenu />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                marginLeft: 'auto',
+                flexWrap: 'wrap',
+                justifyContent: 'flex-end'
+              }}
+            >
+              <button
+                type="button"
+                onClick={openChas}
+                style={{
+                  ...styles.actionButtonDark,
+                  minWidth: 150
+                }}
+              >
+                Ask Chas
+              </button>
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  borderRadius: 16,
+                  background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  minWidth: 0
+                }}
+              >
+                {workerPhotoUrl ? (
+                  <img
+                    src={workerPhotoUrl}
+                    alt={workerName || 'Worker'}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: '2px solid rgba(255,255,255,0.35)',
+                      flexShrink: 0
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: '#facc15',
+                      color: '#111',
+                      fontWeight: 900,
+                      fontSize: 16,
+                      border: '2px solid rgba(255,255,255,0.25)',
+                      flexShrink: 0
+                    }}
+                  >
+                    {getInitials(workerName || 'Worker')}
+                  </div>
+                )}
+
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      letterSpacing: 0.6,
+                      textTransform: 'uppercase',
+                      opacity: 0.72,
+                      marginBottom: 2
+                    }}
+                  >
+                    Logged in worker
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 800,
+                      lineHeight: 1.2,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: 180
+                    }}
+                  >
+                    {workerName || 'Worker'}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      opacity: 0.78,
+                      marginTop: 2,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Notes and actions use this login
+                  </div>
+                </div>
+              </div>
+
+              <WorkerMenu />
+            </div>
           </div>
 
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
               gap: 12
             }}
           >
-            <div style={styles.metaCard}>
-              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
-                Logged in as
-              </div>
-              <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.15 }}>
-                {workerName || 'Worker'}
-              </div>
-            </div>
-
             <div style={styles.metaCard}>
               <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
                 Current time
@@ -1414,10 +1594,34 @@ Heavy rain made it unsafe`,
                 Jobs today
               </div>
               <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
-                {visibleJobs.length}
+                {progressCounts.todayTotal}
               </div>
               <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
-                {activeJob ? 'One active now' : nextJobs.length > 0 ? 'Next jobs ready' : 'No active job'}
+                Total jobs booked
+              </div>
+            </div>
+
+            <div style={styles.metaCard}>
+              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
+                Jobs completed
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+                {progressCounts.completed}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+                Finished so far
+              </div>
+            </div>
+
+            <div style={styles.metaCard}>
+              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
+                Jobs left
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+                {progressCounts.left}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+                Still to do
               </div>
             </div>
           </div>
@@ -1614,33 +1818,69 @@ Heavy rain made it unsafe`,
           </section>
         )}
 
-        <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
-          <div style={styles.sectionTitle}>Quick actions</div>
+        {!loading && !error && workerId && upcomingJobs.length > 0 && (
+          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
+            <div style={styles.sectionTitle}>Coming up</div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-              gap: 10
-            }}
-          >
-            <a href="/jobs" style={styles.actionButton}>
-              View All Jobs
-            </a>
-
-            <a href="/customers" style={styles.actionButton}>
-              View Customers
-            </a>
-
-            <button
-              type="button"
-              onClick={openChas}
-              style={styles.actionButtonDark}
+            <div
+              style={{
+                display: 'grid',
+                gap: 10
+              }}
             >
-              Chas 💬
-            </button>
-          </div>
-        </section>
+              {upcomingJobs.map((job) => (
+                <a
+                  key={job.id}
+                  href={`/jobs/${job.id}`}
+                  style={{
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 14,
+                    padding: 14,
+                    background: '#fafafa'
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      alignItems: 'flex-start',
+                      flexWrap: 'wrap'
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>
+                        {job.title}
+                      </div>
+                      <div style={{ fontSize: 14, color: colours.inkSoft }}>
+                        {job.customer?.name || 'Unknown customer'}
+                      </div>
+                      <div style={{ fontSize: 13, color: colours.muted, marginTop: 4 }}>
+                        {job.address}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: 12,
+                        background: '#fff',
+                        border: '1px solid #ddd',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {formatShortDate(job.visitDate)}{job.startTime ? ` • ${job.startTime}` : ''}
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
 
         {loading && (
           <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
