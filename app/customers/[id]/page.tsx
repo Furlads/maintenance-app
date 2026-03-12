@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import CustomerHistory from './CustomerHistory'
 
 type Customer = {
   id: number
@@ -179,6 +180,10 @@ export default function CustomerPage() {
             <p style={{ margin: '4px 0' }}>Status: {job.status}</p>
           </div>
         ))}
+      </section>
+
+      <section style={{ marginTop: 30 }}>
+        <CustomerHistory customerId={customer.id} />
       </section>
     </main>
   )
