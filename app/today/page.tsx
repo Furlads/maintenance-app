@@ -19,6 +19,7 @@ type Customer = {
   id: number
   name: string
   phone: string | null
+  email?: string | null
   address: string | null
   postcode: string | null
 }
@@ -309,6 +310,7 @@ async function fileToDataUrl(file: File): Promise<string> {
 
 export default function TodayPage() {
   const [jobs, setJobs] = useState<Job[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [workerId, setWorkerId] = useState<number | null>(null)
   const [workerName, setWorkerName] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -327,6 +329,9 @@ export default function TodayPage() {
   const [showQuoteForm, setShowQuoteForm] = useState(false)
   const [quoteBusy, setQuoteBusy] = useState(false)
   const [quoteMessage, setQuoteMessage] = useState('')
+  const [quoteCustomerMode, setQuoteCustomerMode] = useState<'existing' | 'new'>('new')
+  const [quoteCustomerSearch, setQuoteCustomerSearch] = useState('')
+  const [quoteSelectedCustomerId, setQuoteSelectedCustomerId] = useState('')
   const [quoteCustomerName, setQuoteCustomerName] = useState('')
   const [quoteCustomerPhone, setQuoteCustomerPhone] = useState('')
   const [quoteCustomerEmail, setQuoteCustomerEmail] = useState('')
@@ -358,6 +363,22 @@ export default function TodayPage() {
     }
   }
 
+  async function loadCustomers() {
+    try {
+      const res = await fetch('/api/customers', { cache: 'no-store' })
+
+      if (!res.ok) {
+        throw new Error('Failed to load customers')
+      }
+
+      const data = await res.json()
+      setCustomers(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error(err)
+      setCustomers([])
+    }
+  }
+
   useEffect(() => {
     const savedWorkerId = localStorage.getItem('workerId')
     const savedWorkerName = localStorage.getItem('workerName')
@@ -371,6 +392,7 @@ export default function TodayPage() {
     }
 
     loadJobs()
+    loadCustomers()
   }, [])
 
   useEffect(() => {
@@ -499,7 +521,55 @@ export default function TodayPage() {
     return visibleJobs.filter((job) => job.id !== activeJob.id)
   }, [visibleJobs, activeJob])
 
+  const filteredQuoteCustomers = useMemo(() => {
+    const q = quoteCustomerSearch.trim().toLowerCase()
+
+    if (!q) return customers
+
+    return customers.filter((customer) => {
+      const haystack = [
+        customer.name,
+        customer.phone || '',
+        customer.email || '',
+        customer.address || '',
+        customer.postcode || ''
+      ]
+        .join(' ')
+        .toLowerCase()
+
+      return haystack.includes(q)
+    })
+  }, [customers, quoteCustomerSearch])
+
+  const selectedQuoteCustomer = useMemo(() => {
+    return (
+      customers.find((customer) => String(customer.id) === quoteSelectedCustomerId) || null
+    )
+  }, [customers, quoteSelectedCustomerId])
+
+  useEffect(() => {
+    if (quoteCustomerMode !== 'existing') return
+
+    if (!selectedQuoteCustomer) {
+      setQuoteCustomerName('')
+      setQuoteCustomerPhone('')
+      setQuoteCustomerEmail('')
+      setQuoteCustomerAddress('')
+      setQuoteCustomerPostcode('')
+      return
+    }
+
+    setQuoteCustomerName(selectedQuoteCustomer.name || '')
+    setQuoteCustomerPhone(selectedQuoteCustomer.phone || '')
+    setQuoteCustomerEmail(selectedQuoteCustomer.email || '')
+    setQuoteCustomerAddress(selectedQuoteCustomer.address || '')
+    setQuoteCustomerPostcode(selectedQuoteCustomer.postcode || '')
+  }, [quoteCustomerMode, selectedQuoteCustomer])
+
   function resetQuoteForm() {
+    setQuoteCustomerMode('new')
+    setQuoteCustomerSearch('')
+    setQuoteSelectedCustomerId('')
     setQuoteCustomerName('')
     setQuoteCustomerPhone('')
     setQuoteCustomerEmail('')
@@ -1986,112 +2056,241 @@ Heavy rain made it unsafe`,
 
                   <div
                     style={{
-                      display: 'grid',
+                      display: 'flex',
                       gap: 10,
-                      gridTemplateColumns: '1fr'
+                      flexWrap: 'wrap',
+                      marginBottom: 12
                     }}
                   >
-                    <input
-                      value={quoteCustomerName}
-                      onChange={(e) => setQuoteCustomerName(e.target.value)}
-                      placeholder="Customer name"
-                      style={{
-                        padding: 12,
-                        borderRadius: 10,
-                        border: '1px solid #ccc',
-                        fontSize: 14
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuoteCustomerMode('existing')
+                        setQuoteMessage('')
                       }}
-                    />
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 10,
+                        border:
+                          quoteCustomerMode === 'existing'
+                            ? '1px solid #111'
+                            : '1px solid #ccc',
+                        background:
+                          quoteCustomerMode === 'existing' ? '#111' : '#fff',
+                        color: quoteCustomerMode === 'existing' ? '#fff' : '#111',
+                        cursor: 'pointer',
+                        fontWeight: 700
+                      }}
+                    >
+                      Existing customer
+                    </button>
 
-                    <input
-                      value={quoteCustomerPhone}
-                      onChange={(e) => setQuoteCustomerPhone(e.target.value)}
-                      placeholder="Customer phone"
-                      style={{
-                        padding: 12,
-                        borderRadius: 10,
-                        border: '1px solid #ccc',
-                        fontSize: 14
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuoteCustomerMode('new')
+                        setQuoteSelectedCustomerId('')
+                        setQuoteCustomerSearch('')
+                        setQuoteCustomerName('')
+                        setQuoteCustomerPhone('')
+                        setQuoteCustomerEmail('')
+                        setQuoteCustomerAddress('')
+                        setQuoteCustomerPostcode('')
+                        setQuoteMessage('')
                       }}
-                    />
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 10,
+                        border:
+                          quoteCustomerMode === 'new'
+                            ? '1px solid #111'
+                            : '1px solid #ccc',
+                        background: quoteCustomerMode === 'new' ? '#111' : '#fff',
+                        color: quoteCustomerMode === 'new' ? '#fff' : '#111',
+                        cursor: 'pointer',
+                        fontWeight: 700
+                      }}
+                    >
+                      New customer
+                    </button>
+                  </div>
 
-                    <input
-                      value={quoteCustomerEmail}
-                      onChange={(e) => setQuoteCustomerEmail(e.target.value)}
-                      placeholder="Customer email (optional)"
-                      style={{
-                        padding: 12,
-                        borderRadius: 10,
-                        border: '1px solid #ccc',
-                        fontSize: 14
-                      }}
-                    />
+                  <div
+                    style={{
+                      maxHeight: 320,
+                      overflowY: 'auto',
+                      paddingRight: 4
+                    }}
+                  >
+                    {quoteCustomerMode === 'existing' && (
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          display: 'grid',
+                          gap: 10,
+                          gridTemplateColumns: '1fr'
+                        }}
+                      >
+                        <input
+                          value={quoteCustomerSearch}
+                          onChange={(e) => {
+                            setQuoteCustomerSearch(e.target.value)
+                            setQuoteSelectedCustomerId('')
+                          }}
+                          placeholder="Find customer by name, phone, address or postcode"
+                          style={{
+                            padding: 12,
+                            borderRadius: 10,
+                            border: '1px solid #ccc',
+                            fontSize: 14
+                          }}
+                        />
 
-                    <input
-                      value={quoteCustomerAddress}
-                      onChange={(e) => setQuoteCustomerAddress(e.target.value)}
-                      placeholder="Customer address"
-                      style={{
-                        padding: 12,
-                        borderRadius: 10,
-                        border: '1px solid #ccc',
-                        fontSize: 14
-                      }}
-                    />
+                        <select
+                          value={quoteSelectedCustomerId}
+                          onChange={(e) => setQuoteSelectedCustomerId(e.target.value)}
+                          style={{
+                            padding: 12,
+                            borderRadius: 10,
+                            border: '1px solid #ccc',
+                            fontSize: 14,
+                            background: '#fff'
+                          }}
+                        >
+                          <option value="">Select existing customer</option>
+                          {filteredQuoteCustomers.map((customer) => (
+                            <option key={customer.id} value={customer.id}>
+                              {customer.name}
+                              {customer.postcode ? ` — ${customer.postcode}` : ''}
+                              {customer.address ? ` — ${customer.address}` : ''}
+                            </option>
+                          ))}
+                        </select>
 
-                    <input
-                      value={quoteCustomerPostcode}
-                      onChange={(e) => setQuoteCustomerPostcode(e.target.value)}
-                      placeholder="Customer postcode"
-                      style={{
-                        padding: 12,
-                        borderRadius: 10,
-                        border: '1px solid #ccc',
-                        fontSize: 14
-                      }}
-                    />
+                        {quoteCustomerSearch.trim() &&
+                          filteredQuoteCustomers.length === 0 && (
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: '#666',
+                                marginTop: -2
+                              }}
+                            >
+                              No matching customers found.
+                            </div>
+                          )}
+                      </div>
+                    )}
 
-                    <textarea
-                      value={quoteWorkSummary}
-                      onChange={(e) => setQuoteWorkSummary(e.target.value)}
-                      placeholder="What does the customer want doing?"
+                    <div
                       style={{
-                        minHeight: 90,
-                        padding: 12,
-                        borderRadius: 10,
-                        border: '1px solid #ccc',
-                        fontFamily: 'inherit',
-                        fontSize: 14,
-                        resize: 'vertical'
+                        display: 'grid',
+                        gap: 10,
+                        gridTemplateColumns: '1fr'
                       }}
-                    />
+                    >
+                      <input
+                        value={quoteCustomerName}
+                        onChange={(e) => setQuoteCustomerName(e.target.value)}
+                        placeholder="Customer name"
+                        style={{
+                          padding: 12,
+                          borderRadius: 10,
+                          border: '1px solid #ccc',
+                          fontSize: 14
+                        }}
+                      />
 
-                    <input
-                      value={quoteEstimatedTime}
-                      onChange={(e) => setQuoteEstimatedTime(e.target.value)}
-                      placeholder="How long do you think it will take conservatively?"
-                      style={{
-                        padding: 12,
-                        borderRadius: 10,
-                        border: '1px solid #ccc',
-                        fontSize: 14
-                      }}
-                    />
+                      <input
+                        value={quoteCustomerPhone}
+                        onChange={(e) => setQuoteCustomerPhone(e.target.value)}
+                        placeholder="Customer phone"
+                        style={{
+                          padding: 12,
+                          borderRadius: 10,
+                          border: '1px solid #ccc',
+                          fontSize: 14
+                        }}
+                      />
 
-                    <textarea
-                      value={quoteNotes}
-                      onChange={(e) => setQuoteNotes(e.target.value)}
-                      placeholder="Extra notes for Kelly (optional)"
-                      style={{
-                        minHeight: 80,
-                        padding: 12,
-                        borderRadius: 10,
-                        border: '1px solid #ccc',
-                        fontFamily: 'inherit',
-                        fontSize: 14,
-                        resize: 'vertical'
-                      }}
-                    />
+                      <input
+                        value={quoteCustomerEmail}
+                        onChange={(e) => setQuoteCustomerEmail(e.target.value)}
+                        placeholder="Customer email (optional)"
+                        style={{
+                          padding: 12,
+                          borderRadius: 10,
+                          border: '1px solid #ccc',
+                          fontSize: 14
+                        }}
+                      />
+
+                      <input
+                        value={quoteCustomerAddress}
+                        onChange={(e) => setQuoteCustomerAddress(e.target.value)}
+                        placeholder="Customer address"
+                        style={{
+                          padding: 12,
+                          borderRadius: 10,
+                          border: '1px solid #ccc',
+                          fontSize: 14
+                        }}
+                      />
+
+                      <input
+                        value={quoteCustomerPostcode}
+                        onChange={(e) => setQuoteCustomerPostcode(e.target.value)}
+                        placeholder="Customer postcode"
+                        style={{
+                          padding: 12,
+                          borderRadius: 10,
+                          border: '1px solid #ccc',
+                          fontSize: 14
+                        }}
+                      />
+
+                      <textarea
+                        value={quoteWorkSummary}
+                        onChange={(e) => setQuoteWorkSummary(e.target.value)}
+                        placeholder="What does the customer want doing?"
+                        style={{
+                          minHeight: 90,
+                          padding: 12,
+                          borderRadius: 10,
+                          border: '1px solid #ccc',
+                          fontFamily: 'inherit',
+                          fontSize: 14,
+                          resize: 'vertical'
+                        }}
+                      />
+
+                      <input
+                        value={quoteEstimatedTime}
+                        onChange={(e) => setQuoteEstimatedTime(e.target.value)}
+                        placeholder="How long do you think it will take conservatively?"
+                        style={{
+                          padding: 12,
+                          borderRadius: 10,
+                          border: '1px solid #ccc',
+                          fontSize: 14
+                        }}
+                      />
+
+                      <textarea
+                        value={quoteNotes}
+                        onChange={(e) => setQuoteNotes(e.target.value)}
+                        placeholder="Extra notes for Kelly (optional)"
+                        style={{
+                          minHeight: 80,
+                          padding: 12,
+                          borderRadius: 10,
+                          border: '1px solid #ccc',
+                          fontFamily: 'inherit',
+                          fontSize: 14,
+                          resize: 'vertical'
+                        }}
+                      />
+                    </div>
                   </div>
 
                   {quoteMessage && (
