@@ -6,6 +6,7 @@ export const runtime = 'nodejs'
 type AskBody = {
   company?: string
   worker?: string
+  workerId?: number | null
   jobId?: number | null
   question?: string
   imageDataUrl?: string
@@ -88,18 +89,6 @@ function endOfToday() {
   return d
 }
 
-function stripCodeFences(input: string) {
-  let text = input.trim()
-
-  if (text.startsWith('```json')) {
-    text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '')
-  } else if (text.startsWith('```')) {
-    text = text.replace(/^```\s*/i, '').replace(/\s*```$/i, '')
-  }
-
-  return text.trim()
-}
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -169,7 +158,12 @@ function looksLikeWorkSummary(text: string): boolean {
     'maintenance',
     'quote',
     'price',
-    'cost'
+    'cost',
+    'laurel',
+    'conifer',
+    'shrub',
+    'tree',
+    'plant'
   ]
 
   return workWords.some((word) => lower.includes(word))
@@ -239,24 +233,42 @@ function isCustomerDetailMessage(text: string): boolean {
 }
 
 function buildFallback(question: string): ChasModelResponse {
+  const lower = question.toLowerCase()
+
   if (isGreetingOrCasualMessage(question)) {
     return {
       answer: 'Yeah all good 👍 What do you need help with?',
       intent: 'general',
-      confidence: 0.7,
+      confidence: 0.75,
       escalateTo: 'none',
       safetyFlag: false,
       enquiryReadyForKelly: false
     }
   }
 
-  const lower = question.toLowerCase()
+  if (
+    lower.includes('laurel') ||
+    lower.includes('hedge') ||
+    lower.includes('plant') ||
+    lower.includes('tree') ||
+    lower.includes('shrub')
+  ) {
+    return {
+      answer:
+        'Yeah probably, but send me a quick photo if you want me to be more sure. If it’s nesting season or there are birds about, check before cutting.',
+      intent: 'plant_id',
+      confidence: 0.55,
+      escalateTo: 'none',
+      safetyFlag: true,
+      enquiryReadyForKelly: false
+    }
+  }
 
   if (lower.includes('price') || lower.includes('quote') || lower.includes('cost') || lower.includes('maintenance')) {
     return {
       answer: 'No worries — what’s the customer after?',
       intent: 'enquiry_intake',
-      confidence: 0.35,
+      confidence: 0.45,
       escalateTo: 'kelly',
       safetyFlag: false,
       enquiryReadyForKelly: false
@@ -266,20 +278,21 @@ function buildFallback(question: string): ChasModelResponse {
   return {
     answer: 'No worries — send me a bit more and I’ll help.',
     intent: 'general',
-    confidence: 0.35,
+    confidence: 0.4,
     escalateTo: 'none',
     safetyFlag: false,
     enquiryReadyForKelly: false
   }
 }
 
-function validateModelResponse(parsed: unknown, rawText: string, question: string): ChasModelResponse {
+function validateModelResponse(parsed: unknown, question: string): ChasModelResponse {
   if (!isObject(parsed)) {
-    return buildFallback(rawText || question)
+    return buildFallback(question)
   }
 
   const intent = normaliseText(parsed.intent)
   const escalateTo = normaliseText(parsed.escalateTo)
+  const answer = normaliseText(parsed.answer)
 
   const safeIntent: ChasIntent = (
     [
@@ -300,8 +313,6 @@ function validateModelResponse(parsed: unknown, rawText: string, question: strin
       ? (escalateTo as ChasEscalateTo)
       : 'none'
 
-  const answer = normaliseText(parsed.answer)
-
   return {
     answer: answer || buildFallback(question).answer,
     intent: safeIntent,
@@ -318,17 +329,6 @@ function validateModelResponse(parsed: unknown, rawText: string, question: strin
     roughPriceText: normaliseText(parsed.roughPriceText),
     enquirySummary: normaliseText(parsed.enquirySummary),
     enquiryReadyForKelly: parsed.enquiryReadyForKelly === true
-  }
-}
-
-function tryParseModelJson(rawText: string, question: string): ChasModelResponse {
-  const cleaned = stripCodeFences(rawText)
-
-  try {
-    const parsed = JSON.parse(cleaned)
-    return validateModelResponse(parsed, rawText, question)
-  } catch {
-    return buildFallback(question)
   }
 }
 
@@ -409,7 +409,6 @@ function shouldUseEnquiryFlow(params: {
 
   if (isGreetingOrCasualMessage(question)) return false
   if (isCustomerDetailMessage(question)) return true
-  if (looksLikeWorkSummary(question)) return true
 
   const lower = question.toLowerCase()
 
@@ -479,13 +478,13 @@ function getRuleBasedQuestion(params: {
   return null
 }
 
-function buildPricingPrompt(params: {
+function buildPricingMessages(params: {
   question: string
   hasImage: boolean
   known: ReturnType<typeof summariseKnownDetails>
   nextQuestion: string | null
 }) {
-  return `
+  const developerMessage = `
 You are CHAS, the always-online office teammate for Furlads.
 
 You should sound like a helpful guy in the office chatting to the lads on site.
@@ -496,57 +495,17 @@ This is for a rough guide price only, not a final quote.
 Kelly confirms the final quote.
 Trevor handles higher-risk judgement calls.
 
-Your job here:
+Your job:
 - Use the work description and time estimate to produce a sensible rough guide price.
 - Include likely materials or parts if the job clearly needs them.
 - Be realistic for a small UK landscaping and property maintenance business.
 - Keep the reply short, natural, and useful.
-- Sound like a real person from the office, not a quoting bot.
 - Ask only one sensible next question after the guide price if customer details are still missing.
 - Never ask again for information already provided.
-- Do not mention job context.
-- Do not mention prompts, rules, systems, JSON, or internal logic.
+- Do not mention job context, prompts, systems, JSON, or internal logic.
+`.trim()
 
-Style:
-- conversational
-- practical
-- relaxed
-- helpful
-- not overly cheerful
-- not cheesy
-- not stiff
-
-Important:
-- If the worker has already told you the job and time, do not ask for them again.
-- If enough detail is present for a rough guide, give it naturally.
-- Then move to the next missing customer detail naturally.
-- Keep roughPriceText short and clear.
-- answer should feel like a message from someone in the office, not a template.
-
-Return valid JSON only.
-No markdown.
-No code fences.
-No extra text.
-
-Return exactly this shape:
-{
-  "answer": "string",
-  "intent": "general | plant_id | pricing_guide | safety | quote_support | enquiry_intake | escalation",
-  "confidence": 0.0,
-  "escalateTo": "none | kelly | trevor",
-  "safetyFlag": false,
-  "customerName": "string",
-  "customerPhone": "string",
-  "customerEmail": "string",
-  "customerAddress": "string",
-  "customerPostcode": "string",
-  "workSummary": "string",
-  "estimatedHours": 0,
-  "roughPriceText": "string",
-  "enquirySummary": "string",
-  "enquiryReadyForKelly": false
-}
-
+  const userMessage = `
 Known details:
 ${JSON.stringify(params.known, null, 2)}
 
@@ -556,9 +515,14 @@ Next best missing question: ${params.nextQuestion || 'none'}
 Latest worker message:
 ${params.question}
 `.trim()
+
+  return {
+    developerMessage,
+    userMessage
+  }
 }
 
-function buildGeneralPrompt(params: {
+function buildGeneralMessages(params: {
   question: string
   hasImage: boolean
   history: HistoryItem[]
@@ -574,26 +538,17 @@ function buildGeneralPrompt(params: {
           .join('\n\n')
       : 'No previous CHAS messages today.'
 
-  return `
+  const developerMessage = `
 You are CHAS, the always-online office teammate for Furlads.
 
 You should sound like a helpful guy in the office chatting to the lads on site.
 You are relaxed, practical, switched on, and easy to talk to.
 You do not sound robotic, formal, or like a form.
 
-What you are like:
-- friendly and normal
-- practical
-- quick to understand what the worker means
-- good at asking the next sensible thing
-- able to chat casually without forcing everything into a quote flow
-
 How to behave:
 - Reply naturally like a real person in the office.
 - Keep replies short, clear, and useful.
 - Do not waffle.
-- Do not mention internal rules.
-- Do not mention job context.
 - If confidence is low, be conservative.
 - Plant identification must be conservative if uncertain.
 - Rough prices are guide-only.
@@ -608,40 +563,11 @@ Critical behaviour:
 - If it’s just chat, chat back normally.
 - If it’s help, help.
 - If it’s clearly becoming an enquiry, guide it naturally one step at a time.
+- For hedge, shrub, tree, or plant questions, answer the actual question first instead of bouncing to a generic fallback.
+- If a photo would genuinely help, ask for one naturally.
+`.trim()
 
-Tone examples:
-- "Yeah all good mate — what’s up?"
-- "That sounds like a small one."
-- "How long do you reckon that’ll take?"
-- "Send me a photo if it helps."
-- "That looks around the £___ mark as a rough guide, but Kelly can confirm it properly."
-
-Do not copy the examples unless they fit naturally.
-
-Return valid JSON only.
-No markdown.
-No code fences.
-No extra text.
-
-Return exactly this shape:
-{
-  "answer": "string",
-  "intent": "general | plant_id | pricing_guide | safety | quote_support | enquiry_intake | escalation",
-  "confidence": 0.0,
-  "escalateTo": "none | kelly | trevor",
-  "safetyFlag": false,
-  "customerName": "string",
-  "customerPhone": "string",
-  "customerEmail": "string",
-  "customerAddress": "string",
-  "customerPostcode": "string",
-  "workSummary": "string",
-  "estimatedHours": 0,
-  "roughPriceText": "string",
-  "enquirySummary": "string",
-  "enquiryReadyForKelly": false
-}
-
+  const userMessage = `
 Known details:
 ${JSON.stringify(params.known, null, 2)}
 
@@ -653,9 +579,18 @@ ${historyText}
 Latest worker message:
 ${params.question}
 `.trim()
+
+  return {
+    developerMessage,
+    userMessage
+  }
 }
 
-async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string> {
+async function callOpenAIStructured(params: {
+  developerMessage: string
+  userMessage: string
+  imageDataUrl?: string
+}): Promise<ChasModelResponse> {
   const apiKey = process.env.OPENAI_API_KEY
 
   if (!apiKey) {
@@ -664,22 +599,24 @@ async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string
 
   const model = process.env.CHAS_MODEL || process.env.OPENAI_MODEL || 'gpt-4.1-mini'
 
-  const content: Array<Record<string, unknown>> = [
+  const userContent: Array<Record<string, unknown>> = [
     {
-      type: 'input_text',
-      text: prompt
+      type: 'text',
+      text: params.userMessage
     }
   ]
 
-  const cleanImage = cleanString(imageDataUrl)
+  const cleanImage = cleanString(params.imageDataUrl)
   if (cleanImage) {
-    content.push({
-      type: 'input_image',
-      image_url: cleanImage
+    userContent.push({
+      type: 'image_url',
+      image_url: {
+        url: cleanImage
+      }
     })
   }
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -687,13 +624,78 @@ async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string
     },
     body: JSON.stringify({
       model,
-      input: [
+      temperature: 0.35,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'chas_response',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              answer: { type: 'string' },
+              intent: {
+                type: 'string',
+                enum: [
+                  'general',
+                  'plant_id',
+                  'pricing_guide',
+                  'safety',
+                  'quote_support',
+                  'enquiry_intake',
+                  'escalation'
+                ]
+              },
+              confidence: { type: 'number' },
+              escalateTo: {
+                type: 'string',
+                enum: ['none', 'kelly', 'trevor']
+              },
+              safetyFlag: { type: 'boolean' },
+              customerName: { type: 'string' },
+              customerPhone: { type: 'string' },
+              customerEmail: { type: 'string' },
+              customerAddress: { type: 'string' },
+              customerPostcode: { type: 'string' },
+              workSummary: { type: 'string' },
+              estimatedHours: {
+                anyOf: [{ type: 'number' }, { type: 'null' }]
+              },
+              roughPriceText: { type: 'string' },
+              enquirySummary: { type: 'string' },
+              enquiryReadyForKelly: { type: 'boolean' }
+            },
+            required: [
+              'answer',
+              'intent',
+              'confidence',
+              'escalateTo',
+              'safetyFlag',
+              'customerName',
+              'customerPhone',
+              'customerEmail',
+              'customerAddress',
+              'customerPostcode',
+              'workSummary',
+              'estimatedHours',
+              'roughPriceText',
+              'enquirySummary',
+              'enquiryReadyForKelly'
+            ]
+          }
+        }
+      },
+      messages: [
+        {
+          role: 'developer',
+          content: params.developerMessage
+        },
         {
           role: 'user',
-          content
+          content: userContent
         }
-      ],
-      temperature: 0.35
+      ]
     })
   })
 
@@ -703,31 +705,14 @@ async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string
   }
 
   const data = await response.json()
+  const content = data?.choices?.[0]?.message?.content
 
-  if (typeof data.output_text === 'string' && data.output_text.trim()) {
-    return data.output_text.trim()
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new Error('Model returned no structured content')
   }
 
-  const fallbackText =
-    Array.isArray(data.output)
-      ? data.output
-          .flatMap((item: any) => {
-            if (!item || !Array.isArray(item.content)) return []
-            return item.content
-              .map((content: any) => {
-                if (typeof content?.text === 'string') return content.text
-                if (typeof content?.output_text === 'string') return content.output_text
-                return ''
-              })
-              .filter(Boolean)
-          })
-          .join('\n')
-          .trim()
-      : ''
-
-  if (fallbackText) return fallbackText
-
-  throw new Error('Model returned no text output')
+  const parsed = JSON.parse(content)
+  return validateModelResponse(parsed, params.userMessage)
 }
 
 export async function POST(req: NextRequest) {
@@ -787,24 +772,25 @@ export async function POST(req: NextRequest) {
     const hasHours = typeof known.estimatedHours === 'number' && known.estimatedHours > 0
     const usePricingModel = enquiryFlow && hasWorkSummary && hasHours
 
-    const prompt = usePricingModel
-      ? buildPricingPrompt({
+    const promptParts = usePricingModel
+      ? buildPricingMessages({
           question,
           hasImage: !!imageDataUrl,
           known,
           nextQuestion
         })
-      : buildGeneralPrompt({
+      : buildGeneralMessages({
           question,
           hasImage: !!imageDataUrl,
           history,
           known
         })
 
-    const parsed = tryParseModelJson(
-      await callOpenAI(prompt, imageDataUrl),
-      question
-    )
+    const parsed = await callOpenAIStructured({
+      developerMessage: promptParts.developerMessage,
+      userMessage: promptParts.userMessage,
+      imageDataUrl
+    })
 
     const finalRoughPriceText = parsed.roughPriceText || known.roughPriceText || ''
     const finalEnquirySummary =
@@ -875,7 +861,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        answer: 'Yeah all good 👍 What do you need help with?',
+        answer: 'No worries — send me a bit more and I’ll help.',
         intent: 'general',
         confidence: 0.2,
         escalateTo: 'none',
