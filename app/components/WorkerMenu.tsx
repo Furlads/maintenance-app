@@ -15,31 +15,26 @@ export default function WorkerMenu() {
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (!menuRef.current) return
+
       if (!menuRef.current.contains(event.target as Node)) {
         setOpen(false)
       }
     }
 
-    function handleEscape(event: KeyboardEvent) {
+    function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setOpen(false)
       }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleEscape)
+    document.addEventListener('keydown', handleKeyDown)
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
+      document.removeEventListener('keydown', handleKeyDown)
     }
   }, [])
-
-  function handleSwitchWorker() {
-    localStorage.removeItem('workerId')
-    localStorage.removeItem('workerName')
-    window.location.href = '/'
-  }
 
   function handleLogout() {
     localStorage.removeItem('workerId')
@@ -47,26 +42,42 @@ export default function WorkerMenu() {
     window.location.href = '/'
   }
 
+  function handleSwitchWorker() {
+    localStorage.removeItem('workerId')
+    localStorage.removeItem('workerName')
+    window.location.href = '/'
+  }
+
+  const linkStyle: React.CSSProperties = {
+    display: 'block',
+    padding: '12px 0',
+    textDecoration: 'none',
+    color: '#111',
+    fontSize: 17,
+    borderBottom: '1px solid #eee'
+  }
+
   return (
     <div
       ref={menuRef}
       style={{
-        position: 'relative',
-        display: 'inline-block'
+        position: 'relative'
       }}
     >
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        aria-label="Open worker menu"
+        aria-label="Open menu"
         style={{
-          padding: '10px 14px',
-          borderRadius: 8,
-          border: '1px solid #ccc',
+          width: 54,
+          height: 54,
+          borderRadius: 12,
+          border: '1px solid #d8d8d8',
           background: '#fff',
+          fontSize: 28,
+          lineHeight: 1,
           cursor: 'pointer',
-          fontSize: 20,
-          lineHeight: 1
+          boxShadow: '0 4px 12px rgba(0,0,0,0.06)'
         }}
       >
         ☰
@@ -76,66 +87,60 @@ export default function WorkerMenu() {
         <div
           style={{
             position: 'absolute',
-            top: '100%',
+            top: 64,
             right: 0,
-            marginTop: 8,
-            minWidth: 220,
+            width: 270,
+            maxWidth: 'calc(100vw - 32px)',
             background: '#fff',
             border: '1px solid #ddd',
-            borderRadius: 10,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-            padding: 10,
-            zIndex: 1000
+            borderRadius: 16,
+            boxShadow: '0 14px 34px rgba(0,0,0,0.12)',
+            padding: 16,
+            zIndex: 200
           }}
         >
           <div
             style={{
-              padding: '8px 10px',
-              borderBottom: '1px solid #eee',
-              marginBottom: 8
+              marginBottom: 12,
+              paddingBottom: 12,
+              borderBottom: '1px solid #eee'
             }}
           >
-            <div style={{ fontSize: 12, opacity: 0.7 }}>Logged in as</div>
-            <div style={{ fontWeight: 600 }}>{workerName || 'Unknown worker'}</div>
+            <div
+              style={{
+                fontSize: 14,
+                color: '#666',
+                marginBottom: 4
+              }}
+            >
+              Logged in as
+            </div>
+
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                color: '#111'
+              }}
+            >
+              {workerName || 'Worker'}
+            </div>
           </div>
 
-          <a
-            href="/today"
-            style={{
-              display: 'block',
-              padding: '10px 12px',
-              borderRadius: 8,
-              textDecoration: 'none',
-              color: 'inherit'
-            }}
-          >
+          <a href="/today" style={linkStyle} onClick={() => setOpen(false)}>
             Today
           </a>
 
-          <a
-            href="/customers"
-            style={{
-              display: 'block',
-              padding: '10px 12px',
-              borderRadius: 8,
-              textDecoration: 'none',
-              color: 'inherit'
-            }}
-          >
+          <a href="/customers" style={linkStyle} onClick={() => setOpen(false)}>
             Customers
           </a>
 
-          <a
-            href="/jobs"
-            style={{
-              display: 'block',
-              padding: '10px 12px',
-              borderRadius: 8,
-              textDecoration: 'none',
-              color: 'inherit'
-            }}
-          >
+          <a href="/jobs" style={linkStyle} onClick={() => setOpen(false)}>
             Jobs
+          </a>
+
+          <a href="/menu/change-pin" style={linkStyle} onClick={() => setOpen(false)}>
+            Change PIN
           </a>
 
           <button
@@ -144,13 +149,14 @@ export default function WorkerMenu() {
             style={{
               display: 'block',
               width: '100%',
-              textAlign: 'left',
-              padding: '10px 12px',
-              borderRadius: 8,
+              padding: '12px 0',
+              background: 'transparent',
               border: 'none',
-              background: '#fff',
-              cursor: 'pointer',
-              font: 'inherit'
+              borderBottom: '1px solid #eee',
+              textAlign: 'left',
+              color: '#111',
+              fontSize: 17,
+              cursor: 'pointer'
             }}
           >
             Switch worker
@@ -162,13 +168,13 @@ export default function WorkerMenu() {
             style={{
               display: 'block',
               width: '100%',
-              textAlign: 'left',
-              padding: '10px 12px',
-              borderRadius: 8,
+              padding: '12px 0 0 0',
+              background: 'transparent',
               border: 'none',
-              background: '#fff',
-              cursor: 'pointer',
-              font: 'inherit'
+              textAlign: 'left',
+              color: '#111',
+              fontSize: 17,
+              cursor: 'pointer'
             }}
           >
             Logout
