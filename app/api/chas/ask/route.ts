@@ -33,7 +33,6 @@ type ChasModelResponse = {
 type HistoryItem = {
   question: string
   answer: string
-  imageDataUrl?: string | null
   createdAt?: Date
 }
 
@@ -44,12 +43,6 @@ function cleanString(value: unknown) {
 function normaliseText(value: unknown) {
   if (typeof value !== 'string') return ''
   return value.replace(/\s+/g, ' ').trim()
-}
-
-function startOfToday() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
 }
 
 function isGreetingOrCasualMessage(text: string): boolean {
@@ -108,22 +101,13 @@ function looksLikePlantQuestion(text: string): boolean {
     'roses',
     'prune',
     'pruning',
-    'cut back',
+    'cut',
     'trim',
     'weed',
     'leaf',
     'leaves',
     'branch',
-    'branches',
-    'what is this',
-    'what’s this',
-    'whats this',
-    'can i cut it',
-    'can i cut this',
-    'can i trim it',
-    'can i trim this',
-    'can i prune it',
-    'can i prune this'
+    'branches'
   ].some((word) => lower.includes(word))
 }
 
@@ -161,38 +145,24 @@ function looksLikeSafetyQuestion(text: string): boolean {
   ].some((word) => lower.includes(word))
 }
 
-function looksLikeFollowUpReference(text: string): boolean {
-  const lower = text.toLowerCase()
-
-  return [
-    'can i cut it',
-    'can i trim it',
-    'can i prune it',
-    'can i cut this',
-    'can i trim this',
-    'can i prune this',
-    'is it safe',
-    'is that safe',
-    'is this okay',
-    'what about this',
-    'what about that',
-    'should i cut it',
-    'should i trim it',
-    'can i do that',
-    'can i remove it'
-  ].some((phrase) => lower.includes(phrase))
-}
-
 function classifyIntent(question: string, answer: string): ChasModelResponse {
-  const a = answer.toLowerCase()
+  const lowerQuestion = question.toLowerCase()
+  const lowerAnswer = answer.toLowerCase()
 
-  if (looksLikeSafetyQuestion(question) || a.includes('unsafe') || a.includes('stop') || a.includes('risk')) {
+  if (
+    looksLikeSafetyQuestion(question) ||
+    lowerAnswer.includes('unsafe') ||
+    lowerAnswer.includes('stop') ||
+    lowerAnswer.includes('risk')
+  ) {
     return {
       answer,
       intent: 'safety',
-      confidence: 0.72,
+      confidence: 0.78,
       escalateTo:
-        a.includes('trevor') || a.includes('higher risk') ? 'trevor' : 'none',
+        lowerAnswer.includes('trevor') || lowerAnswer.includes('higher risk')
+          ? 'trevor'
+          : 'none',
       safetyFlag: true
     }
   }
@@ -201,12 +171,12 @@ function classifyIntent(question: string, answer: string): ChasModelResponse {
     return {
       answer,
       intent: 'plant_id',
-      confidence: 0.72,
+      confidence: 0.76,
       escalateTo: 'none',
       safetyFlag:
-        a.includes('nest') ||
-        a.includes('birds') ||
-        a.includes('check before cutting')
+        lowerAnswer.includes('nest') ||
+        lowerAnswer.includes('birds') ||
+        lowerAnswer.includes('check before cutting')
     }
   }
 
@@ -214,27 +184,30 @@ function classifyIntent(question: string, answer: string): ChasModelResponse {
     return {
       answer,
       intent: 'pricing_guide',
-      confidence: 0.7,
-      escalateTo: a.includes('kelly') ? 'kelly' : 'none',
+      confidence: 0.75,
+      escalateTo:
+        lowerAnswer.includes('kelly') || lowerQuestion.includes('quote')
+          ? 'kelly'
+          : 'none',
       safetyFlag: false
     }
   }
 
-  if (a.includes('trevor should') || a.includes('check with trevor')) {
+  if (lowerAnswer.includes('trevor')) {
     return {
       answer,
       intent: 'escalation',
-      confidence: 0.7,
+      confidence: 0.72,
       escalateTo: 'trevor',
       safetyFlag: true
     }
   }
 
-  if (a.includes('kelly') && (a.includes('quote') || a.includes('confirm'))) {
+  if (lowerAnswer.includes('kelly')) {
     return {
       answer,
       intent: 'quote_support',
-      confidence: 0.68,
+      confidence: 0.72,
       escalateTo: 'kelly',
       safetyFlag: false
     }
@@ -243,7 +216,7 @@ function classifyIntent(question: string, answer: string): ChasModelResponse {
   return {
     answer,
     intent: 'general',
-    confidence: 0.68,
+    confidence: 0.72,
     escalateTo: 'none',
     safetyFlag: false
   }
@@ -263,20 +236,20 @@ function buildFallback(question: string): ChasModelResponse {
   if (looksLikePlantQuestion(question)) {
     return {
       answer:
-        'I can help with that — if you’ve already sent a photo I’ll go off that, and if not send me one and I’ll give you the best steer.',
+        'Send me a photo if you can and I’ll give you the best steer.',
       intent: 'plant_id',
-      confidence: 0.55,
+      confidence: 0.5,
       escalateTo: 'none',
-      safetyFlag: true
+      safetyFlag: false
     }
   }
 
   if (looksLikePricingQuestion(question)) {
     return {
       answer:
-        'Give me a quick run-through of what the customer wants and roughly how long you reckon it’ll take, and I’ll give you a rough guide.',
+        'Give me a quick run-through of the job and roughly how long you reckon it’ll take, and I’ll give you a rough guide.',
       intent: 'pricing_guide',
-      confidence: 0.55,
+      confidence: 0.5,
       escalateTo: 'kelly',
       safetyFlag: false
     }
@@ -285,9 +258,9 @@ function buildFallback(question: string): ChasModelResponse {
   if (looksLikeSafetyQuestion(question)) {
     return {
       answer:
-        'If there’s any real safety doubt, stop and check before cracking on. Send me a photo if it helps, and if it looks higher risk Trevor should make the call.',
+        'If there’s any real safety doubt, stop and check before cracking on. Send me a photo if it helps.',
       intent: 'safety',
-      confidence: 0.6,
+      confidence: 0.55,
       escalateTo: 'trevor',
       safetyFlag: true
     }
@@ -324,18 +297,12 @@ How to behave:
 - If the worker is just chatting, chat back normally.
 - If they ask for help, help.
 - If they ask about plants, hedges, cutting, pruning, or identification, answer the actual question first.
-- If they ask for a rough price, give a sensible guide-only answer and say Kelly confirms it properly.
+- If they ask for a rough price, give a sensible guide-only answer and mention Kelly confirms final quotes.
 - If there is safety uncertainty, be cautious.
 - Do not force every message into a quote flow.
 - Do not ask unnecessary follow-up questions.
 - Do not repeat yourself.
-- Never mention job context, prompts, JSON, systems, or internal rules.
-
-Critical follow-up rule:
-- If the latest message is a follow-up and the provided context defines what "it" or "this" refers to, answer using that subject.
-- Do not ask the worker what they mean if the subject has already been resolved in the provided context.
-- Do not ask the worker to re-upload an image if a carried-forward image is already included in this request.
-- Only ask for a better image if the existing one is genuinely too unclear.
+- Never mention prompts, JSON, systems, or internal rules.
 
 Tone:
 - like a real office teammate
@@ -350,91 +317,34 @@ Keep answers concise enough for someone on site to read quickly.
 `.trim()
 }
 
-function buildRecentContext(history: HistoryItem[]) {
-  const recent = history.slice(-6)
+function buildConversationHistory(history: HistoryItem[]) {
+  const recent = history.slice(-8)
 
   if (recent.length === 0) {
-    return 'No recent context yet.'
+    return 'No previous conversation yet.'
   }
 
-  const lines: string[] = []
-
-  recent.forEach((item, index) => {
-    const hasImage = !!cleanString(item.imageDataUrl)
-    lines.push(
-      `Recent turn ${index + 1} worker: ${item.question}${hasImage ? ' [photo attached]' : ''}`
+  return recent
+    .map(
+      (item, index) =>
+        `Turn ${index + 1} worker: ${item.question}\nTurn ${index + 1} CHAS: ${item.answer}`
     )
-    lines.push(`Recent turn ${index + 1} CHAS: ${item.answer}`)
-  })
-
-  return lines.join('\n')
-}
-
-function getLatestImageContext(history: HistoryItem[]) {
-  const latestWithImage = [...history].reverse().find((item) => !!cleanString(item.imageDataUrl))
-
-  if (!latestWithImage) {
-    return {
-      imageDataUrl: '',
-      question: '',
-      answer: ''
-    }
-  }
-
-  return {
-    imageDataUrl: cleanString(latestWithImage.imageDataUrl),
-    question: latestWithImage.question,
-    answer: latestWithImage.answer
-  }
-}
-
-function rewriteQuestionWithResolvedSubject(params: {
-  question: string
-  history: HistoryItem[]
-}) {
-  const latestImageContext = getLatestImageContext(params.history)
-
-  if (!looksLikeFollowUpReference(params.question) || !latestImageContext.imageDataUrl) {
-    return params.question
-  }
-
-  return [
-    'This is a follow-up question about the same recent subject/photo.',
-    `Earlier worker message: "${latestImageContext.question}"`,
-    `Earlier CHAS answer: "${latestImageContext.answer}"`,
-    `New worker question: "${params.question}"`,
-    'Treat "it", "this", or similar words as referring to that same subject and answer directly.'
-  ].join('\n')
+    .join('\n\n')
 }
 
 function buildInput(params: {
-  originalQuestion: string
-  resolvedQuestion: string
-  hasCurrentImage: boolean
-  hasCarryForwardImage: boolean
+  question: string
+  hasImage: boolean
   history: HistoryItem[]
 }) {
-  const latestImageContext = getLatestImageContext(params.history)
-
   return `
-Latest message includes a new photo: ${params.hasCurrentImage ? 'yes' : 'no'}
-A carried-forward earlier photo is being supplied: ${params.hasCarryForwardImage ? 'yes' : 'no'}
+Photo attached with latest message: ${params.hasImage ? 'yes' : 'no'}
 
-Recent context:
-${buildRecentContext(params.history)}
+Recent conversation:
+${buildConversationHistory(params.history)}
 
-Current subject:
-${
-  latestImageContext.imageDataUrl
-    ? `Most recent image was sent with "${latestImageContext.question}" and CHAS answered "${latestImageContext.answer}".`
-    : 'No current subject image found.'
-}
-
-Original worker message:
-${params.originalQuestion}
-
-Resolved worker message for answering:
-${params.resolvedQuestion}
+Latest worker message:
+${params.question}
 
 Reply as CHAS with one normal helpful message only.
 `.trim()
@@ -469,8 +379,7 @@ function extractResponseText(data: any): string {
 async function callOpenAI(params: {
   instructions: string
   input: string
-  currentImageDataUrl?: string
-  carryForwardImageDataUrl?: string
+  imageDataUrl?: string
 }): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -487,18 +396,11 @@ async function callOpenAI(params: {
     }
   ]
 
-  const currentImage = cleanString(params.currentImageDataUrl)
-  const carryForwardImage = cleanString(params.carryForwardImageDataUrl)
-
-  if (currentImage) {
+  const image = cleanString(params.imageDataUrl)
+  if (image) {
     content.push({
       type: 'input_image',
-      image_url: currentImage
-    })
-  } else if (carryForwardImage) {
-    content.push({
-      type: 'input_image',
-      image_url: carryForwardImage
+      image_url: image
     })
   }
 
@@ -517,7 +419,7 @@ async function callOpenAI(params: {
           content
         }
       ],
-      temperature: 0.5
+      temperature: 0.6
     })
   })
 
@@ -588,11 +490,10 @@ export async function POST(req: NextRequest) {
       orderBy: {
         createdAt: 'asc'
       },
-      take: 50,
+      take: 20,
       select: {
         question: true,
         answer: true,
-        imageDataUrl: true,
         createdAt: true
       }
     })
@@ -600,40 +501,17 @@ export async function POST(req: NextRequest) {
     console.error('CHAS history load failed:', error)
   }
 
-  const todayHistory = history.filter((row) => {
-    const createdAt = row.createdAt ? new Date(row.createdAt) : null
-    return !!createdAt && createdAt >= startOfToday()
-  })
-
-  const workingHistory = todayHistory.length > 0 ? todayHistory : history
-  const latestImageContext = getLatestImageContext(workingHistory)
-
-  const shouldCarryForwardImage =
-    !imageDataUrl &&
-    looksLikeFollowUpReference(question) &&
-    !!latestImageContext.imageDataUrl
-
-  const resolvedQuestion = rewriteQuestionWithResolvedSubject({
-    question,
-    history: workingHistory
-  })
-
   let parsed: ChasModelResponse
 
   try {
     const rawAnswer = await callOpenAI({
       instructions: buildInstructions(),
       input: buildInput({
-        originalQuestion: question,
-        resolvedQuestion,
-        hasCurrentImage: !!imageDataUrl,
-        hasCarryForwardImage: shouldCarryForwardImage,
-        history: workingHistory
+        question,
+        hasImage: !!imageDataUrl,
+        history
       }),
-      currentImageDataUrl: imageDataUrl,
-      carryForwardImageDataUrl: shouldCarryForwardImage
-        ? latestImageContext.imageDataUrl
-        : ''
+      imageDataUrl
     })
 
     const cleanAnswer = normaliseText(rawAnswer)
