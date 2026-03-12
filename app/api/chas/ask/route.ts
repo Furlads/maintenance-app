@@ -1,148 +1,195 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
 
-export const runtime = "nodejs";
+export const runtime = 'nodejs'
 
 type ChasIntent =
-  | "general"
-  | "plant_id"
-  | "pricing_guide"
-  | "safety"
-  | "quote_support"
-  | "escalation";
+  | 'general'
+  | 'plant_id'
+  | 'pricing_guide'
+  | 'safety'
+  | 'quote_support'
+  | 'escalation'
 
-type ChasEscalateTo = "none" | "kelly" | "trevor";
+type ChasEscalateTo = 'none' | 'kelly' | 'trevor'
 
 type ChasModelResponse = {
-  answer: string;
-  intent: ChasIntent;
-  confidence: number;
-  escalateTo: ChasEscalateTo;
-  safetyFlag: boolean;
-};
+  answer: string
+  intent: ChasIntent
+  confidence: number
+  escalateTo: ChasEscalateTo
+  safetyFlag: boolean
+}
 
 type ChatMessage = {
-  role: "user" | "assistant" | "system";
-  content: string;
-};
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
 
 type RequestBody = {
-  message?: string;
-  messages?: ChatMessage[];
-  includeJobContext?: boolean;
-  jobContext?: unknown;
-};
+  company?: string
+  worker?: string
+  question?: string
+  imageDataUrl?: string
+  jobId?: number | string | null
+
+  message?: string
+  messages?: ChatMessage[]
+  includeJobContext?: boolean
+  jobContext?: unknown
+}
+
+function cleanString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
 
 function clampConfidence(value: unknown): number {
-  if (typeof value !== "number" || Number.isNaN(value)) return 0.5;
-  if (value < 0) return 0;
-  if (value > 1) return 1;
-  return value;
+  if (typeof value !== 'number' || Number.isNaN(value)) return 0.5
+  if (value < 0) return 0
+  if (value > 1) return 1
+  return value
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === 'object' && value !== null
 }
 
 function stripCodeFences(input: string): string {
-  let text = input.trim();
+  let text = input.trim()
 
-  if (text.startsWith("```json")) {
-    text = text.replace(/^```json\s*/i, "").replace(/\s*```$/i, "");
-  } else if (text.startsWith("```")) {
-    text = text.replace(/^```\s*/i, "").replace(/\s*```$/i, "");
+  if (text.startsWith('```json')) {
+    text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '')
+  } else if (text.startsWith('```')) {
+    text = text.replace(/^```\s*/i, '').replace(/\s*```$/i, '')
   }
 
-  return text.trim();
+  return text.trim()
 }
 
 function normaliseAnswer(answer: unknown): string {
-  if (typeof answer !== "string") return "";
-  return answer.replace(/\s+/g, " ").trim();
+  if (typeof answer !== 'string') return ''
+  return answer.replace(/\s+/g, ' ').trim()
+}
+
+function startOfToday() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function endOfToday() {
+  const d = new Date()
+  d.setHours(23, 59, 59, 999)
+  return d
+}
+
+function toJobId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const n = Math.trunc(value)
+    return n > 0 ? n : null
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value)
+    if (Number.isFinite(n)) {
+      const safe = Math.trunc(n)
+      return safe > 0 ? safe : null
+    }
+  }
+
+  return null
 }
 
 function buildFallbackResponse(rawText: string): ChasModelResponse {
-  const cleaned = stripCodeFences(rawText);
+  const cleaned = stripCodeFences(rawText)
 
   return {
     answer:
       normaliseAnswer(cleaned) ||
-      "I’m not fully sure on that one. It would be best to check with Kelly for pricing or Trevor if there’s any risk involved.",
-    intent: "general",
+      'I’m not fully sure on that one. It would be best to check with Kelly for pricing or Trevor if there’s any risk involved.',
+    intent: 'general',
     confidence: 0.35,
-    escalateTo: "none",
-    safetyFlag: false,
-  };
+    escalateTo: 'none',
+    safetyFlag: false
+  }
 }
 
 function validateParsedResponse(parsed: unknown, rawText: string): ChasModelResponse {
   if (!isObject(parsed)) {
-    return buildFallbackResponse(rawText);
+    return buildFallbackResponse(rawText)
   }
 
-  const answer = normaliseAnswer(parsed.answer);
-  const intent = typeof parsed.intent === "string" ? parsed.intent : "general";
-  const confidence = clampConfidence(parsed.confidence);
+  const answer = normaliseAnswer(parsed.answer)
+  const intent = typeof parsed.intent === 'string' ? parsed.intent : 'general'
+  const confidence = clampConfidence(parsed.confidence)
   const escalateTo =
-    parsed.escalateTo === "kelly" || parsed.escalateTo === "trevor" || parsed.escalateTo === "none"
+    parsed.escalateTo === 'kelly' || parsed.escalateTo === 'trevor' || parsed.escalateTo === 'none'
       ? parsed.escalateTo
-      : "none";
-  const safetyFlag = typeof parsed.safetyFlag === "boolean" ? parsed.safetyFlag : false;
+      : 'none'
+  const safetyFlag = typeof parsed.safetyFlag === 'boolean' ? parsed.safetyFlag : false
 
   return {
     answer:
       answer ||
-      "I’m not fully sure on that one. It would be best to check with Kelly for pricing or Trevor if there’s any risk involved.",
-    intent: ([
-      "general",
-      "plant_id",
-      "pricing_guide",
-      "safety",
-      "quote_support",
-      "escalation",
-    ] as const).includes(intent as ChasIntent)
+      'I’m not fully sure on that one. It would be best to check with Kelly for pricing or Trevor if there’s any risk involved.',
+    intent: (
+      [
+        'general',
+        'plant_id',
+        'pricing_guide',
+        'safety',
+        'quote_support',
+        'escalation'
+      ] as const
+    ).includes(intent as ChasIntent)
       ? (intent as ChasIntent)
-      : "general",
+      : 'general',
     confidence,
     escalateTo,
-    safetyFlag,
-  };
+    safetyFlag
+  }
 }
 
 function tryParseModelJson(rawText: string): ChasModelResponse {
-  const cleaned = stripCodeFences(rawText);
+  const cleaned = stripCodeFences(rawText)
 
   try {
-    const parsed = JSON.parse(cleaned);
-    return validateParsedResponse(parsed, rawText);
+    const parsed = JSON.parse(cleaned)
+    return validateParsedResponse(parsed, rawText)
   } catch {
-    // Handle cases where the model returns stringified JSON inside a JSON string
     try {
-      const maybeString = JSON.parse(JSON.stringify(cleaned));
-      const reparsed = JSON.parse(maybeString);
-      return validateParsedResponse(reparsed, rawText);
+      const reparsed = JSON.parse(JSON.parse(JSON.stringify(cleaned)))
+      return validateParsedResponse(reparsed, rawText)
     } catch {
-      return buildFallbackResponse(rawText);
+      return buildFallbackResponse(rawText)
     }
   }
 }
 
 function getLatestUserMessage(body: RequestBody): string {
-  if (typeof body.message === "string" && body.message.trim()) {
-    return body.message.trim();
-  }
+  const directQuestion = cleanString(body.question)
+  if (directQuestion) return directQuestion
+
+  const directMessage = cleanString(body.message)
+  if (directMessage) return directMessage
 
   if (Array.isArray(body.messages)) {
-    const reversed = [...body.messages].reverse();
+    const reversed = [...body.messages].reverse()
     const lastUserMessage = reversed.find(
-      (msg) => msg.role === "user" && typeof msg.content === "string" && msg.content.trim()
-    );
-    if (lastUserMessage) return lastUserMessage.content.trim();
+      (msg) => msg.role === 'user' && typeof msg.content === 'string' && msg.content.trim()
+    )
+    if (lastUserMessage) return lastUserMessage.content.trim()
   }
 
-  return "";
+  return ''
 }
 
-function buildPrompt(userMessage: string, includeJobContext: boolean, jobContext?: unknown): string {
+function buildPrompt(
+  userMessage: string,
+  includeJobContext: boolean,
+  jobContext: unknown,
+  history: Array<{ question: string; answer: string }>
+) {
   const baseRules = `
 You are CHAS, a friendly, practical on-site assistant for Furlads workers.
 
@@ -175,7 +222,7 @@ Return exactly this shape:
   "escalateTo": "none | kelly | trevor",
   "safetyFlag": false
 }
-`.trim();
+`.trim()
 
   const safetyHints = `
 Escalation guidance:
@@ -187,116 +234,206 @@ Answer style:
 - Keep "answer" short, useful, and worker-friendly.
 - No bullet lists unless genuinely needed.
 - Prefer direct next-step guidance.
-`.trim();
+`.trim()
+
+  const historyText = history.length
+    ? `Recent conversation today:\n${history
+        .map(
+          (item, index) =>
+            `Turn ${index + 1} user: ${item.question}\nTurn ${index + 1} chas: ${item.answer}`
+        )
+        .join('\n\n')}`
+    : 'Recent conversation today:\nNone.'
 
   if (!includeJobContext) {
-    return `${baseRules}\n\n${safetyHints}\n\nUser message:\n${userMessage}`;
+    return `${baseRules}
+
+${safetyHints}
+
+${historyText}
+
+User message:
+${userMessage}`
   }
 
-  return `${baseRules}\n\n${safetyHints}\n\nincludeJobContext is true.\nYou may use the job context below only if it genuinely helps answer the question.\n\nJob context:\n${JSON.stringify(
-    jobContext ?? {},
-    null,
-    2
-  )}\n\nUser message:\n${userMessage}`;
+  return `${baseRules}
+
+${safetyHints}
+
+${historyText}
+
+includeJobContext is true.
+You may use the job context below only if it genuinely helps answer the question.
+
+Job context:
+${JSON.stringify(jobContext ?? {}, null, 2)}
+
+User message:
+${userMessage}`
 }
 
-async function callOpenAI(prompt: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
+async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    throw new Error("Missing OPENAI_API_KEY");
+    throw new Error('Missing OPENAI_API_KEY')
   }
 
-  const model = process.env.CHAS_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  const model = process.env.CHAS_MODEL || process.env.OPENAI_MODEL || 'gpt-4.1-mini'
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
+  const input: any[] = [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'input_text',
+          text: prompt
+        }
+      ]
+    }
+  ]
+
+  const cleanImage = cleanString(imageDataUrl)
+  if (cleanImage) {
+    input[0].content.push({
+      type: 'input_image',
+      image_url: cleanImage
+    })
+  }
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify({
       model,
-      input: prompt,
-      temperature: 0.2,
-    }),
-  });
+      input,
+      temperature: 0.2
+    })
+  })
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI error: ${response.status} ${errorText}`);
+    const errorText = await response.text()
+    throw new Error(`OpenAI error: ${response.status} ${errorText}`)
   }
 
-  const data = await response.json();
+  const data = await response.json()
 
-  if (typeof data.output_text === "string" && data.output_text.trim()) {
-    return data.output_text.trim();
+  if (typeof data.output_text === 'string' && data.output_text.trim()) {
+    return data.output_text.trim()
   }
 
   const fallbackText =
     Array.isArray(data.output)
       ? data.output
           .flatMap((item: any) => {
-            if (!item || !Array.isArray(item.content)) return [];
+            if (!item || !Array.isArray(item.content)) return []
             return item.content
               .map((content: any) => {
-                if (typeof content?.text === "string") return content.text;
-                if (typeof content?.output_text === "string") return content.output_text;
-                return "";
+                if (typeof content?.text === 'string') return content.text
+                if (typeof content?.output_text === 'string') return content.output_text
+                return ''
               })
-              .filter(Boolean);
+              .filter(Boolean)
           })
-          .join("\n")
+          .join('\n')
           .trim()
-      : "";
+      : ''
 
-  if (fallbackText) return fallbackText;
+  if (fallbackText) return fallbackText
 
-  throw new Error("Model returned no text output");
+  throw new Error('Model returned no text output')
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as RequestBody;
+    const body = (await req.json()) as RequestBody
 
-    const userMessage = getLatestUserMessage(body);
-    if (!userMessage) {
+    const company = cleanString(body.company) || 'furlads'
+    const worker = cleanString(body.worker)
+    const question = getLatestUserMessage(body)
+    const imageDataUrl = cleanString(body.imageDataUrl)
+    const jobId = toJobId(body.jobId)
+    const includeJobContext = body.includeJobContext === true
+
+    if (!worker) {
       return NextResponse.json(
         {
-          error: "Message is required.",
+          error: 'Worker is required.'
         },
         { status: 400 }
-      );
+      )
     }
 
-    const includeJobContext = body.includeJobContext === true;
-    const prompt = buildPrompt(userMessage, includeJobContext, body.jobContext);
+    if (!question) {
+      return NextResponse.json(
+        {
+          error: 'Question is required.'
+        },
+        { status: 400 }
+      )
+    }
 
-    const rawModelText = await callOpenAI(prompt);
-    const parsed = tryParseModelJson(rawModelText);
+    const history = await prisma.chasMessage.findMany({
+      where: {
+        company,
+        worker,
+        createdAt: {
+          gte: startOfToday(),
+          lte: endOfToday()
+        }
+      },
+      orderBy: {
+        createdAt: 'asc'
+      },
+      take: 20,
+      select: {
+        question: true,
+        answer: true
+      }
+    })
+
+    const prompt = buildPrompt(question, includeJobContext, body.jobContext, history)
+    const rawModelText = await callOpenAI(prompt, imageDataUrl)
+    const parsed = tryParseModelJson(rawModelText)
+
+    await prisma.chasMessage.create({
+      data: {
+        company,
+        worker,
+        jobId: jobId ?? undefined,
+        question,
+        answer: parsed.answer,
+        imageDataUrl: imageDataUrl || ''
+      }
+    })
 
     return NextResponse.json(
       {
+        ok: true,
         answer: parsed.answer,
         intent: parsed.intent,
         confidence: parsed.confidence,
         escalateTo: parsed.escalateTo,
-        safetyFlag: parsed.safetyFlag,
+        safetyFlag: parsed.safetyFlag
       },
       { status: 200 }
-    );
+    )
   } catch (error) {
-    console.error("CHAS ask route error:", error);
+    console.error('CHAS ask route error:', error)
 
     return NextResponse.json(
       {
+        ok: false,
         answer:
-          "I’m having a bit of trouble answering that right now. For anything important, check with Kelly on pricing or Trevor if there’s any risk involved.",
-        intent: "general",
+          'I’m having a bit of trouble answering that right now. For anything important, check with Kelly on pricing or Trevor if there’s any risk involved.',
+        intent: 'general',
         confidence: 0.2,
-        escalateTo: "none",
-        safetyFlag: false,
+        escalateTo: 'none',
+        safetyFlag: false
       },
       { status: 200 }
-    );
+    )
   }
 }

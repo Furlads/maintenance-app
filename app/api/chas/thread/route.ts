@@ -39,9 +39,7 @@ export async function GET(req: NextRequest) {
       where: {
         company,
         worker,
-        ...(Number.isInteger(jobId) && jobId
-          ? { jobId }
-          : {}),
+        ...(Number.isInteger(jobId) && jobId ? { jobId } : {}),
         createdAt: {
           gte: startOfToday(),
           lte: endOfToday()
