@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
 import WorkerMenu from '@/app/components/WorkerMenu'
 
 type Worker = {
@@ -308,6 +308,206 @@ async function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
+const colours = {
+  ink: '#111111',
+  inkSoft: '#2b2b2b',
+  line: '#d9d9d9',
+  panel: '#ffffff',
+  page: '#f4f5f7',
+  muted: '#6b7280',
+  yellow: '#facc15',
+  yellowSoft: '#fff7d6',
+  greenSoft: '#e8f8ea',
+  greenLine: '#7bc586',
+  redSoft: '#ffe5e5',
+  redLine: '#efb0b0',
+  greySoft: '#f8f8f8'
+}
+
+const styles = {
+  page: {
+    minHeight: '100vh',
+    background: `linear-gradient(180deg, ${colours.page} 0%, #eef1f4 100%)`,
+    fontFamily: 'sans-serif',
+    color: colours.ink
+  } satisfies CSSProperties,
+  shell: {
+    width: '100%',
+    maxWidth: 920,
+    margin: '0 auto',
+    padding: '16px 14px 36px'
+  } satisfies CSSProperties,
+  topCard: {
+    borderRadius: 22,
+    background: `linear-gradient(135deg, ${colours.ink} 0%, #2a2a2a 100%)`,
+    color: '#fff',
+    border: '1px solid rgba(255,255,255,0.08)',
+    boxShadow: '0 20px 50px rgba(0,0,0,0.16)',
+    padding: 16,
+    marginBottom: 16
+  } satisfies CSSProperties,
+  panel: {
+    background: colours.panel,
+    border: `1px solid ${colours.line}`,
+    borderRadius: 18,
+    boxShadow: '0 10px 30px rgba(0,0,0,0.06)'
+  } satisfies CSSProperties,
+  panelPadding: {
+    padding: 16
+  } satisfies CSSProperties,
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase' as const,
+    color: colours.muted,
+    marginBottom: 10
+  } satisfies CSSProperties,
+  actionButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 48,
+    padding: '12px 16px',
+    borderRadius: 12,
+    border: `1px solid ${colours.line}`,
+    background: '#fff',
+    color: colours.ink,
+    textDecoration: 'none',
+    fontWeight: 700,
+    fontSize: 15,
+    cursor: 'pointer'
+  } satisfies CSSProperties,
+  actionButtonDark: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 52,
+    padding: '14px 18px',
+    borderRadius: 14,
+    border: `1px solid ${colours.ink}`,
+    background: colours.ink,
+    color: '#fff',
+    textDecoration: 'none',
+    fontWeight: 800,
+    fontSize: 16,
+    cursor: 'pointer'
+  } satisfies CSSProperties,
+  smallBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '8px 10px',
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 800
+  } satisfies CSSProperties,
+  metaCard: {
+    borderRadius: 16,
+    padding: 14,
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.1)'
+  } satisfies CSSProperties,
+  jobCard: {
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    boxShadow: '0 10px 24px rgba(0,0,0,0.05)'
+  } satisfies CSSProperties,
+  label: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: colours.muted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5
+  } satisfies CSSProperties,
+  value: {
+    fontSize: 15,
+    lineHeight: 1.45
+  } satisfies CSSProperties,
+  gridTwo: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: 10
+  } satisfies CSSProperties
+}
+
+function getJobCardStyle(job: TimedJob): CSSProperties {
+  if (job.isDone) {
+    return {
+      background: colours.greenSoft,
+      border: `1px solid ${colours.greenLine}`
+    }
+  }
+
+  if (job.isStarted || job.isPaused || job.isNext) {
+    return {
+      background: colours.yellowSoft,
+      border: '1px solid #efcf72'
+    }
+  }
+
+  return {
+    background: '#fff',
+    border: `1px solid ${colours.line}`
+  }
+}
+
+function getStatusPill(job: TimedJob): CSSProperties {
+  if (job.isDone) {
+    return {
+      ...styles.smallBadge,
+      background: '#d8f3dc',
+      border: '1px solid #8fd19e',
+      color: '#1d5d2c'
+    }
+  }
+
+  if (job.isPaused) {
+    return {
+      ...styles.smallBadge,
+      background: '#fff3cd',
+      border: '1px solid #efcf72',
+      color: '#6c4c00'
+    }
+  }
+
+  if (job.isStarted) {
+    return {
+      ...styles.smallBadge,
+      background: '#111',
+      border: '1px solid #111',
+      color: '#fff'
+    }
+  }
+
+  if (job.isNext) {
+    return {
+      ...styles.smallBadge,
+      background: '#fff3cd',
+      border: '1px solid #efcf72',
+      color: '#6c4c00'
+    }
+  }
+
+  return {
+    ...styles.smallBadge,
+    background: colours.greySoft,
+    border: `1px solid ${colours.line}`,
+    color: colours.inkSoft
+  }
+}
+
+function getStatusText(job: TimedJob) {
+  if (job.isDone) return 'Completed'
+  if (job.isPaused) return 'Paused'
+  if (job.isStarted) return 'In progress'
+  if (job.isNext) return 'Travelling'
+  return 'Waiting to start'
+}
+
 export default function TodayPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -521,6 +721,14 @@ export default function TodayPage() {
     return visibleJobs.filter((job) => job.id !== activeJob.id)
   }, [visibleJobs, activeJob])
 
+  const nextJobs = useMemo(() => {
+    return listJobs.filter((job) => !job.isDone)
+  }, [listJobs])
+
+  const completedJobs = useMemo(() => {
+    return listJobs.filter((job) => job.isDone)
+  }, [listJobs])
+
   const filteredQuoteCustomers = useMemo(() => {
     const q = quoteCustomerSearch.trim().toLowerCase()
 
@@ -641,16 +849,16 @@ export default function TodayPage() {
       const data = await res.json().catch(() => null)
 
       if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || 'Failed to send quote request.')
+        throw new Error(data?.error || 'Failed to save quote enquiry.')
       }
 
-      setQuoteMessage('Sent to Kelly for pricing.')
+      setQuoteMessage('Quote enquiry saved successfully.')
       setShowQuoteForm(false)
 
       const assistantMessage: ChasUiMessage = {
         id: `assistant-quote-${Date.now()}`,
         role: 'assistant',
-        text: 'Nice one — I’ve sent that over to Kelly for pricing.',
+        text: 'Nice one — that new quote has been saved.',
         createdAt: new Date().toISOString()
       }
 
@@ -659,7 +867,7 @@ export default function TodayPage() {
       clearChasImage()
     } catch (err: any) {
       console.error(err)
-      setQuoteMessage(String(err?.message || 'Failed to send quote request.'))
+      setQuoteMessage(String(err?.message || 'Failed to save quote enquiry.'))
     } finally {
       setQuoteBusy(false)
     }
@@ -961,9 +1169,7 @@ Heavy rain made it unsafe`,
     await handleExtendJob(jobId, Math.round(minutes))
   }
 
-  async function handleChasImageChange(
-    event: React.ChangeEvent<HTMLInputElement>
-  ) {
+  async function handleChasImageChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
 
     if (!file) return
@@ -1065,16 +1271,12 @@ Heavy rain made it unsafe`,
   }
 
   function renderPrimaryAction(job: TimedJob) {
-    const commonStyle: React.CSSProperties = {
-      padding: '14px 18px',
-      borderRadius: 10,
-      border: '1px solid #111',
-      background: '#111',
-      color: '#fff',
-      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+    const commonStyle: CSSProperties = {
+      ...styles.actionButtonDark,
+      width: '100%',
+      minWidth: 0,
       opacity: busyJobId === job.id ? 0.6 : 1,
-      fontWeight: 700,
-      minWidth: 170
+      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
     }
 
     if (job.isStarted) {
@@ -1120,692 +1322,823 @@ Heavy rain made it unsafe`,
   }
 
   return (
-    <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
+    <main style={styles.page}>
       <style>{`
         @keyframes chasDotBounce {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.28; }
           40% { transform: translateY(-4px); opacity: 1; }
         }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        input, textarea, select, button {
+          font: inherit;
+        }
+
+        a, button {
+          -webkit-tap-highlight-color: transparent;
+        }
       `}</style>
 
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'start',
-          gap: 12,
-          marginBottom: 8
-        }}
-      >
-        <h1 style={{ fontSize: 28, marginBottom: 0 }}>Today</h1>
-        <WorkerMenu />
-      </div>
-
-      <div
-        style={{
-          marginBottom: 16,
-          padding: '12px 16px',
-          borderRadius: 10,
-          border: '1px solid #ddd',
-          background: '#f9f9f9'
-        }}
-      >
-        <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 4 }}>Current time</div>
-        <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.1 }}>
-          {formatLiveNow(now)}
-        </div>
-        <div style={{ fontSize: 14, marginTop: 4 }}>{formatLiveDate(now)}</div>
-      </div>
-
-      {workerName && (
-        <p style={{ marginTop: 0, marginBottom: 20 }}>
-          Logged in as <strong>{workerName}</strong>
-        </p>
-      )}
-
-      {activeJob && (
-        <div
-          style={{
-            position: 'sticky',
-            top: 10,
-            zIndex: 20,
-            marginBottom: 16,
-            padding: 16,
-            borderRadius: 12,
-            border: '1px solid #f0c36d',
-            background: '#fff3cd',
-            boxShadow: '0 8px 20px rgba(0,0,0,0.08)'
-          }}
-        >
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, opacity: 0.8 }}>
-            CURRENT JOB
-          </div>
-
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>
-            {activeJob.title}
-          </div>
-
-          <div style={{ fontSize: 14, marginBottom: 4 }}>
-            {activeJob.customer?.name || 'Unknown customer'}
-          </div>
-
-          <div style={{ fontSize: 14, marginBottom: 10 }}>
-            Started: {formatTime(activeJob.arrivedAt)} • Time on site:{' '}
-            {formatMinutes(getLiveWorkedMinutes(activeJob, now))}
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {activeJob.isStarted && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleFinishJob(activeJob.id)}
-                  disabled={busyJobId === activeJob.id}
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    border: '1px solid #111',
-                    background: '#111',
-                    color: '#fff',
-                    cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer',
-                    opacity: busyJobId === activeJob.id ? 0.6 : 1,
-                    fontWeight: 700
-                  }}
-                >
-                  {busyJobId === activeJob.id ? 'Updating...' : 'Finish Job'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handlePauseJob(activeJob.id)}
-                  disabled={busyJobId === activeJob.id}
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    border: '1px solid #ccc',
-                    background: '#fff',
-                    cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer',
-                    opacity: busyJobId === activeJob.id ? 0.6 : 1
-                  }}
-                >
-                  {busyJobId === activeJob.id ? 'Updating...' : 'Pause Work'}
-                </button>
-              </>
-            )}
-
-            {activeJob.isPaused && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleResumeJob(activeJob.id)}
-                  disabled={busyJobId === activeJob.id}
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    border: '1px solid #111',
-                    background: '#111',
-                    color: '#fff',
-                    cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer',
-                    opacity: busyJobId === activeJob.id ? 0.6 : 1,
-                    fontWeight: 700
-                  }}
-                >
-                  {busyJobId === activeJob.id ? 'Updating...' : 'Resume Work'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleFinishJob(activeJob.id)}
-                  disabled={busyJobId === activeJob.id}
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    border: '1px solid #ccc',
-                    background: '#fff',
-                    cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer',
-                    opacity: busyJobId === activeJob.id ? 0.6 : 1
-                  }}
-                >
-                  {busyJobId === activeJob.id ? 'Updating...' : 'Finish Job'}
-                </button>
-              </>
-            )}
-
-            <a
-              href={`/jobs/${activeJob.id}`}
-              style={{
-                padding: '12px 16px',
-                borderRadius: 8,
-                border: '1px solid #ccc',
-                background: '#fff',
-                color: 'inherit',
-                textDecoration: 'none',
-                display: 'inline-block'
-              }}
-            >
-              Open Job
-            </a>
-          </div>
-        </div>
-      )}
-
-      <div style={{ marginBottom: 20 }}>
-        <a
-          href="/jobs"
-          style={{
-            display: 'inline-block',
-            padding: '12px 16px',
-            borderRadius: 8,
-            border: '1px solid #ccc',
-            textDecoration: 'none',
-            color: 'inherit',
-            marginRight: 10
-          }}
-        >
-          View All Jobs
-        </a>
-
-        <a
-          href="/customers"
-          style={{
-            display: 'inline-block',
-            padding: '12px 16px',
-            borderRadius: 8,
-            border: '1px solid #ccc',
-            textDecoration: 'none',
-            color: 'inherit',
-            marginRight: 10
-          }}
-        >
-          View Customers
-        </a>
-
-        <button
-          type="button"
-          onClick={openChas}
-          style={{
-            display: 'inline-block',
-            padding: '12px 16px',
-            borderRadius: 8,
-            border: '1px solid #111',
-            background: '#111',
-            color: '#fff',
-            cursor: 'pointer',
-            fontWeight: 700
-          }}
-        >
-          Chas 💬
-        </button>
-      </div>
-
-      {loading && <p>Loading jobs...</p>}
-
-      {!loading && error && <p>{error}</p>}
-
-      {!loading && !error && !workerId && (
-        <p>No worker selected. Go back and choose a worker first.</p>
-      )}
-
-      {!loading && !error && workerId && listJobs.length === 0 && !activeJob && (
-        <p>No open jobs assigned to you.</p>
-      )}
-
-      {!loading &&
-        !error &&
-        listJobs.map((job, index) => {
-          const navigationQuery =
-            job.customer?.postcode || job.address || job.customer?.address || ''
-
-          const startedAt = job.arrivedAt || null
-          const pausedAt = job.pausedAt || null
-          const completedAt = job.finishedAt || null
-          const totalTime = formatDurationMinutes(startedAt, completedAt)
-          const livePausedMinutes = job.isPaused ? getPausedLiveMinutes(job, now) : 0
-
-          const firstCollapsedHeadlineIndex = listJobs.findIndex(
-            (item) => item.isWaiting
-          )
-
-          const shouldCollapseToHeadline =
-            job.isWaiting &&
-            firstCollapsedHeadlineIndex !== -1 &&
-            index > firstCollapsedHeadlineIndex
-
-          const cardStyle: React.CSSProperties = job.isDone
-            ? {
-                background: '#ddffdd',
-                border: '1px solid #7bd77b'
-              }
-            : job.isStarted || job.isPaused || job.isNext
-              ? {
-                  background: '#fff3cd',
-                  border: '1px solid #f0c36d'
-                }
-              : {
-                  background: '#ffe5e5',
-                  border: '1px solid #f2aaaa'
-                }
-
-          if (job.isDone) {
-            return (
+      <div style={styles.shell}>
+        <section style={styles.topCard}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 12,
+              marginBottom: 16
+            }}
+          >
+            <div>
               <div
-                key={job.id}
                 style={{
-                  padding: 16,
-                  borderRadius: 10,
-                  marginBottom: 12,
-                  ...cardStyle
+                  fontSize: 12,
+                  fontWeight: 800,
+                  letterSpacing: 1,
+                  textTransform: 'uppercase',
+                  opacity: 0.78,
+                  marginBottom: 6
                 }}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    alignItems: 'center'
-                  }}
-                >
-                  <div>
-                    <h2 style={{ margin: '0 0 8px 0', fontSize: 18 }}>{job.title}</h2>
+                Furlads worker view
+              </div>
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: 32,
+                  lineHeight: 1,
+                  fontWeight: 900
+                }}
+              >
+                Today
+              </h1>
+            </div>
 
-                    <p style={{ margin: '4px 0', fontSize: 14 }}>
-                      <strong>Job completed:</strong> {formatTime(completedAt)}
-                    </p>
+            <WorkerMenu />
+          </div>
 
-                    <p style={{ margin: '4px 0', fontSize: 14 }}>
-                      <strong>Job started:</strong> {formatTime(startedAt)}
-                    </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: 12
+            }}
+          >
+            <div style={styles.metaCard}>
+              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
+                Logged in as
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.15 }}>
+                {workerName || 'Worker'}
+              </div>
+            </div>
 
-                    <p style={{ margin: '4px 0', fontSize: 14 }}>
-                      <strong>Total time on site:</strong> {totalTime}
-                    </p>
+            <div style={styles.metaCard}>
+              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
+                Current time
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+                {formatLiveNow(now)}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+                {formatLiveDate(now)}
+              </div>
+            </div>
+
+            <div style={styles.metaCard}>
+              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
+                Jobs today
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+                {visibleJobs.length}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+                {activeJob ? 'One active now' : nextJobs.length > 0 ? 'Next jobs ready' : 'No active job'}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {activeJob && (
+          <section
+            style={{
+              ...styles.panel,
+              marginBottom: 16,
+              position: 'sticky',
+              top: 10,
+              zIndex: 20,
+              border: '1px solid #efcf72',
+              background: 'linear-gradient(180deg, #fff7d6 0%, #fff2be 100%)',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.12)'
+            }}
+          >
+            <div style={{ padding: 16 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  marginBottom: 12
+                }}
+              >
+                <div>
+                  <div style={styles.sectionTitle}>Current job</div>
+                  <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15 }}>
+                    {activeJob.title}
                   </div>
+                  <div style={{ marginTop: 6, fontSize: 15 }}>
+                    {activeJob.customer?.name || 'Unknown customer'}
+                  </div>
+                </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleUndoDone(job.id)}
-                    disabled={busyJobId === job.id}
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: 8,
-                      border: '1px solid #2f8f2f',
-                      background: '#fff',
-                      color: '#2f8f2f',
-                      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                      opacity: busyJobId === job.id ? 0.6 : 1,
-                      minWidth: 110
-                    }}
-                  >
-                    {busyJobId === job.id ? 'Updating...' : 'Undo'}
-                  </button>
+                <div style={getStatusPill(activeJob)}>
+                  {getStatusText(activeJob)}
                 </div>
               </div>
-            )
-          }
 
-          if (shouldCollapseToHeadline) {
-            return (
+              <div style={{ ...styles.gridTwo, marginBottom: 14 }}>
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    background: 'rgba(255,255,255,0.6)',
+                    border: '1px solid rgba(0,0,0,0.06)'
+                  }}
+                >
+                  <div style={styles.label}>Started</div>
+                  <div style={{ ...styles.value, fontWeight: 800 }}>
+                    {formatTime(activeJob.arrivedAt)}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    background: 'rgba(255,255,255,0.6)',
+                    border: '1px solid rgba(0,0,0,0.06)'
+                  }}
+                >
+                  <div style={styles.label}>Time on site</div>
+                  <div style={{ ...styles.value, fontWeight: 800 }}>
+                    {formatMinutes(getLiveWorkedMinutes(activeJob, now))}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    background: 'rgba(255,255,255,0.6)',
+                    border: '1px solid rgba(0,0,0,0.06)'
+                  }}
+                >
+                  <div style={styles.label}>Address</div>
+                  <div style={styles.value}>
+                    {activeJob.address || activeJob.customer?.address || '—'}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    background: 'rgba(255,255,255,0.6)',
+                    border: '1px solid rgba(0,0,0,0.06)'
+                  }}
+                >
+                  <div style={styles.label}>Planned time</div>
+                  <div style={{ ...styles.value, fontWeight: 800 }}>
+                    {formatMinutes(activeJob.plannedMinutes)}
+                  </div>
+                </div>
+              </div>
+
               <div
-                key={job.id}
                 style={{
-                  padding: 12,
-                  borderRadius: 10,
-                  marginBottom: 8,
-                  border: '1px solid #ddd',
-                  background: '#f9f9f9'
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: 10
                 }}
               >
-                <a
-                  href={`/jobs/${job.id}`}
-                  style={{
-                    textDecoration: 'none',
-                    color: 'inherit',
-                    display: 'block'
-                  }}
-                >
-                  <h2 style={{ margin: 0, fontSize: 16 }}>{job.title}</h2>
-                </a>
+                {activeJob.isStarted && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleFinishJob(activeJob.id)}
+                      disabled={busyJobId === activeJob.id}
+                      style={{
+                        ...styles.actionButtonDark,
+                        opacity: busyJobId === activeJob.id ? 0.6 : 1,
+                        cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {busyJobId === activeJob.id ? 'Updating...' : 'Finish Job'}
+                    </button>
 
-                <p style={{ margin: '6px 0 0 0', fontSize: 13 }}>
-                  <strong>ETA start:</strong> {formatClockTime(job.etaStart)}
-                </p>
-              </div>
-            )
-          }
+                    <button
+                      type="button"
+                      onClick={() => handlePauseJob(activeJob.id)}
+                      disabled={busyJobId === activeJob.id}
+                      style={{
+                        ...styles.actionButton,
+                        opacity: busyJobId === activeJob.id ? 0.6 : 1,
+                        cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {busyJobId === activeJob.id ? 'Updating...' : 'Pause Work'}
+                    </button>
+                  </>
+                )}
 
-          return (
-            <div
-              key={job.id}
-              style={{
-                padding: 16,
-                borderRadius: 10,
-                marginBottom: 12,
-                ...cardStyle
-              }}
-            >
-              <a
-                href={`/jobs/${job.id}`}
-                style={{
-                  textDecoration: 'none',
-                  color: 'inherit'
-                }}
-              >
-                <h2 style={{ margin: '0 0 8px 0', fontSize: 20 }}>{job.title}</h2>
-              </a>
+                {activeJob.isPaused && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleResumeJob(activeJob.id)}
+                      disabled={busyJobId === activeJob.id}
+                      style={{
+                        ...styles.actionButtonDark,
+                        opacity: busyJobId === activeJob.id ? 0.6 : 1,
+                        cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {busyJobId === activeJob.id ? 'Updating...' : 'Resume Work'}
+                    </button>
 
-              <p style={{ margin: '4px 0' }}>
-                <strong>Customer:</strong> {job.customer?.name || 'Unknown customer'}
-              </p>
+                    <button
+                      type="button"
+                      onClick={() => handleFinishJob(activeJob.id)}
+                      disabled={busyJobId === activeJob.id}
+                      style={{
+                        ...styles.actionButton,
+                        opacity: busyJobId === activeJob.id ? 0.6 : 1,
+                        cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {busyJobId === activeJob.id ? 'Updating...' : 'Finish Job'}
+                    </button>
+                  </>
+                )}
 
-              <p style={{ margin: '4px 0' }}>
-                <strong>Type:</strong> {job.jobType}
-              </p>
-
-              <p style={{ margin: '4px 0' }}>
-                <strong>Status:</strong>{' '}
-                {job.isPaused
-                  ? 'Paused'
-                  : job.isStarted
-                    ? 'In progress'
-                    : job.isNext
-                      ? 'Travelling'
-                      : 'Waiting to start'}
-              </p>
-
-              <p style={{ margin: '4px 0' }}>
-                <strong>Address:</strong> {job.address}
-              </p>
-
-              <p style={{ margin: '4px 0' }}>
-                <strong>{job.isStarted || job.isPaused ? 'ETA finish:' : 'ETA start:'}</strong>{' '}
-                {formatClockTime(job.isStarted || job.isPaused ? job.etaFinish : job.etaStart)}
-              </p>
-
-              <p style={{ margin: '4px 0' }}>
-                <strong>Planned time:</strong> {job.plannedMinutes} mins
-              </p>
-
-              {job.isPaused && (
-                <p style={{ margin: '4px 0' }}>
-                  <strong>Paused live:</strong> {formatMinutes(livePausedMinutes)}
-                </p>
-              )}
-
-              {job.notes && (
-                <p style={{ margin: '4px 0', whiteSpace: 'pre-line' }}>
-                  <strong>Notes:</strong> {job.notes}
-                </p>
-              )}
-
-              {job.isStarted && (
-                <p style={{ margin: '4px 0' }}>
-                  <strong>Started:</strong> {formatTime(startedAt)}
-                </p>
-              )}
-
-              {job.isPaused && (
-                <>
-                  <p style={{ margin: '4px 0' }}>
-                    <strong>Started:</strong> {formatTime(startedAt)}
-                  </p>
-
-                  <p style={{ margin: '4px 0' }}>
-                    <strong>Paused at:</strong> {formatTime(pausedAt)}
-                  </p>
-                </>
-              )}
-
-              <div style={{ marginTop: 14, marginBottom: 12 }}>
-                {renderPrimaryAction(job)}
-              </div>
-
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <a
-                  href={`/jobs/${job.id}`}
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    border: '1px solid #ccc',
-                    textDecoration: 'none',
-                    color: 'inherit',
-                    background: '#fff'
-                  }}
-                >
+                <a href={`/jobs/${activeJob.id}`} style={styles.actionButton}>
                   Open Job
                 </a>
 
-                {job.customer?.phone && (
-                  <a
-                    href={`tel:${job.customer.phone}`}
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: 8,
-                      border: '1px solid #ccc',
-                      textDecoration: 'none',
-                      color: 'inherit',
-                      background: '#fff'
-                    }}
-                  >
+                {activeJob.customer?.phone && (
+                  <a href={`tel:${activeJob.customer.phone}`} style={styles.actionButton}>
                     Call Customer
                   </a>
                 )}
 
-                {navigationQuery && (
+                {(activeJob.customer?.postcode || activeJob.address || activeJob.customer?.address) && (
                   <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationQuery)}`}
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                      activeJob.customer?.postcode || activeJob.address || activeJob.customer?.address || ''
+                    )}`}
                     target="_blank"
                     rel="noreferrer"
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: 8,
-                      border: '1px solid #ccc',
-                      textDecoration: 'none',
-                      color: 'inherit',
-                      background: '#fff'
-                    }}
+                    style={styles.actionButton}
                   >
                     Navigate
                   </a>
                 )}
-
-                {job.isStarted && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handlePauseJob(job.id)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#fff',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : 'Pause Work'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleCannotComplete(job.id)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#ffe5e5',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : "Couldn't Complete"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleUndoStart(job.id)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#fff',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : 'Undo Start'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleExtendJob(job.id, 15)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#fff',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : '+15'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleExtendJob(job.id, 30)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#fff',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : '+30'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleExtendJob(job.id, 45)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#fff',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : '+45'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleExtendJob(job.id, 60)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#fff',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : '+60'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOtherExtendJob(job.id)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#fff',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : 'Other'}
-                    </button>
-                  </>
-                )}
-
-                {job.isPaused && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleFinishJob(job.id)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#fff',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleCannotComplete(job.id)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#ffe5e5',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : "Couldn't Complete"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleUndoStart(job.id)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: '#fff',
-                        color: 'inherit',
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
-                        opacity: busyJobId === job.id ? 0.6 : 1
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : 'Undo Start'}
-                    </button>
-                  </>
-                )}
               </div>
             </div>
-          )
-        })}
+          </section>
+        )}
+
+        <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
+          <div style={styles.sectionTitle}>Quick actions</div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: 10
+            }}
+          >
+            <a href="/jobs" style={styles.actionButton}>
+              View All Jobs
+            </a>
+
+            <a href="/customers" style={styles.actionButton}>
+              View Customers
+            </a>
+
+            <button
+              type="button"
+              onClick={openChas}
+              style={styles.actionButtonDark}
+            >
+              Chas 💬
+            </button>
+          </div>
+        </section>
+
+        {loading && (
+          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
+            <div style={{ fontWeight: 700 }}>Loading jobs...</div>
+          </section>
+        )}
+
+        {!loading && error && (
+          <section
+            style={{
+              ...styles.panel,
+              ...styles.panelPadding,
+              marginBottom: 16,
+              border: `1px solid ${colours.redLine}`,
+              background: colours.redSoft
+            }}
+          >
+            <div style={{ fontWeight: 700 }}>{error}</div>
+          </section>
+        )}
+
+        {!loading && !error && !workerId && (
+          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
+            <div style={{ fontWeight: 700 }}>No worker selected.</div>
+            <div style={{ marginTop: 6, color: colours.muted }}>
+              Go back and choose a worker first.
+            </div>
+          </section>
+        )}
+
+        {!loading && !error && workerId && listJobs.length === 0 && !activeJob && (
+          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
+            <div style={{ fontWeight: 700 }}>No open jobs assigned to you.</div>
+          </section>
+        )}
+
+        {!loading && !error && workerId && nextJobs.length > 0 && (
+          <section style={{ marginBottom: 18 }}>
+            <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>Next jobs</div>
+
+            {nextJobs.map((job, index) => {
+              const navigationQuery =
+                job.customer?.postcode || job.address || job.customer?.address || ''
+
+              const startedAt = job.arrivedAt || null
+              const pausedAt = job.pausedAt || null
+              const livePausedMinutes = job.isPaused ? getPausedLiveMinutes(job, now) : 0
+
+              const firstCollapsedHeadlineIndex = nextJobs.findIndex(
+                (item) => item.isWaiting
+              )
+
+              const shouldCollapseToHeadline =
+                job.isWaiting &&
+                firstCollapsedHeadlineIndex !== -1 &&
+                index > firstCollapsedHeadlineIndex
+
+              if (shouldCollapseToHeadline) {
+                return (
+                  <div
+                    key={job.id}
+                    style={{
+                      ...styles.panel,
+                      padding: 14,
+                      marginBottom: 8,
+                      background: '#fafafa'
+                    }}
+                  >
+                    <a
+                      href={`/jobs/${job.id}`}
+                      style={{
+                        textDecoration: 'none',
+                        color: 'inherit',
+                        display: 'block'
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 12
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800 }}>{job.title}</div>
+                          <div style={{ marginTop: 4, fontSize: 13, color: colours.muted }}>
+                            ETA start: {formatClockTime(job.etaStart)}
+                          </div>
+                        </div>
+
+                        <div style={getStatusPill(job)}>{getStatusText(job)}</div>
+                      </div>
+                    </a>
+                  </div>
+                )
+              }
+
+              return (
+                <div
+                  key={job.id}
+                  style={{
+                    ...styles.jobCard,
+                    ...getJobCardStyle(job)
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      gap: 12,
+                      flexWrap: 'wrap',
+                      marginBottom: 12
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <a
+                        href={`/jobs/${job.id}`}
+                        style={{ textDecoration: 'none', color: 'inherit' }}
+                      >
+                        <h2
+                          style={{
+                            margin: 0,
+                            fontSize: 22,
+                            lineHeight: 1.15,
+                            fontWeight: 900
+                          }}
+                        >
+                          {job.title}
+                        </h2>
+                      </a>
+
+                      <div style={{ marginTop: 6, fontSize: 15 }}>
+                        {job.customer?.name || 'Unknown customer'}
+                      </div>
+                    </div>
+
+                    <div style={getStatusPill(job)}>{getStatusText(job)}</div>
+                  </div>
+
+                  <div style={{ ...styles.gridTwo, marginBottom: 12 }}>
+                    <div
+                      style={{
+                        padding: 12,
+                        borderRadius: 14,
+                        background: 'rgba(255,255,255,0.65)',
+                        border: '1px solid rgba(0,0,0,0.06)'
+                      }}
+                    >
+                      <div style={styles.label}>Job type</div>
+                      <div style={styles.value}>{job.jobType}</div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 12,
+                        borderRadius: 14,
+                        background: 'rgba(255,255,255,0.65)',
+                        border: '1px solid rgba(0,0,0,0.06)'
+                      }}
+                    >
+                      <div style={styles.label}>
+                        {job.isStarted || job.isPaused ? 'ETA finish' : 'ETA start'}
+                      </div>
+                      <div style={{ ...styles.value, fontWeight: 800 }}>
+                        {formatClockTime(job.isStarted || job.isPaused ? job.etaFinish : job.etaStart)}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 12,
+                        borderRadius: 14,
+                        background: 'rgba(255,255,255,0.65)',
+                        border: '1px solid rgba(0,0,0,0.06)'
+                      }}
+                    >
+                      <div style={styles.label}>Planned time</div>
+                      <div style={{ ...styles.value, fontWeight: 800 }}>
+                        {formatMinutes(job.plannedMinutes)}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 12,
+                        borderRadius: 14,
+                        background: 'rgba(255,255,255,0.65)',
+                        border: '1px solid rgba(0,0,0,0.06)'
+                      }}
+                    >
+                      <div style={styles.label}>Address</div>
+                      <div style={styles.value}>{job.address}</div>
+                    </div>
+                  </div>
+
+                  {(job.isStarted || job.isPaused || job.notes) && (
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: 12,
+                        borderRadius: 14,
+                        background: 'rgba(255,255,255,0.55)',
+                        border: '1px solid rgba(0,0,0,0.06)'
+                      }}
+                    >
+                      {job.isStarted && (
+                        <div style={{ marginBottom: 6, fontSize: 14 }}>
+                          <strong>Started:</strong> {formatTime(startedAt)}
+                        </div>
+                      )}
+
+                      {job.isPaused && (
+                        <>
+                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                            <strong>Started:</strong> {formatTime(startedAt)}
+                          </div>
+                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                            <strong>Paused at:</strong> {formatTime(pausedAt)}
+                          </div>
+                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                            <strong>Paused live:</strong> {formatMinutes(livePausedMinutes)}
+                          </div>
+                        </>
+                      )}
+
+                      {job.notes && (
+                        <div style={{ fontSize: 14, whiteSpace: 'pre-line' }}>
+                          <strong>Notes:</strong> {job.notes}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: 12 }}>
+                    {renderPrimaryAction(job)}
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                      gap: 10
+                    }}
+                  >
+                    <a href={`/jobs/${job.id}`} style={styles.actionButton}>
+                      Open Job
+                    </a>
+
+                    {job.customer?.phone && (
+                      <a href={`tel:${job.customer.phone}`} style={styles.actionButton}>
+                        Call Customer
+                      </a>
+                    )}
+
+                    {navigationQuery && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationQuery)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={styles.actionButton}
+                      >
+                        Navigate
+                      </a>
+                    )}
+
+                    {job.isStarted && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handlePauseJob(job.id)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : 'Pause Work'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleCannotComplete(job.id)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            background: colours.redSoft,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : "Couldn't Complete"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleUndoStart(job.id)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : 'Undo Start'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleExtendJob(job.id, 15)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : '+15'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleExtendJob(job.id, 30)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : '+30'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleExtendJob(job.id, 45)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : '+45'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleExtendJob(job.id, 60)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : '+60'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOtherExtendJob(job.id)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : 'Other'}
+                        </button>
+                      </>
+                    )}
+
+                    {job.isPaused && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleFinishJob(job.id)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleCannotComplete(job.id)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            background: colours.redSoft,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : "Couldn't Complete"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleUndoStart(job.id)}
+                          disabled={busyJobId === job.id}
+                          style={{
+                            ...styles.actionButton,
+                            opacity: busyJobId === job.id ? 0.6 : 1,
+                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {busyJobId === job.id ? 'Updating...' : 'Undo Start'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </section>
+        )}
+
+        {!loading && !error && workerId && completedJobs.length > 0 && (
+          <section style={{ marginBottom: 20 }}>
+            <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>Completed today</div>
+
+            {completedJobs.map((job) => {
+              const startedAt = job.arrivedAt || null
+              const completedAt = job.finishedAt || null
+              const totalTime = formatDurationMinutes(startedAt, completedAt)
+
+              return (
+                <div
+                  key={job.id}
+                  style={{
+                    ...styles.jobCard,
+                    ...getJobCardStyle(job)
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      gap: 12,
+                      flexWrap: 'wrap'
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                        <div style={{ fontSize: 20, fontWeight: 900 }}>{job.title}</div>
+                        <div style={getStatusPill(job)}>{getStatusText(job)}</div>
+                      </div>
+
+                      <div style={{ ...styles.gridTwo, maxWidth: 620 }}>
+                        <div>
+                          <div style={styles.label}>Completed</div>
+                          <div style={styles.value}>{formatTime(completedAt)}</div>
+                        </div>
+
+                        <div>
+                          <div style={styles.label}>Started</div>
+                          <div style={styles.value}>{formatTime(startedAt)}</div>
+                        </div>
+
+                        <div>
+                          <div style={styles.label}>Total time</div>
+                          <div style={styles.value}>{totalTime}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleUndoDone(job.id)}
+                      disabled={busyJobId === job.id}
+                      style={{
+                        ...styles.actionButton,
+                        minWidth: 120,
+                        color: '#1d5d2c',
+                        border: '1px solid #7bc586',
+                        opacity: busyJobId === job.id ? 0.6 : 1,
+                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {busyJobId === job.id ? 'Updating...' : 'Undo'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </section>
+        )}
+      </div>
 
       {chasOpen && (
         <div
@@ -1813,7 +2146,7 @@ Heavy rain made it unsafe`,
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.5)',
+            background: 'rgba(0,0,0,0.58)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1903,7 +2236,7 @@ Heavy rain made it unsafe`,
                     <br />
                     • What’s the safest way to tackle this?
                     <br />
-                    • Need to send a quote request to Kelly
+                    • Need to create a new quote
                   </div>
                 </div>
               )}
@@ -2051,7 +2384,7 @@ Heavy rain made it unsafe`,
                   }}
                 >
                   <div style={{ fontWeight: 800, marginBottom: 10 }}>
-                    Quote request for Kelly
+                    New Quote
                   </div>
 
                   <div
@@ -2252,7 +2585,7 @@ Heavy rain made it unsafe`,
                       <textarea
                         value={quoteWorkSummary}
                         onChange={(e) => setQuoteWorkSummary(e.target.value)}
-                        placeholder="What does the customer want doing?"
+                        placeholder="What work is needed?"
                         style={{
                           minHeight: 90,
                           padding: 12,
@@ -2279,7 +2612,7 @@ Heavy rain made it unsafe`,
                       <textarea
                         value={quoteNotes}
                         onChange={(e) => setQuoteNotes(e.target.value)}
-                        placeholder="Extra notes for Kelly (optional)"
+                        placeholder="Extra notes for the office (optional)"
                         style={{
                           minHeight: 80,
                           padding: 12,
@@ -2298,7 +2631,7 @@ Heavy rain made it unsafe`,
                       style={{
                         marginTop: 10,
                         fontSize: 13,
-                        color: quoteMessage.includes('Sent') ? '#1b5e20' : '#b00020'
+                        color: quoteMessage.includes('successfully') ? '#1b5e20' : '#b00020'
                       }}
                     >
                       {quoteMessage}
@@ -2328,7 +2661,7 @@ Heavy rain made it unsafe`,
                         fontWeight: 700
                       }}
                     >
-                      {quoteBusy ? 'Sending...' : 'Send to Kelly'}
+                      {quoteBusy ? 'Saving...' : 'Save New Quote'}
                     </button>
 
                     <button
@@ -2493,7 +2826,7 @@ Heavy rain made it unsafe`,
                         fontWeight: 600
                       }}
                     >
-                      {showQuoteForm ? 'Hide Quote Form' : 'Quote for Kelly'}
+                      {showQuoteForm ? 'Hide New Quote' : 'New Quote'}
                     </button>
                   </div>
 
