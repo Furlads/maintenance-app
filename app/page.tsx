@@ -7,6 +7,7 @@ type Worker = {
   firstName: string
   lastName: string
   active?: boolean
+  photoUrl?: string | null
 }
 
 function getRedirectPath(accessLevel: string) {
@@ -322,6 +323,8 @@ export default function Page() {
               const initials =
                 `${worker.firstName?.[0] || ''}${worker.lastName?.[0] || ''}` || 'W'
               const useGold = index % 2 === 0
+              const hasPhoto =
+                typeof worker.photoUrl === 'string' && worker.photoUrl.trim().length > 0
 
               return (
                 <button
@@ -349,26 +352,44 @@ export default function Page() {
                       boxShadow: '0 14px 30px rgba(0,0,0,0.06)'
                     }}
                   >
-                    <div
-                      style={{
-                        width: 58,
-                        height: 58,
-                        borderRadius: 18,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        fontSize: 19,
-                        fontWeight: 900,
-                        background: useGold ? '#f5deb0' : '#d9e9de',
-                        color: useGold ? '#8a5a00' : '#245c3b',
-                        border: useGold
-                          ? '1px solid rgba(198,146,20,0.22)'
-                          : '1px solid rgba(36,92,59,0.18)'
-                      }}
-                    >
-                      {initials}
-                    </div>
+                    {hasPhoto ? (
+                      <img
+                        src={worker.photoUrl as string}
+                        alt={`${worker.firstName} ${worker.lastName}`}
+                        style={{
+                          width: 58,
+                          height: 58,
+                          borderRadius: 18,
+                          objectFit: 'cover',
+                          flexShrink: 0,
+                          border: useGold
+                            ? '1px solid rgba(198,146,20,0.22)'
+                            : '1px solid rgba(36,92,59,0.18)',
+                          background: '#f3f3f3'
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 58,
+                          height: 58,
+                          borderRadius: 18,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          fontSize: 19,
+                          fontWeight: 900,
+                          background: useGold ? '#f5deb0' : '#d9e9de',
+                          color: useGold ? '#8a5a00' : '#245c3b',
+                          border: useGold
+                            ? '1px solid rgba(198,146,20,0.22)'
+                            : '1px solid rgba(36,92,59,0.18)'
+                        }}
+                      >
+                        {initials}
+                      </div>
+                    )}
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div
