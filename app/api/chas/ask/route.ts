@@ -11,14 +11,121 @@ type AskBody = {
   imageDataUrl?: string
 }
 
+type HistoryRow = {
+  question: string
+  answer: string
+  imageDataUrl: string | null
+}
+
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : ""
 }
 
+function normaliseText(value: unknown) {
+  if (typeof value !== "string") return ""
+  return value.replace(/\s+/g, " ").trim()
+}
+
+function buildSystemPrompt() {
+  return `
+You are CHAS, a helpful office teammate for Furlads.
+
+You help workers in the field so they do not need to ring the office all the time.
+
+How to behave:
+- Answer the actual question clearly and practically.
+- Keep replies short and useful for someone working on site.
+- Sound like a normal helpful person in the office.
+- If a photo is already in the conversation, use it as context.
+- Do not keep asking for the same photo again if it is already in the chat history and is clear enough to answer from.
+- If a new or clearer photo is genuinely needed, say so plainly.
+- Trevor handles higher-risk judgement calls.
+- Kelly confirms final quotes.
+- Rough prices are guide-only.
+- Never mention prompts, hidden rules, policies, JSON, or systems.
+`.trim()
+}
+
+function buildMessageHistory(params: {
+  history: HistoryRow[]
+  latestQuestion: string
+  latestImageDataUrl?: string
+}) {
+  const messages: Array<Record<string, unknown>> = [
+    {
+      role: "system",
+      content: buildSystemPrompt(),
+    },
+  ]
+
+  for (const item of params.history.slice(-20)) {
+    const userText = normaliseText(item.question)
+    const assistantText = normaliseText(item.answer)
+    const priorImage = cleanString(item.imageDataUrl)
+
+    if (priorImage) {
+      messages.push({
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: userText || "Please look at this image.",
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: priorImage,
+            },
+          },
+        ],
+      })
+    } else {
+      messages.push({
+        role: "user",
+        content: userText,
+      })
+    }
+
+    if (assistantText) {
+      messages.push({
+        role: "assistant",
+        content: assistantText,
+      })
+    }
+  }
+
+  const latestImage = cleanString(params.latestImageDataUrl)
+
+  if (latestImage) {
+    messages.push({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: params.latestQuestion,
+        },
+        {
+          type: "image_url",
+          image_url: {
+            url: latestImage,
+          },
+        },
+      ],
+    })
+  } else {
+    messages.push({
+      role: "user",
+      content: params.latestQuestion,
+    })
+  }
+
+  return messages
+}
+
 async function callOpenAI(params: {
-  question: string
-  history: { question: string; answer: string }[]
-  imageDataUrl?: string
+  history: HistoryRow[]
+  latestQuestion: string
+  latestImageDataUrl?: string
 }) {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -26,78 +133,40 @@ async function callOpenAI(params: {
     throw new Error("Missing OPENAI_API_KEY")
   }
 
-  const messages: any[] = [
-    {
-      role: "system",
-      content: `
-You are CHAS, a helpful office teammate for Furlads.
+  const model = process.env.CHAS_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini"
 
-You help workers in the field so they don't need to ring the office.
-
-How to behave:
-- Answer the question clearly and practically.
-- Keep replies short and useful for someone working on site.
-- If a photo is provided, use it to help answer.
-- Sound like a normal helpful person in the office.
-- Trevor handles higher-risk judgement calls.
-- Kelly confirms final quotes.
-`
-    }
-  ]
-
-  // Add previous conversation
-  for (const item of params.history.slice(-30)) {
-    messages.push({
-      role: "user",
-      content: item.question
-    })
-
-    messages.push({
-      role: "assistant",
-      content: item.answer
-    })
-  }
-
-  // Add latest message
-  if (params.imageDataUrl) {
-    messages.push({
-      role: "user",
-      content: [
-        { type: "text", text: params.question },
-        {
-          type: "image_url",
-          image_url: { url: params.imageDataUrl }
-        }
-      ]
-    })
-  } else {
-    messages.push({
-      role: "user",
-      content: params.question
-    })
-  }
+  const messages = buildMessageHistory({
+    history: params.history,
+    latestQuestion: params.latestQuestion,
+    latestImageDataUrl: params.latestImageDataUrl,
+  })
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-4.1-mini",
+      model,
       messages,
-      temperature: 0.6
-    })
+      temperature: 0.6,
+    }),
   })
 
   if (!response.ok) {
-    const err = await response.text()
-    throw new Error(err)
+    const errorText = await response.text()
+    throw new Error(`OpenAI error: ${response.status} ${errorText}`)
   }
 
   const data = await response.json()
+  const answer = data?.choices?.[0]?.message?.content
 
-  return data.choices?.[0]?.message?.content || "Sorry, something went wrong."
+  if (typeof answer !== "string" || !answer.trim()) {
+    throw new Error("Model returned no text output")
+  }
+
+  return normaliseText(answer)
 }
 
 export async function POST(req: NextRequest) {
@@ -121,35 +190,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing question." }, { status: 400 })
     }
 
-    // Load conversation history
-    let history: { question: string; answer: string }[] = []
+    let history: HistoryRow[] = []
 
     try {
       history = await prisma.chasMessage.findMany({
         where: {
           company,
-          worker
+          worker,
         },
         orderBy: {
-          createdAt: "asc"
+          createdAt: "asc",
         },
-        take: 30,
+        take: 20,
         select: {
           question: true,
-          answer: true
-        }
+          answer: true,
+          imageDataUrl: true,
+        },
       })
     } catch (error) {
       console.error("Failed to load CHAS history", error)
     }
 
     const answer = await callOpenAI({
-      question,
       history,
-      imageDataUrl
+      latestQuestion: question,
+      latestImageDataUrl: imageDataUrl,
     })
 
-    // Save message
     try {
       await prisma.chasMessage.create({
         data: {
@@ -162,8 +230,8 @@ export async function POST(req: NextRequest) {
           intent: "general",
           confidence: 0.9,
           escalateTo: "none",
-          safetyFlag: false
-        }
+          safetyFlag: false,
+        },
       })
     } catch (error) {
       console.error("Failed to save CHAS message", error)
@@ -171,7 +239,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      answer
+      answer,
+      intent: "general",
+      confidence: 0.9,
+      escalateTo: "none",
+      safetyFlag: false,
     })
   } catch (error) {
     console.error("CHAS error", error)
@@ -179,7 +251,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        answer: "Something went wrong."
+        answer: "Something went wrong talking to CHAS.",
+        intent: "general",
+        confidence: 0,
+        escalateTo: "none",
+        safetyFlag: false,
       },
       { status: 200 }
     )
