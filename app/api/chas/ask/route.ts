@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import prisma from '@/lib/prisma'
 import { buildChasSystemPrompt } from '@/lib/chasSystemPrompt'
-import { buildChasPropertyContext } from '@/lib/chasPropertyContext'
 import { identifyPlantWithPlantNet, buildFriendlyPlantReply } from '@/lib/plantnet'
 
 const openai = new OpenAI({
@@ -17,6 +16,26 @@ type AskBody = {
   jobId?: number | null
   question?: string
   imageDataUrl?: string
+}
+
+type ChasApiResult = {
+  answer: string
+  intent:
+    | 'plant_id'
+    | 'task_advice'
+    | 'hedge_advice'
+    | 'safety'
+    | 'customer_explanation'
+    | 'job_next_step'
+    | 'pricing'
+    | 'damage_or_problem'
+    | 'escalation_required'
+    | 'general'
+  confidence: 'high' | 'medium' | 'low'
+  escalateTo: 'trevor' | 'kelly' | null
+  saveToJobNotesSuggested: boolean
+  followUpSuggested: boolean
+  safetyFlag: boolean
 }
 
 function cleanString(value: unknown) {
@@ -47,6 +66,67 @@ function endOfToday() {
   const d = new Date()
   d.setHours(23, 59, 59, 999)
   return d
+}
+
+function stripMarkdownFences(value: string) {
+  return value
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+}
+
+function safeJsonParse<T>(value: string): T | null {
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return null
+  }
+}
+
+function normaliseChasResult(input: Partial<ChasApiResult> | null): ChasApiResult {
+  const validIntentValues: ChasApiResult['intent'][] = [
+    'plant_id',
+    'task_advice',
+    'hedge_advice',
+    'safety',
+    'customer_explanation',
+    'job_next_step',
+    'pricing',
+    'damage_or_problem',
+    'escalation_required',
+    'general'
+  ]
+
+  const validConfidenceValues: ChasApiResult['confidence'][] = ['high', 'medium', 'low']
+
+  let escalateTo: 'trevor' | 'kelly' | null = null
+
+  if (input?.escalateTo === 'trevor' || input?.escalateTo === 'kelly') {
+    escalateTo = input.escalateTo
+  }
+
+  const intent = validIntentValues.includes(input?.intent as ChasApiResult['intent'])
+    ? (input?.intent as ChasApiResult['intent'])
+    : 'general'
+
+  const confidence = validConfidenceValues.includes(
+    input?.confidence as ChasApiResult['confidence']
+  )
+    ? (input?.confidence as ChasApiResult['confidence'])
+    : 'medium'
+
+  const answer = cleanString(input?.answer) || 'Sorry, I could not generate a proper reply.'
+
+  return {
+    answer,
+    intent,
+    confidence,
+    escalateTo,
+    saveToJobNotesSuggested: Boolean(input?.saveToJobNotesSuggested),
+    followUpSuggested: Boolean(input?.followUpSuggested),
+    safetyFlag: Boolean(input?.safetyFlag)
+  }
 }
 
 async function getHistoryText(company: string, worker: string, jobId: number | null) {
@@ -83,6 +163,25 @@ async function getHistoryText(company: string, worker: string, jobId: number | n
     .join('\n\n')
 }
 
+function extractResponseText(response: OpenAI.Responses.Response) {
+  if (typeof response.output_text === 'string' && response.output_text.trim()) {
+    return response.output_text.trim()
+  }
+
+  const joined = response.output
+    .flatMap((item) => {
+      if (item.type !== 'message') return []
+
+      return item.content
+        .filter((contentItem) => contentItem.type === 'output_text')
+        .map((contentItem) => contentItem.text)
+    })
+    .join('\n')
+    .trim()
+
+  return joined
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AskBody
@@ -102,7 +201,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ---------------------------
-    // 🌿 PLANT IDENTIFICATION PATH
+    // PLANT IDENTIFICATION PATH
     // ---------------------------
 
     if (imageDataUrl && isPlantQuestion(question)) {
@@ -113,24 +212,28 @@ export async function POST(req: NextRequest) {
 
         const plantReply = buildFriendlyPlantReply(results)
 
+        const plantResult: ChasApiResult = {
+          answer: plantReply.answer,
+          intent: 'plant_id',
+          confidence: plantReply.confidence,
+          escalateTo: null,
+          saveToJobNotesSuggested: false,
+          followUpSuggested: plantReply.confidence !== 'high',
+          safetyFlag: false
+        }
+
         await prisma.chasMessage.create({
           data: {
             company,
             worker,
             jobId,
             question,
-            answer: plantReply.answer,
+            answer: plantResult.answer,
             imageDataUrl
           }
         })
 
-        return NextResponse.json({
-          answer: plantReply.answer,
-          intent: 'plant_id',
-          confidence: plantReply.confidence,
-          escalateTo: null,
-          safetyFlag: false
-        })
+        return NextResponse.json(plantResult)
       } catch (error) {
         console.error('Plant identification failed', error)
       }
@@ -140,17 +243,14 @@ export async function POST(req: NextRequest) {
     // NORMAL CHAS RESPONSE
     // ---------------------------
 
-    const { currentJobText, relatedHistoryText } =
-      await buildChasPropertyContext(jobId)
-
     const historyText = await getHistoryText(company, worker, jobId)
 
     const systemPrompt = buildChasSystemPrompt({
       company,
       worker,
       currentDateIso: new Date().toISOString(),
-      currentJobText,
-      relatedHistoryText,
+      currentJobText: 'No job context supplied.',
+      relatedHistoryText: 'No related job history supplied.',
       historyText
     })
 
@@ -158,13 +258,12 @@ export async function POST(req: NextRequest) {
       model: 'gpt-4.1-mini',
       instructions: systemPrompt,
       input: `Worker question:\n${question}`,
-      max_output_tokens: 600
+      max_output_tokens: 700
     })
 
-    const answer =
-      typeof response.output_text === 'string'
-        ? response.output_text
-        : 'Sorry, I could not generate a reply.'
+    const rawText = extractResponseText(response)
+    const parsed = safeJsonParse<Partial<ChasApiResult>>(stripMarkdownFences(rawText))
+    const result = normaliseChasResult(parsed)
 
     await prisma.chasMessage.create({
       data: {
@@ -172,18 +271,12 @@ export async function POST(req: NextRequest) {
         worker,
         jobId,
         question,
-        answer,
+        answer: result.answer,
         imageDataUrl
       }
     })
 
-    return NextResponse.json({
-      answer,
-      intent: 'general',
-      confidence: 'medium',
-      escalateTo: null,
-      safetyFlag: false
-    })
+    return NextResponse.json(result)
   } catch (error) {
     console.error('POST /api/chas/ask failed', error)
 
