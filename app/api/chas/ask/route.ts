@@ -5,6 +5,7 @@ import OpenAI from 'openai'
 import prisma from '@/lib/prisma'
 import { buildChasSystemPrompt } from '@/lib/chasSystemPrompt'
 import { buildChasPropertyContext } from '@/lib/chasPropertyContext'
+import { identifyPlantWithPlantNet, buildFriendlyPlantReply } from '@/lib/plantnet'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -13,96 +14,27 @@ const openai = new OpenAI({
 type AskBody = {
   company?: string
   worker?: string
-  workerId?: number | null
   jobId?: number | null
   question?: string
   imageDataUrl?: string
-}
-
-type ParsedChasResponse = {
-  answer: string
-  intent:
-    | 'plant_id'
-    | 'task_advice'
-    | 'hedge_advice'
-    | 'safety'
-    | 'customer_explanation'
-    | 'job_next_step'
-    | 'pricing'
-    | 'damage_or_problem'
-    | 'escalation_required'
-    | 'general'
-  confidence: 'high' | 'medium' | 'low'
-  escalateTo: 'trevor' | 'kelly' | null
-  saveToJobNotesSuggested: boolean
-  followUpSuggested: boolean
-  safetyFlag: boolean
 }
 
 function cleanString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function safeJsonParse<T>(value: string): T | null {
-  try {
-    return JSON.parse(value) as T
-  } catch {
-    return null
-  }
-}
+function isPlantQuestion(question: string) {
+  const q = question.toLowerCase()
 
-function stripMarkdownFences(value: string) {
-  return value
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim()
-}
-
-function normaliseParsedResponse(input: Partial<ParsedChasResponse> | null): ParsedChasResponse {
-  const allowedIntentValues: ParsedChasResponse['intent'][] = [
-    'plant_id',
-    'task_advice',
-    'hedge_advice',
-    'safety',
-    'customer_explanation',
-    'job_next_step',
-    'pricing',
-    'damage_or_problem',
-    'escalation_required',
-    'general'
-  ]
-
-  const allowedConfidenceValues: ParsedChasResponse['confidence'][] = ['high', 'medium', 'low']
-  const allowedEscalateValues: Array<ParsedChasResponse['escalateTo']> = ['trevor', 'kelly', null]
-
-  const intent = allowedIntentValues.includes(input?.intent as ParsedChasResponse['intent'])
-    ? (input?.intent as ParsedChasResponse['intent'])
-    : 'general'
-
-  const confidence = allowedConfidenceValues.includes(
-    input?.confidence as ParsedChasResponse['confidence']
+  return (
+    q.includes('plant') ||
+    q.includes('tree') ||
+    q.includes('shrub') ||
+    q.includes('what is this') ||
+    q.includes('identify') ||
+    q.includes('what plant') ||
+    q.includes('what tree')
   )
-    ? (input?.confidence as ParsedChasResponse['confidence'])
-    : 'medium'
-
-  const escalateTo = allowedEscalateValues.includes(
-    (input?.escalateTo as ParsedChasResponse['escalateTo']) ?? null
-  )
-    ? ((input?.escalateTo as ParsedChasResponse['escalateTo']) ?? null)
-    : null
-
-  const answer = cleanString(input?.answer) || 'Sorry, I could not generate a proper reply.'
-
-  return {
-    answer,
-    intent,
-    confidence,
-    escalateTo,
-    saveToJobNotesSuggested: Boolean(input?.saveToJobNotesSuggested),
-    followUpSuggested: Boolean(input?.followUpSuggested),
-    safetyFlag: Boolean(input?.safetyFlag)
-  }
 }
 
 function startOfToday() {
@@ -117,9 +49,9 @@ function endOfToday() {
   return d
 }
 
-async function getHistoryText(company: string, worker: string, jobId: number | null | undefined) {
+async function getHistoryText(company: string, worker: string, jobId: number | null) {
   const where =
-    jobId && Number.isInteger(jobId)
+    jobId
       ? {
           company,
           worker,
@@ -140,58 +72,15 @@ async function getHistoryText(company: string, worker: string, jobId: number | n
 
   const messages = await prisma.chasMessage.findMany({
     where,
-    orderBy: {
-      createdAt: 'asc'
-    },
+    orderBy: { createdAt: 'asc' },
     take: 12
   })
 
-  if (!messages.length) {
-    return 'No previous CHAS messages today.'
-  }
+  if (!messages.length) return 'No previous CHAS messages today.'
 
   return messages
-    .map((message) => {
-      const parts = [`Worker: ${message.question}`, `CHAS: ${message.answer}`]
-
-      if (message.imageDataUrl) {
-        parts.push('Worker attached an image with that message.')
-      }
-
-      return parts.join('\n')
-    })
+    .map((m) => `Worker: ${m.question}\nCHAS: ${m.answer}`)
     .join('\n\n')
-}
-
-function buildUserMessage(question: string, imageDataUrl?: string) {
-  const parts = [`Worker question:\n${question}`]
-
-  if (imageDataUrl) {
-    parts.push(
-      `Image attached by worker as data URL. Use it only if the model supports attached image interpretation in this request path. If image content is not actually visible to you here, say you are not fully certain and ask for another photo or better angles.`
-    )
-  }
-
-  return parts.join('\n\n').trim()
-}
-
-function extractTextFromResponse(response: OpenAI.Responses.Response) {
-  if (typeof response.output_text === 'string' && response.output_text.trim()) {
-    return response.output_text.trim()
-  }
-
-  const joined = response.output
-    .flatMap((item) => {
-      if (item.type !== 'message') return []
-
-      return item.content
-        .filter((contentItem) => contentItem.type === 'output_text')
-        .map((contentItem) => contentItem.text)
-    })
-    .join('\n')
-    .trim()
-
-  return joined
 }
 
 export async function POST(req: NextRequest) {
@@ -202,25 +91,58 @@ export async function POST(req: NextRequest) {
     const worker = cleanString(body.worker)
     const question = cleanString(body.question)
     const imageDataUrl = cleanString(body.imageDataUrl)
-    const jobId =
-      typeof body.jobId === 'number' && Number.isInteger(body.jobId) ? body.jobId : null
+    const jobId = typeof body.jobId === 'number' ? body.jobId : null
 
     if (!worker) {
-      return NextResponse.json({ error: 'Missing worker.' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing worker' }, { status: 400 })
     }
 
     if (!question) {
-      return NextResponse.json({ error: 'Missing question.' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing question' }, { status: 400 })
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(
-        { error: 'OPENAI_API_KEY is not set on the server.' },
-        { status: 500 }
-      )
+    // ---------------------------
+    // 🌿 PLANT IDENTIFICATION PATH
+    // ---------------------------
+
+    if (imageDataUrl && isPlantQuestion(question)) {
+      try {
+        const results = await identifyPlantWithPlantNet({
+          imageDataUrls: [imageDataUrl]
+        })
+
+        const plantReply = buildFriendlyPlantReply(results)
+
+        await prisma.chasMessage.create({
+          data: {
+            company,
+            worker,
+            jobId,
+            question,
+            answer: plantReply.answer,
+            imageDataUrl
+          }
+        })
+
+        return NextResponse.json({
+          answer: plantReply.answer,
+          intent: 'plant_id',
+          confidence: plantReply.confidence,
+          escalateTo: null,
+          safetyFlag: false
+        })
+      } catch (error) {
+        console.error('Plant identification failed', error)
+      }
     }
 
-    const { currentJobText, relatedHistoryText } = await buildChasPropertyContext(jobId)
+    // ---------------------------
+    // NORMAL CHAS RESPONSE
+    // ---------------------------
+
+    const { currentJobText, relatedHistoryText } =
+      await buildChasPropertyContext(jobId)
+
     const historyText = await getHistoryText(company, worker, jobId)
 
     const systemPrompt = buildChasSystemPrompt({
@@ -232,18 +154,17 @@ export async function POST(req: NextRequest) {
       historyText
     })
 
-    const userMessage = buildUserMessage(question, imageDataUrl || undefined)
-
     const response = await openai.responses.create({
       model: 'gpt-4.1-mini',
       instructions: systemPrompt,
-      input: userMessage,
-      max_output_tokens: 900
+      input: `Worker question:\n${question}`,
+      max_output_tokens: 600
     })
 
-    const rawText = extractTextFromResponse(response)
-    const parsed = safeJsonParse<ParsedChasResponse>(stripMarkdownFences(rawText))
-    const result = normaliseParsedResponse(parsed)
+    const answer =
+      typeof response.output_text === 'string'
+        ? response.output_text
+        : 'Sorry, I could not generate a reply.'
 
     await prisma.chasMessage.create({
       data: {
@@ -251,19 +172,23 @@ export async function POST(req: NextRequest) {
         worker,
         jobId,
         question,
-        answer: result.answer,
+        answer,
         imageDataUrl
       }
     })
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      answer,
+      intent: 'general',
+      confidence: 'medium',
+      escalateTo: null,
+      safetyFlag: false
+    })
   } catch (error) {
-    console.error('POST /api/chas/ask failed:', error)
+    console.error('POST /api/chas/ask failed', error)
 
     return NextResponse.json(
-      {
-        error: 'CHAS failed to respond.'
-      },
+      { error: 'CHAS failed to respond.' },
       { status: 500 }
     )
   }
