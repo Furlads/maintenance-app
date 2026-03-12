@@ -319,7 +319,6 @@ export default function TodayPage() {
   const [chasBusy, setChasBusy] = useState(false)
   const [chasError, setChasError] = useState('')
   const [chasMessages, setChasMessages] = useState<ChasUiMessage[]>([])
-  const [chasSelectedJobId, setChasSelectedJobId] = useState<number | null>(null)
   const [chasImageDataUrl, setChasImageDataUrl] = useState('')
   const [chasImageName, setChasImageName] = useState('')
   const chasMessagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -502,16 +501,6 @@ export default function TodayPage() {
     if (!activeJob) return visibleJobs
     return visibleJobs.filter((job) => job.id !== activeJob.id)
   }, [visibleJobs, activeJob])
-
-  useEffect(() => {
-    if (!chasSelectedJobId) {
-      if (activeJob) {
-        setChasSelectedJobId(activeJob.id)
-      } else if (listJobs.length > 0) {
-        setChasSelectedJobId(listJobs[0].id)
-      }
-    }
-  }, [activeJob, listJobs, chasSelectedJobId])
 
   function persistChasMessages(nextMessages: ChasUiMessage[]) {
     setChasMessages(nextMessages)
@@ -852,7 +841,6 @@ Heavy rain made it unsafe`,
       return
     }
 
-    const selectedJobId = chasSelectedJobId ?? activeJob?.id ?? null
     const company = localStorage.getItem('company') || 'furlads'
 
     const userMessage: ChasUiMessage = {
@@ -861,7 +849,7 @@ Heavy rain made it unsafe`,
       text: question,
       createdAt: new Date().toISOString(),
       imageDataUrl: chasImageDataUrl || undefined,
-      jobId: selectedJobId
+      jobId: null
     }
 
     const nextMessages = [...chasMessages, userMessage]
@@ -880,7 +868,6 @@ Heavy rain made it unsafe`,
           company,
           worker: workerName,
           workerId,
-          jobId: selectedJobId,
           question,
           imageDataUrl: chasImageDataUrl || ''
         })
@@ -908,7 +895,7 @@ Heavy rain made it unsafe`,
         role: 'assistant',
         text: answer,
         createdAt: new Date().toISOString(),
-        jobId: selectedJobId
+        jobId: null
       }
 
       persistChasMessages([...nextMessages, assistantMessage])
@@ -976,13 +963,6 @@ Heavy rain made it unsafe`,
 
     return null
   }
-
-  const chasJobOptions = useMemo(() => {
-    return visibleJobs.map((job) => ({
-      id: job.id,
-      label: `${job.title} — ${job.customer?.name || 'Unknown customer'}`
-    }))
-  }, [visibleJobs])
 
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
@@ -1678,7 +1658,7 @@ Heavy rain made it unsafe`,
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.5)',
+            background: 'rgba(0,0,0,0.55)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1690,20 +1670,20 @@ Heavy rain made it unsafe`,
             onClick={(event) => event.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: 820,
-              height: '86vh',
+              maxWidth: 860,
+              height: '88vh',
               overflow: 'hidden',
               background: '#fff',
-              borderRadius: 20,
+              borderRadius: 22,
               border: '1px solid #ddd',
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: '0 24px 70px rgba(0,0,0,0.22)'
+              boxShadow: '0 28px 80px rgba(0,0,0,0.24)'
             }}
           >
             <div
               style={{
-                padding: 16,
+                padding: 18,
                 borderBottom: '1px solid rgba(255,255,255,0.08)',
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -1714,9 +1694,35 @@ Heavy rain made it unsafe`,
               }}
             >
               <div>
-                <div style={{ fontSize: 20, fontWeight: 800 }}>Chas 💬</div>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 10px',
+                    borderRadius: 999,
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    background: 'rgba(255,255,255,0.08)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    marginBottom: 10
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 999,
+                      background: '#d7ff76',
+                      display: 'inline-block'
+                    }}
+                  />
+                  Always online
+                </div>
+
+                <div style={{ fontSize: 22, fontWeight: 800 }}>Chas 💬</div>
                 <div style={{ fontSize: 13, opacity: 0.8 }}>
-                  Friendly on-site help
+                  Like the office lad who’s always about to help
                 </div>
               </div>
 
@@ -1740,70 +1746,36 @@ Heavy rain made it unsafe`,
 
             <div
               style={{
-                padding: 16,
-                borderBottom: '1px solid #eee',
-                background: '#fff'
-              }}
-            >
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                Job context
-              </label>
-
-              <select
-                value={chasSelectedJobId ?? ''}
-                onChange={(e) =>
-                  setChasSelectedJobId(
-                    e.target.value ? Number(e.target.value) : null
-                  )
-                }
-                style={{
-                  width: '100%',
-                  padding: 12,
-                  borderRadius: 12,
-                  border: '1px solid #ccc',
-                  background: '#fff'
-                }}
-              >
-                <option value="">No specific job</option>
-                {chasJobOptions.map((job) => (
-                  <option key={job.id} value={job.id}>
-                    {job.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div
-              style={{
                 flex: 1,
                 overflowY: 'auto',
                 padding: 16,
-                background: 'linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%)'
+                background: 'linear-gradient(180deg, #fafafa 0%, #f4f4f4 100%)'
               }}
             >
               {chasMessages.length === 0 && (
                 <div
                   style={{
-                    padding: 16,
-                    borderRadius: 16,
+                    padding: 18,
+                    borderRadius: 18,
                     background: '#fffdf3',
                     border: '1px solid #f0e2a1',
                     fontSize: 14,
-                    lineHeight: 1.5,
-                    maxWidth: 520
+                    lineHeight: 1.6,
+                    maxWidth: 560,
+                    boxShadow: '0 10px 24px rgba(0,0,0,0.04)'
                   }}
                 >
                   <div style={{ fontWeight: 800, marginBottom: 8 }}>
                     Ask Chas anything from site
                   </div>
-                  <div style={{ opacity: 0.85 }}>
-                    • What plant is this?
+                  <div style={{ opacity: 0.88 }}>
+                    • Rough guide price for a small job
                     <br />
-                    • How should I cut this hedge?
+                    • What plant is this?
                     <br />
                     • What’s the safest way to tackle this?
                     <br />
-                    • Customer wants a rough price
+                    • Help pulling customer details together for Kelly
                   </div>
                 </div>
               )}
@@ -1821,8 +1793,8 @@ Heavy rain made it unsafe`,
                   <div
                     style={{
                       maxWidth: '86%',
-                      padding: 13,
-                      borderRadius: 16,
+                      padding: 14,
+                      borderRadius: 18,
                       background: message.role === 'user' ? '#111' : '#fffdf5',
                       color: message.role === 'user' ? '#fff' : '#111',
                       border:
@@ -1831,7 +1803,7 @@ Heavy rain made it unsafe`,
                           : '1px solid #eee0a2',
                       boxShadow:
                         message.role === 'user'
-                          ? '0 10px 24px rgba(0,0,0,0.12)'
+                          ? '0 12px 28px rgba(0,0,0,0.12)'
                           : '0 10px 24px rgba(0,0,0,0.05)'
                     }}
                   >
@@ -1842,14 +1814,14 @@ Heavy rain made it unsafe`,
                         style={{
                           width: '100%',
                           maxWidth: 220,
-                          borderRadius: 10,
-                          marginBottom: 8,
+                          borderRadius: 12,
+                          marginBottom: 10,
                           display: 'block'
                         }}
                       />
                     )}
 
-                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
                       {message.text}
                     </div>
 
@@ -1877,8 +1849,8 @@ Heavy rain made it unsafe`,
                   <div
                     style={{
                       maxWidth: '86%',
-                      padding: 13,
-                      borderRadius: 16,
+                      padding: 14,
+                      borderRadius: 18,
                       background: '#fffdf5',
                       color: '#111',
                       border: '1px solid #eee0a2',
@@ -1886,7 +1858,7 @@ Heavy rain made it unsafe`,
                     }}
                   >
                     <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                      Chas is thinking...
+                      Chas is typing...
                     </div>
 
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1920,10 +1892,6 @@ Heavy rain made it unsafe`,
                         }}
                       />
                     </div>
-
-                    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                      This can take a few seconds on longer replies.
-                    </div>
                   </div>
                 </div>
               )}
@@ -1943,7 +1911,7 @@ Heavy rain made it unsafe`,
                   style={{
                     marginBottom: 12,
                     padding: 12,
-                    borderRadius: 12,
+                    borderRadius: 14,
                     border: '1px solid #eadc97',
                     background: '#fff8d9'
                   }}
@@ -1995,7 +1963,7 @@ Heavy rain made it unsafe`,
               <div
                 style={{
                   padding: 10,
-                  borderRadius: 18,
+                  borderRadius: 20,
                   border: '1px solid #e3e3e3',
                   background: '#fafafa',
                   boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
@@ -2004,11 +1972,11 @@ Heavy rain made it unsafe`,
                 <textarea
                   value={chasQuestion}
                   onChange={(e) => setChasQuestion(e.target.value)}
-                  placeholder="Ask Chas for help from site..."
+                  placeholder="Message Chas..."
                   disabled={chasBusy}
                   style={{
                     width: '100%',
-                    minHeight: 90,
+                    minHeight: 96,
                     padding: 12,
                     borderRadius: 14,
                     border: '1px solid #d8d8d8',
