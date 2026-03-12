@@ -163,8 +163,16 @@ async function getHistoryText(company: string, worker: string, jobId: number | n
     .join('\n\n')
 }
 
-function buildUserMessage(question: string) {
-  return `Worker question:\n${question}`.trim()
+function buildUserMessage(question: string, imageDataUrl?: string) {
+  const parts = [`Worker question:\n${question}`]
+
+  if (imageDataUrl) {
+    parts.push(
+      `Image attached by worker as data URL. Use it only if the model supports attached image interpretation in this request path. If image content is not actually visible to you here, say you are not fully certain and ask for another photo or better angles.`
+    )
+  }
+
+  return parts.join('\n\n').trim()
 }
 
 function extractTextFromResponse(response: OpenAI.Responses.Response) {
@@ -224,40 +232,12 @@ export async function POST(req: NextRequest) {
       historyText
     })
 
-    const content: Array<
-      | { type: 'input_text'; text: string }
-      | { type: 'input_image'; image_url: string }
-    > = [
-      {
-        type: 'input_text',
-        text: buildUserMessage(question)
-      }
-    ]
-
-    if (imageDataUrl) {
-      content.push({
-        type: 'input_image',
-        image_url: imageDataUrl
-      })
-    }
+    const userMessage = buildUserMessage(question, imageDataUrl || undefined)
 
     const response = await openai.responses.create({
       model: 'gpt-4.1-mini',
-      input: [
-        {
-          role: 'system',
-          content: [
-            {
-              type: 'input_text',
-              text: systemPrompt
-            }
-          ]
-        },
-        {
-          role: 'user',
-          content
-        }
-      ],
+      instructions: systemPrompt,
+      input: userMessage,
       max_output_tokens: 900
     })
 
