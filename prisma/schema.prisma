@@ -126,6 +126,7 @@ model ChasMessage {
   question              String
   answer                String
   imageDataUrl          String?
+  responseId            String?
   createdAt             DateTime @default(now())
 
   intent                String?

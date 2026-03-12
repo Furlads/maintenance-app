@@ -11,12 +11,6 @@ type AskBody = {
   imageDataUrl?: string
 }
 
-type HistoryRow = {
-  question: string
-  answer: string
-  imageDataUrl: string | null
-}
-
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : ""
 }
@@ -26,7 +20,33 @@ function normaliseText(value: unknown) {
   return value.replace(/\s+/g, " ").trim()
 }
 
-function buildSystemPrompt() {
+function extractResponseText(data: any): string {
+  if (typeof data?.output_text === "string" && data.output_text.trim()) {
+    return data.output_text.trim()
+  }
+
+  if (Array.isArray(data?.output)) {
+    const texts: string[] = []
+
+    for (const item of data.output) {
+      if (item?.type !== "message") continue
+      if (!Array.isArray(item?.content)) continue
+
+      for (const content of item.content) {
+        if (content?.type === "output_text" && typeof content?.text === "string") {
+          texts.push(content.text)
+        }
+      }
+    }
+
+    const joined = texts.join("\n").trim()
+    if (joined) return joined
+  }
+
+  return ""
+}
+
+function buildInstructions() {
   return `
 You are CHAS, a helpful office teammate for Furlads.
 
@@ -36,8 +56,8 @@ How to behave:
 - Answer the actual question clearly and practically.
 - Keep replies short and useful for someone working on site.
 - Sound like a normal helpful person in the office.
-- If a photo is already in the conversation, use it as context.
-- Do not keep asking for the same photo again if it is already in the chat history and is clear enough to answer from.
+- If a photo is already part of the conversation, use it as context.
+- Do not keep asking for the same photo again if it is already in the conversation and clear enough.
 - If a new or clearer photo is genuinely needed, say so plainly.
 - Trevor handles higher-risk judgement calls.
 - Kelly confirms final quotes.
@@ -46,86 +66,10 @@ How to behave:
 `.trim()
 }
 
-function buildMessageHistory(params: {
-  history: HistoryRow[]
-  latestQuestion: string
-  latestImageDataUrl?: string
-}) {
-  const messages: Array<Record<string, unknown>> = [
-    {
-      role: "system",
-      content: buildSystemPrompt(),
-    },
-  ]
-
-  for (const item of params.history.slice(-20)) {
-    const userText = normaliseText(item.question)
-    const assistantText = normaliseText(item.answer)
-    const priorImage = cleanString(item.imageDataUrl)
-
-    if (priorImage) {
-      messages.push({
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: userText || "Please look at this image.",
-          },
-          {
-            type: "image_url",
-            image_url: {
-              url: priorImage,
-            },
-          },
-        ],
-      })
-    } else {
-      messages.push({
-        role: "user",
-        content: userText,
-      })
-    }
-
-    if (assistantText) {
-      messages.push({
-        role: "assistant",
-        content: assistantText,
-      })
-    }
-  }
-
-  const latestImage = cleanString(params.latestImageDataUrl)
-
-  if (latestImage) {
-    messages.push({
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: params.latestQuestion,
-        },
-        {
-          type: "image_url",
-          image_url: {
-            url: latestImage,
-          },
-        },
-      ],
-    })
-  } else {
-    messages.push({
-      role: "user",
-      content: params.latestQuestion,
-    })
-  }
-
-  return messages
-}
-
 async function callOpenAI(params: {
-  history: HistoryRow[]
-  latestQuestion: string
-  latestImageDataUrl?: string
+  question: string
+  imageDataUrl?: string
+  previousResponseId?: string
 }) {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -135,23 +79,45 @@ async function callOpenAI(params: {
 
   const model = process.env.CHAS_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini"
 
-  const messages = buildMessageHistory({
-    history: params.history,
-    latestQuestion: params.latestQuestion,
-    latestImageDataUrl: params.latestImageDataUrl,
-  })
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "input_text",
+      text: params.question,
+    },
+  ]
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const imageDataUrl = cleanString(params.imageDataUrl)
+  if (imageDataUrl) {
+    content.push({
+      type: "input_image",
+      image_url: imageDataUrl,
+    })
+  }
+
+  const body: Record<string, unknown> = {
+    model,
+    instructions: buildInstructions(),
+    input: [
+      {
+        role: "user",
+        content,
+      },
+    ],
+    temperature: 0.6,
+  }
+
+  const previousResponseId = cleanString(params.previousResponseId)
+  if (previousResponseId) {
+    body.previous_response_id = previousResponseId
+  }
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.6,
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {
@@ -160,13 +126,16 @@ async function callOpenAI(params: {
   }
 
   const data = await response.json()
-  const answer = data?.choices?.[0]?.message?.content
+  const answer = extractResponseText(data)
 
-  if (typeof answer !== "string" || !answer.trim()) {
+  if (!answer) {
     throw new Error("Model returned no text output")
   }
 
-  return normaliseText(answer)
+  return {
+    answer: normaliseText(answer),
+    responseId: typeof data?.id === "string" ? data.id : "",
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -190,32 +159,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing question." }, { status: 400 })
     }
 
-    let history: HistoryRow[] = []
+    let previousResponseId = ""
 
     try {
-      history = await prisma.chasMessage.findMany({
+      const lastMessage = await prisma.chasMessage.findFirst({
         where: {
           company,
           worker,
+          responseId: {
+            not: null,
+          },
         },
         orderBy: {
-          createdAt: "asc",
+          createdAt: "desc",
         },
-        take: 20,
         select: {
-          question: true,
-          answer: true,
-          imageDataUrl: true,
+          responseId: true,
         },
       })
+
+      previousResponseId = cleanString(lastMessage?.responseId)
     } catch (error) {
-      console.error("Failed to load CHAS history", error)
+      console.error("Failed to load previous CHAS response ID", error)
     }
 
-    const answer = await callOpenAI({
-      history,
-      latestQuestion: question,
-      latestImageDataUrl: imageDataUrl,
+    const result = await callOpenAI({
+      question,
+      imageDataUrl,
+      previousResponseId,
     })
 
     try {
@@ -225,8 +196,9 @@ export async function POST(req: NextRequest) {
           worker,
           jobId,
           question,
-          answer,
+          answer: result.answer,
           imageDataUrl: imageDataUrl || null,
+          responseId: result.responseId || null,
           intent: "general",
           confidence: 0.9,
           escalateTo: "none",
@@ -239,7 +211,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      answer,
+      answer: result.answer,
       intent: "general",
       confidence: 0.9,
       escalateTo: "none",
