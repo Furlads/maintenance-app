@@ -1813,7 +1813,9 @@ Heavy rain made it unsafe`,
                         alt="Attached"
                         style={{
                           width: '100%',
-                          maxWidth: 220,
+                          maxWidth: 130,
+                          maxHeight: 130,
+                          objectFit: 'cover',
                           borderRadius: 12,
                           marginBottom: 10,
                           display: 'block'
@@ -1950,8 +1952,8 @@ Heavy rain made it unsafe`,
                     src={chasImageDataUrl}
                     alt="Preview"
                     style={{
-                      width: 140,
-                      height: 140,
+                      width: 96,
+                      height: 96,
                       objectFit: 'cover',
                       borderRadius: 10,
                       border: '1px solid #ddd'

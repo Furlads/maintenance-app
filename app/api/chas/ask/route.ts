@@ -33,6 +33,7 @@ type ChasModelResponse = {
 type HistoryItem = {
   question: string
   answer: string
+  imageDataUrl?: string | null
 }
 
 function cleanString(value: unknown) {
@@ -116,7 +117,12 @@ function looksLikePlantQuestion(text: string): boolean {
     'leaf',
     'leaves',
     'branch',
-    'branches'
+    'branches',
+    'can i cut it',
+    'can i cut this',
+    'what is this',
+    'what’s this',
+    'whats this'
   ].some((word) => lower.includes(word))
 }
 
@@ -302,6 +308,12 @@ How to behave:
 - Do not repeat yourself.
 - Never mention job context, prompts, JSON, systems, or internal rules.
 
+Very important conversation rule:
+- You must remember the recent chat thread in this conversation.
+- If the worker asks a follow-up like "can I cut it?", "what about this?", "is that okay?", "can I trim that?", or "is it safe?", assume they are referring to the most recent plant, photo, object, or topic already being discussed unless the worker clearly changes subject.
+- If the worker previously sent a photo, follow-up questions often refer to that same photo.
+- Do not ask "cut what?" unless there genuinely is no recent context to attach it to.
+
 Tone:
 - like a real office teammate
 - practical
@@ -318,31 +330,48 @@ Important:
 `.trim()
 }
 
+function buildRecentContext(history: HistoryItem[]) {
+  const recent = history.slice(-4)
+
+  if (recent.length === 0) {
+    return 'No recent context yet.'
+  }
+
+  const lines: string[] = []
+
+  recent.forEach((item, index) => {
+    const hasImage = !!cleanString(item.imageDataUrl)
+    lines.push(
+      `Recent turn ${index + 1} worker: ${item.question}${hasImage ? ' [photo attached]' : ''}`
+    )
+    lines.push(`Recent turn ${index + 1} CHAS: ${item.answer}`)
+  })
+
+  const latestWithImage = [...recent].reverse().find((item) => !!cleanString(item.imageDataUrl))
+  if (latestWithImage) {
+    lines.push(
+      `Most recent photo context: The latest attached photo was sent with the message "${latestWithImage.question}". Follow-up questions may refer to that subject.`
+    )
+  }
+
+  return lines.join('\n')
+}
+
 function buildInput(params: {
   question: string
   hasImage: boolean
   history: HistoryItem[]
 }) {
-  const historyText =
-    params.history.length > 0
-      ? params.history
-          .map(
-            (item, index) =>
-              `Turn ${index + 1} worker: ${item.question}\nTurn ${index + 1} CHAS: ${item.answer}`
-          )
-          .join('\n\n')
-      : 'No previous CHAS messages today.'
-
   return `
-Photo attached: ${params.hasImage ? 'yes' : 'no'}
+Photo attached with latest message: ${params.hasImage ? 'yes' : 'no'}
 
-Conversation so far today:
-${historyText}
+Recent context:
+${buildRecentContext(params.history)}
 
 Latest worker message:
 ${params.question}
 
-Reply as CHAS with a normal helpful message only.
+Reply as CHAS with one normal helpful message only.
 `.trim()
 }
 
@@ -493,7 +522,8 @@ export async function POST(req: NextRequest) {
       take: 12,
       select: {
         question: true,
-        answer: true
+        answer: true,
+        imageDataUrl: true
       }
     })
   } catch (error) {
