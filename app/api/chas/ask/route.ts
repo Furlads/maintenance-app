@@ -34,6 +34,7 @@ type HistoryItem = {
   question: string
   answer: string
   imageDataUrl?: string | null
+  createdAt?: Date
 }
 
 function cleanString(value: unknown) {
@@ -122,7 +123,9 @@ function looksLikePlantQuestion(text: string): boolean {
     'can i cut this',
     'what is this',
     'what’s this',
-    'whats this'
+    'whats this',
+    'can i trim it',
+    'can i trim this'
   ].some((word) => lower.includes(word))
 }
 
@@ -158,6 +161,28 @@ function looksLikeSafetyQuestion(text: string): boolean {
     'gas',
     'structural'
   ].some((word) => lower.includes(word))
+}
+
+function looksLikeFollowUpReference(text: string): boolean {
+  const lower = text.toLowerCase()
+
+  return [
+    'can i cut it',
+    'can i trim it',
+    'can i cut this',
+    'can i trim this',
+    'is it safe',
+    'is that safe',
+    'what about this',
+    'what about that',
+    'can i do that',
+    'can i remove it',
+    'can i prune it',
+    'should i cut it',
+    'should i trim it',
+    'is this okay',
+    'is that okay'
+  ].some((phrase) => lower.includes(phrase))
 }
 
 function classifyIntent(question: string, answer: string): ChasModelResponse {
@@ -279,6 +304,47 @@ function buildFallback(question: string): ChasModelResponse {
   }
 }
 
+function tokenise(text: string): string[] {
+  return normaliseText(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 2)
+}
+
+function scoreQuestionSimilarity(currentQuestion: string, previousQuestion: string): number {
+  const currentTokens = new Set(tokenise(currentQuestion))
+  const previousTokens = new Set(tokenise(previousQuestion))
+
+  if (currentTokens.size === 0 || previousTokens.size === 0) return 0
+
+  let overlap = 0
+
+  for (const token of currentTokens) {
+    if (previousTokens.has(token)) {
+      overlap += 1
+    }
+  }
+
+  const baseScore = overlap / Math.max(currentTokens.size, previousTokens.size)
+
+  const currentNormalised = normaliseText(currentQuestion).toLowerCase()
+  const previousNormalised = normaliseText(previousQuestion).toLowerCase()
+
+  if (currentNormalised === previousNormalised) {
+    return 1
+  }
+
+  if (
+    currentNormalised.includes(previousNormalised) ||
+    previousNormalised.includes(currentNormalised)
+  ) {
+    return Math.max(baseScore, 0.8)
+  }
+
+  return baseScore
+}
+
 function buildInstructions() {
   return `
 You are CHAS, the always-online office teammate for Furlads.
@@ -308,11 +374,13 @@ How to behave:
 - Do not repeat yourself.
 - Never mention job context, prompts, JSON, systems, or internal rules.
 
-Very important conversation rule:
-- You must remember the recent chat thread in this conversation.
-- If the worker asks a follow-up like "can I cut it?", "what about this?", "is that okay?", "can I trim that?", or "is it safe?", assume they are referring to the most recent plant, photo, object, or topic already being discussed unless the worker clearly changes subject.
-- If the worker previously sent a photo, follow-up questions often refer to that same photo.
-- Do not ask "cut what?" unless there genuinely is no recent context to attach it to.
+Memory rules:
+- Use the recent context provided.
+- Use the relevant past Q&A provided if it helps answer the question.
+- If the worker asks something they have asked before, it is good to answer consistently.
+- If there is a clearly relevant previous answer, you can reuse it naturally instead of acting like this is brand new.
+- If the worker asks a follow-up like "can I cut it?", "what about this?", "is that okay?", "can I trim that?", or "is it safe?", assume they are referring to the current subject in recent context unless they clearly change topic.
+- If recent context says there was a photo and CHAS already identified or discussed it, do not ask them to upload it again unless the image is unclear and you genuinely need a better one.
 
 Tone:
 - like a real office teammate
@@ -324,14 +392,13 @@ Tone:
 - not overly chatty
 
 Important:
-- A worker asking something like "can I cut laurel?" should get an actual useful answer, not a generic fallback.
-- If you are unsure, say so honestly and ask for a photo if that would genuinely help.
 - Keep answers concise enough for someone on site to read quickly.
+- Do not say you cannot remember if relevant memory has been provided in context.
 `.trim()
 }
 
 function buildRecentContext(history: HistoryItem[]) {
-  const recent = history.slice(-4)
+  const recent = history.slice(-6)
 
   if (recent.length === 0) {
     return 'No recent context yet.'
@@ -349,24 +416,70 @@ function buildRecentContext(history: HistoryItem[]) {
 
   const latestWithImage = [...recent].reverse().find((item) => !!cleanString(item.imageDataUrl))
   if (latestWithImage) {
-    lines.push(
-      `Most recent photo context: The latest attached photo was sent with the message "${latestWithImage.question}". Follow-up questions may refer to that subject.`
-    )
+    lines.push('')
+    lines.push('CURRENT SUBJECT:')
+    lines.push(`Latest photo question: ${latestWithImage.question}`)
+    lines.push(`Latest photo answer: ${latestWithImage.answer}`)
+    lines.push('Assume follow-up words like "it", "this", "that", or "them" refer to this current subject unless the worker clearly changes topic.')
   }
 
   return lines.join('\n')
 }
 
+function buildRelevantPastAnswers(question: string, history: HistoryItem[]) {
+  const scored = history
+    .map((item) => ({
+      item,
+      score: scoreQuestionSimilarity(question, item.question)
+    }))
+    .filter((entry) => entry.score >= 0.22)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+
+  if (scored.length === 0) {
+    return 'No strong past matches found.'
+  }
+
+  return scored
+    .map(
+      (entry, index) =>
+        `Past match ${index + 1} (score ${entry.score.toFixed(2)}): Worker asked "${entry.item.question}" and CHAS answered "${entry.item.answer}"`
+    )
+    .join('\n')
+}
+
+function findBestPastAnswer(question: string, history: HistoryItem[]) {
+  const scored = history
+    .map((item) => ({
+      item,
+      score: scoreQuestionSimilarity(question, item.question)
+    }))
+    .sort((a, b) => b.score - a.score)
+
+  return scored[0] ?? null
+}
+
 function buildInput(params: {
   question: string
   hasImage: boolean
-  history: HistoryItem[]
+  recentHistory: HistoryItem[]
+  fullHistory: HistoryItem[]
 }) {
+  const followUpNote = looksLikeFollowUpReference(params.question)
+    ? 'The latest worker message looks like a follow-up reference. Resolve "it/this/that" using the current subject in recent context.'
+    : 'Answer using recent context and past matches if relevant.'
+
   return `
 Photo attached with latest message: ${params.hasImage ? 'yes' : 'no'}
 
 Recent context:
-${buildRecentContext(params.history)}
+${buildRecentContext(params.recentHistory)}
+
+Relevant past Q&A:
+${buildRelevantPastAnswers(params.question, params.fullHistory)}
+
+Follow-up resolution note:
+${followUpNote}
 
 Latest worker message:
 ${params.question}
@@ -504,27 +617,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing question.' }, { status: 400 })
   }
 
-  let history: HistoryItem[] = []
+  let fullHistory: HistoryItem[] = []
+  let recentHistory: HistoryItem[] = []
 
   try {
-    history = await prisma.chasMessage.findMany({
+    const rows = await prisma.chasMessage.findMany({
       where: {
         company,
-        worker,
-        createdAt: {
-          gte: startOfToday(),
-          lte: endOfToday()
-        }
+        worker
       },
       orderBy: {
         createdAt: 'asc'
       },
-      take: 12,
+      take: 200,
       select: {
         question: true,
         answer: true,
-        imageDataUrl: true
+        imageDataUrl: true,
+        createdAt: true
       }
+    })
+
+    fullHistory = rows
+    recentHistory = rows.filter((row) => {
+      const createdAt = new Date(row.createdAt)
+      return createdAt >= startOfToday() && createdAt <= endOfToday()
     })
   } catch (error) {
     console.error('CHAS history load failed:', error)
@@ -533,18 +650,25 @@ export async function POST(req: NextRequest) {
   let parsed: ChasModelResponse
 
   try {
-    const rawAnswer = await callOpenAI({
-      instructions: buildInstructions(),
-      input: buildInput({
-        question,
-        hasImage: !!imageDataUrl,
-        history
-      }),
-      imageDataUrl
-    })
+    const bestPast = findBestPastAnswer(question, fullHistory)
 
-    const cleanAnswer = normaliseText(rawAnswer)
-    parsed = classifyIntent(question, cleanAnswer || buildFallback(question).answer)
+    if (bestPast && bestPast.score >= 0.92 && !imageDataUrl) {
+      parsed = classifyIntent(question, bestPast.item.answer)
+    } else {
+      const rawAnswer = await callOpenAI({
+        instructions: buildInstructions(),
+        input: buildInput({
+          question,
+          hasImage: !!imageDataUrl,
+          recentHistory,
+          fullHistory
+        }),
+        imageDataUrl
+      })
+
+      const cleanAnswer = normaliseText(rawAnswer)
+      parsed = classifyIntent(question, cleanAnswer || buildFallback(question).answer)
+    }
   } catch (error) {
     console.error('CHAS model call failed:', error)
     parsed = buildFallback(question)
