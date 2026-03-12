@@ -45,6 +45,17 @@ function minutesToHHMM(totalMinutes: number) {
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
 }
 
+function appendLine(existingNotes: string | null, line: string) {
+  const trimmedLine = line.trim()
+
+  if (!trimmedLine) {
+    return existingNotes ?? null
+  }
+
+  const current = existingNotes?.trim() ? `${existingNotes}\n` : ''
+  return `${current}${trimmedLine}`
+}
+
 export async function GET(_req: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
@@ -214,6 +225,59 @@ export async function PATCH(req: Request, ctx: Ctx) {
       statusUpdate = 'in_progress'
     }
 
+    if (action === 'cannot_complete') {
+      if (!existing.arrivedAt || existing.finishedAt) {
+        return NextResponse.json(
+          { error: 'Only active jobs can be marked as could not complete' },
+          { status: 400 }
+        )
+      }
+
+      const reason = clean((body as any).reason)
+      const details = clean((body as any).details)
+      const workerName = clean((body as any).workerName)
+
+      if (!reason) {
+        return NextResponse.json(
+          { error: 'A reason is required' },
+          { status: 400 }
+        )
+      }
+
+      const timestamp = new Date().toLocaleString('en-GB')
+      const noteParts = [`Job could not be completed: ${reason}`]
+
+      if (details) {
+        noteParts.push(`Details: ${details}`)
+      }
+
+      if (workerName) {
+        noteParts.push(`Reported by: ${workerName}`)
+      }
+
+      noteParts.push(`Recorded at: ${timestamp}`)
+
+      const cannotCompleteLine = noteParts.join(' | ')
+
+      const resumedPausedMinutes =
+        existing.pausedAt
+          ? (existing.pausedMinutes ?? 0) +
+            Math.max(
+              0,
+              Math.round(
+                (Date.now() - new Date(existing.pausedAt).getTime()) / 60000
+              )
+            )
+          : existing.pausedMinutes ?? 0
+
+      pausedMinutesUpdate = resumedPausedMinutes
+      pausedAtUpdate = null
+      finishedAtUpdate = null
+      statusUpdate = 'todo'
+
+      ;(body as any).appendNote = cannotCompleteLine
+    }
+
     if ((body as any).toggleStatus === true) {
       const isDone = String(existing.status).toLowerCase() === 'done'
 
@@ -312,16 +376,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
       typeof (body as any).appendNote === 'string' &&
       (body as any).appendNote.trim()
     ) {
-      const currentNotes =
-        notesUpdate !== undefined
-          ? notesUpdate
-            ? `${notesUpdate}\n`
-            : ''
-          : existing.notes
-            ? `${existing.notes}\n`
-            : ''
+      const baseNotes =
+        notesUpdate !== undefined ? notesUpdate : existing.notes ?? null
 
-      notesUpdate = `${currentNotes}${(body as any).appendNote.trim()}`
+      notesUpdate = appendLine(baseNotes, (body as any).appendNote)
     }
 
     let overrunUpdate: number | undefined = undefined
@@ -331,17 +389,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
       overrunUpdate = currentOverrun + extendMinsUpdate
 
       const overrunLine = `Running over by ${extendMinsUpdate} minutes`
+      const baseNotes =
+        notesUpdate !== undefined ? notesUpdate : existing.notes ?? null
 
-      const currentNotes =
-        notesUpdate !== undefined
-          ? notesUpdate
-            ? `${notesUpdate}\n`
-            : ''
-          : existing.notes
-            ? `${existing.notes}\n`
-            : ''
-
-      notesUpdate = `${currentNotes}${overrunLine}`
+      notesUpdate = appendLine(baseNotes, overrunLine)
     }
 
     if (action === 'pause') {
@@ -350,16 +401,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
         minute: '2-digit'
       })}`
 
-      const currentNotes =
-        notesUpdate !== undefined
-          ? notesUpdate
-            ? `${notesUpdate}\n`
-            : ''
-          : existing.notes
-            ? `${existing.notes}\n`
-            : ''
+      const baseNotes =
+        notesUpdate !== undefined ? notesUpdate : existing.notes ?? null
 
-      notesUpdate = `${currentNotes}${pauseLine}`
+      notesUpdate = appendLine(baseNotes, pauseLine)
     }
 
     if (action === 'resume' && existing.pausedAt) {
@@ -368,17 +413,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
       const pausedDiffMinutes = Math.max(0, Math.round(pausedDiffMs / 60000))
 
       const resumeLine = `Work resumed after ${pausedDiffMinutes} minutes paused`
+      const baseNotes =
+        notesUpdate !== undefined ? notesUpdate : existing.notes ?? null
 
-      const currentNotes =
-        notesUpdate !== undefined
-          ? notesUpdate
-            ? `${notesUpdate}\n`
-            : ''
-          : existing.notes
-            ? `${existing.notes}\n`
-            : ''
-
-      notesUpdate = `${currentNotes}${resumeLine}`
+      notesUpdate = appendLine(baseNotes, resumeLine)
     }
 
     const updated = await prisma.job.update({
