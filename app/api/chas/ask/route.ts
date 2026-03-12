@@ -165,15 +165,11 @@ function looksLikeFollowUpReference(text: string): boolean {
   const lower = text.toLowerCase()
 
   return [
-    'it',
-    'this',
-    'that',
-    'them',
     'can i cut it',
     'can i trim it',
+    'can i prune it',
     'can i cut this',
     'can i trim this',
-    'can i prune it',
     'can i prune this',
     'is it safe',
     'is that safe',
@@ -181,7 +177,9 @@ function looksLikeFollowUpReference(text: string): boolean {
     'what about this',
     'what about that',
     'should i cut it',
-    'should i trim it'
+    'should i trim it',
+    'can i do that',
+    'can i remove it'
   ].some((phrase) => lower.includes(phrase))
 }
 
@@ -333,12 +331,10 @@ How to behave:
 - Do not repeat yourself.
 - Never mention job context, prompts, JSON, systems, or internal rules.
 
-Very important conversation rule:
-- Use the recent context and current subject provided.
-- If the worker asks a follow-up like "can I cut it?", "what about this?", "is that okay?", "can I trim that?", or "is it safe?", assume they are referring to the current subject unless they clearly change topic.
-- If an image is supplied as current or carried-forward context, use it.
-- Do not ask the worker to upload the same image again if you have already been given the current subject image in this request.
-- Only ask for a new or clearer image if the existing image is genuinely not enough.
+Critical follow-up rule:
+- If the latest message is a follow-up and recent context defines what "it" or "this" refers to, answer using that subject.
+- Do not ask the worker to re-upload an image if a carried-forward image is already included in this request.
+- Only ask for a better image if the existing one is genuinely too unclear.
 
 Tone:
 - like a real office teammate
@@ -349,8 +345,7 @@ Tone:
 - not cheesy
 - not overly chatty
 
-Important:
-- Keep answers concise enough for someone on site to read quickly.
+Keep answers concise enough for someone on site to read quickly.
 `.trim()
 }
 
@@ -374,38 +369,61 @@ function buildRecentContext(history: HistoryItem[]) {
   return lines.join('\n')
 }
 
-function getCurrentSubject(history: HistoryItem[]) {
+function getLatestImageContext(history: HistoryItem[]) {
   const latestWithImage = [...history].reverse().find((item) => !!cleanString(item.imageDataUrl))
 
   if (!latestWithImage) {
     return {
-      subjectText: 'No current subject image found.',
-      carryForwardImageDataUrl: ''
+      imageDataUrl: '',
+      textBlock: 'No current subject image found.'
     }
   }
 
   return {
-    subjectText: [
+    imageDataUrl: cleanString(latestWithImage.imageDataUrl),
+    textBlock: [
       'CURRENT SUBJECT:',
-      `Latest photo question: ${latestWithImage.question}`,
-      `Latest photo answer: ${latestWithImage.answer}`,
-      'Assume follow-up words like "it", "this", "that", or "them" refer to this subject unless the worker clearly changes topic.'
-    ].join('\n'),
-    carryForwardImageDataUrl: cleanString(latestWithImage.imageDataUrl)
+      `Most recent image was sent with: "${latestWithImage.question}"`,
+      `CHAS answered: "${latestWithImage.answer}"`,
+      'If the latest worker message says "it", "this", "that", or similar, treat it as referring to this subject unless they clearly changed topic.'
+    ].join('\n')
   }
 }
 
-function buildInput(params: {
+function rewriteQuestionWithResolvedSubject(params: {
   question: string
+  history: HistoryItem[]
+}): string {
+  const latestImageContext = getLatestImageContext(params.history)
+
+  if (!looksLikeFollowUpReference(params.question) || !latestImageContext.imageDataUrl) {
+    return params.question
+  }
+
+  const recent = [...params.history].reverse().slice(0, 4)
+  const latestImageTurn = recent.find((item) => !!cleanString(item.imageDataUrl))
+
+  if (!latestImageTurn) {
+    return params.question
+  }
+
+  return [
+    'This is a follow-up question about the same recent subject/photo.',
+    `Earlier worker message: "${latestImageTurn.question}"`,
+    `Earlier CHAS answer: "${latestImageTurn.answer}"`,
+    `New worker question: "${params.question}"`,
+    'Treat words like "it" or "this" as referring to that same subject.'
+  ].join('\n')
+}
+
+function buildInput(params: {
+  originalQuestion: string
+  resolvedQuestion: string
   hasCurrentImage: boolean
   hasCarryForwardImage: boolean
   history: HistoryItem[]
 }) {
-  const followUpNote = looksLikeFollowUpReference(params.question)
-    ? 'The latest worker message looks like a follow-up reference. Resolve "it/this/that" using the current subject.'
-    : 'Answer using recent context and current subject if relevant.'
-
-  const currentSubject = getCurrentSubject(params.history)
+  const latestImageContext = getLatestImageContext(params.history)
 
   return `
 Latest message includes a new photo: ${params.hasCurrentImage ? 'yes' : 'no'}
@@ -414,13 +432,13 @@ A carried-forward earlier photo is being supplied: ${params.hasCarryForwardImage
 Recent context:
 ${buildRecentContext(params.history)}
 
-${currentSubject.subjectText}
+${latestImageContext.textBlock}
 
-Follow-up resolution note:
-${followUpNote}
+Original worker message:
+${params.originalQuestion}
 
-Latest worker message:
-${params.question}
+Resolved worker message for answering:
+${params.resolvedQuestion}
 
 Reply as CHAS with one normal helpful message only.
 `.trim()
@@ -586,16 +604,23 @@ export async function POST(req: NextRequest) {
     console.error('CHAS history load failed:', error)
   }
 
-  const recentHistory = history.filter((row) => {
+  const todayHistory = history.filter((row) => {
     const createdAt = row.createdAt ? new Date(row.createdAt) : null
     return !!createdAt && createdAt >= startOfToday()
   })
 
-  const currentSubject = getCurrentSubject(recentHistory.length > 0 ? recentHistory : history)
+  const workingHistory = todayHistory.length > 0 ? todayHistory : history
+  const latestImageContext = getLatestImageContext(workingHistory)
+
   const shouldCarryForwardImage =
     !imageDataUrl &&
     looksLikeFollowUpReference(question) &&
-    !!currentSubject.carryForwardImageDataUrl
+    !!latestImageContext.imageDataUrl
+
+  const resolvedQuestion = rewriteQuestionWithResolvedSubject({
+    question,
+    history: workingHistory
+  })
 
   let parsed: ChasModelResponse
 
@@ -603,14 +628,15 @@ export async function POST(req: NextRequest) {
     const rawAnswer = await callOpenAI({
       instructions: buildInstructions(),
       input: buildInput({
-        question,
+        originalQuestion: question,
+        resolvedQuestion,
         hasCurrentImage: !!imageDataUrl,
         hasCarryForwardImage: shouldCarryForwardImage,
-        history: recentHistory.length > 0 ? recentHistory : history
+        history: workingHistory
       }),
       currentImageDataUrl: imageDataUrl,
       carryForwardImageDataUrl: shouldCarryForwardImage
-        ? currentSubject.carryForwardImageDataUrl
+        ? latestImageContext.imageDataUrl
         : ''
     })
 
