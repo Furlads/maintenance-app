@@ -100,6 +100,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
     let statusUpdate: string | undefined = undefined
     let arrivedAtUpdate: Date | null | undefined = undefined
     let finishedAtUpdate: Date | null | undefined = undefined
+    let pausedAtUpdate: Date | null | undefined = undefined
+    let pausedMinutesUpdate: number | undefined = undefined
 
     if ('status' in (body as any)) {
       const requestedStatus = clean((body as any).status).toLowerCase()
@@ -131,16 +133,85 @@ export async function PATCH(req: Request, ctx: Ctx) {
       }
     }
 
+    if ('pausedAt' in (body as any)) {
+      try {
+        pausedAtUpdate = parseOptionalDateTime((body as any).pausedAt)
+      } catch {
+        return NextResponse.json(
+          { error: 'Invalid pausedAt value' },
+          { status: 400 }
+        )
+      }
+    }
+
+    if ('pausedMinutes' in (body as any)) {
+      const pausedMinutesValue = Number((body as any).pausedMinutes)
+
+      if (!Number.isFinite(pausedMinutesValue) || pausedMinutesValue < 0) {
+        return NextResponse.json(
+          { error: 'pausedMinutes must be zero or a positive number' },
+          { status: 400 }
+        )
+      }
+
+      pausedMinutesUpdate = Math.round(pausedMinutesValue)
+    }
+
     if (action === 'start') {
       arrivedAtUpdate = existing.arrivedAt ?? new Date()
       finishedAtUpdate = null
+      pausedAtUpdate = null
       statusUpdate = 'in_progress'
     }
 
     if (action === 'finish') {
       arrivedAtUpdate = existing.arrivedAt ?? new Date()
       finishedAtUpdate = new Date()
+      pausedAtUpdate = null
       statusUpdate = 'done'
+    }
+
+    if (action === 'pause') {
+      if (!existing.arrivedAt || existing.finishedAt) {
+        return NextResponse.json(
+          { error: 'Only active jobs can be paused' },
+          { status: 400 }
+        )
+      }
+
+      if (existing.pausedAt) {
+        return NextResponse.json(
+          { error: 'Job is already paused' },
+          { status: 400 }
+        )
+      }
+
+      pausedAtUpdate = new Date()
+      statusUpdate = 'paused'
+    }
+
+    if (action === 'resume') {
+      if (!existing.arrivedAt || existing.finishedAt) {
+        return NextResponse.json(
+          { error: 'Only active jobs can be resumed' },
+          { status: 400 }
+        )
+      }
+
+      if (!existing.pausedAt) {
+        return NextResponse.json(
+          { error: 'Job is not currently paused' },
+          { status: 400 }
+        )
+      }
+
+      const now = new Date()
+      const pausedDiffMs = now.getTime() - new Date(existing.pausedAt).getTime()
+      const pausedDiffMinutes = Math.max(0, Math.round(pausedDiffMs / 60000))
+
+      pausedMinutesUpdate = (existing.pausedMinutes ?? 0) + pausedDiffMinutes
+      pausedAtUpdate = null
+      statusUpdate = 'in_progress'
     }
 
     if ((body as any).toggleStatus === true) {
@@ -153,6 +224,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
         statusUpdate = 'done'
         finishedAtUpdate = new Date()
         arrivedAtUpdate = existing.arrivedAt ?? new Date()
+        pausedAtUpdate = null
       }
     }
 
@@ -272,6 +344,43 @@ export async function PATCH(req: Request, ctx: Ctx) {
       notesUpdate = `${currentNotes}${overrunLine}`
     }
 
+    if (action === 'pause') {
+      const pauseLine = `Work paused at ${new Date().toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })}`
+
+      const currentNotes =
+        notesUpdate !== undefined
+          ? notesUpdate
+            ? `${notesUpdate}\n`
+            : ''
+          : existing.notes
+            ? `${existing.notes}\n`
+            : ''
+
+      notesUpdate = `${currentNotes}${pauseLine}`
+    }
+
+    if (action === 'resume' && existing.pausedAt) {
+      const now = new Date()
+      const pausedDiffMs = now.getTime() - new Date(existing.pausedAt).getTime()
+      const pausedDiffMinutes = Math.max(0, Math.round(pausedDiffMs / 60000))
+
+      const resumeLine = `Work resumed after ${pausedDiffMinutes} minutes paused`
+
+      const currentNotes =
+        notesUpdate !== undefined
+          ? notesUpdate
+            ? `${notesUpdate}\n`
+            : ''
+          : existing.notes
+            ? `${existing.notes}\n`
+            : ''
+
+      notesUpdate = `${currentNotes}${resumeLine}`
+    }
+
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
@@ -290,6 +399,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
         durationMinutes: durationMinutesUpdate,
         arrivedAt: arrivedAtUpdate,
         finishedAt: finishedAtUpdate,
+        pausedAt: pausedAtUpdate,
+        pausedMinutes: pausedMinutesUpdate,
         overrunMins: overrunUpdate
       }
     })
@@ -326,10 +437,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
             }
           }
         },
-        orderBy: [
-          { visitDate: 'asc' },
-          { startTime: 'asc' }
-        ]
+        orderBy: [{ visitDate: 'asc' }, { startTime: 'asc' }]
       })
 
       const jobsToPush = laterJobs.filter((job) => {
