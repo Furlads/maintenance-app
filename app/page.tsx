@@ -9,6 +9,10 @@ type Worker = {
   active?: boolean
 }
 
+function getRedirectPath(accessLevel: string) {
+  return accessLevel.toLowerCase() === 'admin' ? '/admin' : '/today'
+}
+
 export default function Page() {
   const [workers, setWorkers] = useState<Worker[]>([])
   const [loading, setLoading] = useState(true)
@@ -22,9 +26,10 @@ export default function Page() {
   useEffect(() => {
     const savedWorkerId = localStorage.getItem('workerId')
     const savedWorkerName = localStorage.getItem('workerName')
+    const savedWorkerAccessLevel = localStorage.getItem('workerAccessLevel')
 
-    if (savedWorkerId && savedWorkerName) {
-      window.location.href = '/today'
+    if (savedWorkerId && savedWorkerName && savedWorkerAccessLevel) {
+      window.location.href = getRedirectPath(savedWorkerAccessLevel)
       return
     }
 
@@ -110,10 +115,16 @@ export default function Page() {
           ? data.worker.name.trim()
           : `${selectedWorker.firstName} ${selectedWorker.lastName}`.trim()
 
+      const accessLevel =
+        typeof data?.worker?.accessLevel === 'string' && data.worker.accessLevel.trim()
+          ? data.worker.accessLevel.trim()
+          : 'worker'
+
       localStorage.setItem('workerId', String(selectedWorker.id))
       localStorage.setItem('workerName', workerName)
+      localStorage.setItem('workerAccessLevel', accessLevel)
 
-      window.location.href = '/today'
+      window.location.href = getRedirectPath(accessLevel)
     } catch (err: any) {
       console.error(err)
       setPinError(String(err?.message || 'PIN not accepted.'))

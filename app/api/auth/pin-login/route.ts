@@ -31,6 +31,7 @@ export async function POST(req: Request) {
         firstName: true,
         lastName: true,
         active: true,
+        accessLevel: true,
         pinHash: true
       }
     })
@@ -62,7 +63,8 @@ export async function POST(req: Request) {
       ok: true,
       worker: {
         id: worker.id,
-        name: `${worker.firstName} ${worker.lastName}`.trim()
+        name: `${worker.firstName} ${worker.lastName}`.trim(),
+        accessLevel: worker.accessLevel || 'worker'
       }
     })
   } catch (error) {

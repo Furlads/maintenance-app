@@ -36,15 +36,19 @@ export default function WorkerMenu() {
     }
   }, [])
 
-  function handleLogout() {
+  function clearWorkerSession() {
     localStorage.removeItem('workerId')
     localStorage.removeItem('workerName')
+    localStorage.removeItem('workerAccessLevel')
+  }
+
+  function handleLogout() {
+    clearWorkerSession()
     window.location.href = '/'
   }
 
   function handleSwitchWorker() {
-    localStorage.removeItem('workerId')
-    localStorage.removeItem('workerName')
+    clearWorkerSession()
     window.location.href = '/'
   }
 
