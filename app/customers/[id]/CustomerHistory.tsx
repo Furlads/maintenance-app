@@ -18,6 +18,65 @@ type HistoryItem = {
   uploadedByWorkerName?: string | null
 }
 
+type CannotCompleteInfo = {
+  reason: string
+  details: string
+  reportedBy: string
+  recordedAt: string
+}
+
+function extractCannotCompleteInfoFromText(value?: string | null): CannotCompleteInfo | null {
+  if (!value) return null
+
+  const lines = value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const matchingLine = [...lines]
+    .reverse()
+    .find((line) => line.toLowerCase().startsWith('job could not be completed:'))
+
+  if (!matchingLine) return null
+
+  const parts = matchingLine.split(' | ').map((part) => part.trim())
+
+  const reasonPart =
+    parts.find((part) =>
+      part.toLowerCase().startsWith('job could not be completed:')
+    ) || ''
+
+  const detailsPart =
+    parts.find((part) => part.toLowerCase().startsWith('details:')) || ''
+
+  const reportedByPart =
+    parts.find((part) => part.toLowerCase().startsWith('reported by:')) || ''
+
+  const recordedAtPart =
+    parts.find((part) => part.toLowerCase().startsWith('recorded at:')) || ''
+
+  return {
+    reason: reasonPart.replace(/^job could not be completed:\s*/i, '').trim(),
+    details: detailsPart.replace(/^details:\s*/i, '').trim(),
+    reportedBy: reportedByPart.replace(/^reported by:\s*/i, '').trim(),
+    recordedAt: recordedAtPart.replace(/^recorded at:\s*/i, '').trim()
+  }
+}
+
+function stripCannotCompleteLines(value?: string | null) {
+  if (!value) return ''
+
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        !line.toLowerCase().startsWith('job could not be completed:')
+    )
+    .join('\n')
+}
+
 export default function CustomerHistory({ customerId }: { customerId: number }) {
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,6 +132,19 @@ export default function CustomerHistory({ customerId }: { customerId: number }) 
           minute: '2-digit'
         })
 
+        const sourceText =
+          item.type === 'job'
+            ? item.notes
+            : item.type === 'note'
+              ? item.note
+              : null
+
+        const cannotCompleteInfo = extractCannotCompleteInfoFromText(sourceText)
+        const cleanedJobNotes =
+          item.type === 'job' ? stripCannotCompleteLines(item.notes) : ''
+        const cleanedNoteText =
+          item.type === 'note' ? stripCannotCompleteLines(item.note) : ''
+
         return (
           <div
             key={item.id}
@@ -94,9 +166,49 @@ export default function CustomerHistory({ customerId }: { customerId: number }) 
               Job: {item.jobTitle}
             </div>
 
+            {cannotCompleteInfo && (
+              <div
+                style={{
+                  marginTop: 8,
+                  marginBottom: 8,
+                  padding: 12,
+                  borderRadius: 8,
+                  border: '1px solid #e09b00',
+                  background: '#fff4d6'
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  ⚠ Job could not be completed
+                </div>
+
+                <div style={{ fontSize: 14, marginBottom: 4 }}>
+                  <strong>Reason:</strong>{' '}
+                  {cannotCompleteInfo.reason || 'Not provided'}
+                </div>
+
+                {cannotCompleteInfo.details && (
+                  <div style={{ fontSize: 14, marginBottom: 4 }}>
+                    <strong>Details:</strong> {cannotCompleteInfo.details}
+                  </div>
+                )}
+
+                {cannotCompleteInfo.reportedBy && (
+                  <div style={{ fontSize: 14, marginBottom: 4 }}>
+                    <strong>Reported by:</strong> {cannotCompleteInfo.reportedBy}
+                  </div>
+                )}
+
+                {cannotCompleteInfo.recordedAt && (
+                  <div style={{ fontSize: 14 }}>
+                    <strong>Recorded at:</strong> {cannotCompleteInfo.recordedAt}
+                  </div>
+                )}
+              </div>
+            )}
+
             {item.type === 'note' && (
               <div style={{ fontSize: 14 }}>
-                {item.note}
+                {cleanedNoteText}
                 {item.createdByWorkerName && (
                   <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
                     Added by {item.createdByWorkerName}
@@ -132,7 +244,11 @@ export default function CustomerHistory({ customerId }: { customerId: number }) 
             {item.type === 'job' && (
               <div style={{ fontSize: 14 }}>
                 <div>Status: {item.status || 'Unknown'}</div>
-                {item.notes && <div style={{ marginTop: 4 }}>{item.notes}</div>}
+                {cleanedJobNotes && (
+                  <div style={{ marginTop: 4, whiteSpace: 'pre-line' }}>
+                    {cleanedJobNotes}
+                  </div>
+                )}
               </div>
             )}
           </div>
