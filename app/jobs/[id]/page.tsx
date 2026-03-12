@@ -34,6 +34,14 @@ type Job = {
   createdAt: string
   customer: Customer
   assignments: JobAssignment[]
+  visitDate?: string | null
+  startTime?: string | null
+  durationMinutes?: number | null
+  overrunMins?: number | null
+  pausedMinutes?: number | null
+  arrivedAt?: string | null
+  pausedAt?: string | null
+  finishedAt?: string | null
 }
 
 type JobPhoto = {
@@ -106,6 +114,56 @@ function stripCannotCompleteLines(notes: string | null) {
     .join('\n')
 }
 
+function formatTime(value?: string | null) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  return date.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatMinutes(totalMinutes?: number | null) {
+  if (!totalMinutes || totalMinutes <= 0) return '0m'
+
+  const hours = Math.floor(totalMinutes / 60)
+  const mins = totalMinutes % 60
+
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m`
+  }
+
+  if (hours > 0) {
+    return `${hours}h`
+  }
+
+  return `${mins}m`
+}
+
 export default function JobPage() {
   const params = useParams()
   const id = Number(params.id)
@@ -119,6 +177,7 @@ export default function JobPage() {
   const [error, setError] = useState('')
   const [photoMessage, setPhotoMessage] = useState('')
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+  const [busyAction, setBusyAction] = useState<string>('')
 
   async function loadPhotos() {
     const res = await fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
@@ -131,41 +190,41 @@ export default function JobPage() {
     setPhotos(Array.isArray(data) ? data : [])
   }
 
-  useEffect(() => {
-    async function loadJob() {
-      try {
-        setError('')
+  async function loadJob() {
+    try {
+      setError('')
 
-        const [jobRes, photoRes] = await Promise.all([
-          fetch('/api/jobs', { cache: 'no-store' }),
-          fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
-        ])
+      const [jobRes, photoRes] = await Promise.all([
+        fetch('/api/jobs', { cache: 'no-store' }),
+        fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
+      ])
 
-        if (!jobRes.ok) {
-          throw new Error('Failed to load jobs')
-        }
-
-        if (!photoRes.ok) {
-          throw new Error('Failed to load photos')
-        }
-
-        const jobData = await jobRes.json()
-        const jobs = Array.isArray(jobData) ? jobData : []
-        const foundJob = jobs.find((item: Job) => item.id === id) || null
-        setJob(foundJob)
-
-        const photoData = await photoRes.json()
-        setPhotos(Array.isArray(photoData) ? photoData : [])
-      } catch (err) {
-        console.error(err)
-        setError('Failed to load job.')
-        setJob(null)
-        setPhotos([])
-      } finally {
-        setLoading(false)
+      if (!jobRes.ok) {
+        throw new Error('Failed to load jobs')
       }
-    }
 
+      if (!photoRes.ok) {
+        throw new Error('Failed to load photos')
+      }
+
+      const jobData = await jobRes.json()
+      const jobs = Array.isArray(jobData) ? jobData : []
+      const foundJob = jobs.find((item: Job) => item.id === id) || null
+      setJob(foundJob)
+
+      const photoData = await photoRes.json()
+      setPhotos(Array.isArray(photoData) ? photoData : [])
+    } catch (err) {
+      console.error(err)
+      setError('Failed to load job.')
+      setJob(null)
+      setPhotos([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
     if (id) {
       loadJob()
     }
@@ -282,6 +341,130 @@ export default function JobPage() {
     }
   }
 
+  async function patchJob(payload: Record<string, unknown>, actionLabel: string) {
+    try {
+      setBusyAction(actionLabel)
+      setError('')
+
+      const res = await fetch(`/api/jobs/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || `Failed to ${actionLabel}`)
+      }
+
+      await loadJob()
+    } catch (err) {
+      console.error(err)
+      setError(`Failed to ${actionLabel}.`)
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function handleStartJob() {
+    await patchJob({ action: 'start' }, 'start job')
+  }
+
+  async function handleFinishJob() {
+    await patchJob({ action: 'finish' }, 'finish job')
+  }
+
+  async function handlePauseJob() {
+    await patchJob({ action: 'pause' }, 'pause job')
+  }
+
+  async function handleResumeJob() {
+    await patchJob({ action: 'resume' }, 'resume job')
+  }
+
+  async function handleUndoStart() {
+    await patchJob(
+      {
+        arrivedAt: null,
+        pausedAt: null,
+        pausedMinutes: 0,
+        status: 'todo'
+      },
+      'undo start'
+    )
+  }
+
+  async function handleExtendJob(minutes: number) {
+    await patchJob({ extendMins: minutes }, 'extend job')
+  }
+
+  async function handleOtherExtendJob() {
+    const value = window.prompt('How many extra minutes?', '90')
+
+    if (value === null) return
+
+    const minutes = Number(value)
+
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      window.alert('Please enter a valid number of minutes.')
+      return
+    }
+
+    await handleExtendJob(Math.round(minutes))
+  }
+
+  async function handleCannotComplete() {
+    const workerName = localStorage.getItem('workerName') || ''
+
+    const reasonInput = window.prompt(
+      `Why couldn't the job be completed?
+
+Examples:
+No access
+Customer cancelled
+Need materials
+Ran out of time
+Weather stopped work`,
+      ''
+    )
+
+    if (reasonInput === null) return
+
+    const reason = reasonInput.trim()
+
+    if (!reason) {
+      window.alert('Please enter a reason.')
+      return
+    }
+
+    const detailsInput = window.prompt(
+      `Add any extra details if needed (optional)
+
+Examples:
+Gate locked
+Customer asked us to return next week
+Heavy rain made it unsafe`,
+      ''
+    )
+
+    if (detailsInput === null) return
+
+    const details = detailsInput.trim()
+
+    await patchJob(
+      {
+        action: 'cannot_complete',
+        reason,
+        details,
+        workerName
+      },
+      "mark job as couldn't complete"
+    )
+  }
+
   function openViewer(index: number) {
     setViewerIndex(index)
   }
@@ -314,6 +497,15 @@ export default function JobPage() {
     [job?.notes]
   )
 
+  const isDone =
+    job ? String(job.status || '').toLowerCase() === 'done' || !!job.finishedAt : false
+
+  const isPaused =
+    !!job?.arrivedAt && !!job?.pausedAt && !job?.finishedAt && !isDone
+
+  const isStarted =
+    !!job?.arrivedAt && !job?.finishedAt && !isDone && !isPaused
+
   if (loading) {
     return (
       <main style={{ padding: 20, fontFamily: 'sans-serif' }}>
@@ -322,7 +514,7 @@ export default function JobPage() {
     )
   }
 
-  if (error) {
+  if (error && !job) {
     return (
       <main style={{ padding: 20, fontFamily: 'sans-serif' }}>
         <p>{error}</p>
@@ -347,6 +539,21 @@ export default function JobPage() {
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
       <h1 style={{ fontSize: 28, marginBottom: 20 }}>{job.title}</h1>
+
+      {error && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 12,
+            borderRadius: 8,
+            border: '1px solid #d33',
+            background: '#fff5f5',
+            color: '#900'
+          }}
+        >
+          {error}
+        </div>
+      )}
 
       {cannotCompleteInfo && (
         <div
@@ -410,6 +617,38 @@ export default function JobPage() {
           <strong>Address:</strong> {job.address}
         </p>
 
+        <p style={{ margin: '4px 0' }}>
+          <strong>Visit date:</strong> {job.visitDate ? formatDateTime(job.visitDate) : '—'}
+        </p>
+
+        <p style={{ margin: '4px 0' }}>
+          <strong>Start time:</strong> {job.startTime || '—'}
+        </p>
+
+        <p style={{ margin: '4px 0' }}>
+          <strong>Duration:</strong> {formatMinutes(job.durationMinutes)}
+        </p>
+
+        <p style={{ margin: '4px 0' }}>
+          <strong>Overrun:</strong> {formatMinutes(job.overrunMins)}
+        </p>
+
+        <p style={{ margin: '4px 0' }}>
+          <strong>Paused:</strong> {formatMinutes(job.pausedMinutes)}
+        </p>
+
+        <p style={{ margin: '4px 0' }}>
+          <strong>Started at:</strong> {formatTime(job.arrivedAt)}
+        </p>
+
+        <p style={{ margin: '4px 0' }}>
+          <strong>Paused at:</strong> {formatTime(job.pausedAt)}
+        </p>
+
+        <p style={{ margin: '4px 0' }}>
+          <strong>Finished at:</strong> {formatTime(job.finishedAt)}
+        </p>
+
         {visibleNotes && (
           <p style={{ margin: '4px 0', whiteSpace: 'pre-line' }}>
             <strong>Notes:</strong> {visibleNotes}
@@ -427,6 +666,257 @@ export default function JobPage() {
                 .join(', ')
             : 'Nobody assigned'}
         </p>
+      </div>
+
+      <div
+        style={{
+          padding: 16,
+          border: '1px solid #ddd',
+          borderRadius: 10,
+          marginBottom: 20,
+          background: '#fafafa'
+        }}
+      >
+        <h2 style={{ marginTop: 0, marginBottom: 14, fontSize: 22 }}>Job Actions</h2>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          {!isStarted && !isPaused && !isDone && (
+            <button
+              type="button"
+              onClick={handleStartJob}
+              disabled={busyAction !== ''}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 8,
+                border: '1px solid #111',
+                background: '#111',
+                color: '#fff',
+                cursor: busyAction ? 'not-allowed' : 'pointer',
+                opacity: busyAction ? 0.6 : 1,
+                fontWeight: 700
+              }}
+            >
+              {busyAction === 'start job' ? 'Updating...' : 'Start Job'}
+            </button>
+          )}
+
+          {isStarted && (
+            <>
+              <button
+                type="button"
+                onClick={handleFinishJob}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #111',
+                  background: '#111',
+                  color: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1,
+                  fontWeight: 700
+                }}
+              >
+                {busyAction === 'finish job' ? 'Updating...' : 'Finish Job'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePauseJob}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1
+                }}
+              >
+                {busyAction === 'pause job' ? 'Updating...' : 'Pause Work'}
+              </button>
+            </>
+          )}
+
+          {isPaused && (
+            <>
+              <button
+                type="button"
+                onClick={handleResumeJob}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #111',
+                  background: '#111',
+                  color: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1,
+                  fontWeight: 700
+                }}
+              >
+                {busyAction === 'resume job' ? 'Updating...' : 'Resume Work'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleFinishJob}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1
+                }}
+              >
+                {busyAction === 'finish job' ? 'Updating...' : 'Finish Job'}
+              </button>
+            </>
+          )}
+
+          {(isStarted || isPaused) && (
+            <>
+              <button
+                type="button"
+                onClick={handleUndoStart}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1
+                }}
+              >
+                {busyAction === 'undo start' ? 'Updating...' : 'Undo Start'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCannotComplete}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: '#ffe5e5',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1
+                }}
+              >
+                {busyAction === "mark job as couldn't complete"
+                  ? 'Updating...'
+                  : "Couldn't Complete"}
+              </button>
+            </>
+          )}
+
+          <a
+            href="/jobs/add"
+            style={{
+              padding: '12px 16px',
+              borderRadius: 8,
+              border: '1px solid #ccc',
+              background: '#fff',
+              textDecoration: 'none',
+              color: 'inherit',
+              display: 'inline-block'
+            }}
+          >
+            Book Extra Day
+          </a>
+        </div>
+
+        {(isStarted || isPaused) && (
+          <>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>Add Extra Time</div>
+
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => handleExtendJob(15)}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1
+                }}
+              >
+                {busyAction === 'extend job' ? 'Updating...' : '+15'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleExtendJob(30)}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1
+                }}
+              >
+                {busyAction === 'extend job' ? 'Updating...' : '+30'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleExtendJob(45)}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1
+                }}
+              >
+                {busyAction === 'extend job' ? 'Updating...' : '+45'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleExtendJob(60)}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1
+                }}
+              >
+                {busyAction === 'extend job' ? 'Updating...' : '+60'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOtherExtendJob}
+                disabled={busyAction !== ''}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: busyAction ? 'not-allowed' : 'pointer',
+                  opacity: busyAction ? 0.6 : 1
+                }}
+              >
+                {busyAction === 'extend job' ? 'Updating...' : 'Other'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
