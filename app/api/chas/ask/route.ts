@@ -9,6 +9,7 @@ type ChasIntent =
   | 'pricing_guide'
   | 'safety'
   | 'quote_support'
+  | 'enquiry_intake'
   | 'escalation'
 
 type ChasEscalateTo = 'none' | 'kelly' | 'trevor'
@@ -19,6 +20,9 @@ type ChasModelResponse = {
   confidence: number
   escalateTo: ChasEscalateTo
   safetyFlag: boolean
+  enquirySuggested?: boolean
+  enquiryTitle?: string
+  enquirySummary?: string
 }
 
 type ChatMessage = {
@@ -71,6 +75,11 @@ function normaliseAnswer(answer: unknown): string {
   return answer.replace(/\s+/g, ' ').trim()
 }
 
+function normaliseOptionalText(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  return value.replace(/\s+/g, ' ').trim()
+}
+
 function startOfToday() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -106,11 +115,14 @@ function buildFallbackResponse(rawText: string): ChasModelResponse {
   return {
     answer:
       normaliseAnswer(cleaned) ||
-      'I’m not fully sure on that one. It would be best to check with Kelly for pricing or Trevor if there’s any risk involved.',
+      'I’m not fully sure on that one yet. For maintenance jobs, tell me what needs doing and roughly how long you think it will take, and I’ll help with a guide price for Kelly.',
     intent: 'general',
     confidence: 0.35,
     escalateTo: 'none',
-    safetyFlag: false
+    safetyFlag: false,
+    enquirySuggested: false,
+    enquiryTitle: '',
+    enquirySummary: ''
   }
 }
 
@@ -127,11 +139,14 @@ function validateParsedResponse(parsed: unknown, rawText: string): ChasModelResp
       ? parsed.escalateTo
       : 'none'
   const safetyFlag = typeof parsed.safetyFlag === 'boolean' ? parsed.safetyFlag : false
+  const enquirySuggested = typeof parsed.enquirySuggested === 'boolean' ? parsed.enquirySuggested : false
+  const enquiryTitle = normaliseOptionalText(parsed.enquiryTitle)
+  const enquirySummary = normaliseOptionalText(parsed.enquirySummary)
 
   return {
     answer:
       answer ||
-      'I’m not fully sure on that one. It would be best to check with Kelly for pricing or Trevor if there’s any risk involved.',
+      'I’m not fully sure on that one yet. For maintenance jobs, tell me what needs doing and roughly how long you think it will take, and I’ll help with a guide price for Kelly.',
     intent: (
       [
         'general',
@@ -139,6 +154,7 @@ function validateParsedResponse(parsed: unknown, rawText: string): ChasModelResp
         'pricing_guide',
         'safety',
         'quote_support',
+        'enquiry_intake',
         'escalation'
       ] as const
     ).includes(intent as ChasIntent)
@@ -146,7 +162,10 @@ function validateParsedResponse(parsed: unknown, rawText: string): ChasModelResp
       : 'general',
     confidence,
     escalateTo,
-    safetyFlag
+    safetyFlag,
+    enquirySuggested,
+    enquiryTitle,
+    enquirySummary
   }
 }
 
@@ -209,6 +228,25 @@ Important scope rule:
 - Do NOT use or mention job context unless includeJobContext is true.
 - If includeJobContext is false, answer only from the user's message and general business rules.
 
+Critical maintenance pricing rule:
+- Do NOT jump to a high automated maintenance price.
+- For maintenance work, the main guide is around £30 per hour.
+- Before giving a guide price, try to find out roughly how long the worker thinks the job will take.
+- If the message does not give enough detail for timing, ask follow-up questions first instead of guessing.
+- Helpful follow-up questions can include:
+  - What exactly does the customer want doing?
+  - Roughly how long do you think it will take?
+  - Is it a one-off or likely ongoing maintenance?
+  - Any waste away, green waste, or extra materials involved?
+- If the worker gives a clear duration, base the guide on roughly £30 per hour and make clear it is a guide only.
+- If the situation sounds larger, unclear, or likely to need office follow-up, suggest sending an enquiry to Kelly.
+
+Enquiry handling rule:
+- When useful, suggest turning the chat into a simple enquiry summary for Kelly.
+- The enquiry summary should be short and practical.
+- It should capture what the customer wants, rough time estimate if known, any access/waste/material notes, and the guide-only price position if appropriate.
+- The enquiry is for Kelly to review, not a final quote.
+
 You MUST return valid JSON only.
 No markdown.
 No code fences.
@@ -217,10 +255,13 @@ No extra commentary.
 Return exactly this shape:
 {
   "answer": "string",
-  "intent": "general | plant_id | pricing_guide | safety | quote_support | escalation",
+  "intent": "general | plant_id | pricing_guide | safety | quote_support | enquiry_intake | escalation",
   "confidence": 0.0,
   "escalateTo": "none | kelly | trevor",
-  "safetyFlag": false
+  "safetyFlag": false,
+  "enquirySuggested": false,
+  "enquiryTitle": "string",
+  "enquirySummary": "string"
 }
 `.trim()
 
@@ -232,8 +273,11 @@ Escalation guidance:
 
 Answer style:
 - Keep "answer" short, useful, and worker-friendly.
+- Keep it conversational and practical.
 - No bullet lists unless genuinely needed.
 - Prefer direct next-step guidance.
+- If pricing is not ready, ask the next best question instead.
+- For maintenance pricing, asking for time estimate is usually better than guessing.
 `.trim()
 
   const historyText = history.length
@@ -416,7 +460,10 @@ export async function POST(req: NextRequest) {
         intent: parsed.intent,
         confidence: parsed.confidence,
         escalateTo: parsed.escalateTo,
-        safetyFlag: parsed.safetyFlag
+        safetyFlag: parsed.safetyFlag,
+        enquirySuggested: parsed.enquirySuggested ?? false,
+        enquiryTitle: parsed.enquiryTitle || '',
+        enquirySummary: parsed.enquirySummary || ''
       },
       { status: 200 }
     )
@@ -427,11 +474,14 @@ export async function POST(req: NextRequest) {
       {
         ok: false,
         answer:
-          'I’m having a bit of trouble answering that right now. For anything important, check with Kelly on pricing or Trevor if there’s any risk involved.',
+          'I’m having a bit of trouble right now. Tell me what the customer wants and roughly how long you think it will take, and Kelly can confirm the final price.',
         intent: 'general',
         confidence: 0.2,
         escalateTo: 'none',
-        safetyFlag: false
+        safetyFlag: false,
+        enquirySuggested: false,
+        enquiryTitle: '',
+        enquirySummary: ''
       },
       { status: 200 }
     )
