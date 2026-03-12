@@ -80,6 +80,7 @@ model Job {
   jobNotes        JobNote[]
   assignments     JobAssignment[]
   photos          JobPhoto[]
+  chasMessages    ChasMessage[]
 }
 
 model JobAssignment {
@@ -115,4 +116,20 @@ model JobPhoto {
 
   job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
   uploadedByWorker   Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
+}
+
+model ChasMessage {
+  id           Int      @id @default(autoincrement())
+  company      String
+  worker       String
+  jobId        Int?
+  question     String
+  answer       String
+  imageDataUrl String?
+  createdAt    DateTime @default(now())
+
+  job          Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([company, worker, createdAt])
+  @@index([jobId])
 }
