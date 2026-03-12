@@ -155,7 +155,6 @@ function looksLikeSafetyQuestion(text: string): boolean {
 }
 
 function classifyIntent(question: string, answer: string): ChasModelResponse {
-  const q = question.toLowerCase()
   const a = answer.toLowerCase()
 
   if (looksLikeSafetyQuestion(question) || a.includes('unsafe') || a.includes('stop') || a.includes('risk')) {
@@ -175,7 +174,10 @@ function classifyIntent(question: string, answer: string): ChasModelResponse {
       intent: 'plant_id',
       confidence: 0.72,
       escalateTo: 'none',
-      safetyFlag: a.includes('nest') || a.includes('birds') || a.includes('check before cutting')
+      safetyFlag:
+        a.includes('nest') ||
+        a.includes('birds') ||
+        a.includes('check before cutting')
     }
   }
 
@@ -432,28 +434,51 @@ async function callOpenAI(params: {
   return text
 }
 
-export async function POST(req: NextRequest) {
+async function saveChasMessageSafe(data: {
+  company: string
+  worker: string
+  jobId: number | null
+  question: string
+  answer: string
+  imageDataUrl: string | null
+  intent: string
+  confidence: number
+  escalateTo: string
+  safetyFlag: boolean
+}) {
   try {
-    const body = (await req.json()) as AskBody
+    await prisma.chasMessage.create({
+      data
+    })
+  } catch (error) {
+    console.error('CHAS save failed:', error)
+  }
+}
 
-    const company = cleanString(body.company) || 'furlads'
-    const worker = cleanString(body.worker)
-    const question = cleanString(body.question)
-    const imageDataUrl = cleanString(body.imageDataUrl)
-    const jobId =
-      typeof body.jobId === 'number' && Number.isFinite(body.jobId)
-        ? body.jobId
-        : null
+export async function POST(req: NextRequest) {
+  const body = (await req.json()) as AskBody
 
-    if (!worker) {
-      return NextResponse.json({ error: 'Missing worker.' }, { status: 400 })
-    }
+  const company = cleanString(body.company) || 'furlads'
+  const worker = cleanString(body.worker)
+  const question = cleanString(body.question)
+  const imageDataUrl = cleanString(body.imageDataUrl)
+  const jobId =
+    typeof body.jobId === 'number' && Number.isFinite(body.jobId)
+      ? body.jobId
+      : null
 
-    if (!question) {
-      return NextResponse.json({ error: 'Missing question.' }, { status: 400 })
-    }
+  if (!worker) {
+    return NextResponse.json({ error: 'Missing worker.' }, { status: 400 })
+  }
 
-    const history = await prisma.chasMessage.findMany({
+  if (!question) {
+    return NextResponse.json({ error: 'Missing question.' }, { status: 400 })
+  }
+
+  let history: HistoryItem[] = []
+
+  try {
+    history = await prisma.chasMessage.findMany({
       where: {
         company,
         worker,
@@ -471,7 +496,13 @@ export async function POST(req: NextRequest) {
         answer: true
       }
     })
+  } catch (error) {
+    console.error('CHAS history load failed:', error)
+  }
 
+  let parsed: ChasModelResponse
+
+  try {
     const rawAnswer = await callOpenAI({
       instructions: buildInstructions(),
       input: buildInput({
@@ -483,44 +514,31 @@ export async function POST(req: NextRequest) {
     })
 
     const cleanAnswer = normaliseText(rawAnswer)
-    const parsed = classifyIntent(question, cleanAnswer || buildFallback(question).answer)
-
-    await prisma.chasMessage.create({
-      data: {
-        company,
-        worker,
-        jobId,
-        question,
-        answer: parsed.answer,
-        imageDataUrl: imageDataUrl || null,
-        intent: parsed.intent,
-        confidence: parsed.confidence,
-        escalateTo: parsed.escalateTo,
-        safetyFlag: parsed.safetyFlag
-      }
-    })
-
-    return NextResponse.json({
-      ok: true,
-      answer: parsed.answer,
-      intent: parsed.intent,
-      confidence: parsed.confidence,
-      escalateTo: parsed.escalateTo,
-      safetyFlag: parsed.safetyFlag
-    })
+    parsed = classifyIntent(question, cleanAnswer || buildFallback(question).answer)
   } catch (error) {
-    console.error('POST /api/chas/ask failed', error)
-
-    return NextResponse.json(
-      {
-        ok: false,
-        answer: 'No worries — send me a bit more and I’ll help.',
-        intent: 'general',
-        confidence: 0.2,
-        escalateTo: 'none',
-        safetyFlag: false
-      },
-      { status: 200 }
-    )
+    console.error('CHAS model call failed:', error)
+    parsed = buildFallback(question)
   }
+
+  await saveChasMessageSafe({
+    company,
+    worker,
+    jobId,
+    question,
+    answer: parsed.answer,
+    imageDataUrl: imageDataUrl || null,
+    intent: parsed.intent,
+    confidence: parsed.confidence,
+    escalateTo: parsed.escalateTo,
+    safetyFlag: parsed.safetyFlag
+  })
+
+  return NextResponse.json({
+    ok: true,
+    answer: parsed.answer,
+    intent: parsed.intent,
+    confidence: parsed.confidence,
+    escalateTo: parsed.escalateTo,
+    safetyFlag: parsed.safetyFlag
+  })
 }
