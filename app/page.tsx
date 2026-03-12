@@ -154,7 +154,7 @@ export default function Page() {
         <div
           style={{
             textAlign: 'center',
-            marginBottom: 22,
+            marginBottom: 18,
             paddingTop: 8
           }}
         >
@@ -165,12 +165,12 @@ export default function Page() {
               justifyContent: 'center',
               gap: 10,
               flexWrap: 'wrap',
-              marginBottom: 12
+              marginBottom: 10
             }}
           >
             <span
               style={{
-                fontSize: 34,
+                fontSize: 36,
                 fontWeight: 900,
                 letterSpacing: '-0.03em',
                 color: '#c69214'
@@ -183,7 +183,7 @@ export default function Page() {
               style={{
                 fontSize: 20,
                 fontWeight: 800,
-                color: '#767676'
+                color: '#7a7a7a'
               }}
             >
               ×
@@ -191,7 +191,7 @@ export default function Page() {
 
             <span
               style={{
-                fontSize: 30,
+                fontSize: 32,
                 fontWeight: 900,
                 letterSpacing: '-0.03em',
                 color: '#245c3b'
@@ -205,8 +205,9 @@ export default function Page() {
             style={{
               margin: '0 0 8px 0',
               fontSize: 30,
-              lineHeight: 1.1,
-              fontWeight: 900
+              lineHeight: 1.08,
+              fontWeight: 900,
+              letterSpacing: '-0.02em'
             }}
           >
             Who&apos;s using the app?
@@ -217,41 +218,46 @@ export default function Page() {
               margin: 0,
               fontSize: 15,
               lineHeight: 1.5,
-              color: '#575757'
+              color: '#575757',
+              maxWidth: 360,
+              marginInline: 'auto'
             }}
           >
-            Tap your name, then enter your PIN.
+            Tap your name, then enter your PIN to continue.
           </p>
         </div>
 
         <div
           style={{
             marginBottom: 18,
-            padding: 14,
-            borderRadius: 18,
-            border: '1px solid rgba(0,0,0,0.08)',
-            background: '#ffffff',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.05)'
+            padding: '12px 14px',
+            borderRadius: 16,
+            border: '1px solid rgba(198,146,20,0.18)',
+            background: 'rgba(255,255,255,0.72)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.04)'
           }}
         >
           <div
             style={{
-              fontSize: 14,
+              fontSize: 12,
               fontWeight: 800,
-              marginBottom: 6
+              marginBottom: 4,
+              color: '#8a5a00',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em'
             }}
           >
-            Test login
+            Testing
           </div>
 
           <div
             style={{
               fontSize: 14,
               color: '#5e5e5e',
-              lineHeight: 1.5
+              lineHeight: 1.45
             }}
           >
-            While you&apos;re testing, everyone can use PIN <strong>1234</strong>.
+            Everyone can currently use PIN <strong>1234</strong> while testing.
           </div>
         </div>
 
@@ -259,11 +265,14 @@ export default function Page() {
           <div
             style={{
               padding: 18,
-              borderRadius: 18,
+              borderRadius: 20,
               border: '1px solid rgba(0,0,0,0.08)',
               background: '#fff',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
-              textAlign: 'center'
+              boxShadow: '0 12px 30px rgba(0,0,0,0.05)',
+              textAlign: 'center',
+              fontSize: 15,
+              fontWeight: 600,
+              color: '#555'
             }}
           >
             Loading workers...
@@ -277,7 +286,8 @@ export default function Page() {
               borderRadius: 18,
               border: '1px solid #e2b7b7',
               background: '#fff5f5',
-              color: '#8d1f1f'
+              color: '#8d1f1f',
+              lineHeight: 1.45
             }}
           >
             {error}
@@ -288,11 +298,13 @@ export default function Page() {
           <div
             style={{
               padding: 18,
-              borderRadius: 18,
+              borderRadius: 20,
               border: '1px solid rgba(0,0,0,0.08)',
               background: '#fff',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
-              textAlign: 'center'
+              boxShadow: '0 12px 30px rgba(0,0,0,0.05)',
+              textAlign: 'center',
+              fontSize: 15,
+              color: '#555'
             }}
           >
             No workers found.
@@ -307,7 +319,8 @@ export default function Page() {
             }}
           >
             {sortedWorkers.map((worker, index) => {
-              const initials = `${worker.firstName?.[0] || ''}${worker.lastName?.[0] || ''}` || 'W'
+              const initials =
+                `${worker.firstName?.[0] || ''}${worker.lastName?.[0] || ''}` || 'W'
               const useGold = index % 2 === 0
 
               return (
@@ -329,11 +342,11 @@ export default function Page() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 14,
-                      padding: '16px',
+                      padding: '17px 16px',
                       borderRadius: 22,
-                      border: '1px solid rgba(0,0,0,0.08)',
+                      border: '1px solid rgba(0,0,0,0.10)',
                       background: '#fff',
-                      boxShadow: '0 12px 30px rgba(0,0,0,0.06)'
+                      boxShadow: '0 14px 30px rgba(0,0,0,0.06)'
                     }}
                   >
                     <div
@@ -363,7 +376,8 @@ export default function Page() {
                           fontSize: 20,
                           fontWeight: 900,
                           color: '#171717',
-                          marginBottom: 4
+                          marginBottom: 4,
+                          letterSpacing: '-0.01em'
                         }}
                       >
                         {worker.firstName} {worker.lastName}
@@ -415,13 +429,23 @@ export default function Page() {
             style={{
               width: '100%',
               maxWidth: 520,
-              borderRadius: 22,
+              borderRadius: 24,
               background: '#fff',
               border: '1px solid rgba(0,0,0,0.08)',
               boxShadow: '0 24px 60px rgba(0,0,0,0.22)',
               padding: 18
             }}
           >
+            <div
+              style={{
+                width: 44,
+                height: 5,
+                borderRadius: 999,
+                background: '#e5e5e5',
+                margin: '0 auto 14px auto'
+              }}
+            />
+
             <div
               style={{
                 display: 'flex',
@@ -436,7 +460,8 @@ export default function Page() {
                   style={{
                     fontSize: 24,
                     fontWeight: 900,
-                    marginBottom: 6
+                    marginBottom: 6,
+                    letterSpacing: '-0.02em'
                   }}
                 >
                   Enter PIN
@@ -486,14 +511,16 @@ export default function Page() {
               placeholder="Enter PIN"
               style={{
                 width: '100%',
-                padding: '16px 14px',
-                borderRadius: 14,
+                padding: '17px 14px',
+                borderRadius: 16,
                 border: '1px solid #d5d5d5',
                 fontSize: 24,
                 letterSpacing: '0.35em',
                 textAlign: 'center',
                 outline: 'none',
-                marginBottom: 10
+                marginBottom: 10,
+                boxSizing: 'border-box',
+                background: '#fcfcfc'
               }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !pinBusy) {
@@ -553,10 +580,11 @@ export default function Page() {
                   border: '1px solid #ccc',
                   background: '#fff',
                   cursor: pinBusy ? 'not-allowed' : 'pointer',
-                  opacity: pinBusy ? 0.7 : 1
+                  opacity: pinBusy ? 0.7 : 1,
+                  fontWeight: 700
                 }}
               >
-                Cancel
+                Back
               </button>
             </div>
           </div>
