@@ -538,6 +538,23 @@ Heavy rain made it unsafe`,
 
   return (
     <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
+      <div style={{ marginBottom: 16 }}>
+        <a
+          href="/today"
+          style={{
+            display: 'inline-block',
+            padding: '12px 16px',
+            borderRadius: 8,
+            border: '1px solid #ccc',
+            textDecoration: 'none',
+            color: 'inherit',
+            background: '#fff'
+          }}
+        >
+          ← Back to Today
+        </a>
+      </div>
+
       <h1 style={{ fontSize: 28, marginBottom: 20 }}>{job.title}</h1>
 
       {error && (
