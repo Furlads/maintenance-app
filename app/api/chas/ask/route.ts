@@ -11,6 +11,12 @@ type AskBody = {
   imageDataUrl?: string
 }
 
+type HistoryRow = {
+  question: string
+  answer: string
+  imageDataUrl: string | null
+}
+
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : ""
 }
@@ -56,8 +62,9 @@ How to behave:
 - Answer the actual question clearly and practically.
 - Keep replies short and useful for someone working on site.
 - Sound like a normal helpful person in the office.
-- If a photo is already part of the conversation, use it as context.
-- Do not keep asking for the same photo again if it is already in the conversation and clear enough.
+- If an image is included in the request, use it as context for the latest question.
+- If the latest message is a follow-up, assume it refers to the most recent relevant image or topic already included.
+- Do not keep asking for the same photo again if it is already visible in the request and clear enough.
 - If a new or clearer photo is genuinely needed, say so plainly.
 - Trevor handles higher-risk judgement calls.
 - Kelly confirms final quotes.
@@ -66,10 +73,37 @@ How to behave:
 `.trim()
 }
 
+function buildConversationText(history: HistoryRow[], latestQuestion: string) {
+  const recent = history.slice(-8)
+
+  if (recent.length === 0) {
+    return `Latest worker message:\n${latestQuestion}`
+  }
+
+  const historyText = recent
+    .map((item, index) => {
+      const hasImage = cleanString(item.imageDataUrl) ? " [photo was attached]" : ""
+      return [
+        `Turn ${index + 1} worker${hasImage}: ${item.question}`,
+        `Turn ${index + 1} CHAS: ${item.answer}`,
+      ].join("\n")
+    })
+    .join("\n\n")
+
+  return `
+Recent conversation:
+${historyText}
+
+Latest worker message:
+${latestQuestion}
+`.trim()
+}
+
 async function callOpenAI(params: {
-  question: string
-  imageDataUrl?: string
-  conversationId?: string
+  history: HistoryRow[]
+  latestQuestion: string
+  currentImageDataUrl?: string
+  carryForwardImageDataUrl?: string
 }) {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -82,34 +116,23 @@ async function callOpenAI(params: {
   const content: Array<Record<string, unknown>> = [
     {
       type: "input_text",
-      text: params.question,
+      text: buildConversationText(params.history, params.latestQuestion),
     },
   ]
 
-  const imageDataUrl = cleanString(params.imageDataUrl)
-  if (imageDataUrl) {
+  const currentImage = cleanString(params.currentImageDataUrl)
+  const carryForwardImage = cleanString(params.carryForwardImageDataUrl)
+
+  if (currentImage) {
     content.push({
       type: "input_image",
-      image_url: imageDataUrl,
+      image_url: currentImage,
     })
-  }
-
-  const body: Record<string, unknown> = {
-    model,
-    instructions: buildInstructions(),
-    store: true,
-    input: [
-      {
-        role: "user",
-        content,
-      },
-    ],
-    temperature: 0.6,
-  }
-
-  const conversationId = cleanString(params.conversationId)
-  if (conversationId) {
-    body.conversation = conversationId
+  } else if (carryForwardImage) {
+    content.push({
+      type: "input_image",
+      image_url: carryForwardImage,
+    })
   }
 
   const response = await fetch("https://api.openai.com/v1/responses", {
@@ -118,7 +141,17 @@ async function callOpenAI(params: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model,
+      instructions: buildInstructions(),
+      input: [
+        {
+          role: "user",
+          content,
+        },
+      ],
+      temperature: 0.6,
+    }),
   })
 
   if (!response.ok) {
@@ -133,14 +166,7 @@ async function callOpenAI(params: {
     throw new Error("Model returned no text output")
   }
 
-  return {
-    answer: normaliseText(answer),
-    responseId: typeof data?.id === "string" ? data.id : "",
-    conversationId:
-      typeof data?.conversation?.id === "string"
-        ? data.conversation.id
-        : conversationId,
-  }
+  return normaliseText(answer)
 }
 
 export async function POST(req: NextRequest) {
@@ -164,40 +190,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing question." }, { status: 400 })
     }
 
-    let conversationId = ""
+    let history: HistoryRow[] = []
 
     try {
-      const lastMessage = await prisma.chasMessage.findFirst({
+      history = await prisma.chasMessage.findMany({
         where: {
           company,
           worker,
-          conversationId: {
-            not: null,
-          },
         },
         orderBy: {
-          createdAt: "desc",
+          createdAt: "asc",
         },
+        take: 20,
         select: {
-          conversationId: true,
+          question: true,
+          answer: true,
+          imageDataUrl: true,
         },
       })
-
-      conversationId = cleanString(lastMessage?.conversationId)
-      console.log("CHAS conversationId loaded:", conversationId || "[none]")
     } catch (error) {
-      console.error("Failed to load previous CHAS conversation ID", error)
+      console.error("Failed to load CHAS history", error)
     }
 
-    const result = await callOpenAI({
-      question,
-      imageDataUrl,
-      conversationId,
-    })
+    const latestSavedImage =
+      [...history].reverse().find((item) => cleanString(item.imageDataUrl))?.imageDataUrl || ""
 
-    console.log("CHAS conversationId returned:", result.conversationId || "[none]")
-    console.log("CHAS responseId returned:", result.responseId || "[none]")
-    console.log("CHAS current message has image:", imageDataUrl ? "yes" : "no")
+    const answer = await callOpenAI({
+      history,
+      latestQuestion: question,
+      currentImageDataUrl: imageDataUrl,
+      carryForwardImageDataUrl: imageDataUrl ? "" : latestSavedImage,
+    })
 
     try {
       await prisma.chasMessage.create({
@@ -206,10 +229,8 @@ export async function POST(req: NextRequest) {
           worker,
           jobId,
           question,
-          answer: result.answer,
+          answer,
           imageDataUrl: imageDataUrl || null,
-          responseId: result.responseId || null,
-          conversationId: result.conversationId || null,
           intent: "general",
           confidence: 0.9,
           escalateTo: "none",
@@ -222,7 +243,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      answer: result.answer,
+      answer,
       intent: "general",
       confidence: 0.9,
       escalateTo: "none",
