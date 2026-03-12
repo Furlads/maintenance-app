@@ -28,13 +28,11 @@ type ChasModelResponse = {
   confidence: number
   escalateTo: ChasEscalateTo
   safetyFlag: boolean
-
   customerName?: string
   customerPhone?: string
   customerEmail?: string
   customerAddress?: string
   customerPostcode?: string
-
   workSummary?: string
   estimatedHours?: number | null
   roughPriceText?: string
@@ -42,8 +40,27 @@ type ChasModelResponse = {
   enquiryReadyForKelly?: boolean
 }
 
+type HistoryItem = {
+  question: string
+  answer: string
+  customerName: string | null
+  customerPhone: string | null
+  customerEmail: string | null
+  customerAddress: string | null
+  customerPostcode: string | null
+  workSummary: string | null
+  estimatedHours: number | null
+  roughPriceText: string | null
+  enquirySummary: string | null
+}
+
 function cleanString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function normaliseText(value: unknown) {
+  if (typeof value !== 'string') return ''
+  return value.replace(/\s+/g, ' ').trim()
 }
 
 function clampConfidence(value: unknown): number {
@@ -87,9 +104,95 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function normaliseText(value: unknown) {
-  if (typeof value !== 'string') return ''
-  return value.replace(/\s+/g, ' ').trim()
+function parseEstimatedHoursFromText(text: string): number | null {
+  const input = text.toLowerCase()
+
+  const hourMatch = input.match(/(\d+(?:\.\d+)?)\s*(hour|hours|hr|hrs)\b/)
+  if (hourMatch) {
+    const value = Number(hourMatch[1])
+    if (Number.isFinite(value) && value > 0) {
+      return Math.round(value * 100) / 100
+    }
+  }
+
+  const minuteMatch = input.match(/(\d+)\s*(minute|minutes|min|mins)\b/)
+  if (minuteMatch) {
+    const mins = Number(minuteMatch[1])
+    if (Number.isFinite(mins) && mins > 0) {
+      return Math.round((mins / 60) * 100) / 100
+    }
+  }
+
+  return null
+}
+
+function extractEmail(text: string): string {
+  const match = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+  return match ? match[0].trim() : ''
+}
+
+function extractPhone(text: string): string {
+  const match = text.match(/(?:\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}|\b0\d{10,11}\b/)
+  return match ? match[0].trim() : ''
+}
+
+function extractPostcode(text: string): string {
+  const match = text.match(/\b[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}\b/i)
+  return match ? match[0].toUpperCase().replace(/\s+/, ' ') : ''
+}
+
+function looksLikeWorkSummary(text: string): boolean {
+  const lower = text.toLowerCase()
+
+  const workWords = [
+    'replace',
+    'repair',
+    'fix',
+    'cut',
+    'trim',
+    'clear',
+    'weed',
+    'mow',
+    'prune',
+    'lay',
+    'install',
+    'remove',
+    'clean',
+    'gutter',
+    'downpipe',
+    'fence',
+    'hedge',
+    'grass',
+    'patio',
+    'driveway',
+    'garden',
+    'maintenance'
+  ]
+
+  return workWords.some((word) => lower.includes(word))
+}
+
+function isMaintenanceOrPricingQuestion(text: string): boolean {
+  const lower = text.toLowerCase()
+
+  return (
+    looksLikeWorkSummary(text) ||
+    lower.includes('price') ||
+    lower.includes('quote') ||
+    lower.includes('cost') ||
+    lower.includes('how much') ||
+    lower.includes('maintenance')
+  )
+}
+
+function getCustomerNameFromText(text: string): string {
+  const match = text.match(/(?:customer|name)\s*(?:is|:)\s*([A-Za-z][A-Za-z .'-]{1,60})/i)
+  return match ? match[1].trim() : ''
+}
+
+function getAddressFromText(text: string): string {
+  const match = text.match(/(?:address)\s*(?:is|:)\s*([^\n,][^\n]{5,120})/i)
+  return match ? match[1].trim() : ''
 }
 
 function buildFallback(question: string): ChasModelResponse {
@@ -153,28 +256,21 @@ function validateModelResponse(parsed: unknown, rawText: string, question: strin
   const answer = normaliseText(parsed.answer)
 
   return {
-    answer:
-      answer ||
-      buildFallback(question).answer,
+    answer: answer || buildFallback(question).answer,
     intent: safeIntent,
     confidence: clampConfidence(parsed.confidence),
     escalateTo: safeEscalateTo,
     safetyFlag: typeof parsed.safetyFlag === 'boolean' ? parsed.safetyFlag : false,
-
     customerName: normaliseText(parsed.customerName),
     customerPhone: normaliseText(parsed.customerPhone),
     customerEmail: normaliseText(parsed.customerEmail),
     customerAddress: normaliseText(parsed.customerAddress),
     customerPostcode: normaliseText(parsed.customerPostcode),
-
     workSummary: normaliseText(parsed.workSummary),
     estimatedHours: clampHours(parsed.estimatedHours),
     roughPriceText: normaliseText(parsed.roughPriceText),
     enquirySummary: normaliseText(parsed.enquirySummary),
-    enquiryReadyForKelly:
-      typeof parsed.enquiryReadyForKelly === 'boolean'
-        ? parsed.enquiryReadyForKelly
-        : false
+    enquiryReadyForKelly: parsed.enquiryReadyForKelly === true
   }
 }
 
@@ -187,6 +283,256 @@ function tryParseModelJson(rawText: string, question: string): ChasModelResponse
   } catch {
     return buildFallback(question)
   }
+}
+
+function summariseKnownDetails(history: HistoryItem[], currentQuestion: string) {
+  const latest = [...history].reverse()
+
+  const firstNonEmpty = (key: keyof HistoryItem) => {
+    for (const item of latest) {
+      const value = normaliseText(item[key])
+      if (value) return value
+    }
+    return ''
+  }
+
+  const firstHours = () => {
+    for (const item of latest) {
+      if (typeof item.estimatedHours === 'number' && item.estimatedHours > 0) {
+        return item.estimatedHours
+      }
+    }
+    return null
+  }
+
+  const derivedHoursFromQuestion = parseEstimatedHoursFromText(currentQuestion)
+  const derivedPhoneFromQuestion = extractPhone(currentQuestion)
+  const derivedEmailFromQuestion = extractEmail(currentQuestion)
+  const derivedPostcodeFromQuestion = extractPostcode(currentQuestion)
+  const derivedCustomerNameFromQuestion = getCustomerNameFromText(currentQuestion)
+  const derivedAddressFromQuestion = getAddressFromText(currentQuestion)
+  const derivedWorkSummaryFromQuestion = looksLikeWorkSummary(currentQuestion)
+    ? currentQuestion.trim()
+    : ''
+
+  return {
+    customerName: derivedCustomerNameFromQuestion || firstNonEmpty('customerName'),
+    customerPhone: derivedPhoneFromQuestion || firstNonEmpty('customerPhone'),
+    customerEmail: derivedEmailFromQuestion || firstNonEmpty('customerEmail'),
+    customerAddress: derivedAddressFromQuestion || firstNonEmpty('customerAddress'),
+    customerPostcode: derivedPostcodeFromQuestion || firstNonEmpty('customerPostcode'),
+    workSummary: derivedWorkSummaryFromQuestion || firstNonEmpty('workSummary'),
+    roughPriceText: firstNonEmpty('roughPriceText'),
+    enquirySummary: firstNonEmpty('enquirySummary'),
+    estimatedHours: derivedHoursFromQuestion ?? firstHours()
+  }
+}
+
+function buildEnquirySummary(
+  known: ReturnType<typeof summariseKnownDetails>,
+  hasImage: boolean,
+  roughPriceText: string
+) {
+  const parts: string[] = []
+
+  if (known.customerName) parts.push(`Customer: ${known.customerName}`)
+  if (known.customerPhone) parts.push(`Phone: ${known.customerPhone}`)
+  if (known.customerEmail) parts.push(`Email: ${known.customerEmail}`)
+  if (known.customerAddress) parts.push(`Address: ${known.customerAddress}`)
+  if (known.customerPostcode) parts.push(`Postcode: ${known.customerPostcode}`)
+  if (known.workSummary) parts.push(`Work needed: ${known.workSummary}`)
+  if (typeof known.estimatedHours === 'number' && known.estimatedHours > 0) {
+    parts.push(`Estimated time: ${known.estimatedHours} hour${known.estimatedHours === 1 ? '' : 's'}`)
+  }
+  if (roughPriceText) parts.push(`Guide: ${roughPriceText}`)
+  if (hasImage) parts.push('Photo provided: yes')
+
+  return parts.join(' | ')
+}
+
+function getRuleBasedQuestion(params: {
+  question: string
+  known: ReturnType<typeof summariseKnownDetails>
+}): string | null {
+  const { question, known } = params
+  const lower = question.toLowerCase()
+  const maintenanceLike = isMaintenanceOrPricingQuestion(question)
+
+  if (!maintenanceLike) {
+    return null
+  }
+
+  const hasWorkSummary = !!known.workSummary
+  const hasHours = typeof known.estimatedHours === 'number' && known.estimatedHours > 0
+  const hasAnyContact = !!known.customerPhone || !!known.customerEmail
+  const hasLocation = !!known.customerAddress || !!known.customerPostcode
+  const hasCustomerName = !!known.customerName
+
+  if (!hasWorkSummary && (lower.includes('price') || lower.includes('quote') || lower.includes('cost'))) {
+    return 'What exactly does the customer want doing?'
+  }
+
+  if (hasWorkSummary && !hasHours) {
+    return 'Roughly how long do you think it will take to do everything the customer wants?'
+  }
+
+  if (hasWorkSummary && hasHours && !hasCustomerName) {
+    return 'What’s the customer’s name?'
+  }
+
+  if (hasWorkSummary && hasHours && hasCustomerName && !hasLocation) {
+    return 'What’s the customer’s postcode or address?'
+  }
+
+  if (hasWorkSummary && hasHours && hasCustomerName && hasLocation && !hasAnyContact) {
+    return 'What’s the best phone number or email for the customer?'
+  }
+
+  return null
+}
+
+function buildPricingPrompt(params: {
+  worker: string
+  company: string
+  question: string
+  hasImage: boolean
+  known: ReturnType<typeof summariseKnownDetails>
+  nextQuestion: string | null
+}) {
+  return `
+You are CHAS, a friendly and practical Furlads on-site helper.
+
+This is for a rough guide price only, not a final quote.
+Kelly confirms the final quote.
+Trevor handles higher-risk judgement calls.
+
+Your job here:
+- Use the work description and time estimate to produce a sensible rough guide price.
+- Include likely materials/parts if the job clearly needs them.
+- Use practical judgement for common small works and maintenance tasks.
+- Do not act like the guide price is exact.
+- Do not be too low and do not be wildly high.
+- Be realistic for a small UK landscaping / property maintenance business.
+- If parts are clearly needed, factor them in.
+- If details are missing, stay conservative and say it is a rough guide.
+- Keep the answer short and practical for a worker on site.
+- Ask only one best next question after the guide price if customer details are still missing.
+
+Important:
+- Never ask again for work details or time if they are already known.
+- Do not mention job context.
+- Do not output markdown.
+- Return valid JSON only.
+
+Return exactly this shape:
+{
+  "answer": "string",
+  "intent": "general | plant_id | pricing_guide | safety | quote_support | enquiry_intake | escalation",
+  "confidence": 0.0,
+  "escalateTo": "none | kelly | trevor",
+  "safetyFlag": false,
+  "customerName": "string",
+  "customerPhone": "string",
+  "customerEmail": "string",
+  "customerAddress": "string",
+  "customerPostcode": "string",
+  "workSummary": "string",
+  "estimatedHours": 0,
+  "roughPriceText": "string",
+  "enquirySummary": "string",
+  "enquiryReadyForKelly": false
+}
+
+Known details:
+${JSON.stringify(params.known, null, 2)}
+
+Photo attached: ${params.hasImage ? 'yes' : 'no'}
+Next best missing question: ${params.nextQuestion || 'none'}
+
+Latest worker message:
+${params.question}
+
+Rules for the reply:
+- "roughPriceText" should be a short guide price phrase, for example "Rough guide: around £140 to £190 including likely parts and labour. Kelly can confirm the final price."
+- "answer" should use that rough guide and then ask the nextQuestion if one exists.
+- If there is no nextQuestion and enough details are present, say you have enough to send to Kelly and set enquiryReadyForKelly true.
+`.trim()
+}
+
+function buildGeneralPrompt(params: {
+  worker: string
+  company: string
+  question: string
+  hasImage: boolean
+  history: HistoryItem[]
+  known: ReturnType<typeof summariseKnownDetails>
+}) {
+  const historyText =
+    params.history.length > 0
+      ? params.history
+          .map(
+            (item, index) =>
+              `Turn ${index + 1} worker: ${item.question}\nTurn ${index + 1} CHAS: ${item.answer}`
+          )
+          .join('\n\n')
+      : 'No previous CHAS messages today.'
+
+  return `
+You are CHAS, a friendly and practical Furlads on-site helper for workers using phones.
+
+Your job:
+- Ask the right questions one at a time.
+- Keep replies short, clear, and useful on site.
+- Do not waffle.
+- Do not mention internal rules.
+- Do not mention job context.
+- If confidence is low, be conservative.
+- Plant identification must be conservative if uncertain.
+- Rough prices are guide-only.
+- Kelly confirms final quotes.
+- Trevor handles higher-risk judgement calls.
+
+Critical logic rule:
+- Never ask again for information the worker has already provided.
+- Ask only one best next question at a time.
+
+Output must be valid JSON only.
+No markdown.
+No code fences.
+No extra words.
+
+Return exactly this shape:
+{
+  "answer": "string",
+  "intent": "general | plant_id | pricing_guide | safety | quote_support | enquiry_intake | escalation",
+  "confidence": 0.0,
+  "escalateTo": "none | kelly | trevor",
+  "safetyFlag": false,
+  "customerName": "string",
+  "customerPhone": "string",
+  "customerEmail": "string",
+  "customerAddress": "string",
+  "customerPostcode": "string",
+  "workSummary": "string",
+  "estimatedHours": 0,
+  "roughPriceText": "string",
+  "enquirySummary": "string",
+  "enquiryReadyForKelly": false
+}
+
+Company: ${params.company}
+Worker: ${params.worker}
+Photo attached: ${params.hasImage ? 'yes' : 'no'}
+
+Known details:
+${JSON.stringify(params.known, null, 2)}
+
+Conversation so far today:
+${historyText}
+
+Latest worker message:
+${params.question}
+`.trim()
 }
 
 async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string> {
@@ -264,141 +610,6 @@ async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string
   throw new Error('Model returned no text output')
 }
 
-function summariseKnownDetails(history: Array<any>) {
-  const latest = [...history].reverse()
-
-  const firstNonEmpty = (key: string) => {
-    for (const item of latest) {
-      const value = normaliseText(item?.[key])
-      if (value) return value
-    }
-    return ''
-  }
-
-  const firstHours = () => {
-    for (const item of latest) {
-      if (typeof item?.estimatedHours === 'number' && item.estimatedHours > 0) {
-        return item.estimatedHours
-      }
-    }
-    return null
-  }
-
-  return {
-    customerName: firstNonEmpty('customerName'),
-    customerPhone: firstNonEmpty('customerPhone'),
-    customerEmail: firstNonEmpty('customerEmail'),
-    customerAddress: firstNonEmpty('customerAddress'),
-    customerPostcode: firstNonEmpty('customerPostcode'),
-    workSummary: firstNonEmpty('workSummary'),
-    roughPriceText: firstNonEmpty('roughPriceText'),
-    enquirySummary: firstNonEmpty('enquirySummary'),
-    estimatedHours: firstHours()
-  }
-}
-
-function buildPrompt(params: {
-  worker: string
-  company: string
-  question: string
-  hasImage: boolean
-  history: Array<any>
-}) {
-  const historyText =
-    params.history.length > 0
-      ? params.history
-          .map(
-            (item, index) =>
-              `Turn ${index + 1} worker: ${item.question}\nTurn ${index + 1} CHAS: ${item.answer}`
-          )
-          .join('\n\n')
-      : 'No previous CHAS messages today.'
-
-  const known = summariseKnownDetails(params.history)
-
-  return `
-You are CHAS, a friendly and practical Furlads on-site helper for workers using phones.
-
-Your job:
-- Ask the right questions one at a time.
-- Keep replies short, clear, and useful on site.
-- Do not waffle.
-- Do not mention internal rules.
-- Do not use job context or assume job context.
-- Do not mention any "job context" section.
-- If confidence is low, be conservative.
-- Plant identification must be conservative if uncertain.
-- Rough prices are guide-only.
-- Kelly confirms final quotes.
-- Trevor handles higher-risk judgement calls.
-
-Maintenance / quote behaviour:
-- Do not jump to a high price.
-- For maintenance work, work from around £30 per hour as the guide.
-- Before giving a guide price, try to establish roughly how long the worker thinks the job will take.
-- Ask one missing question at a time, not a big list.
-- Once enough detail is known, give a rough guide price only.
-- Then prepare the enquiry details for Kelly.
-
-Information CHAS should try to collect across the conversation:
-- what the customer wants doing
-- roughly how long the worker thinks it will take
-- whether waste removal or materials are involved
-- whether it is one-off or ongoing if relevant
-- customer name
-- customer phone and/or customer email
-- customer address and/or postcode
-- any useful site or access notes
-
-Photo behaviour:
-- If a photo is included, use it if helpful.
-- If more photos would help, ask for them naturally.
-- If there is no photo and one would help, ask for one.
-
-Question flow rule:
-- Ask only the single best next question.
-- If enough information is already available, do not ask another question unnecessarily.
-- If enough detail is present for Kelly handoff, set enquiryReadyForKelly to true.
-
-Output must be valid JSON only.
-No markdown.
-No code fences.
-No extra words.
-
-Return exactly this shape:
-{
-  "answer": "string",
-  "intent": "general | plant_id | pricing_guide | safety | quote_support | enquiry_intake | escalation",
-  "confidence": 0.0,
-  "escalateTo": "none | kelly | trevor",
-  "safetyFlag": false,
-  "customerName": "string",
-  "customerPhone": "string",
-  "customerEmail": "string",
-  "customerAddress": "string",
-  "customerPostcode": "string",
-  "workSummary": "string",
-  "estimatedHours": 0,
-  "roughPriceText": "string",
-  "enquirySummary": "string",
-  "enquiryReadyForKelly": false
-}
-
-Company: ${params.company}
-Worker: ${params.worker}
-Photo attached: ${params.hasImage ? 'yes' : 'no'}
-
-Known details from earlier today:
-${JSON.stringify(known, null, 2)}
-
-Conversation so far today:
-${historyText}
-
-Latest worker message:
-${params.question}
-`.trim()
-}
-
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AskBody
@@ -448,16 +659,60 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    const prompt = buildPrompt({
-      worker,
-      company,
+    const known = summariseKnownDetails(history, question)
+    const nextQuestion = getRuleBasedQuestion({
       question,
-      hasImage: !!imageDataUrl,
-      history
+      known
     })
 
-    const rawModelText = await callOpenAI(prompt, imageDataUrl)
-    const parsed = tryParseModelJson(rawModelText, question)
+    const hasWorkSummary = !!known.workSummary
+    const hasHours = typeof known.estimatedHours === 'number' && known.estimatedHours > 0
+    const maintenanceLike = isMaintenanceOrPricingQuestion(question)
+
+    const usePricingModel = maintenanceLike && hasWorkSummary && hasHours
+
+    const prompt = usePricingModel
+      ? buildPricingPrompt({
+          worker,
+          company,
+          question,
+          hasImage: !!imageDataUrl,
+          known,
+          nextQuestion
+        })
+      : buildGeneralPrompt({
+          worker,
+          company,
+          question,
+          hasImage: !!imageDataUrl,
+          history,
+          known
+        })
+
+    const parsed = tryParseModelJson(
+      await callOpenAI(prompt, imageDataUrl),
+      question
+    )
+
+    const finalRoughPriceText = parsed.roughPriceText || known.roughPriceText || ''
+    const finalEnquirySummary =
+      parsed.enquirySummary ||
+      buildEnquirySummary(
+        {
+          ...known,
+          customerName: parsed.customerName || known.customerName,
+          customerPhone: parsed.customerPhone || known.customerPhone,
+          customerEmail: parsed.customerEmail || known.customerEmail,
+          customerAddress: parsed.customerAddress || known.customerAddress,
+          customerPostcode: parsed.customerPostcode || known.customerPostcode,
+          workSummary: parsed.workSummary || known.workSummary,
+          estimatedHours: parsed.estimatedHours ?? known.estimatedHours,
+          roughPriceText: finalRoughPriceText,
+          enquirySummary: ''
+        },
+        !!imageDataUrl,
+        finalRoughPriceText
+      )
 
     await prisma.chasMessage.create({
       data: {
@@ -467,22 +722,19 @@ export async function POST(req: NextRequest) {
         question,
         answer: parsed.answer,
         imageDataUrl: imageDataUrl || null,
-
         intent: parsed.intent,
         confidence: parsed.confidence,
         escalateTo: parsed.escalateTo,
         safetyFlag: parsed.safetyFlag,
-
-        customerName: parsed.customerName || null,
-        customerPhone: parsed.customerPhone || null,
-        customerEmail: parsed.customerEmail || null,
-        customerAddress: parsed.customerAddress || null,
-        customerPostcode: parsed.customerPostcode || null,
-
-        workSummary: parsed.workSummary || null,
-        estimatedHours: parsed.estimatedHours ?? null,
-        roughPriceText: parsed.roughPriceText || null,
-        enquirySummary: parsed.enquirySummary || null,
+        customerName: parsed.customerName || known.customerName || null,
+        customerPhone: parsed.customerPhone || known.customerPhone || null,
+        customerEmail: parsed.customerEmail || known.customerEmail || null,
+        customerAddress: parsed.customerAddress || known.customerAddress || null,
+        customerPostcode: parsed.customerPostcode || known.customerPostcode || null,
+        workSummary: parsed.workSummary || known.workSummary || null,
+        estimatedHours: parsed.estimatedHours ?? known.estimatedHours ?? null,
+        roughPriceText: finalRoughPriceText || null,
+        enquirySummary: finalEnquirySummary || null,
         enquiryReadyForKelly: parsed.enquiryReadyForKelly === true
       }
     })
@@ -494,15 +746,15 @@ export async function POST(req: NextRequest) {
       confidence: parsed.confidence,
       escalateTo: parsed.escalateTo,
       safetyFlag: parsed.safetyFlag,
-      customerName: parsed.customerName || '',
-      customerPhone: parsed.customerPhone || '',
-      customerEmail: parsed.customerEmail || '',
-      customerAddress: parsed.customerAddress || '',
-      customerPostcode: parsed.customerPostcode || '',
-      workSummary: parsed.workSummary || '',
-      estimatedHours: parsed.estimatedHours ?? null,
-      roughPriceText: parsed.roughPriceText || '',
-      enquirySummary: parsed.enquirySummary || '',
+      customerName: parsed.customerName || known.customerName || '',
+      customerPhone: parsed.customerPhone || known.customerPhone || '',
+      customerEmail: parsed.customerEmail || known.customerEmail || '',
+      customerAddress: parsed.customerAddress || known.customerAddress || '',
+      customerPostcode: parsed.customerPostcode || known.customerPostcode || '',
+      workSummary: parsed.workSummary || known.workSummary || '',
+      estimatedHours: parsed.estimatedHours ?? known.estimatedHours ?? null,
+      roughPriceText: finalRoughPriceText,
+      enquirySummary: finalEnquirySummary,
       enquiryReadyForKelly: parsed.enquiryReadyForKelly === true
     })
   } catch (error) {
