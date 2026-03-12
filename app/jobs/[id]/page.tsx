@@ -177,7 +177,19 @@ export default function JobPage() {
   const [error, setError] = useState('')
   const [photoMessage, setPhotoMessage] = useState('')
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
-  const [busyAction, setBusyAction] = useState<string>('')
+  const [busyAction, setBusyAction] = useState('')
+
+  const [showQuoteForm, setShowQuoteForm] = useState(false)
+  const [quoteBusy, setQuoteBusy] = useState(false)
+  const [quoteMessage, setQuoteMessage] = useState('')
+  const [quoteCustomerName, setQuoteCustomerName] = useState('')
+  const [quoteCustomerPhone, setQuoteCustomerPhone] = useState('')
+  const [quoteCustomerEmail, setQuoteCustomerEmail] = useState('')
+  const [quoteCustomerAddress, setQuoteCustomerAddress] = useState('')
+  const [quoteCustomerPostcode, setQuoteCustomerPostcode] = useState('')
+  const [quoteWorkSummary, setQuoteWorkSummary] = useState('')
+  const [quoteEstimatedTime, setQuoteEstimatedTime] = useState('')
+  const [quoteNotes, setQuoteNotes] = useState('')
 
   async function loadPhotos() {
     const res = await fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
@@ -256,6 +268,20 @@ export default function JobPage() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [viewerIndex, photos.length])
+
+  useEffect(() => {
+    if (!showQuoteForm || !job) return
+
+    setQuoteCustomerName(job.customer?.name || '')
+    setQuoteCustomerPhone(job.customer?.phone || '')
+    setQuoteCustomerEmail('')
+    setQuoteCustomerAddress(job.customer?.address || job.address || '')
+    setQuoteCustomerPostcode(job.customer?.postcode || '')
+    setQuoteWorkSummary(job.title || '')
+    setQuoteEstimatedTime('')
+    setQuoteNotes('')
+    setQuoteMessage('')
+  }, [showQuoteForm, job])
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -366,6 +392,52 @@ export default function JobPage() {
       setError(`Failed to ${actionLabel}.`)
     } finally {
       setBusyAction('')
+    }
+  }
+
+  async function handleSendQuoteRequest() {
+    const workerName = localStorage.getItem('workerName') || ''
+    const company = localStorage.getItem('company') || 'furlads'
+
+    setQuoteBusy(true)
+    setQuoteMessage('')
+
+    try {
+      const res = await fetch('/api/chas/quote-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          company,
+          worker: workerName,
+          sessionId: `job-${id}-${Date.now()}`,
+          customerName: quoteCustomerName,
+          customerPhone: quoteCustomerPhone,
+          customerEmail: quoteCustomerEmail,
+          customerAddress: quoteCustomerAddress,
+          customerPostcode: quoteCustomerPostcode,
+          workSummary: quoteWorkSummary,
+          estimatedTimeText: quoteEstimatedTime,
+          notes: quoteNotes,
+          imageDataUrl: '',
+          chatTranscript: `New Quote created from job page for job ${job?.id ?? id}: ${job?.title || ''}`
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Failed to save quote enquiry.')
+      }
+
+      setQuoteMessage('Quote enquiry saved successfully.')
+      setShowQuoteForm(false)
+    } catch (err: any) {
+      console.error(err)
+      setQuoteMessage(String(err?.message || 'Failed to save quote enquiry.'))
+    } finally {
+      setQuoteBusy(false)
     }
   }
 
@@ -831,12 +903,30 @@ Heavy rain made it unsafe`,
             </>
           )}
 
-<a
-  href={`/jobs/add?customerId=${job.customer?.id}&title=${encodeURIComponent(
-    job.title
-  )}&address=${encodeURIComponent(job.address || '')}&postcode=${encodeURIComponent(
-    job.customer?.postcode || ''
-  )}&jobType=${encodeURIComponent(job.jobType || '')}`}
+          <button
+            type="button"
+            onClick={() => {
+              setShowQuoteForm((prev) => !prev)
+              setQuoteMessage('')
+            }}
+            style={{
+              padding: '12px 16px',
+              borderRadius: 8,
+              border: '1px solid #ccc',
+              background: '#fff',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            {showQuoteForm ? 'Hide New Quote' : 'New Quote'}
+          </button>
+
+          <a
+            href={`/jobs/add?customerId=${job.customer?.id}&title=${encodeURIComponent(
+              job.title
+            )}&address=${encodeURIComponent(job.address || '')}&postcode=${encodeURIComponent(
+              job.customer?.postcode || ''
+            )}&jobType=${encodeURIComponent(job.jobType || '')}`}
             style={{
               padding: '12px 16px',
               borderRadius: 8,
@@ -850,6 +940,188 @@ Heavy rain made it unsafe`,
             Book Extra Day
           </a>
         </div>
+
+        {showQuoteForm && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: 14,
+              borderRadius: 14,
+              border: '1px solid #ddd',
+              background: '#fff',
+              marginBottom: 14
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 10, fontSize: 18 }}>
+              New Quote
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gap: 10,
+                gridTemplateColumns: '1fr'
+              }}
+            >
+              <input
+                value={quoteCustomerName}
+                onChange={(e) => setQuoteCustomerName(e.target.value)}
+                placeholder="Customer name"
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  fontSize: 14
+                }}
+              />
+
+              <input
+                value={quoteCustomerPhone}
+                onChange={(e) => setQuoteCustomerPhone(e.target.value)}
+                placeholder="Customer phone"
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  fontSize: 14
+                }}
+              />
+
+              <input
+                value={quoteCustomerEmail}
+                onChange={(e) => setQuoteCustomerEmail(e.target.value)}
+                placeholder="Customer email (optional)"
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  fontSize: 14
+                }}
+              />
+
+              <input
+                value={quoteCustomerAddress}
+                onChange={(e) => setQuoteCustomerAddress(e.target.value)}
+                placeholder="Customer address"
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  fontSize: 14
+                }}
+              />
+
+              <input
+                value={quoteCustomerPostcode}
+                onChange={(e) => setQuoteCustomerPostcode(e.target.value)}
+                placeholder="Customer postcode"
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  fontSize: 14
+                }}
+              />
+
+              <textarea
+                value={quoteWorkSummary}
+                onChange={(e) => setQuoteWorkSummary(e.target.value)}
+                placeholder="What work is needed?"
+                style={{
+                  minHeight: 90,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  fontFamily: 'inherit',
+                  fontSize: 14,
+                  resize: 'vertical'
+                }}
+              />
+
+              <input
+                value={quoteEstimatedTime}
+                onChange={(e) => setQuoteEstimatedTime(e.target.value)}
+                placeholder="How long do you think it will take conservatively?"
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  fontSize: 14
+                }}
+              />
+
+              <textarea
+                value={quoteNotes}
+                onChange={(e) => setQuoteNotes(e.target.value)}
+                placeholder="Extra notes for the office (optional)"
+                style={{
+                  minHeight: 80,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  fontFamily: 'inherit',
+                  fontSize: 14,
+                  resize: 'vertical'
+                }}
+              />
+            </div>
+
+            {quoteMessage && (
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 13,
+                  color: quoteMessage.includes('successfully') ? '#1b5e20' : '#b00020'
+                }}
+              >
+                {quoteMessage}
+              </div>
+            )}
+
+            <div
+              style={{
+                marginTop: 12,
+                display: 'flex',
+                gap: 10,
+                flexWrap: 'wrap'
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleSendQuoteRequest}
+                disabled={quoteBusy}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 10,
+                  border: '1px solid #111',
+                  background: '#111',
+                  color: '#fff',
+                  cursor: quoteBusy ? 'not-allowed' : 'pointer',
+                  opacity: quoteBusy ? 0.7 : 1,
+                  fontWeight: 700
+                }}
+              >
+                {quoteBusy ? 'Saving...' : 'Save New Quote'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowQuoteForm(false)}
+                disabled={quoteBusy}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 10,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  cursor: quoteBusy ? 'not-allowed' : 'pointer',
+                  opacity: quoteBusy ? 0.7 : 1
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
 
         {(isStarted || isPaused) && (
           <>
