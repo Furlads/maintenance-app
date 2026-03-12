@@ -176,8 +176,17 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
 
     if (action === 'finish') {
-      arrivedAtUpdate = existing.arrivedAt ?? new Date()
-      finishedAtUpdate = new Date()
+      const finishTime = new Date()
+      const assumedDurationMinutes =
+        typeof existing.durationMinutes === 'number' && existing.durationMinutes > 0
+          ? existing.durationMinutes
+          : 60
+
+      arrivedAtUpdate =
+        existing.arrivedAt ??
+        new Date(finishTime.getTime() - assumedDurationMinutes * 60000)
+
+      finishedAtUpdate = finishTime
       pausedAtUpdate = null
       statusUpdate = 'done'
     }
