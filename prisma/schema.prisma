@@ -25,6 +25,7 @@ model Worker {
   email          String?
   active         Boolean         @default(true)
   createdAt      DateTime        @default(now())
+  pinHash        String?
 
   companies      WorkerCompany[]
   notes          JobNote[]
