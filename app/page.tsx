@@ -20,6 +20,14 @@ export default function Page() {
   const [pinError, setPinError] = useState('')
 
   useEffect(() => {
+    const savedWorkerId = localStorage.getItem('workerId')
+    const savedWorkerName = localStorage.getItem('workerName')
+
+    if (savedWorkerId && savedWorkerName) {
+      window.location.href = '/today'
+      return
+    }
+
     async function loadWorkers() {
       try {
         setLoading(true)
