@@ -166,23 +166,13 @@ function looksLikeWorkSummary(text: string): boolean {
     'patio',
     'driveway',
     'garden',
-    'maintenance'
+    'maintenance',
+    'quote',
+    'price',
+    'cost'
   ]
 
   return workWords.some((word) => lower.includes(word))
-}
-
-function isMaintenanceOrPricingQuestion(text: string): boolean {
-  const lower = text.toLowerCase()
-
-  return (
-    looksLikeWorkSummary(text) ||
-    lower.includes('price') ||
-    lower.includes('quote') ||
-    lower.includes('cost') ||
-    lower.includes('how much') ||
-    lower.includes('maintenance')
-  )
 }
 
 function getCustomerNameFromText(text: string): string {
@@ -195,18 +185,67 @@ function getAddressFromText(text: string): string {
   return match ? match[1].trim() : ''
 }
 
+function isGreetingOrCasualMessage(text: string): boolean {
+  const lower = text.toLowerCase().trim()
+  const condensed = lower.replace(/[?!.,]/g, '').trim()
+
+  const exactMatches = new Set([
+    'hi',
+    'hello',
+    'hey',
+    'hiya',
+    'yo',
+    'morning',
+    'good morning',
+    'afternoon',
+    'good afternoon',
+    'evening',
+    'good evening',
+    'are you ok',
+    'you ok',
+    'u ok',
+    'ok',
+    'okay',
+    'nice one',
+    'cheers',
+    'thanks',
+    'thank you',
+    'ta',
+    'sound',
+    'cool',
+    'great'
+  ])
+
+  if (exactMatches.has(condensed)) return true
+
+  if (/^(hi|hello|hey|hiya)\b/.test(condensed) && condensed.split(/\s+/).length <= 4) return true
+  if (/^(are you ok|you ok|u ok)\b/.test(condensed)) return true
+  if (/^(thanks|thank you|cheers|ta)\b/.test(condensed) && condensed.split(/\s+/).length <= 5) return true
+
+  return false
+}
+
+function isCustomerDetailMessage(text: string): boolean {
+  return !!extractPhone(text) || !!extractEmail(text) || !!extractPostcode(text) || !!getCustomerNameFromText(text) || !!getAddressFromText(text)
+}
+
 function buildFallback(question: string): ChasModelResponse {
+  if (isGreetingOrCasualMessage(question)) {
+    return {
+      answer: 'Yeah all good 👍 What do you need help with on site?',
+      intent: 'general',
+      confidence: 0.7,
+      escalateTo: 'none',
+      safetyFlag: false,
+      enquiryReadyForKelly: false
+    }
+  }
+
   const lower = question.toLowerCase()
 
-  if (
-    lower.includes('price') ||
-    lower.includes('quote') ||
-    lower.includes('cost') ||
-    lower.includes('maintenance')
-  ) {
+  if (lower.includes('price') || lower.includes('quote') || lower.includes('cost') || lower.includes('maintenance')) {
     return {
-      answer:
-        'No problem — what exactly does the customer want doing, and roughly how long do you think it will take?',
+      answer: 'No problem — what exactly does the customer want doing?',
       intent: 'enquiry_intake',
       confidence: 0.35,
       escalateTo: 'kelly',
@@ -216,8 +255,7 @@ function buildFallback(question: string): ChasModelResponse {
   }
 
   return {
-    answer:
-      'Tell me a bit more about what the customer wants, and I’ll help you work through it one step at a time.',
+    answer: 'Tell me a bit more and I’ll help.',
     intent: 'general',
     confidence: 0.35,
     escalateTo: 'none',
@@ -350,18 +388,59 @@ function buildEnquirySummary(
   return parts.join(' | ')
 }
 
+function hasActiveEnquiryContext(known: ReturnType<typeof summariseKnownDetails>): boolean {
+  return !!known.workSummary || (typeof known.estimatedHours === 'number' && known.estimatedHours > 0)
+}
+
+function shouldUseEnquiryFlow(params: {
+  question: string
+  known: ReturnType<typeof summariseKnownDetails>
+}): boolean {
+  const { question, known } = params
+
+  if (isGreetingOrCasualMessage(question)) return false
+  if (isCustomerDetailMessage(question)) return true
+  if (looksLikeWorkSummary(question)) return true
+
+  const lower = question.toLowerCase()
+
+  if (
+    lower.includes('price') ||
+    lower.includes('quote') ||
+    lower.includes('cost') ||
+    lower.includes('how much') ||
+    lower.includes('materials') ||
+    lower.includes('parts') ||
+    lower.includes('labour') ||
+    lower.includes('customer') ||
+    lower.includes('postcode') ||
+    lower.includes('address') ||
+    lower.includes('phone') ||
+    lower.includes('email')
+  ) {
+    return true
+  }
+
+  if (hasActiveEnquiryContext(known)) {
+    if (parseEstimatedHoursFromText(question) !== null) return true
+    if (isCustomerDetailMessage(question)) return true
+    if (question.trim().split(/\s+/).length >= 5 && !isGreetingOrCasualMessage(question)) return true
+  }
+
+  return false
+}
+
 function getRuleBasedQuestion(params: {
   question: string
   known: ReturnType<typeof summariseKnownDetails>
 }): string | null {
   const { question, known } = params
-  const lower = question.toLowerCase()
-  const maintenanceLike = isMaintenanceOrPricingQuestion(question)
 
-  if (!maintenanceLike) {
+  if (!shouldUseEnquiryFlow({ question, known })) {
     return null
   }
 
+  const lower = question.toLowerCase()
   const hasWorkSummary = !!known.workSummary
   const hasHours = typeof known.estimatedHours === 'number' && known.estimatedHours > 0
   const hasAnyContact = !!known.customerPhone || !!known.customerEmail
@@ -392,8 +471,6 @@ function getRuleBasedQuestion(params: {
 }
 
 function buildPricingPrompt(params: {
-  worker: string
-  company: string
   question: string
   hasImage: boolean
   known: ReturnType<typeof summariseKnownDetails>
@@ -408,20 +485,12 @@ Trevor handles higher-risk judgement calls.
 
 Your job here:
 - Use the work description and time estimate to produce a sensible rough guide price.
-- Include likely materials/parts if the job clearly needs them.
-- Use practical judgement for common small works and maintenance tasks.
-- Do not act like the guide price is exact.
-- Do not be too low and do not be wildly high.
-- Be realistic for a small UK landscaping / property maintenance business.
-- If parts are clearly needed, factor them in.
-- If details are missing, stay conservative and say it is a rough guide.
+- Include likely materials or parts if the job clearly needs them.
+- Be realistic for a small UK landscaping and property maintenance business.
 - Keep the answer short and practical for a worker on site.
 - Ask only one best next question after the guide price if customer details are still missing.
-
-Important:
-- Never ask again for work details or time if they are already known.
+- Never ask again for information already provided.
 - Do not mention job context.
-- Do not output markdown.
 - Return valid JSON only.
 
 Return exactly this shape:
@@ -451,17 +520,10 @@ Next best missing question: ${params.nextQuestion || 'none'}
 
 Latest worker message:
 ${params.question}
-
-Rules for the reply:
-- "roughPriceText" should be a short guide price phrase, for example "Rough guide: around £140 to £190 including likely parts and labour. Kelly can confirm the final price."
-- "answer" should use that rough guide and then ask the nextQuestion if one exists.
-- If there is no nextQuestion and enough details are present, say you have enough to send to Kelly and set enquiryReadyForKelly true.
 `.trim()
 }
 
 function buildGeneralPrompt(params: {
-  worker: string
-  company: string
   question: string
   hasImage: boolean
   history: HistoryItem[]
@@ -481,7 +543,7 @@ function buildGeneralPrompt(params: {
 You are CHAS, a friendly and practical Furlads on-site helper for workers using phones.
 
 Your job:
-- Ask the right questions one at a time.
+- Reply naturally and helpfully.
 - Keep replies short, clear, and useful on site.
 - Do not waffle.
 - Do not mention internal rules.
@@ -492,9 +554,11 @@ Your job:
 - Kelly confirms final quotes.
 - Trevor handles higher-risk judgement calls.
 
-Critical logic rule:
-- Never ask again for information the worker has already provided.
-- Ask only one best next question at a time.
+Critical behaviour:
+- Do not force every message into a quote flow.
+- If the worker says something casual like "are you ok", "hello", or "thanks", reply normally.
+- Only move into enquiry questions when the worker is clearly talking about a job, a quote, a price, timing, materials, customer details, or a follow-up to an active enquiry.
+- Never ask again for information already provided.
 
 Output must be valid JSON only.
 No markdown.
@@ -520,12 +584,10 @@ Return exactly this shape:
   "enquiryReadyForKelly": false
 }
 
-Company: ${params.company}
-Worker: ${params.worker}
-Photo attached: ${params.hasImage ? 'yes' : 'no'}
-
 Known details:
 ${JSON.stringify(params.known, null, 2)}
+
+Photo attached: ${params.hasImage ? 'yes' : 'no'}
 
 Conversation so far today:
 ${historyText}
@@ -660,29 +722,21 @@ export async function POST(req: NextRequest) {
     })
 
     const known = summariseKnownDetails(history, question)
-    const nextQuestion = getRuleBasedQuestion({
-      question,
-      known
-    })
+    const enquiryFlow = shouldUseEnquiryFlow({ question, known })
+    const nextQuestion = enquiryFlow ? getRuleBasedQuestion({ question, known }) : null
 
     const hasWorkSummary = !!known.workSummary
     const hasHours = typeof known.estimatedHours === 'number' && known.estimatedHours > 0
-    const maintenanceLike = isMaintenanceOrPricingQuestion(question)
-
-    const usePricingModel = maintenanceLike && hasWorkSummary && hasHours
+    const usePricingModel = enquiryFlow && hasWorkSummary && hasHours
 
     const prompt = usePricingModel
       ? buildPricingPrompt({
-          worker,
-          company,
           question,
           hasImage: !!imageDataUrl,
           known,
           nextQuestion
         })
       : buildGeneralPrompt({
-          worker,
-          company,
           question,
           hasImage: !!imageDataUrl,
           history,
@@ -763,8 +817,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        answer:
-          'No problem — tell me what the customer wants doing, and roughly how long you think it will take.',
+        answer: 'Yeah all good 👍 What do you need help with?',
         intent: 'general',
         confidence: 0.2,
         escalateTo: 'none',
