@@ -1,126 +1,134 @@
-export const CHAS_PRICING_CONTEXT = `
-FURLADS PRICING KNOWLEDGE
+import prisma from '@/lib/prisma'
 
-CHAS must follow these pricing principles when workers ask about rough prices.
+function cleanLine(label: string, value: unknown) {
+  const text =
+    typeof value === 'string'
+      ? value.trim()
+      : value == null
+        ? ''
+        : String(value)
 
-IMPORTANT
-Workers are NOT giving final quotes.
-All prices must be described as rough guide prices only.
-Final quotes are always confirmed by Kelly.
+  return text ? `${label}: ${text}` : ''
+}
 
-Always include wording similar to:
-"This is a rough guide price only. Kelly will confirm the proper quote."
+function formatDate(value: Date | string | null | undefined) {
+  if (!value) return ''
 
-ROUGH PRICE MODE
-When a worker asks for a price, cost, estimate, rough quote, guide price, or what to charge:
-- give a rough guide range, not a fixed final price
-- mention what assumptions affect the range
-- keep the answer practical
-- do not overpromise
-- if the job is unclear, say so
-- if the photo or description is too limited, say the estimate is only a broad guide
+  const date = value instanceof Date ? value : new Date(value)
 
-LABOUR STRUCTURE
-Typical install team cost:
-£650 per day for a two-man team with a van.
+  if (Number.isNaN(date.getTime())) return ''
 
-This covers:
-- wages
-- van
-- fuel
-- overhead
-- profit margin
+  return date.toISOString().split('T')[0]
+}
 
-IMPORTANT LABOUR RULE
-Even if a job looks short, it can still take a full chargeable day because of:
-- loading
-- travel
-- setup
-- waste removal
-- return to yard
-- collection of materials
+export async function buildChasPropertyContext(jobId: number | null | undefined) {
+  if (!jobId || !Number.isInteger(jobId)) {
+    return {
+      currentJobText: 'No specific job selected.',
+      relatedHistoryText: 'No property history available because no current job was supplied.'
+    }
+  }
 
-MATERIAL RULES
-All materials should include markup.
+  const currentJob = await prisma.job.findUnique({
+    where: { id: jobId },
+    include: {
+      customer: true
+    }
+  })
 
-Assume:
-+20% markup on materials.
+  if (!currentJob) {
+    return {
+      currentJobText: 'Selected job was not found.',
+      relatedHistoryText: 'No property history available because the selected job was not found.'
+    }
+  }
 
-CONSUMABLES
-Jobs should include allowance for consumables:
-- blades
-- discs
-- fixings
-- screws
-- bits
-- adhesives
-- other throwaway items
+  const currentJobTextLines = [
+    cleanLine('Job ID', currentJob.id),
+    cleanLine('Title', (currentJob as { title?: string | null }).title),
+    cleanLine('Status', (currentJob as { status?: string | null }).status),
+    cleanLine('Job type', (currentJob as { jobType?: string | null }).jobType),
+    cleanLine('Address', (currentJob as { address?: string | null }).address),
+    cleanLine('Customer', currentJob.customer?.name),
+    cleanLine('Customer phone', currentJob.customer?.phone),
+    cleanLine('Customer postcode', currentJob.customer?.postcode),
+    cleanLine('Job notes', (currentJob as { notes?: string | null }).notes)
+  ].filter(Boolean)
 
-WASTE
-Waste removal should always be considered.
+  const currentJobAddress = (currentJob as { address?: string | null }).address?.trim() || ''
+  const currentCustomerId =
+    typeof (currentJob as { customerId?: number | null }).customerId === 'number'
+      ? (currentJob as { customerId?: number | null }).customerId
+      : null
+  const currentPostcode = currentJob.customer?.postcode?.trim() || ''
 
-Typical rate:
-£25 per ton bag.
+  const orFilters: Array<Record<string, unknown>> = []
 
-ACCESS AND COMPLEXITY
-Poor access increases labour and should widen the rough estimate range.
+  if (currentJobAddress) {
+    orFilters.push({ address: currentJobAddress })
+  }
 
-Examples:
-- narrow access
-- steps
-- distance from van
-- awkward shapes
-- difficult digging
-- concrete and roots
-- heavy waste
-- traffic/public frontage
+  if (currentCustomerId) {
+    orFilters.push({ customerId: currentCustomerId })
+  }
 
-COMMON ROUGH GUIDE PRICES
+  if (currentPostcode) {
+    orFilters.push({
+      customer: {
+        postcode: currentPostcode
+      }
+    })
+  }
 
-Porcelain patio install:
-Approx £155 per m² supplied and installed, excluding VAT.
+  if (!orFilters.length) {
+    return {
+      currentJobText: currentJobTextLines.join('\n') || 'No current job details found.',
+      relatedHistoryText:
+        'No related job history found because there is not enough property/customer information.'
+    }
+  }
 
-Fencing:
-Typical rough guide is often around £120–£180 per bay depending on materials, digging, and conditions.
+  const relatedJobs = await prisma.job.findMany({
+    where: {
+      id: { not: currentJob.id },
+      OR: orFilters
+    },
+    include: {
+      customer: true
+    },
+    orderBy: {
+      createdAt: 'desc'
+    },
+    take: 8
+  })
 
-Garden clearance:
-Usually priced by time, waste, and access.
-Small to moderate clearances often land in broad ranges rather than exact figures.
+  if (!relatedJobs.length) {
+    return {
+      currentJobText: currentJobTextLines.join('\n') || 'No current job details found.',
+      relatedHistoryText: 'No recent related jobs or quotes were found for this customer/property.'
+    }
+  }
 
-Small garden tidy:
-Typical rough guide often around £150–£350 depending on waste and time.
+  const relatedHistoryText = relatedJobs
+    .map((job, index) => {
+      const lines = [
+        `Related item ${index + 1}`,
+        cleanLine('Date', formatDate((job as { createdAt?: Date | string | null }).createdAt)),
+        cleanLine('Job ID', job.id),
+        cleanLine('Title', (job as { title?: string | null }).title),
+        cleanLine('Job type', (job as { jobType?: string | null }).jobType),
+        cleanLine('Status', (job as { status?: string | null }).status),
+        cleanLine('Address', (job as { address?: string | null }).address),
+        cleanLine('Customer', job.customer?.name),
+        cleanLine('Notes', (job as { notes?: string | null }).notes)
+      ].filter(Boolean)
 
-Hedge cutting:
-Typical rough guide often around £80–£300 depending on size, height, and waste.
+      return lines.join('\n')
+    })
+    .join('\n\n')
 
-Small gravel areas:
-Typical rough guide often around £300–£1000 depending on area size and prep required.
-
-HOW CHAS SHOULD TALK ABOUT PRICING
-CHAS should say:
-- what the rough guide is
-- what assumptions affect it
-- that Kelly will confirm the quote
-
-Example customer wording:
-"A rough guide is around £X to £Y, but Kelly will confirm the proper quote once we've checked everything."
-
-WHEN TO ESCALATE PRICING TO TREVOR
-Escalate to Trevor when:
-- there is a major change of scope
-- the work is unusual or high risk
-- there may be structural or major ground issues
-- a severe hedge reduction or major removal is involved
-- there is likely commercial risk in guessing
-
-WHEN TO ESCALATE PRICING TO KELLY
-Escalate to Kelly when:
-- the customer wants the formal quote confirmed
-- the worker needs wording for a follow-up quote
-- the job needs booking/admin follow-up
-- a revisit is needed
-
-VERY IMPORTANT
-Final pricing is confirmed by Kelly.
-CHAS gives rough guide pricing only.
-`
+  return {
+    currentJobText: currentJobTextLines.join('\n') || 'No current job details found.',
+    relatedHistoryText
+  }
+}
