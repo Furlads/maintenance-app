@@ -923,6 +923,21 @@ Heavy rain made it unsafe`,
                 </button>
               </>
             )}
+
+            <a
+              href={`/jobs/${activeJob.id}`}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 8,
+                border: '1px solid #ccc',
+                background: '#fff',
+                color: 'inherit',
+                textDecoration: 'none',
+                display: 'inline-block'
+              }}
+            >
+              Open Job
+            </a>
           </div>
         </div>
       )}
