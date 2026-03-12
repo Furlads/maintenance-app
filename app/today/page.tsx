@@ -423,6 +423,11 @@ export default function TodayPage() {
     return visibleJobs.find((job) => job.isStarted || job.isPaused) || null
   }, [visibleJobs])
 
+  const listJobs = useMemo(() => {
+    if (!activeJob) return visibleJobs
+    return visibleJobs.filter((job) => job.id !== activeJob.id)
+  }, [visibleJobs, activeJob])
+
   async function handleStartJob(jobId: number) {
     try {
       setBusyJobId(jobId)
@@ -961,13 +966,13 @@ Heavy rain made it unsafe`,
         <p>No worker selected. Go back and choose a worker first.</p>
       )}
 
-      {!loading && !error && workerId && visibleJobs.length === 0 && (
+      {!loading && !error && workerId && listJobs.length === 0 && !activeJob && (
         <p>No open jobs assigned to you.</p>
       )}
 
       {!loading &&
         !error &&
-        visibleJobs.map((job, index) => {
+        listJobs.map((job, index) => {
           const navigationQuery =
             job.customer?.postcode || job.address || job.customer?.address || ''
 
@@ -977,7 +982,7 @@ Heavy rain made it unsafe`,
           const totalTime = formatDurationMinutes(startedAt, completedAt)
           const livePausedMinutes = job.isPaused ? getPausedLiveMinutes(job, now) : 0
 
-          const firstCollapsedHeadlineIndex = visibleJobs.findIndex(
+          const firstCollapsedHeadlineIndex = listJobs.findIndex(
             (item) => item.isWaiting
           )
 
