@@ -127,6 +127,7 @@ model ChasMessage {
   answer                String
   imageDataUrl          String?
   responseId            String?
+  conversationId        String?
   createdAt             DateTime @default(now())
 
   intent                String?
@@ -151,4 +152,5 @@ model ChasMessage {
   @@index([company, worker, createdAt])
   @@index([jobId])
   @@index([enquiryReadyForKelly, createdAt])
+  @@index([conversationId])
 }

@@ -69,7 +69,7 @@ How to behave:
 async function callOpenAI(params: {
   question: string
   imageDataUrl?: string
-  previousResponseId?: string
+  conversationId?: string
 }) {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -97,6 +97,7 @@ async function callOpenAI(params: {
   const body: Record<string, unknown> = {
     model,
     instructions: buildInstructions(),
+    store: true,
     input: [
       {
         role: "user",
@@ -106,9 +107,9 @@ async function callOpenAI(params: {
     temperature: 0.6,
   }
 
-  const previousResponseId = cleanString(params.previousResponseId)
-  if (previousResponseId) {
-    body.previous_response_id = previousResponseId
+  const conversationId = cleanString(params.conversationId)
+  if (conversationId) {
+    body.conversation = conversationId
   }
 
   const response = await fetch("https://api.openai.com/v1/responses", {
@@ -135,6 +136,10 @@ async function callOpenAI(params: {
   return {
     answer: normaliseText(answer),
     responseId: typeof data?.id === "string" ? data.id : "",
+    conversationId:
+      typeof data?.conversation?.id === "string"
+        ? data.conversation.id
+        : conversationId,
   }
 }
 
@@ -159,14 +164,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing question." }, { status: 400 })
     }
 
-    let previousResponseId = ""
+    let conversationId = ""
 
     try {
       const lastMessage = await prisma.chasMessage.findFirst({
         where: {
           company,
           worker,
-          responseId: {
+          conversationId: {
             not: null,
           },
         },
@@ -174,20 +179,25 @@ export async function POST(req: NextRequest) {
           createdAt: "desc",
         },
         select: {
-          responseId: true,
+          conversationId: true,
         },
       })
 
-      previousResponseId = cleanString(lastMessage?.responseId)
+      conversationId = cleanString(lastMessage?.conversationId)
+      console.log("CHAS conversationId loaded:", conversationId || "[none]")
     } catch (error) {
-      console.error("Failed to load previous CHAS response ID", error)
+      console.error("Failed to load previous CHAS conversation ID", error)
     }
 
     const result = await callOpenAI({
       question,
       imageDataUrl,
-      previousResponseId,
+      conversationId,
     })
+
+    console.log("CHAS conversationId returned:", result.conversationId || "[none]")
+    console.log("CHAS responseId returned:", result.responseId || "[none]")
+    console.log("CHAS current message has image:", imageDataUrl ? "yes" : "no")
 
     try {
       await prisma.chasMessage.create({
@@ -199,6 +209,7 @@ export async function POST(req: NextRequest) {
           answer: result.answer,
           imageDataUrl: imageDataUrl || null,
           responseId: result.responseId || null,
+          conversationId: result.conversationId || null,
           intent: "general",
           confidence: 0.9,
           escalateTo: "none",
