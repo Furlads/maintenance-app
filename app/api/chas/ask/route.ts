@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import prisma from '@/lib/prisma'
 import { buildChasSystemPrompt } from '@/lib/chasSystemPrompt'
+import { buildChasPropertyContext } from '@/lib/chasPropertyContext'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -27,7 +28,7 @@ type ParsedChasResponse = {
     | 'safety'
     | 'customer_explanation'
     | 'job_next_step'
-    | 'materials_or_tools'
+    | 'pricing'
     | 'damage_or_problem'
     | 'escalation_required'
     | 'general'
@@ -66,7 +67,7 @@ function normaliseParsedResponse(input: Partial<ParsedChasResponse> | null): Par
     'safety',
     'customer_explanation',
     'job_next_step',
-    'materials_or_tools',
+    'pricing',
     'damage_or_problem',
     'escalation_required',
     'general'
@@ -116,37 +117,6 @@ function endOfToday() {
   return d
 }
 
-async function getJobContextText(jobId: number | null | undefined) {
-  if (!jobId || !Number.isInteger(jobId)) {
-    return 'No specific job selected.'
-  }
-
-  const job = await prisma.job.findUnique({
-    where: { id: jobId },
-    include: {
-      customer: true
-    }
-  })
-
-  if (!job) {
-    return 'Selected job was not found.'
-  }
-
-  const lines = [
-    `Job ID: ${job.id}`,
-    `Title: ${job.title || ''}`,
-    `Status: ${job.status || ''}`,
-    `Job type: ${job.jobType || ''}`,
-    `Address: ${job.address || ''}`,
-    `Customer: ${job.customer?.name || ''}`,
-    `Customer phone: ${job.customer?.phone || ''}`,
-    `Customer postcode: ${job.customer?.postcode || ''}`,
-    `Job notes: ${job.notes || ''}`
-  ].filter(Boolean)
-
-  return lines.join('\n')
-}
-
 async function getHistoryText(company: string, worker: string, jobId: number | null | undefined) {
   const where =
     jobId && Number.isInteger(jobId)
@@ -182,10 +152,7 @@ async function getHistoryText(company: string, worker: string, jobId: number | n
 
   return messages
     .map((message) => {
-      const parts = [
-        `Worker: ${message.question}`,
-        `CHAS: ${message.answer}`
-      ]
+      const parts = [`Worker: ${message.question}`, `CHAS: ${message.answer}`]
 
       if (message.imageDataUrl) {
         parts.push('Worker attached an image with that message.')
@@ -223,7 +190,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AskBody
 
-    const company = cleanString(body.company) || 'furlads'
+    const company = cleanString(body.company) || 'Furlads'
     const worker = cleanString(body.worker)
     const question = cleanString(body.question)
     const imageDataUrl = cleanString(body.imageDataUrl)
@@ -245,14 +212,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const jobContextText = await getJobContextText(jobId)
+    const { currentJobText, relatedHistoryText } = await buildChasPropertyContext(jobId)
     const historyText = await getHistoryText(company, worker, jobId)
 
     const systemPrompt = buildChasSystemPrompt({
       company,
       worker,
       currentDateIso: new Date().toISOString(),
-      jobContextText,
+      currentJobText,
+      relatedHistoryText,
       historyText
     })
 
@@ -290,7 +258,7 @@ export async function POST(req: NextRequest) {
           content
         }
       ],
-      max_output_tokens: 700
+      max_output_tokens: 900
     })
 
     const rawText = extractTextFromResponse(response)
