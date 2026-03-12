@@ -3,6 +3,14 @@ import prisma from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
+type AskBody = {
+  company?: string
+  worker?: string
+  jobId?: number | null
+  question?: string
+  imageDataUrl?: string
+}
+
 type ChasIntent =
   | 'general'
   | 'plant_id'
@@ -20,27 +28,18 @@ type ChasModelResponse = {
   confidence: number
   escalateTo: ChasEscalateTo
   safetyFlag: boolean
-  enquirySuggested?: boolean
-  enquiryTitle?: string
+
+  customerName?: string
+  customerPhone?: string
+  customerEmail?: string
+  customerAddress?: string
+  customerPostcode?: string
+
+  workSummary?: string
+  estimatedHours?: number | null
+  roughPriceText?: string
   enquirySummary?: string
-}
-
-type ChatMessage = {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-}
-
-type RequestBody = {
-  company?: string
-  worker?: string
-  question?: string
-  imageDataUrl?: string
-  jobId?: number | string | null
-
-  message?: string
-  messages?: ChatMessage[]
-  includeJobContext?: boolean
-  jobContext?: unknown
+  enquiryReadyForKelly?: boolean
 }
 
 function cleanString(value: unknown) {
@@ -54,30 +53,10 @@ function clampConfidence(value: unknown): number {
   return value
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function stripCodeFences(input: string): string {
-  let text = input.trim()
-
-  if (text.startsWith('```json')) {
-    text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '')
-  } else if (text.startsWith('```')) {
-    text = text.replace(/^```\s*/i, '').replace(/\s*```$/i, '')
-  }
-
-  return text.trim()
-}
-
-function normaliseAnswer(answer: unknown): string {
-  if (typeof answer !== 'string') return ''
-  return answer.replace(/\s+/g, ' ').trim()
-}
-
-function normaliseOptionalText(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  return value.replace(/\s+/g, ' ').trim()
+function clampHours(value: unknown): number | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null
+  if (value <= 0) return null
+  return Math.round(value * 100) / 100
 }
 
 function startOfToday() {
@@ -92,253 +71,143 @@ function endOfToday() {
   return d
 }
 
-function toJobId(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    const n = Math.trunc(value)
-    return n > 0 ? n : null
+function stripCodeFences(input: string) {
+  let text = input.trim()
+
+  if (text.startsWith('```json')) {
+    text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '')
+  } else if (text.startsWith('```')) {
+    text = text.replace(/^```\s*/i, '').replace(/\s*```$/i, '')
   }
 
-  if (typeof value === 'string' && value.trim()) {
-    const n = Number(value)
-    if (Number.isFinite(n)) {
-      const safe = Math.trunc(n)
-      return safe > 0 ? safe : null
+  return text.trim()
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function normaliseText(value: unknown) {
+  if (typeof value !== 'string') return ''
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function buildFallback(question: string): ChasModelResponse {
+  const lower = question.toLowerCase()
+
+  if (
+    lower.includes('price') ||
+    lower.includes('quote') ||
+    lower.includes('cost') ||
+    lower.includes('maintenance')
+  ) {
+    return {
+      answer:
+        'No problem — what exactly does the customer want doing, and roughly how long do you think it will take?',
+      intent: 'enquiry_intake',
+      confidence: 0.35,
+      escalateTo: 'kelly',
+      safetyFlag: false,
+      enquiryReadyForKelly: false
     }
   }
 
-  return null
-}
-
-function buildFallbackResponse(rawText: string): ChasModelResponse {
-  const cleaned = stripCodeFences(rawText)
-
   return {
     answer:
-      normaliseAnswer(cleaned) ||
-      'I’m not fully sure on that one yet. For maintenance jobs, tell me what needs doing and roughly how long you think it will take, and I’ll help with a guide price for Kelly.',
+      'Tell me a bit more about what the customer wants, and I’ll help you work through it one step at a time.',
     intent: 'general',
     confidence: 0.35,
     escalateTo: 'none',
     safetyFlag: false,
-    enquirySuggested: false,
-    enquiryTitle: '',
-    enquirySummary: ''
+    enquiryReadyForKelly: false
   }
 }
 
-function validateParsedResponse(parsed: unknown, rawText: string): ChasModelResponse {
+function validateModelResponse(parsed: unknown, rawText: string, question: string): ChasModelResponse {
   if (!isObject(parsed)) {
-    return buildFallbackResponse(rawText)
+    return buildFallback(rawText || question)
   }
 
-  const answer = normaliseAnswer(parsed.answer)
-  const intent = typeof parsed.intent === 'string' ? parsed.intent : 'general'
-  const confidence = clampConfidence(parsed.confidence)
-  const escalateTo =
-    parsed.escalateTo === 'kelly' || parsed.escalateTo === 'trevor' || parsed.escalateTo === 'none'
-      ? parsed.escalateTo
+  const intent = normaliseText(parsed.intent)
+  const escalateTo = normaliseText(parsed.escalateTo)
+
+  const safeIntent: ChasIntent = (
+    [
+      'general',
+      'plant_id',
+      'pricing_guide',
+      'safety',
+      'quote_support',
+      'enquiry_intake',
+      'escalation'
+    ] as const
+  ).includes(intent as ChasIntent)
+    ? (intent as ChasIntent)
+    : 'general'
+
+  const safeEscalateTo: ChasEscalateTo =
+    escalateTo === 'kelly' || escalateTo === 'trevor' || escalateTo === 'none'
+      ? (escalateTo as ChasEscalateTo)
       : 'none'
-  const safetyFlag = typeof parsed.safetyFlag === 'boolean' ? parsed.safetyFlag : false
-  const enquirySuggested = typeof parsed.enquirySuggested === 'boolean' ? parsed.enquirySuggested : false
-  const enquiryTitle = normaliseOptionalText(parsed.enquiryTitle)
-  const enquirySummary = normaliseOptionalText(parsed.enquirySummary)
+
+  const answer = normaliseText(parsed.answer)
 
   return {
     answer:
       answer ||
-      'I’m not fully sure on that one yet. For maintenance jobs, tell me what needs doing and roughly how long you think it will take, and I’ll help with a guide price for Kelly.',
-    intent: (
-      [
-        'general',
-        'plant_id',
-        'pricing_guide',
-        'safety',
-        'quote_support',
-        'enquiry_intake',
-        'escalation'
-      ] as const
-    ).includes(intent as ChasIntent)
-      ? (intent as ChasIntent)
-      : 'general',
-    confidence,
-    escalateTo,
-    safetyFlag,
-    enquirySuggested,
-    enquiryTitle,
-    enquirySummary
+      buildFallback(question).answer,
+    intent: safeIntent,
+    confidence: clampConfidence(parsed.confidence),
+    escalateTo: safeEscalateTo,
+    safetyFlag: typeof parsed.safetyFlag === 'boolean' ? parsed.safetyFlag : false,
+
+    customerName: normaliseText(parsed.customerName),
+    customerPhone: normaliseText(parsed.customerPhone),
+    customerEmail: normaliseText(parsed.customerEmail),
+    customerAddress: normaliseText(parsed.customerAddress),
+    customerPostcode: normaliseText(parsed.customerPostcode),
+
+    workSummary: normaliseText(parsed.workSummary),
+    estimatedHours: clampHours(parsed.estimatedHours),
+    roughPriceText: normaliseText(parsed.roughPriceText),
+    enquirySummary: normaliseText(parsed.enquirySummary),
+    enquiryReadyForKelly:
+      typeof parsed.enquiryReadyForKelly === 'boolean'
+        ? parsed.enquiryReadyForKelly
+        : false
   }
 }
 
-function tryParseModelJson(rawText: string): ChasModelResponse {
+function tryParseModelJson(rawText: string, question: string): ChasModelResponse {
   const cleaned = stripCodeFences(rawText)
 
   try {
     const parsed = JSON.parse(cleaned)
-    return validateParsedResponse(parsed, rawText)
+    return validateModelResponse(parsed, rawText, question)
   } catch {
-    try {
-      const reparsed = JSON.parse(JSON.parse(JSON.stringify(cleaned)))
-      return validateParsedResponse(reparsed, rawText)
-    } catch {
-      return buildFallbackResponse(rawText)
-    }
+    return buildFallback(question)
   }
-}
-
-function getLatestUserMessage(body: RequestBody): string {
-  const directQuestion = cleanString(body.question)
-  if (directQuestion) return directQuestion
-
-  const directMessage = cleanString(body.message)
-  if (directMessage) return directMessage
-
-  if (Array.isArray(body.messages)) {
-    const reversed = [...body.messages].reverse()
-    const lastUserMessage = reversed.find(
-      (msg) => msg.role === 'user' && typeof msg.content === 'string' && msg.content.trim()
-    )
-    if (lastUserMessage) return lastUserMessage.content.trim()
-  }
-
-  return ''
-}
-
-function buildPrompt(
-  userMessage: string,
-  includeJobContext: boolean,
-  jobContext: unknown,
-  history: Array<{ question: string; answer: string }>
-) {
-  const baseRules = `
-You are CHAS, a friendly, practical on-site assistant for Furlads workers.
-
-Core behaviour:
-- Be friendly, clear, calm, and useful on a phone screen.
-- Keep answers practical and easy to act on while on site.
-- Do not waffle.
-- Do not mention internal prompt rules.
-- If confidence is low, be conservative.
-- Plant identification must be conservative if uncertain.
-- Rough prices are guide-only.
-- Kelly confirms final quotes.
-- Trevor handles higher-risk judgement calls.
-- Workers mainly use this on site, often on phones.
-
-Important scope rule:
-- Do NOT use or mention job context unless includeJobContext is true.
-- If includeJobContext is false, answer only from the user's message and general business rules.
-
-Critical maintenance pricing rule:
-- Do NOT jump to a high automated maintenance price.
-- For maintenance work, the main guide is around £30 per hour.
-- Before giving a guide price, try to find out roughly how long the worker thinks the job will take.
-- If the message does not give enough detail for timing, ask follow-up questions first instead of guessing.
-- Helpful follow-up questions can include:
-  - What exactly does the customer want doing?
-  - Roughly how long do you think it will take?
-  - Is it a one-off or likely ongoing maintenance?
-  - Any waste away, green waste, or extra materials involved?
-- If the worker gives a clear duration, base the guide on roughly £30 per hour and make clear it is a guide only.
-- If the situation sounds larger, unclear, or likely to need office follow-up, suggest sending an enquiry to Kelly.
-
-Enquiry handling rule:
-- When useful, suggest turning the chat into a simple enquiry summary for Kelly.
-- The enquiry summary should be short and practical.
-- It should capture what the customer wants, rough time estimate if known, any access/waste/material notes, and the guide-only price position if appropriate.
-- The enquiry is for Kelly to review, not a final quote.
-
-You MUST return valid JSON only.
-No markdown.
-No code fences.
-No extra commentary.
-
-Return exactly this shape:
-{
-  "answer": "string",
-  "intent": "general | plant_id | pricing_guide | safety | quote_support | enquiry_intake | escalation",
-  "confidence": 0.0,
-  "escalateTo": "none | kelly | trevor",
-  "safetyFlag": false,
-  "enquirySuggested": false,
-  "enquiryTitle": "string",
-  "enquirySummary": "string"
-}
-`.trim()
-
-  const safetyHints = `
-Escalation guidance:
-- Use "kelly" for final pricing, quote confirmation, or office follow-up.
-- Use "trevor" for higher-risk judgement calls, unclear safety situations, structural concerns, major liability, or anything that should not be guessed.
-- Use safetyFlag=true if there is any meaningful safety concern or the user may need to stop and check before continuing.
-
-Answer style:
-- Keep "answer" short, useful, and worker-friendly.
-- Keep it conversational and practical.
-- No bullet lists unless genuinely needed.
-- Prefer direct next-step guidance.
-- If pricing is not ready, ask the next best question instead.
-- For maintenance pricing, asking for time estimate is usually better than guessing.
-`.trim()
-
-  const historyText = history.length
-    ? `Recent conversation today:\n${history
-        .map(
-          (item, index) =>
-            `Turn ${index + 1} user: ${item.question}\nTurn ${index + 1} chas: ${item.answer}`
-        )
-        .join('\n\n')}`
-    : 'Recent conversation today:\nNone.'
-
-  if (!includeJobContext) {
-    return `${baseRules}
-
-${safetyHints}
-
-${historyText}
-
-User message:
-${userMessage}`
-  }
-
-  return `${baseRules}
-
-${safetyHints}
-
-${historyText}
-
-includeJobContext is true.
-You may use the job context below only if it genuinely helps answer the question.
-
-Job context:
-${JSON.stringify(jobContext ?? {}, null, 2)}
-
-User message:
-${userMessage}`
 }
 
 async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY
+
   if (!apiKey) {
     throw new Error('Missing OPENAI_API_KEY')
   }
 
   const model = process.env.CHAS_MODEL || process.env.OPENAI_MODEL || 'gpt-4.1-mini'
 
-  const input: any[] = [
+  const content: Array<Record<string, unknown>> = [
     {
-      role: 'user',
-      content: [
-        {
-          type: 'input_text',
-          text: prompt
-        }
-      ]
+      type: 'input_text',
+      text: prompt
     }
   ]
 
   const cleanImage = cleanString(imageDataUrl)
   if (cleanImage) {
-    input[0].content.push({
+    content.push({
       type: 'input_image',
       image_url: cleanImage
     })
@@ -352,7 +221,12 @@ async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string
     },
     body: JSON.stringify({
       model,
-      input,
+      input: [
+        {
+          role: 'user',
+          content
+        }
+      ],
       temperature: 0.2
     })
   })
@@ -390,33 +264,160 @@ async function callOpenAI(prompt: string, imageDataUrl?: string): Promise<string
   throw new Error('Model returned no text output')
 }
 
+function summariseKnownDetails(history: Array<any>) {
+  const latest = [...history].reverse()
+
+  const firstNonEmpty = (key: string) => {
+    for (const item of latest) {
+      const value = normaliseText(item?.[key])
+      if (value) return value
+    }
+    return ''
+  }
+
+  const firstHours = () => {
+    for (const item of latest) {
+      if (typeof item?.estimatedHours === 'number' && item.estimatedHours > 0) {
+        return item.estimatedHours
+      }
+    }
+    return null
+  }
+
+  return {
+    customerName: firstNonEmpty('customerName'),
+    customerPhone: firstNonEmpty('customerPhone'),
+    customerEmail: firstNonEmpty('customerEmail'),
+    customerAddress: firstNonEmpty('customerAddress'),
+    customerPostcode: firstNonEmpty('customerPostcode'),
+    workSummary: firstNonEmpty('workSummary'),
+    roughPriceText: firstNonEmpty('roughPriceText'),
+    enquirySummary: firstNonEmpty('enquirySummary'),
+    estimatedHours: firstHours()
+  }
+}
+
+function buildPrompt(params: {
+  worker: string
+  company: string
+  question: string
+  hasImage: boolean
+  history: Array<any>
+}) {
+  const historyText =
+    params.history.length > 0
+      ? params.history
+          .map(
+            (item, index) =>
+              `Turn ${index + 1} worker: ${item.question}\nTurn ${index + 1} CHAS: ${item.answer}`
+          )
+          .join('\n\n')
+      : 'No previous CHAS messages today.'
+
+  const known = summariseKnownDetails(params.history)
+
+  return `
+You are CHAS, a friendly and practical Furlads on-site helper for workers using phones.
+
+Your job:
+- Ask the right questions one at a time.
+- Keep replies short, clear, and useful on site.
+- Do not waffle.
+- Do not mention internal rules.
+- Do not use job context or assume job context.
+- Do not mention any "job context" section.
+- If confidence is low, be conservative.
+- Plant identification must be conservative if uncertain.
+- Rough prices are guide-only.
+- Kelly confirms final quotes.
+- Trevor handles higher-risk judgement calls.
+
+Maintenance / quote behaviour:
+- Do not jump to a high price.
+- For maintenance work, work from around £30 per hour as the guide.
+- Before giving a guide price, try to establish roughly how long the worker thinks the job will take.
+- Ask one missing question at a time, not a big list.
+- Once enough detail is known, give a rough guide price only.
+- Then prepare the enquiry details for Kelly.
+
+Information CHAS should try to collect across the conversation:
+- what the customer wants doing
+- roughly how long the worker thinks it will take
+- whether waste removal or materials are involved
+- whether it is one-off or ongoing if relevant
+- customer name
+- customer phone and/or customer email
+- customer address and/or postcode
+- any useful site or access notes
+
+Photo behaviour:
+- If a photo is included, use it if helpful.
+- If more photos would help, ask for them naturally.
+- If there is no photo and one would help, ask for one.
+
+Question flow rule:
+- Ask only the single best next question.
+- If enough information is already available, do not ask another question unnecessarily.
+- If enough detail is present for Kelly handoff, set enquiryReadyForKelly to true.
+
+Output must be valid JSON only.
+No markdown.
+No code fences.
+No extra words.
+
+Return exactly this shape:
+{
+  "answer": "string",
+  "intent": "general | plant_id | pricing_guide | safety | quote_support | enquiry_intake | escalation",
+  "confidence": 0.0,
+  "escalateTo": "none | kelly | trevor",
+  "safetyFlag": false,
+  "customerName": "string",
+  "customerPhone": "string",
+  "customerEmail": "string",
+  "customerAddress": "string",
+  "customerPostcode": "string",
+  "workSummary": "string",
+  "estimatedHours": 0,
+  "roughPriceText": "string",
+  "enquirySummary": "string",
+  "enquiryReadyForKelly": false
+}
+
+Company: ${params.company}
+Worker: ${params.worker}
+Photo attached: ${params.hasImage ? 'yes' : 'no'}
+
+Known details from earlier today:
+${JSON.stringify(known, null, 2)}
+
+Conversation so far today:
+${historyText}
+
+Latest worker message:
+${params.question}
+`.trim()
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as RequestBody
+    const body = (await req.json()) as AskBody
 
     const company = cleanString(body.company) || 'furlads'
     const worker = cleanString(body.worker)
-    const question = getLatestUserMessage(body)
+    const question = cleanString(body.question)
     const imageDataUrl = cleanString(body.imageDataUrl)
-    const jobId = toJobId(body.jobId)
-    const includeJobContext = body.includeJobContext === true
+    const jobId =
+      typeof body.jobId === 'number' && Number.isFinite(body.jobId)
+        ? body.jobId
+        : null
 
     if (!worker) {
-      return NextResponse.json(
-        {
-          error: 'Worker is required.'
-        },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Missing worker.' }, { status: 400 })
     }
 
     if (!question) {
-      return NextResponse.json(
-        {
-          error: 'Question is required.'
-        },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Missing question.' }, { status: 400 })
     }
 
     const history = await prisma.chasMessage.findMany({
@@ -434,54 +435,98 @@ export async function POST(req: NextRequest) {
       take: 20,
       select: {
         question: true,
-        answer: true
+        answer: true,
+        customerName: true,
+        customerPhone: true,
+        customerEmail: true,
+        customerAddress: true,
+        customerPostcode: true,
+        workSummary: true,
+        estimatedHours: true,
+        roughPriceText: true,
+        enquirySummary: true
       }
     })
 
-    const prompt = buildPrompt(question, includeJobContext, body.jobContext, history)
+    const prompt = buildPrompt({
+      worker,
+      company,
+      question,
+      hasImage: !!imageDataUrl,
+      history
+    })
+
     const rawModelText = await callOpenAI(prompt, imageDataUrl)
-    const parsed = tryParseModelJson(rawModelText)
+    const parsed = tryParseModelJson(rawModelText, question)
 
     await prisma.chasMessage.create({
       data: {
         company,
         worker,
-        jobId: jobId ?? undefined,
+        jobId,
         question,
         answer: parsed.answer,
-        imageDataUrl: imageDataUrl || ''
-      }
-    })
+        imageDataUrl: imageDataUrl || null,
 
-    return NextResponse.json(
-      {
-        ok: true,
-        answer: parsed.answer,
         intent: parsed.intent,
         confidence: parsed.confidence,
         escalateTo: parsed.escalateTo,
         safetyFlag: parsed.safetyFlag,
-        enquirySuggested: parsed.enquirySuggested ?? false,
-        enquiryTitle: parsed.enquiryTitle || '',
-        enquirySummary: parsed.enquirySummary || ''
-      },
-      { status: 200 }
-    )
+
+        customerName: parsed.customerName || null,
+        customerPhone: parsed.customerPhone || null,
+        customerEmail: parsed.customerEmail || null,
+        customerAddress: parsed.customerAddress || null,
+        customerPostcode: parsed.customerPostcode || null,
+
+        workSummary: parsed.workSummary || null,
+        estimatedHours: parsed.estimatedHours ?? null,
+        roughPriceText: parsed.roughPriceText || null,
+        enquirySummary: parsed.enquirySummary || null,
+        enquiryReadyForKelly: parsed.enquiryReadyForKelly === true
+      }
+    })
+
+    return NextResponse.json({
+      ok: true,
+      answer: parsed.answer,
+      intent: parsed.intent,
+      confidence: parsed.confidence,
+      escalateTo: parsed.escalateTo,
+      safetyFlag: parsed.safetyFlag,
+      customerName: parsed.customerName || '',
+      customerPhone: parsed.customerPhone || '',
+      customerEmail: parsed.customerEmail || '',
+      customerAddress: parsed.customerAddress || '',
+      customerPostcode: parsed.customerPostcode || '',
+      workSummary: parsed.workSummary || '',
+      estimatedHours: parsed.estimatedHours ?? null,
+      roughPriceText: parsed.roughPriceText || '',
+      enquirySummary: parsed.enquirySummary || '',
+      enquiryReadyForKelly: parsed.enquiryReadyForKelly === true
+    })
   } catch (error) {
-    console.error('CHAS ask route error:', error)
+    console.error('POST /api/chas/ask failed', error)
 
     return NextResponse.json(
       {
         ok: false,
         answer:
-          'I’m having a bit of trouble right now. Tell me what the customer wants and roughly how long you think it will take, and Kelly can confirm the final price.',
+          'No problem — tell me what the customer wants doing, and roughly how long you think it will take.',
         intent: 'general',
         confidence: 0.2,
         escalateTo: 'none',
         safetyFlag: false,
-        enquirySuggested: false,
-        enquiryTitle: '',
-        enquirySummary: ''
+        customerName: '',
+        customerPhone: '',
+        customerEmail: '',
+        customerAddress: '',
+        customerPostcode: '',
+        workSummary: '',
+        estimatedHours: null,
+        roughPriceText: '',
+        enquirySummary: '',
+        enquiryReadyForKelly: false
       },
       { status: 200 }
     )

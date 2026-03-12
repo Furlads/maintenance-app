@@ -119,17 +119,35 @@ model JobPhoto {
 }
 
 model ChasMessage {
-  id           Int      @id @default(autoincrement())
-  company      String
-  worker       String
-  jobId        Int?
-  question     String
-  answer       String
-  imageDataUrl String?
-  createdAt    DateTime @default(now())
+  id                    Int      @id @default(autoincrement())
+  company               String
+  worker                String
+  jobId                 Int?
+  question              String
+  answer                String
+  imageDataUrl          String?
+  createdAt             DateTime @default(now())
 
-  job          Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  intent                String?
+  confidence            Float?
+  escalateTo            String?
+  safetyFlag            Boolean  @default(false)
+
+  customerName          String?
+  customerPhone         String?
+  customerEmail         String?
+  customerAddress       String?
+  customerPostcode      String?
+
+  workSummary           String?
+  estimatedHours        Float?
+  roughPriceText        String?
+  enquirySummary        String?
+  enquiryReadyForKelly  Boolean  @default(false)
+
+  job                   Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
   @@index([company, worker, createdAt])
   @@index([jobId])
+  @@index([enquiryReadyForKelly, createdAt])
 }

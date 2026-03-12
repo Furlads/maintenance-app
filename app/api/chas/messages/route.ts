@@ -51,7 +51,24 @@ export async function GET(req: Request) {
       answer: message.answer,
       imageDataUrl: message.imageDataUrl || '',
       jobId: message.jobId ?? null,
-      createdAt: message.createdAt
+      createdAt: message.createdAt,
+
+      intent: message.intent || '',
+      confidence: message.confidence ?? null,
+      escalateTo: message.escalateTo || '',
+      safetyFlag: message.safetyFlag,
+
+      customerName: message.customerName || '',
+      customerPhone: message.customerPhone || '',
+      customerEmail: message.customerEmail || '',
+      customerAddress: message.customerAddress || '',
+      customerPostcode: message.customerPostcode || '',
+
+      workSummary: message.workSummary || '',
+      estimatedHours: message.estimatedHours ?? null,
+      roughPriceText: message.roughPriceText || '',
+      enquirySummary: message.enquirySummary || '',
+      enquiryReadyForKelly: message.enquiryReadyForKelly
     }))
 
     return NextResponse.json({
