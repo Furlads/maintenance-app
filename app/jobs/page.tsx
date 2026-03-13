@@ -28,6 +28,24 @@ function formatWorkers(
     .join(", ")
 }
 
+function formatStatus(status: string) {
+  const value = String(status || "").replaceAll("_", " ").trim()
+
+  if (!value) return "Unknown"
+
+  return value.replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function formatJobType(jobType: string) {
+  const value = String(jobType || "").trim()
+  return value || "General"
+}
+
+function formatStartTime(startTime: string | null) {
+  if (!startTime) return "No time set"
+  return startTime
+}
+
 function statusBadgeClass(status: string) {
   const value = String(status || "").toLowerCase()
 
@@ -84,6 +102,29 @@ function Pill({
   )
 }
 
+function StatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string
+  value: number
+  accent?: string
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+      <div
+        className={`text-[11px] font-bold uppercase tracking-[0.18em] ${
+          accent || "text-zinc-500"
+        }`}
+      >
+        {label}
+      </div>
+      <div className="mt-2 text-3xl font-bold text-zinc-900">{value}</div>
+    </div>
+  )
+}
+
 export default async function JobsPage() {
   const jobs = await prisma.job.findMany({
     include: {
@@ -115,6 +156,18 @@ export default async function JobsPage() {
     const value = String(job.status || "").toLowerCase()
     return value === "done" || value === "completed"
   }).length
+
+  const todoCount = jobs.filter((job) => {
+    const value = String(job.status || "").toLowerCase()
+    return value === "scheduled" || value === "todo"
+  }).length
+
+  const inProgressCount = jobs.filter((job) => {
+    const value = String(job.status || "").toLowerCase()
+    return value === "inprogress" || value === "in_progress"
+  }).length
+
+  const unassignedCount = jobs.filter((job) => job.assignments.length === 0).length
 
   return (
     <main className="min-h-screen bg-zinc-50">
@@ -154,38 +207,15 @@ export default async function JobsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 md:p-5">
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                  Total jobs
-                </div>
-                <div className="mt-2 text-3xl font-bold text-zinc-900">{jobs.length}</div>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                  Maintenance
-                </div>
-                <div className="mt-2 text-3xl font-bold text-zinc-900">
-                  {maintenanceCount}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                  Landscaping
-                </div>
-                <div className="mt-2 text-3xl font-bold text-zinc-900">
-                  {landscapingCount}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                  Completed
-                </div>
-                <div className="mt-2 text-3xl font-bold text-zinc-900">{doneCount}</div>
-              </div>
+            <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 xl:grid-cols-8 md:p-5">
+              <StatCard label="Total jobs" value={jobs.length} />
+              <StatCard label="Maintenance" value={maintenanceCount} />
+              <StatCard label="Landscaping" value={landscapingCount} />
+              <StatCard label="Quotes" value={quoteCount} />
+              <StatCard label="To do" value={todoCount} accent="text-amber-600" />
+              <StatCard label="In progress" value={inProgressCount} accent="text-blue-600" />
+              <StatCard label="Completed" value={doneCount} accent="text-green-600" />
+              <StatCard label="Unassigned" value={unassignedCount} accent="text-red-600" />
             </div>
 
             <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 md:px-5">
@@ -224,6 +254,7 @@ export default async function JobsPage() {
                           <th className="px-5 py-4 font-bold text-zinc-700">Address</th>
                           <th className="px-5 py-4 font-bold text-zinc-700">Type</th>
                           <th className="px-5 py-4 font-bold text-zinc-700">Visit Date</th>
+                          <th className="px-5 py-4 font-bold text-zinc-700">Start</th>
                           <th className="px-5 py-4 font-bold text-zinc-700">Workers</th>
                           <th className="px-5 py-4 font-bold text-zinc-700">Status</th>
                           <th className="px-5 py-4 font-bold text-zinc-700">Actions</th>
@@ -247,12 +278,14 @@ export default async function JobsPage() {
                             </td>
 
                             <td className="px-5 py-4 text-zinc-600">
-                              {job.address || "No address"}
+                              <div className="max-w-[280px] whitespace-pre-line">
+                                {job.address || "No address"}
+                              </div>
                             </td>
 
                             <td className="px-5 py-4">
                               <Pill className={typeBadgeClass(job.jobType || "")}>
-                                {job.jobType || "General"}
+                                {formatJobType(job.jobType || "")}
                               </Pill>
                             </td>
 
@@ -261,12 +294,18 @@ export default async function JobsPage() {
                             </td>
 
                             <td className="px-5 py-4 text-zinc-600">
-                              {formatWorkers(job.assignments)}
+                              {formatStartTime(job.startTime)}
+                            </td>
+
+                            <td className="px-5 py-4 text-zinc-600">
+                              <div className="max-w-[220px]">
+                                {formatWorkers(job.assignments)}
+                              </div>
                             </td>
 
                             <td className="px-5 py-4">
                               <Pill className={statusBadgeClass(job.status || "")}>
-                                {job.status || "Unknown"}
+                                {formatStatus(job.status || "")}
                               </Pill>
                             </td>
 
@@ -302,10 +341,10 @@ export default async function JobsPage() {
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <Pill className={typeBadgeClass(job.jobType || "")}>
-                          {job.jobType || "General"}
+                          {formatJobType(job.jobType || "")}
                         </Pill>
                         <Pill className={statusBadgeClass(job.status || "")}>
-                          {job.status || "Unknown"}
+                          {formatStatus(job.status || "")}
                         </Pill>
                       </div>
 
@@ -325,9 +364,16 @@ export default async function JobsPage() {
                           {job.address || "No address"}
                         </div>
 
-                        <div className="rounded-xl bg-zinc-50 px-3 py-2">
-                          <span className="font-semibold text-zinc-900">Visit Date:</span>{" "}
-                          {formatDate(job.visitDate)}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-xl bg-zinc-50 px-3 py-2">
+                            <span className="font-semibold text-zinc-900">Visit Date:</span>{" "}
+                            {formatDate(job.visitDate)}
+                          </div>
+
+                          <div className="rounded-xl bg-zinc-50 px-3 py-2">
+                            <span className="font-semibold text-zinc-900">Start:</span>{" "}
+                            {formatStartTime(job.startTime)}
+                          </div>
                         </div>
 
                         <div className="rounded-xl bg-zinc-50 px-3 py-2">
