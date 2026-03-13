@@ -5,55 +5,34 @@ import prisma from '@/lib/prisma'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-function nowGB() {
-  return new Date().toLocaleString('en-GB')
-}
-
 function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function isValidISODateOnly(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value)
-}
+function parseDateValue(value: unknown): Date | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null || value === '' || value === 'null') return null
 
-function isValidHHMM(value: string) {
-  return /^\d{2}:\d{2}$/.test(value)
-}
-
-function outwardPostcode(address: string) {
-  const upper = (address || '').toUpperCase()
-  const match = upper.match(/\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})\b/)
-  if (!match) return ''
-  return match[1]
-}
-
-function addWeeks(d: Date, weeks: number) {
-  const x = new Date(d)
-  x.setDate(x.getDate() + weeks * 7)
-  return x
-}
-
-function adjustToDOWOnOrAfter(d: Date, dow: number) {
-  const x = new Date(d)
-
-  for (let i = 0; i < 7; i++) {
-    if (x.getDay() === dow) return x
-    x.setDate(x.getDate() + 1)
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) return parsed
   }
 
-  return x
+  return undefined
 }
 
-async function rebuild(worker: string, fromDate: string) {
-  await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'}/api/schedule/rebuild`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ worker, fromDate, includeToday: true })
-    }
-  ).catch(() => null)
+function parsePositiveInt(value: unknown): number | undefined {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return undefined
+  const rounded = Math.round(parsed)
+  return rounded > 0 ? rounded : undefined
+}
+
+function parseNonNegativeInt(value: unknown): number | undefined {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return undefined
+  const rounded = Math.round(parsed)
+  return rounded >= 0 ? rounded : undefined
 }
 
 function parseAssignedWorkerIds(input: unknown): number[] {
@@ -79,12 +58,44 @@ function parseAssignedWorkerIds(input: unknown): number[] {
   return [...new Set(cleaned)]
 }
 
+function minutesBetween(from: Date, to: Date): number {
+  return Math.max(0, Math.round((to.getTime() - from.getTime()) / 60000))
+}
+
+async function buildNotesLog(jobId: number) {
+  const notes = await prisma.jobNote.findMany({
+    where: { jobId },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      worker: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true
+        }
+      }
+    }
+  })
+
+  const notesLog = notes
+    .map((note) => {
+      const author = note.worker
+        ? `${note.worker.firstName} ${note.worker.lastName}`.trim()
+        : 'Unknown'
+
+      return `[${note.createdAt.toLocaleString('en-GB')}] ${author}: ${note.note}`
+    })
+    .join('\n')
+
+  return { notes, notesLog }
+}
+
 export async function GET(_: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
     const jobId = parseInt(id, 10)
 
-    if (!jobId) {
+    if (!jobId || Number.isNaN(jobId)) {
       return NextResponse.json(
         { error: 'Invalid job id', received: id },
         { status: 400 }
@@ -94,11 +105,14 @@ export async function GET(_: Request, ctx: Ctx) {
     const job = await prisma.job.findUnique({
       where: { id: jobId },
       include: {
+        customer: true,
         assignments: {
           include: {
             worker: true
           }
-        }
+        },
+        photos: true,
+        chasMessages: true
       }
     })
 
@@ -106,7 +120,14 @@ export async function GET(_: Request, ctx: Ctx) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
     }
 
-    return NextResponse.json(job)
+    const { notes, notesLog } = await buildNotesLog(jobId)
+
+    return NextResponse.json({
+      ...job,
+      jobNotes: notes,
+      notesLog,
+      assignedWorkerIds: job.assignments.map((assignment) => assignment.workerId)
+    })
   } catch (error) {
     console.error('GET /api/jobs/[id] failed:', error)
 
@@ -122,14 +143,14 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const { id } = await ctx.params
     const jobId = parseInt(id, 10)
 
-    if (!jobId) {
+    if (!jobId || Number.isNaN(jobId)) {
       return NextResponse.json(
         { error: 'Invalid job id', received: id },
         { status: 400 }
       )
     }
 
-    const body = await req.json().catch(() => ({} as any))
+    const body = await req.json().catch(() => ({} as Record<string, unknown>))
 
     const existing = await prisma.job.findUnique({
       where: { id: jobId },
@@ -143,126 +164,101 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
 
     const action = clean(body.action).toLowerCase()
-
-    // ===== Status logic =====
-    let newStatus = existing.status
-
     const requestedStatus = clean(body.status).toLowerCase()
-
-    if (
-      requestedStatus === 'todo' ||
-      requestedStatus === 'done' ||
-      requestedStatus === 'unscheduled'
-    ) {
-      newStatus = requestedStatus as any
-    } else if (body.toggleStatus === true) {
-      newStatus = existing.status === 'done' ? ('todo' as any) : ('done' as any)
-    }
-
-    // ===== Append notes =====
     const appendNote = clean(body.appendNote)
-    const noteAuthor = clean(body.noteAuthor) || 'unknown'
-    let newNotesLog: string | undefined = undefined
+    const noteAuthor = clean(body.noteAuthor)
 
-    if (appendNote) {
-      const line = `[${nowGB()}] ${noteAuthor}: ${appendNote}`
-      newNotesLog = existing.notesLog ? `${existing.notesLog}\n${line}` : line
-    }
+    const now = new Date()
 
-    // ===== Scheduling inputs =====
-    const fixedRequested = body.fixed === true
-    const visitDateRaw = clean(body.visitDate)
-    const startTimeRaw = clean(body.startTime)
-
-    let visitDateUpdate: Date | null | undefined = undefined
-    let startTimeUpdate: string | null | undefined = undefined
-    let fixedUpdate: boolean | undefined = undefined
-
-    if (visitDateRaw === 'null') visitDateUpdate = null
-
-    if (visitDateRaw && visitDateRaw !== 'null') {
-      if (!isValidISODateOnly(visitDateRaw)) {
-        return NextResponse.json(
-          { error: 'visitDate must be YYYY-MM-DD if provided' },
-          { status: 400 }
-        )
-      }
-
-      visitDateUpdate = new Date(visitDateRaw)
-    }
-
-    if (startTimeRaw) {
-      if (!isValidHHMM(startTimeRaw)) {
-        return NextResponse.json(
-          { error: 'startTime must be HH:MM if provided' },
-          { status: 400 }
-        )
-      }
-
-      startTimeUpdate = startTimeRaw
-    } else if ('startTime' in body && !startTimeRaw) {
-      startTimeUpdate = null
-    }
-
-    if ('fixed' in body) {
-      fixedUpdate = fixedRequested
-    }
-
-    // ===== Extend time (overrun) =====
-    const extendMins =
-      Number.isFinite(Number(body.extendMins)) && Number(body.extendMins) > 0
-        ? Math.round(Number(body.extendMins))
-        : 0
-
-    let overrunUpdate: number | undefined = undefined
-
-    if (extendMins > 0) {
-      overrunUpdate = (existing.overrunMins ?? 0) + extendMins
-    }
-
-    // ===== Address update => postcode =====
-    let postcodeUpdate: string | undefined = undefined
-
-    if (typeof body.address === 'string') {
-      postcodeUpdate = outwardPostcode(body.address)
-    }
-
-    // ===== Duration update =====
-    let durationUpdate: number | undefined = undefined
-
-    if (
-      Number.isFinite(Number(body.durationMins)) &&
-      Number(body.durationMins) > 0
-    ) {
-      durationUpdate = Math.round(Number(body.durationMins))
-    }
-
-    // ===== Worker timing actions =====
+    let statusUpdate: string | undefined = undefined
     let arrivedAtUpdate: Date | null | undefined = undefined
     let finishedAtUpdate: Date | null | undefined = undefined
+    let pausedAtUpdate: Date | null | undefined = undefined
+    let pausedMinutesUpdate: number | undefined = undefined
 
-    if (action === 'arrived') {
-      arrivedAtUpdate = existing.arrivedAt ?? new Date()
+    if (requestedStatus) {
+      statusUpdate = requestedStatus
+    }
+
+    if (body.toggleStatus === true) {
+      statusUpdate = existing.status === 'done' ? 'unscheduled' : 'done'
+
+      if (statusUpdate === 'done') {
+        finishedAtUpdate = now
+      } else {
+        finishedAtUpdate = null
+      }
+    }
+
+    if (action === 'start') {
+      arrivedAtUpdate = existing.arrivedAt ?? now
       finishedAtUpdate = null
+      pausedAtUpdate = null
+
+      statusUpdate = statusUpdate ?? 'in_progress'
     }
 
-    if (action === 'finished') {
-      finishedAtUpdate = new Date()
+    if (action === 'pause') {
+      if (existing.arrivedAt && !existing.finishedAt && !existing.pausedAt) {
+        pausedAtUpdate = now
+        statusUpdate = statusUpdate ?? 'paused'
+      }
     }
 
-    if (
-      body.toggleStatus === true &&
-      existing.status === 'done' &&
-      newStatus === 'todo'
-    ) {
-      finishedAtUpdate = null
+    if (action === 'resume') {
+      if (existing.pausedAt) {
+        const additionalPausedMinutes = minutesBetween(existing.pausedAt, now)
+        pausedMinutesUpdate =
+          (existing.pausedMinutes ?? 0) + additionalPausedMinutes
+      }
+
+      if (!existing.arrivedAt) {
+        arrivedAtUpdate = now
+      }
+
+      pausedAtUpdate = null
+      statusUpdate = statusUpdate ?? 'in_progress'
     }
 
-    // ===== Worker assignment array handling =====
+    if (action === 'finish') {
+      let finalPausedMinutes = existing.pausedMinutes ?? 0
+
+      if (existing.pausedAt) {
+        finalPausedMinutes += minutesBetween(existing.pausedAt, now)
+        pausedAtUpdate = null
+      }
+
+      pausedMinutesUpdate = finalPausedMinutes
+      finishedAtUpdate = now
+      statusUpdate = statusUpdate ?? 'done'
+    }
+
+    const visitDateUpdate = parseDateValue(body.visitDate)
+
+    let startTimeUpdate: string | null | undefined = undefined
+    if ('startTime' in body) {
+      if (body.startTime === null || clean(body.startTime) === '') {
+        startTimeUpdate = null
+      } else if (typeof body.startTime === 'string') {
+        startTimeUpdate = body.startTime
+      }
+    }
+
+    const durationMinutesUpdate = parsePositiveInt(
+      body.durationMinutes ?? body.durationMins
+    )
+
+    const overrunMinsUpdate = parseNonNegativeInt(body.overrunMins)
+
+    const customerIdUpdate =
+      body.customerId === null
+        ? undefined
+        : parsePositiveInt(body.customerId)
+
     let assignedWorkerIdsForResponse: number[] | undefined = undefined
 
-    if (body.assignedTo !== undefined && Array.isArray(body.assignedTo)) {
-      const cleanedWorkerIds: number[] = parseAssignedWorkerIds(body.assignedTo)
+    if (body.assignedTo !== undefined) {
+      const cleanedWorkerIds = parseAssignedWorkerIds(body.assignedTo)
 
       const existingWorkers = cleanedWorkerIds.length
         ? await prisma.worker.findMany({
@@ -291,19 +287,22 @@ export async function PATCH(req: Request, ctx: Ctx) {
         )
       }
 
-      await prisma.jobAssignment.deleteMany({
-        where: { jobId }
-      })
-
-      if (cleanedWorkerIds.length > 0) {
-        await prisma.jobAssignment.createMany({
-          data: cleanedWorkerIds.map((workerId) => ({
-            jobId,
-            workerId
-          })),
-          skipDuplicates: true
-        })
-      }
+      await prisma.$transaction([
+        prisma.jobAssignment.deleteMany({
+          where: { jobId }
+        }),
+        ...(cleanedWorkerIds.length > 0
+          ? [
+              prisma.jobAssignment.createMany({
+                data: cleanedWorkerIds.map((workerId) => ({
+                  jobId,
+                  workerId
+                })),
+                skipDuplicates: true
+              })
+            ]
+          : [])
+      ])
 
       assignedWorkerIdsForResponse = cleanedWorkerIds
     }
@@ -311,125 +310,95 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: newStatus as any,
         title: typeof body.title === 'string' ? body.title : undefined,
         address: typeof body.address === 'string' ? body.address : undefined,
-        postcode: postcodeUpdate,
-        assignedTo:
-          typeof body.assignedTo === 'string'
-            ? body.assignedTo.toLowerCase()
-            : body.assignedTo === null
-              ? null
+        notes:
+          body.notes === null
+            ? null
+            : typeof body.notes === 'string'
+              ? body.notes
               : undefined,
+        jobType: typeof body.jobType === 'string' ? body.jobType : undefined,
+        customerId: customerIdUpdate,
         visitDate: visitDateUpdate,
-        fixed: fixedUpdate,
         startTime: startTimeUpdate,
-        notesLog: typeof newNotesLog === 'string' ? newNotesLog : undefined,
-        durationMins: durationUpdate,
-        overrunMins: overrunUpdate,
+        durationMinutes: durationMinutesUpdate,
+        overrunMins: overrunMinsUpdate,
+        status: statusUpdate,
         arrivedAt: arrivedAtUpdate,
         finishedAt: finishedAtUpdate,
-
-        recurrenceActive:
-          typeof body.recurrenceActive === 'boolean'
-            ? body.recurrenceActive
-            : undefined,
-        recurrenceEveryWeeks:
-          Number.isFinite(Number(body.recurrenceEveryWeeks))
-            ? Number(body.recurrenceEveryWeeks)
-            : undefined,
-        recurrenceDurationMins:
-          Number.isFinite(Number(body.recurrenceDurationMins))
-            ? Number(body.recurrenceDurationMins)
-            : undefined,
-        recurrencePreferredDOW:
-          Number.isFinite(Number(body.recurrencePreferredDOW))
-            ? Number(body.recurrencePreferredDOW)
-            : undefined,
-        recurrencePreferredTime:
-          typeof body.recurrencePreferredTime === 'string'
-            ? body.recurrencePreferredTime
-            : undefined
+        pausedAt: pausedAtUpdate,
+        pausedMinutes: pausedMinutesUpdate
       },
       include: {
+        customer: true,
         assignments: {
           include: {
             worker: true
           }
-        }
+        },
+        photos: true,
+        chasMessages: true
       }
     })
 
-    if (
-      body.toggleStatus === true &&
-      updated.status === 'done' &&
-      updated.recurrenceActive &&
-      updated.recurrenceEveryWeeks
-    ) {
-      const base = updated.visitDate ? new Date(updated.visitDate) : new Date()
-      let next = addWeeks(base, updated.recurrenceEveryWeeks)
+    if (appendNote) {
+      let createdByWorkerId: number | null = null
 
-      if (Number.isFinite(Number(updated.recurrencePreferredDOW))) {
-        next = adjustToDOWOnOrAfter(next, Number(updated.recurrencePreferredDOW))
+      if (noteAuthor) {
+        const authorParts = noteAuthor.trim().split(/\s+/).filter(Boolean)
+
+        if (authorParts.length > 0) {
+          const possibleWorkers = await prisma.worker.findMany({
+            where: {
+              OR: [
+                { firstName: { equals: noteAuthor, mode: 'insensitive' } },
+                { lastName: { equals: noteAuthor, mode: 'insensitive' } },
+                authorParts.length >= 2
+                  ? {
+                      AND: [
+                        {
+                          firstName: {
+                            equals: authorParts[0],
+                            mode: 'insensitive'
+                          }
+                        },
+                        {
+                          lastName: {
+                            equals: authorParts.slice(1).join(' '),
+                            mode: 'insensitive'
+                          }
+                        }
+                      ]
+                    }
+                  : { id: -1 }
+              ]
+            },
+            select: { id: true },
+            take: 1
+          })
+
+          if (possibleWorkers.length > 0) {
+            createdByWorkerId = possibleWorkers[0].id
+          }
+        }
       }
 
-      const nextDuration =
-        updated.recurrenceDurationMins ?? updated.durationMins ?? 60
-
-      const prefTime = updated.recurrencePreferredTime
-        ? clean(updated.recurrencePreferredTime)
-        : ''
-
-      const nextFixed = !!prefTime
-
-      await prisma.job.create({
+      await prisma.jobNote.create({
         data: {
-          title: updated.title,
-          address: updated.address,
-          postcode: updated.postcode || outwardPostcode(updated.address),
-          notes: updated.notes ?? '',
-          notesLog: '',
-          status: nextFixed ? 'todo' : 'unscheduled',
-          visitDate: nextFixed ? next : null,
-          assignedTo: updated.assignedTo,
-          durationMins: nextDuration,
-          overrunMins: 0,
-          fixed: nextFixed,
-          startTime: nextFixed ? prefTime : null,
-
-          recurrenceActive: updated.recurrenceActive,
-          recurrenceEveryWeeks: updated.recurrenceEveryWeeks,
-          recurrenceDurationMins: updated.recurrenceDurationMins,
-          recurrencePreferredDOW: updated.recurrencePreferredDOW,
-          recurrencePreferredTime: updated.recurrencePreferredTime
+          jobId,
+          note: appendNote,
+          createdByWorkerId
         }
       })
     }
 
-    const worker = (updated.assignedTo ?? '').toLowerCase()
-    const rebuildFrom = updated.visitDate ? new Date(updated.visitDate) : new Date()
-    const fromDate = rebuildFrom.toISOString().slice(0, 10)
-
-    const shouldRebuild =
-      !!worker &&
-      (
-        body.toggleStatus === true ||
-        action === 'arrived' ||
-        action === 'finished' ||
-        extendMins > 0 ||
-        typeof body.assignedTo === 'string' ||
-        'visitDate' in body ||
-        'startTime' in body ||
-        'fixed' in body ||
-        Number.isFinite(Number(body.durationMins))
-      )
-
-    if (shouldRebuild) {
-      await rebuild(worker, fromDate)
-    }
+    const { notes, notesLog } = await buildNotesLog(jobId)
 
     return NextResponse.json({
       ...updated,
+      jobNotes: notes,
+      notesLog,
       assignedWorkerIds:
         assignedWorkerIdsForResponse ??
         updated.assignments.map((assignment) => assignment.workerId)
