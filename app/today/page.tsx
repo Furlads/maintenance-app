@@ -1759,7 +1759,7 @@ Heavy rain made it unsafe`,
                     border: '1px solid rgba(0,0,0,0.06)'
                   }}
                 >
-                  <div style={styles.label}>Started</div>
+                  <div style={styles.label}>Start time</div>
                   <div style={{ ...styles.value, fontWeight: 800 }}>
                     {formatTime(activeJob.arrivedAt)}
                   </div>
@@ -1773,7 +1773,21 @@ Heavy rain made it unsafe`,
                     border: '1px solid rgba(0,0,0,0.06)'
                   }}
                 >
-                  <div style={styles.label}>Time on site</div>
+                  <div style={styles.label}>Projected finish</div>
+                  <div style={{ ...styles.value, fontWeight: 800 }}>
+                    {formatClockTime(activeJob.etaFinish)}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    background: 'rgba(255,255,255,0.6)',
+                    border: '1px solid rgba(0,0,0,0.06)'
+                  }}
+                >
+                  <div style={styles.label}>Hours worked</div>
                   <div style={{ ...styles.value, fontWeight: 800 }}>
                     {formatMinutes(getLiveWorkedMinutes(activeJob, now))}
                   </div>
@@ -1790,20 +1804,6 @@ Heavy rain made it unsafe`,
                   <div style={styles.label}>Address</div>
                   <div style={styles.value}>
                     {activeJob.address || activeJob.customer?.address || '—'}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    padding: 12,
-                    borderRadius: 14,
-                    background: 'rgba(255,255,255,0.6)',
-                    border: '1px solid rgba(0,0,0,0.06)'
-                  }}
-                >
-                  <div style={styles.label}>Planned time</div>
-                  <div style={{ ...styles.value, fontWeight: 800 }}>
-                    {formatMinutes(activeJob.plannedMinutes)}
                   </div>
                 </div>
               </div>
@@ -2128,7 +2128,7 @@ Heavy rain made it unsafe`,
                       }}
                     >
                       <div style={styles.label}>
-                        {job.isStarted || job.isPaused ? 'ETA finish' : 'ETA start'}
+                        {job.isStarted || job.isPaused ? 'Projected finish' : 'ETA start'}
                       </div>
                       <div style={{ ...styles.value, fontWeight: 800 }}>
                         {formatClockTime(job.isStarted || job.isPaused ? job.etaFinish : job.etaStart)}
@@ -2173,18 +2173,26 @@ Heavy rain made it unsafe`,
                       }}
                     >
                       {job.isStarted && (
-                        <div style={{ marginBottom: 6, fontSize: 14 }}>
-                          <strong>Started:</strong> {formatTime(startedAt)}
-                        </div>
+                        <>
+                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                            <strong>Start time:</strong> {formatTime(startedAt)}
+                          </div>
+                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                            <strong>Hours worked:</strong> {formatMinutes(getLiveWorkedMinutes(job, now))}
+                          </div>
+                        </>
                       )}
 
                       {job.isPaused && (
                         <>
                           <div style={{ marginBottom: 6, fontSize: 14 }}>
-                            <strong>Started:</strong> {formatTime(startedAt)}
+                            <strong>Start time:</strong> {formatTime(startedAt)}
                           </div>
                           <div style={{ marginBottom: 6, fontSize: 14 }}>
                             <strong>Paused at:</strong> {formatTime(pausedAt)}
+                          </div>
+                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                            <strong>Hours worked:</strong> {formatMinutes(getLiveWorkedMinutes(job, now))}
                           </div>
                           <div style={{ marginBottom: 6, fontSize: 14 }}>
                             <strong>Paused live:</strong> {formatMinutes(livePausedMinutes)}
