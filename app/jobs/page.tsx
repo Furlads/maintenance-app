@@ -1,145 +1,176 @@
-'use client'
+import Link from "next/link"
+import { prisma } from "@/lib/prisma"
 
-import { useEffect, useState } from 'react'
+export const dynamic = "force-dynamic"
 
-type Worker = {
-  id: number
-  firstName: string
-  lastName: string
+function formatDate(date: Date | null) {
+  if (!date) return "Not scheduled"
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(date))
 }
 
-type JobAssignment = {
-  id: number
-  workerId: number
-  worker: Worker
-}
-
-type Customer = {
-  id: number
-  name: string
-}
-
-type Job = {
-  id: number
-  title: string
-  address: string
-  notes: string | null
-  status: string
-  jobType: string
-  createdAt: string
-  customer: Customer
-  assignments: JobAssignment[]
-}
-
-export default function JobsPage() {
-  const [jobs, setJobs] = useState<Job[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    async function loadJobs() {
-      try {
-        setError('')
-
-        const res = await fetch('/api/jobs')
-
-        if (!res.ok) {
-          throw new Error('Failed to load jobs')
-        }
-
-        const data = await res.json()
-        setJobs(Array.isArray(data) ? data : [])
-      } catch (err) {
-        console.error(err)
-        setJobs([])
-        setError('Failed to load jobs.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadJobs()
-  }, [])
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    unscheduled: "bg-zinc-100 text-zinc-700",
+    scheduled: "bg-blue-100 text-blue-700",
+    inprogress: "bg-yellow-100 text-yellow-700",
+    completed: "bg-green-100 text-green-700"
+  }
 
   return (
-    <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 800 }}>
-      <h1 style={{ fontSize: 28, marginBottom: 20 }}>Jobs</h1>
+    <span
+      className={`text-xs px-2 py-1 rounded-lg font-medium ${
+        styles[status] ?? "bg-zinc-100 text-zinc-700"
+      }`}
+    >
+      {status}
+    </span>
+  )
+}
 
-      <div style={{ marginBottom: 20 }}>
-        <a
+export default async function JobsPage() {
+
+  const jobs = await prisma.job.findMany({
+    include: {
+      customer: true,
+      assignments: {
+        include: {
+          worker: true
+        }
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    }
+  })
+
+  return (
+    <div className="space-y-6">
+
+      {/* Page Header */}
+
+      <div className="flex items-center justify-between">
+
+        <div>
+          <h1 className="text-2xl font-bold">
+            Jobs
+          </h1>
+
+          <p className="text-sm text-zinc-500">
+            Manage landscaping and maintenance work
+          </p>
+        </div>
+
+        <Link
           href="/jobs/add"
-          style={{
-            display: 'inline-block',
-            padding: '12px 16px',
-            borderRadius: 8,
-            border: '1px solid #ccc',
-            textDecoration: 'none',
-            color: 'inherit'
-          }}
+          className="bg-black text-white px-4 py-2 rounded-lg text-sm font-medium"
         >
           Add Job
-        </a>
+        </Link>
+
       </div>
 
-      {loading && <p>Loading jobs...</p>}
+      {/* Jobs List */}
 
-      {!loading && error && <p>{error}</p>}
+      <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
 
-      {!loading && !error && jobs.length === 0 && <p>No jobs found.</p>}
+        <table className="w-full text-sm">
 
-      {!loading &&
-        !error &&
-        jobs.map((job) => (
-          <a
-            key={job.id}
-            href={`/jobs/${job.id}`}
-            style={{
-              display: 'block',
-              padding: 16,
-              border: '1px solid #ddd',
-              borderRadius: 10,
-              marginBottom: 12,
-              textDecoration: 'none',
-              color: 'inherit'
-            }}
-          >
-            <h2 style={{ margin: '0 0 8px 0', fontSize: 20 }}>{job.title}</h2>
+          <thead className="bg-zinc-50 border-b border-zinc-200">
 
-            <p style={{ margin: '4px 0' }}>
-              <strong>Customer:</strong> {job.customer?.name || 'Unknown customer'}
-            </p>
+            <tr className="text-left">
 
-            <p style={{ margin: '4px 0' }}>
-              <strong>Type:</strong> {job.jobType}
-            </p>
+              <th className="px-4 py-3 font-medium">Customer</th>
+              <th className="px-4 py-3 font-medium">Address</th>
+              <th className="px-4 py-3 font-medium">Type</th>
+              <th className="px-4 py-3 font-medium">Visit Date</th>
+              <th className="px-4 py-3 font-medium">Workers</th>
+              <th className="px-4 py-3 font-medium">Status</th>
 
-            <p style={{ margin: '4px 0' }}>
-              <strong>Status:</strong> {job.status}
-            </p>
+            </tr>
 
-            <p style={{ margin: '4px 0' }}>
-              <strong>Address:</strong> {job.address}
-            </p>
+          </thead>
 
-            {job.notes && (
-              <p style={{ margin: '4px 0' }}>
-                <strong>Notes:</strong> {job.notes}
-              </p>
+          <tbody>
+
+            {jobs.length === 0 && (
+
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-zinc-500">
+                  No jobs yet
+                </td>
+              </tr>
+
             )}
 
-            <p style={{ margin: '4px 0' }}>
-              <strong>Assigned:</strong>{' '}
-              {job.assignments.length > 0
-                ? job.assignments
-                    .map(
-                      (assignment) =>
-                        `${assignment.worker.firstName} ${assignment.worker.lastName}`
-                    )
-                    .join(', ')
-                : 'Nobody assigned'}
-            </p>
-          </a>
-        ))}
-    </main>
+            {jobs.map((job) => (
+
+              <tr
+                key={job.id}
+                className="border-b border-zinc-100 hover:bg-zinc-50"
+              >
+
+                {/* Customer */}
+
+                <td className="px-4 py-3">
+
+                  <Link
+                    href={`/jobs/${job.id}`}
+                    className="font-medium text-zinc-900 hover:underline"
+                  >
+                    {job.customer?.name ?? "Unknown"}
+                  </Link>
+
+                </td>
+
+                {/* Address */}
+
+                <td className="px-4 py-3 text-zinc-600">
+                  {job.address}
+                </td>
+
+                {/* Job Type */}
+
+                <td className="px-4 py-3 text-zinc-600">
+                  {job.jobType}
+                </td>
+
+                {/* Visit Date */}
+
+                <td className="px-4 py-3 text-zinc-600">
+                  {formatDate(job.visitDate)}
+                </td>
+
+                {/* Workers */}
+
+                <td className="px-4 py-3 text-zinc-600">
+
+                  {job.assignments.length === 0 && "Unassigned"}
+
+                  {job.assignments.map(a => a.worker.firstName).join(", ")}
+
+                </td>
+
+                {/* Status */}
+
+                <td className="px-4 py-3">
+                  <StatusBadge status={job.status} />
+                </td>
+
+              </tr>
+
+            ))}
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </div>
   )
 }
