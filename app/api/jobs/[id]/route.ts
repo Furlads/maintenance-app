@@ -66,7 +66,15 @@ export async function GET(_req: Request, ctx: Ctx) {
     }
 
     const job = await prisma.job.findUnique({
-      where: { id: jobId }
+      where: { id: jobId },
+      include: {
+        customer: true,
+        assignments: {
+          include: {
+            worker: true
+          }
+        }
+      }
     })
 
     if (!job) {
@@ -428,28 +436,155 @@ export async function PATCH(req: Request, ctx: Ctx) {
       notesUpdate = appendLine(baseNotes, resumeLine)
     }
 
-    const updated = await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        title:
-          typeof (body as any).title === 'string'
-            ? (body as any).title
-            : undefined,
-        address:
-          typeof (body as any).address === 'string'
-            ? (body as any).address
-            : undefined,
-        notes: notesUpdate,
-        status: statusUpdate,
-        visitDate: visitDateUpdate,
-        startTime: startTimeUpdate,
-        durationMinutes: durationMinutesUpdate,
-        arrivedAt: arrivedAtUpdate,
-        finishedAt: finishedAtUpdate,
-        pausedAt: pausedAtUpdate,
-        pausedMinutes: pausedMinutesUpdate,
-        overrunMins: overrunUpdate
+    let titleUpdate: string | undefined = undefined
+    let addressUpdate: string | undefined = undefined
+    let jobTypeUpdate: string | undefined = undefined
+    let customerIdUpdate: number | undefined = undefined
+    let assignedToUpdate: number[] | undefined = undefined
+
+    if ('title' in (body as any)) {
+      const value = clean((body as any).title)
+
+      if (!value) {
+        return NextResponse.json(
+          { error: 'Title is required' },
+          { status: 400 }
+        )
       }
+
+      titleUpdate = value
+    }
+
+    if ('address' in (body as any)) {
+      const value = clean((body as any).address)
+
+      if (!value) {
+        return NextResponse.json(
+          { error: 'Address is required' },
+          { status: 400 }
+        )
+      }
+
+      addressUpdate = value
+    }
+
+    if ('jobType' in (body as any)) {
+      const value = clean((body as any).jobType)
+
+      if (!value) {
+        return NextResponse.json(
+          { error: 'Job type is required' },
+          { status: 400 }
+        )
+      }
+
+      jobTypeUpdate = value
+    }
+
+    if ('customerId' in (body as any)) {
+      const value = Number((body as any).customerId)
+
+      if (!Number.isInteger(value) || value <= 0) {
+        return NextResponse.json(
+          { error: 'Valid customerId is required' },
+          { status: 400 }
+        )
+      }
+
+      const customer = await prisma.customer.findUnique({
+        where: { id: value }
+      })
+
+      if (!customer) {
+        return NextResponse.json(
+          { error: 'Customer not found' },
+          { status: 404 }
+        )
+      }
+
+      customerIdUpdate = value
+    }
+
+    if ('assignedTo' in (body as any)) {
+      if (!Array.isArray((body as any).assignedTo)) {
+        return NextResponse.json(
+          { error: 'assignedTo must be an array of worker ids' },
+          { status: 400 }
+        )
+      }
+
+      const cleanedWorkerIds = Array.from(
+        new Set(
+          (body as any).assignedTo
+            .map((value: unknown) => Number(value))
+            .filter((value: number) => Number.isInteger(value) && value > 0)
+        )
+      )
+
+      if (cleanedWorkerIds.length > 0) {
+        const validWorkers = await prisma.worker.findMany({
+          where: {
+            id: {
+              in: cleanedWorkerIds
+            }
+          },
+          select: {
+            id: true
+          }
+        })
+
+        const validIds = validWorkers.map((worker) => worker.id)
+
+        if (validIds.length !== cleanedWorkerIds.length) {
+          return NextResponse.json(
+            { error: 'One or more assigned workers were not found' },
+            { status: 400 }
+          )
+        }
+      }
+
+      assignedToUpdate = cleanedWorkerIds
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const savedJob = await tx.job.update({
+        where: { id: jobId },
+        data: {
+          title: titleUpdate,
+          customerId: customerIdUpdate,
+          address: addressUpdate,
+          notes: notesUpdate,
+          status: statusUpdate,
+          jobType: jobTypeUpdate,
+          visitDate: visitDateUpdate,
+          startTime: startTimeUpdate,
+          durationMinutes: durationMinutesUpdate,
+          arrivedAt: arrivedAtUpdate,
+          finishedAt: finishedAtUpdate,
+          pausedAt: pausedAtUpdate,
+          pausedMinutes: pausedMinutesUpdate,
+          overrunMins: overrunUpdate
+        }
+      })
+
+      if (assignedToUpdate !== undefined) {
+        await tx.jobAssignment.deleteMany({
+          where: {
+            jobId
+          }
+        })
+
+        if (assignedToUpdate.length > 0) {
+          await tx.jobAssignment.createMany({
+            data: assignedToUpdate.map((workerId) => ({
+              jobId,
+              workerId
+            }))
+          })
+        }
+      }
+
+      return savedJob
     })
 
     if (
@@ -512,7 +647,19 @@ export async function PATCH(req: Request, ctx: Ctx) {
       }
     }
 
-    return NextResponse.json(updated)
+    const response = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        customer: true,
+        assignments: {
+          include: {
+            worker: true
+          }
+        }
+      }
+    })
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error('PATCH /api/jobs/[id] failed:', error)
 
