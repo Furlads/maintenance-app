@@ -20,11 +20,11 @@ export default function AdminLayout({
   ]
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 flex">
+    <div className="min-h-screen flex bg-zinc-50 text-zinc-900">
 
       {/* Sidebar (desktop) */}
-      <aside className="hidden md:flex w-64 flex-col border-r border-zinc-200 bg-white p-4">
-        <div className="text-lg font-bold mb-6">
+      <aside className="hidden md:flex w-64 flex-col border-r border-zinc-200 bg-white p-5">
+        <div className="text-xl font-bold mb-6">
           Furlads Admin
         </div>
 
@@ -41,15 +41,16 @@ export default function AdminLayout({
         </nav>
       </aside>
 
-      {/* Main */}
+      {/* Main area */}
       <div className="flex-1 flex flex-col">
 
         {/* Top bar */}
         <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3">
 
+          {/* Hamburger */}
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="md:hidden text-xl font-bold"
+            className="md:hidden text-2xl"
           >
             ☰
           </button>
@@ -80,7 +81,7 @@ export default function AdminLayout({
         )}
 
         {/* Page content */}
-        <main className="flex-1 p-4">
+        <main className="flex-1 p-6">
           {children}
         </main>
 
