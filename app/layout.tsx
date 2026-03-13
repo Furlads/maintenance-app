@@ -16,7 +16,6 @@ export default function RootLayout({
       >
         {children}
 
-        <BottomNav />
       </body>
     </html>
   )
