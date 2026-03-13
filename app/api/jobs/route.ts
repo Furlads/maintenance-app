@@ -18,11 +18,63 @@ function isValidHHMM(value: string) {
 function uniquePositiveInts(values: unknown): number[] {
   if (!Array.isArray(values)) return []
 
-  return [...new Set(
-    values
-      .map((value) => Number(value))
-      .filter((value) => Number.isInteger(value) && value > 0)
-  )]
+  return [
+    ...new Set(
+      values
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )
+  ]
+}
+
+function normalizeJobStatus(rawStatus: unknown, hasVisitDate: boolean) {
+  const value = cleanString(rawStatus).toLowerCase()
+
+  if (!value) {
+    return hasVisitDate ? 'todo' : 'unscheduled'
+  }
+
+  if (
+    value === 'scheduled' ||
+    value === 'schedule' ||
+    value === 'todo' ||
+    value === 'to do'
+  ) {
+    return hasVisitDate ? 'todo' : 'unscheduled'
+  }
+
+  if (
+    value === 'in_progress' ||
+    value === 'in progress' ||
+    value === 'inprogress' ||
+    value === 'started' ||
+    value === 'active'
+  ) {
+    return 'in_progress'
+  }
+
+  if (value === 'paused' || value === 'on hold') {
+    return 'paused'
+  }
+
+  if (
+    value === 'done' ||
+    value === 'completed' ||
+    value === 'complete' ||
+    value === 'finished'
+  ) {
+    return 'done'
+  }
+
+  if (value === 'quoted' || value === 'quote') {
+    return 'quoted'
+  }
+
+  if (value === 'unscheduled' || value === 'unassigned') {
+    return 'unscheduled'
+  }
+
+  return hasVisitDate ? 'todo' : 'unscheduled'
 }
 
 function getLondonDateParts(date: Date) {
@@ -213,9 +265,11 @@ export async function POST(req: Request) {
     const jobType = cleanString(body.jobType) || 'Other'
 
     const assignedWorkerIds = uniquePositiveInts(
-      Array.isArray(body.assignedWorkerIds)
-        ? body.assignedWorkerIds
-        : body.workerIds
+      Array.isArray(body.assignedTo)
+        ? body.assignedTo
+        : Array.isArray(body.assignedWorkerIds)
+          ? body.assignedWorkerIds
+          : body.workerIds
     )
 
     if (!title) {
@@ -288,12 +342,7 @@ export async function POST(req: Request) {
       durationMinutes = Math.round(parsed)
     }
 
-    const status =
-      typeof body.status === 'string' && body.status.trim()
-        ? body.status.trim()
-        : visitDate
-          ? 'todo'
-          : 'unscheduled'
+    const status = normalizeJobStatus(body.status, !!visitDate)
 
     const job = await prisma.job.create({
       data: {
