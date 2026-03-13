@@ -27,6 +27,18 @@ function normaliseText(value: unknown) {
   return value.replace(/\s+/g, " ").trim()
 }
 
+function normaliseIncomingImageDataUrl(value: unknown) {
+  const cleaned = cleanString(value)
+
+  if (!cleaned) return ""
+
+  if (!cleaned.startsWith("data:image/")) {
+    return ""
+  }
+
+  return cleaned
+}
+
 function extractResponseText(data: any): string {
   if (typeof data?.output_text === "string" && data.output_text.trim()) {
     return data.output_text.trim()
@@ -200,7 +212,7 @@ export async function POST(req: NextRequest) {
     const worker = cleanString(body.worker)
     const sessionId = cleanString(body.sessionId)
     const question = cleanString(body.question)
-    const imageDataUrl = cleanString(body.imageDataUrl)
+    const imageDataUrl = normaliseIncomingImageDataUrl(body.imageDataUrl)
     const jobId =
       typeof body.jobId === "number" && Number.isFinite(body.jobId)
         ? body.jobId

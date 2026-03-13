@@ -324,6 +324,69 @@ async function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
+async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return await new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const image = new Image()
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      resolve(image)
+    }
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('Failed to load image'))
+    }
+
+    image.src = objectUrl
+  })
+}
+
+async function compressImageFile(
+  file: File,
+  options?: {
+    maxWidth?: number
+    quality?: number
+  }
+): Promise<string> {
+  const maxWidth = options?.maxWidth ?? 1200
+  const quality = options?.quality ?? 0.7
+
+  if (!file.type.startsWith('image/')) {
+    return await fileToDataUrl(file)
+  }
+
+  const image = await loadImageFromFile(file)
+
+  const originalWidth = image.naturalWidth || image.width
+  const originalHeight = image.naturalHeight || image.height
+
+  if (!originalWidth || !originalHeight) {
+    return await fileToDataUrl(file)
+  }
+
+  const scale = Math.min(1, maxWidth / originalWidth)
+  const targetWidth = Math.max(1, Math.round(originalWidth * scale))
+  const targetHeight = Math.max(1, Math.round(originalHeight * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = targetWidth
+  canvas.height = targetHeight
+
+  const context = canvas.getContext('2d')
+
+  if (!context) {
+    return await fileToDataUrl(file)
+  }
+
+  context.drawImage(image, 0, 0, targetWidth, targetHeight)
+
+  const compressedDataUrl = canvas.toDataURL('image/jpeg', quality)
+
+  return compressedDataUrl || (await fileToDataUrl(file))
+}
+
 function getInitials(name: string) {
   const cleaned = name.trim()
   if (!cleaned) return '?'
@@ -638,6 +701,7 @@ export default function TodayPage() {
   const [error, setError] = useState('')
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
   const [now, setNow] = useState(new Date())
+  const [screenWidth, setScreenWidth] = useState<number>(390)
 
   const [chasOpen, setChasOpen] = useState(false)
   const [chasSessionId, setChasSessionId] = useState<string>('')
@@ -662,6 +726,39 @@ export default function TodayPage() {
   const [quoteEstimatedTime, setQuoteEstimatedTime] = useState('')
   const [quoteNotes, setQuoteNotes] = useState('')
   const chasMessagesEndRef = useRef<HTMLDivElement | null>(null)
+
+  const isPhone = screenWidth <= 640
+  const isVerySmallPhone = screenWidth <= 380
+
+  const shellPadding = isPhone ? '12px 10px 24px' : '16px 14px 36px'
+  const topCardPadding = isPhone ? 12 : 16
+  const topCardRadius = isPhone ? 18 : 22
+  const sectionGap = isPhone ? 12 : 16
+  const metaGridColumns = isPhone ? '1fr 1fr' : 'repeat(auto-fit, minmax(170px, 1fr))'
+  const metaCardPadding = isPhone ? 12 : 14
+  const metaBigNumber = isPhone ? 24 : 28
+  const headingSize = isPhone ? 28 : 32
+  const workerAvatarSize = isPhone ? 40 : 46
+  const workerCardPadding = isPhone ? '8px 10px' : '10px 12px'
+  const workerNameFont = isPhone ? 14 : 16
+  const workerSubFont = isPhone ? 11 : 12
+  const menuButtonSize = isPhone ? 56 : 64
+  const mobileButtonMinHeight = isPhone ? 44 : 48
+  const mobileDarkButtonMinHeight = isPhone ? 48 : 52
+  const panelRadius = isPhone ? 16 : 18
+  const panelPadding = isPhone ? 12 : 16
+  const cardPadding = isPhone ? 13 : 16
+  const cardRadius = isPhone ? 16 : 18
+  const actionGridMin = isPhone ? 120 : 130
+  const chasModalHeight = isPhone ? '90vh' : '86vh'
+  const chasModalRadius = isPhone ? 16 : 20
+  const chasHeaderPadding = isPhone ? 12 : 16
+  const chasBodyPadding = isPhone ? 12 : 16
+  const chasComposerPadding = isPhone ? 12 : 16
+  const chasBubblePadding = isPhone ? 11 : 13
+  const chasTextAreaMinHeight = isPhone ? 78 : 90
+  const collapsedCardPadding = isPhone ? 12 : 14
+  const stickyTop = isPhone ? 8 : 10
 
   async function loadJobs() {
     try {
@@ -720,6 +817,10 @@ export default function TodayPage() {
       setWorkerPhotoUrl(savedWorkerPhotoUrl)
     }
 
+    if (typeof window !== 'undefined') {
+      setScreenWidth(window.innerWidth)
+    }
+
     loadJobs()
     loadCustomers()
   }, [])
@@ -730,6 +831,17 @@ export default function TodayPage() {
     }, 1000)
 
     return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    function handleResize() {
+      setScreenWidth(window.innerWidth)
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
 
   useEffect(() => {
@@ -1332,7 +1444,11 @@ Heavy rain made it unsafe`,
     if (!file) return
 
     try {
-      const dataUrl = await fileToDataUrl(file)
+      const dataUrl = await compressImageFile(file, {
+        maxWidth: 1200,
+        quality: 0.7
+      })
+
       setChasImageDataUrl(dataUrl)
       setChasImageName(file.name)
       setChasError('')
@@ -1432,6 +1548,10 @@ Heavy rain made it unsafe`,
       ...styles.actionButtonDark,
       width: '100%',
       minWidth: 0,
+      minHeight: mobileDarkButtonMinHeight,
+      padding: isPhone ? '12px 14px' : '14px 18px',
+      fontSize: isPhone ? 15 : 16,
+      borderRadius: isPhone ? 12 : 14,
       opacity: busyJobId === job.id ? 0.6 : 1,
       cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
     }
@@ -1499,30 +1619,42 @@ Heavy rain made it unsafe`,
         }
       `}</style>
 
-      <div style={styles.shell}>
-        <section style={styles.topCard}>
+      <div
+        style={{
+          ...styles.shell,
+          padding: shellPadding
+        }}
+      >
+        <section
+          style={{
+            ...styles.topCard,
+            borderRadius: topCardRadius,
+            padding: topCardPadding,
+            marginBottom: sectionGap
+          }}
+        >
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'flex-start',
-              gap: 12,
-              marginBottom: 16,
+              gap: isPhone ? 10 : 12,
+              marginBottom: isPhone ? 12 : 16,
               flexWrap: 'wrap'
             }}
           >
             <div>
               {!logoHidden && (
-                <div style={{ marginBottom: 10 }}>
+                <div style={{ marginBottom: isPhone ? 8 : 10 }}>
                   <img
                     src="/furlads-logo.png"
                     alt="Furlads and Three Counties"
                     onError={() => setLogoHidden(true)}
                     style={{
-                      height: 42,
+                      height: isPhone ? 34 : 42,
                       width: 'auto',
                       display: 'block',
-                      maxWidth: 280,
+                      maxWidth: isPhone ? 220 : 280,
                       objectFit: 'contain'
                     }}
                   />
@@ -1532,7 +1664,7 @@ Heavy rain made it unsafe`,
               <h1
                 style={{
                   margin: 0,
-                  fontSize: 32,
+                  fontSize: headingSize,
                   lineHeight: 1,
                   fontWeight: 900
                 }}
@@ -1544,11 +1676,12 @@ Heavy rain made it unsafe`,
             <div
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                gap: 10,
+                alignItems: 'stretch',
+                gap: isPhone ? 8 : 10,
                 marginLeft: 'auto',
                 flexWrap: 'wrap',
-                justifyContent: 'flex-end'
+                justifyContent: 'flex-end',
+                width: isPhone ? '100%' : 'auto'
               }}
             >
               <button
@@ -1556,10 +1689,15 @@ Heavy rain made it unsafe`,
                 onClick={openChas}
                 style={{
                   ...styles.actionButtonDark,
-                  minWidth: 150
+                  minWidth: isPhone ? 130 : 150,
+                  minHeight: mobileDarkButtonMinHeight,
+                  padding: isPhone ? '12px 14px' : '14px 18px',
+                  borderRadius: isPhone ? 12 : 14,
+                  fontSize: isPhone ? 15 : 16,
+                  flex: isPhone ? '1 1 0' : '0 0 auto'
                 }}
               >
-                <ChasMascot size={24} />
+                <ChasMascot size={isPhone ? 22 : 24} />
                 <span>Ask Chas</span>
               </button>
 
@@ -1567,12 +1705,13 @@ Heavy rain made it unsafe`,
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  borderRadius: 16,
+                  gap: isPhone ? 8 : 10,
+                  padding: workerCardPadding,
+                  borderRadius: isPhone ? 14 : 16,
                   background: 'rgba(255,255,255,0.1)',
                   border: '1px solid rgba(255,255,255,0.12)',
-                  minWidth: 0
+                  minWidth: 0,
+                  flex: isPhone ? '1 1 0' : '0 1 auto'
                 }}
               >
                 {workerPhotoUrl ? (
@@ -1580,8 +1719,8 @@ Heavy rain made it unsafe`,
                     src={workerPhotoUrl}
                     alt={workerName || 'Worker'}
                     style={{
-                      width: 46,
-                      height: 46,
+                      width: workerAvatarSize,
+                      height: workerAvatarSize,
                       borderRadius: '50%',
                       objectFit: 'cover',
                       border: '2px solid rgba(255,255,255,0.35)',
@@ -1591,8 +1730,8 @@ Heavy rain made it unsafe`,
                 ) : (
                   <div
                     style={{
-                      width: 46,
-                      height: 46,
+                      width: workerAvatarSize,
+                      height: workerAvatarSize,
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
@@ -1600,7 +1739,7 @@ Heavy rain made it unsafe`,
                       background: '#facc15',
                       color: '#111',
                       fontWeight: 900,
-                      fontSize: 16,
+                      fontSize: isPhone ? 14 : 16,
                       border: '2px solid rgba(255,255,255,0.25)',
                       flexShrink: 0
                     }}
@@ -1612,7 +1751,7 @@ Heavy rain made it unsafe`,
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
-                      fontSize: 11,
+                      fontSize: isPhone ? 10 : 11,
                       fontWeight: 800,
                       letterSpacing: 0.6,
                       textTransform: 'uppercase',
@@ -1625,13 +1764,13 @@ Heavy rain made it unsafe`,
 
                   <div
                     style={{
-                      fontSize: 16,
+                      fontSize: workerNameFont,
                       fontWeight: 800,
-                      lineHeight: 1.2,
+                      lineHeight: 1.15,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      maxWidth: 180
+                      maxWidth: isPhone ? 150 : 180
                     }}
                   >
                     {workerName || 'Worker'}
@@ -1639,10 +1778,10 @@ Heavy rain made it unsafe`,
 
                   <div
                     style={{
-                      fontSize: 12,
+                      fontSize: workerSubFont,
                       opacity: 0.78,
                       marginTop: 2,
-                      whiteSpace: 'nowrap'
+                      lineHeight: 1.2
                     }}
                   >
                     Notes and actions use this login
@@ -1650,61 +1789,116 @@ Heavy rain made it unsafe`,
                 </div>
               </div>
 
-              <WorkerMenu />
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'stretch'
+                }}
+              >
+                <div
+                  style={{
+                    width: menuButtonSize,
+                    minWidth: menuButtonSize
+                  }}
+                >
+                  <WorkerMenu />
+                </div>
+              </div>
             </div>
           </div>
 
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-              gap: 12
+              gridTemplateColumns: metaGridColumns,
+              gap: isPhone ? 10 : 12
             }}
           >
-            <div style={styles.metaCard}>
-              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
+            <div
+              style={{
+                ...styles.metaCard,
+                padding: metaCardPadding,
+                borderRadius: isPhone ? 14 : 16,
+                minHeight: isPhone ? 112 : 132
+              }}
+            >
+              <div style={{ fontSize: isPhone ? 11 : 12, opacity: 0.72, marginBottom: 6 }}>
                 Current time
               </div>
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+              <div
+                style={{
+                  fontSize: isVerySmallPhone ? 20 : metaBigNumber,
+                  fontWeight: 900,
+                  lineHeight: 1.05
+                }}
+              >
                 {formatLiveNow(now)}
               </div>
-              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: isPhone ? 12 : 14,
+                  opacity: 0.85,
+                  lineHeight: 1.25
+                }}
+              >
                 {formatLiveDate(now)}
               </div>
             </div>
 
-            <div style={styles.metaCard}>
-              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
+            <div
+              style={{
+                ...styles.metaCard,
+                padding: metaCardPadding,
+                borderRadius: isPhone ? 14 : 16,
+                minHeight: isPhone ? 112 : 132
+              }}
+            >
+              <div style={{ fontSize: isPhone ? 11 : 12, opacity: 0.72, marginBottom: 6 }}>
                 Jobs today
               </div>
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+              <div style={{ fontSize: metaBigNumber, fontWeight: 900, lineHeight: 1.05 }}>
                 {progressCounts.todayTotal}
               </div>
-              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+              <div style={{ marginTop: 6, fontSize: isPhone ? 12 : 14, opacity: 0.85 }}>
                 Total jobs booked
               </div>
             </div>
 
-            <div style={styles.metaCard}>
-              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
+            <div
+              style={{
+                ...styles.metaCard,
+                padding: metaCardPadding,
+                borderRadius: isPhone ? 14 : 16,
+                minHeight: isPhone ? 112 : 132
+              }}
+            >
+              <div style={{ fontSize: isPhone ? 11 : 12, opacity: 0.72, marginBottom: 6 }}>
                 Jobs completed
               </div>
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+              <div style={{ fontSize: metaBigNumber, fontWeight: 900, lineHeight: 1.05 }}>
                 {progressCounts.completed}
               </div>
-              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+              <div style={{ marginTop: 6, fontSize: isPhone ? 12 : 14, opacity: 0.85 }}>
                 Finished so far
               </div>
             </div>
 
-            <div style={styles.metaCard}>
-              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
+            <div
+              style={{
+                ...styles.metaCard,
+                padding: metaCardPadding,
+                borderRadius: isPhone ? 14 : 16,
+                minHeight: isPhone ? 112 : 132
+              }}
+            >
+              <div style={{ fontSize: isPhone ? 11 : 12, opacity: 0.72, marginBottom: 6 }}>
                 Jobs left
               </div>
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+              <div style={{ fontSize: metaBigNumber, fontWeight: 900, lineHeight: 1.05 }}>
                 {progressCounts.left}
               </div>
-              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+              <div style={{ marginTop: 6, fontSize: isPhone ? 12 : 14, opacity: 0.85 }}>
                 Still to do
               </div>
             </div>
@@ -1715,16 +1909,17 @@ Heavy rain made it unsafe`,
           <section
             style={{
               ...styles.panel,
-              marginBottom: 16,
+              marginBottom: sectionGap,
               position: 'sticky',
-              top: 10,
+              top: stickyTop,
               zIndex: 20,
               border: '1px solid #efcf72',
               background: 'linear-gradient(180deg, #fff7d6 0%, #fff2be 100%)',
-              boxShadow: '0 16px 40px rgba(0,0,0,0.12)'
+              boxShadow: '0 16px 40px rgba(0,0,0,0.12)',
+              borderRadius: panelRadius
             }}
           >
-            <div style={{ padding: 16 }}>
+            <div style={{ padding: panelPadding }}>
               <div
                 style={{
                   display: 'flex',
@@ -1732,15 +1927,21 @@ Heavy rain made it unsafe`,
                   gap: 12,
                   alignItems: 'flex-start',
                   flexWrap: 'wrap',
-                  marginBottom: 12
+                  marginBottom: isPhone ? 10 : 12
                 }}
               >
                 <div>
                   <div style={styles.sectionTitle}>Current job</div>
-                  <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15 }}>
+                  <div
+                    style={{
+                      fontSize: isPhone ? 21 : 24,
+                      fontWeight: 900,
+                      lineHeight: 1.15
+                    }}
+                  >
                     {activeJob.title}
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 15 }}>
+                  <div style={{ marginTop: 6, fontSize: isPhone ? 14 : 15 }}>
                     {activeJob.customer?.name || 'Unknown customer'}
                   </div>
                 </div>
@@ -1750,11 +1951,17 @@ Heavy rain made it unsafe`,
                 </div>
               </div>
 
-              <div style={{ ...styles.gridTwo, marginBottom: 14 }}>
+              <div
+                style={{
+                  ...styles.gridTwo,
+                  marginBottom: isPhone ? 12 : 14,
+                  gap: isPhone ? 8 : 10
+                }}
+              >
                 <div
                   style={{
-                    padding: 12,
-                    borderRadius: 14,
+                    padding: isPhone ? 10 : 12,
+                    borderRadius: isPhone ? 12 : 14,
                     background: 'rgba(255,255,255,0.6)',
                     border: '1px solid rgba(0,0,0,0.06)'
                   }}
@@ -1767,8 +1974,8 @@ Heavy rain made it unsafe`,
 
                 <div
                   style={{
-                    padding: 12,
-                    borderRadius: 14,
+                    padding: isPhone ? 10 : 12,
+                    borderRadius: isPhone ? 12 : 14,
                     background: 'rgba(255,255,255,0.6)',
                     border: '1px solid rgba(0,0,0,0.06)'
                   }}
@@ -1781,8 +1988,8 @@ Heavy rain made it unsafe`,
 
                 <div
                   style={{
-                    padding: 12,
-                    borderRadius: 14,
+                    padding: isPhone ? 10 : 12,
+                    borderRadius: isPhone ? 12 : 14,
                     background: 'rgba(255,255,255,0.6)',
                     border: '1px solid rgba(0,0,0,0.06)'
                   }}
@@ -1795,8 +2002,8 @@ Heavy rain made it unsafe`,
 
                 <div
                   style={{
-                    padding: 12,
-                    borderRadius: 14,
+                    padding: isPhone ? 10 : 12,
+                    borderRadius: isPhone ? 12 : 14,
                     background: 'rgba(255,255,255,0.6)',
                     border: '1px solid rgba(0,0,0,0.06)'
                   }}
@@ -1811,7 +2018,7 @@ Heavy rain made it unsafe`,
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gridTemplateColumns: isPhone ? '1fr 1fr' : 'repeat(auto-fit, minmax(140px, 1fr))',
                   gap: 10
                 }}
               >
@@ -1823,6 +2030,10 @@ Heavy rain made it unsafe`,
                       disabled={busyJobId === activeJob.id}
                       style={{
                         ...styles.actionButtonDark,
+                        minHeight: mobileDarkButtonMinHeight,
+                        padding: isPhone ? '12px 14px' : '14px 18px',
+                        borderRadius: isPhone ? 12 : 14,
+                        fontSize: isPhone ? 15 : 16,
                         opacity: busyJobId === activeJob.id ? 0.6 : 1,
                         cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
                       }}
@@ -1836,6 +2047,10 @@ Heavy rain made it unsafe`,
                       disabled={busyJobId === activeJob.id}
                       style={{
                         ...styles.actionButton,
+                        minHeight: mobileButtonMinHeight,
+                        padding: isPhone ? '10px 12px' : '12px 16px',
+                        borderRadius: isPhone ? 10 : 12,
+                        fontSize: isPhone ? 14 : 15,
                         opacity: busyJobId === activeJob.id ? 0.6 : 1,
                         cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
                       }}
@@ -1853,6 +2068,10 @@ Heavy rain made it unsafe`,
                       disabled={busyJobId === activeJob.id}
                       style={{
                         ...styles.actionButtonDark,
+                        minHeight: mobileDarkButtonMinHeight,
+                        padding: isPhone ? '12px 14px' : '14px 18px',
+                        borderRadius: isPhone ? 12 : 14,
+                        fontSize: isPhone ? 15 : 16,
                         opacity: busyJobId === activeJob.id ? 0.6 : 1,
                         cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
                       }}
@@ -1866,6 +2085,10 @@ Heavy rain made it unsafe`,
                       disabled={busyJobId === activeJob.id}
                       style={{
                         ...styles.actionButton,
+                        minHeight: mobileButtonMinHeight,
+                        padding: isPhone ? '10px 12px' : '12px 16px',
+                        borderRadius: isPhone ? 10 : 12,
+                        fontSize: isPhone ? 14 : 15,
                         opacity: busyJobId === activeJob.id ? 0.6 : 1,
                         cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
                       }}
@@ -1875,12 +2098,30 @@ Heavy rain made it unsafe`,
                   </>
                 )}
 
-                <a href={`/jobs/${activeJob.id}`} style={styles.actionButton}>
+                <a
+                  href={`/jobs/${activeJob.id}`}
+                  style={{
+                    ...styles.actionButton,
+                    minHeight: mobileButtonMinHeight,
+                    padding: isPhone ? '10px 12px' : '12px 16px',
+                    borderRadius: isPhone ? 10 : 12,
+                    fontSize: isPhone ? 14 : 15
+                  }}
+                >
                   Open Job
                 </a>
 
                 {activeJob.customer?.phone && (
-                  <a href={`tel:${activeJob.customer.phone}`} style={styles.actionButton}>
+                  <a
+                    href={`tel:${activeJob.customer.phone}`}
+                    style={{
+                      ...styles.actionButton,
+                      minHeight: mobileButtonMinHeight,
+                      padding: isPhone ? '10px 12px' : '12px 16px',
+                      borderRadius: isPhone ? 10 : 12,
+                      fontSize: isPhone ? 14 : 15
+                    }}
+                  >
                     Call Customer
                   </a>
                 )}
@@ -1892,7 +2133,14 @@ Heavy rain made it unsafe`,
                     )}`}
                     target="_blank"
                     rel="noreferrer"
-                    style={styles.actionButton}
+                    style={{
+                      ...styles.actionButton,
+                      minHeight: mobileButtonMinHeight,
+                      padding: isPhone ? '10px 12px' : '12px 16px',
+                      borderRadius: isPhone ? 10 : 12,
+                      fontSize: isPhone ? 14 : 15,
+                      gridColumn: isPhone ? '1 / -1' : 'auto'
+                    }}
                   >
                     Navigate
                   </a>
@@ -1903,7 +2151,15 @@ Heavy rain made it unsafe`,
         )}
 
         {!loading && !error && workerId && upcomingJobs.length > 0 && (
-          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
+          <section
+            style={{
+              ...styles.panel,
+              ...styles.panelPadding,
+              borderRadius: panelRadius,
+              padding: panelPadding,
+              marginBottom: sectionGap
+            }}
+          >
             <div style={styles.sectionTitle}>Coming up</div>
 
             <div
@@ -1920,8 +2176,8 @@ Heavy rain made it unsafe`,
                     textDecoration: 'none',
                     color: 'inherit',
                     border: '1px solid #e5e7eb',
-                    borderRadius: 14,
-                    padding: 14,
+                    borderRadius: isPhone ? 12 : 14,
+                    padding: isPhone ? 12 : 14,
                     background: '#fafafa'
                   }}
                 >
@@ -1935,24 +2191,24 @@ Heavy rain made it unsafe`,
                     }}
                   >
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>
+                      <div style={{ fontSize: isPhone ? 15 : 16, fontWeight: 800, marginBottom: 4 }}>
                         {job.title}
                       </div>
-                      <div style={{ fontSize: 14, color: colours.inkSoft }}>
+                      <div style={{ fontSize: isPhone ? 13 : 14, color: colours.inkSoft }}>
                         {job.customer?.name || 'Unknown customer'}
                       </div>
-                      <div style={{ fontSize: 13, color: colours.muted, marginTop: 4 }}>
+                      <div style={{ fontSize: isPhone ? 12 : 13, color: colours.muted, marginTop: 4 }}>
                         {job.address}
                       </div>
                     </div>
 
                     <div
                       style={{
-                        padding: '8px 10px',
+                        padding: isPhone ? '7px 9px' : '8px 10px',
                         borderRadius: 12,
                         background: '#fff',
                         border: '1px solid #ddd',
-                        fontSize: 12,
+                        fontSize: isPhone ? 11 : 12,
                         fontWeight: 800,
                         whiteSpace: 'nowrap'
                       }}
@@ -1967,7 +2223,15 @@ Heavy rain made it unsafe`,
         )}
 
         {loading && (
-          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
+          <section
+            style={{
+              ...styles.panel,
+              ...styles.panelPadding,
+              borderRadius: panelRadius,
+              padding: panelPadding,
+              marginBottom: sectionGap
+            }}
+          >
             <div style={{ fontWeight: 700 }}>Loading jobs...</div>
           </section>
         )}
@@ -1977,9 +2241,11 @@ Heavy rain made it unsafe`,
             style={{
               ...styles.panel,
               ...styles.panelPadding,
-              marginBottom: 16,
+              marginBottom: sectionGap,
               border: `1px solid ${colours.redLine}`,
-              background: colours.redSoft
+              background: colours.redSoft,
+              borderRadius: panelRadius,
+              padding: panelPadding
             }}
           >
             <div style={{ fontWeight: 700 }}>{error}</div>
@@ -1987,7 +2253,15 @@ Heavy rain made it unsafe`,
         )}
 
         {!loading && !error && !workerId && (
-          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
+          <section
+            style={{
+              ...styles.panel,
+              ...styles.panelPadding,
+              borderRadius: panelRadius,
+              padding: panelPadding,
+              marginBottom: sectionGap
+            }}
+          >
             <div style={{ fontWeight: 700 }}>No worker selected.</div>
             <div style={{ marginTop: 6, color: colours.muted }}>
               Go back and choose a worker first.
@@ -1996,13 +2270,27 @@ Heavy rain made it unsafe`,
         )}
 
         {!loading && !error && workerId && listJobs.length === 0 && !activeJob && (
-          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
-            <div style={{ fontWeight: 700 }}>No open jobs assigned to you.</div>
+          <section
+            style={{
+              ...styles.panel,
+              ...styles.panelPadding,
+              borderRadius: panelRadius,
+              padding: isPhone ? 18 : panelPadding,
+              marginBottom: sectionGap,
+              textAlign: 'center'
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: isPhone ? 18 : 20, marginBottom: 6 }}>
+              No open jobs assigned today
+            </div>
+            <div style={{ color: colours.muted, fontSize: isPhone ? 13 : 14 }}>
+              You’re all clear for now.
+            </div>
           </section>
         )}
 
         {!loading && !error && workerId && nextJobs.length > 0 && (
-          <section style={{ marginBottom: 18 }}>
+          <section style={{ marginBottom: isPhone ? 16 : 18 }}>
             <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>Next jobs</div>
 
             {nextJobs.map((job, index) => {
@@ -2028,9 +2316,10 @@ Heavy rain made it unsafe`,
                     key={job.id}
                     style={{
                       ...styles.panel,
-                      padding: 14,
+                      padding: collapsedCardPadding,
                       marginBottom: 8,
-                      background: '#fafafa'
+                      background: '#fafafa',
+                      borderRadius: panelRadius
                     }}
                   >
                     <a
@@ -2050,8 +2339,8 @@ Heavy rain made it unsafe`,
                         }}
                       >
                         <div>
-                          <div style={{ fontSize: 16, fontWeight: 800 }}>{job.title}</div>
-                          <div style={{ marginTop: 4, fontSize: 13, color: colours.muted }}>
+                          <div style={{ fontSize: isPhone ? 15 : 16, fontWeight: 800 }}>{job.title}</div>
+                          <div style={{ marginTop: 4, fontSize: isPhone ? 12 : 13, color: colours.muted }}>
                             ETA start: {formatClockTime(job.etaStart)}
                           </div>
                         </div>
@@ -2068,7 +2357,10 @@ Heavy rain made it unsafe`,
                   key={job.id}
                   style={{
                     ...styles.jobCard,
-                    ...getJobCardStyle(job)
+                    ...getJobCardStyle(job),
+                    padding: cardPadding,
+                    borderRadius: cardRadius,
+                    marginBottom: isPhone ? 10 : 12
                   }}
                 >
                   <div
@@ -2078,7 +2370,7 @@ Heavy rain made it unsafe`,
                       alignItems: 'flex-start',
                       gap: 12,
                       flexWrap: 'wrap',
-                      marginBottom: 12
+                      marginBottom: isPhone ? 10 : 12
                     }}
                   >
                     <div style={{ minWidth: 0, flex: 1 }}>
@@ -2089,7 +2381,7 @@ Heavy rain made it unsafe`,
                         <h2
                           style={{
                             margin: 0,
-                            fontSize: 22,
+                            fontSize: isPhone ? 20 : 22,
                             lineHeight: 1.15,
                             fontWeight: 900
                           }}
@@ -2098,7 +2390,7 @@ Heavy rain made it unsafe`,
                         </h2>
                       </a>
 
-                      <div style={{ marginTop: 6, fontSize: 15 }}>
+                      <div style={{ marginTop: 6, fontSize: isPhone ? 14 : 15 }}>
                         {job.customer?.name || 'Unknown customer'}
                       </div>
                     </div>
@@ -2106,11 +2398,17 @@ Heavy rain made it unsafe`,
                     <div style={getStatusPill(job)}>{getStatusText(job)}</div>
                   </div>
 
-                  <div style={{ ...styles.gridTwo, marginBottom: 12 }}>
+                  <div
+                    style={{
+                      ...styles.gridTwo,
+                      marginBottom: isPhone ? 10 : 12,
+                      gap: isPhone ? 8 : 10
+                    }}
+                  >
                     <div
                       style={{
-                        padding: 12,
-                        borderRadius: 14,
+                        padding: isPhone ? 10 : 12,
+                        borderRadius: isPhone ? 12 : 14,
                         background: 'rgba(255,255,255,0.65)',
                         border: '1px solid rgba(0,0,0,0.06)'
                       }}
@@ -2121,8 +2419,8 @@ Heavy rain made it unsafe`,
 
                     <div
                       style={{
-                        padding: 12,
-                        borderRadius: 14,
+                        padding: isPhone ? 10 : 12,
+                        borderRadius: isPhone ? 12 : 14,
                         background: 'rgba(255,255,255,0.65)',
                         border: '1px solid rgba(0,0,0,0.06)'
                       }}
@@ -2137,8 +2435,8 @@ Heavy rain made it unsafe`,
 
                     <div
                       style={{
-                        padding: 12,
-                        borderRadius: 14,
+                        padding: isPhone ? 10 : 12,
+                        borderRadius: isPhone ? 12 : 14,
                         background: 'rgba(255,255,255,0.65)',
                         border: '1px solid rgba(0,0,0,0.06)'
                       }}
@@ -2151,8 +2449,8 @@ Heavy rain made it unsafe`,
 
                     <div
                       style={{
-                        padding: 12,
-                        borderRadius: 14,
+                        padding: isPhone ? 10 : 12,
+                        borderRadius: isPhone ? 12 : 14,
                         background: 'rgba(255,255,255,0.65)',
                         border: '1px solid rgba(0,0,0,0.06)'
                       }}
@@ -2165,19 +2463,19 @@ Heavy rain made it unsafe`,
                   {(job.isStarted || job.isPaused || job.notes) && (
                     <div
                       style={{
-                        marginBottom: 12,
-                        padding: 12,
-                        borderRadius: 14,
+                        marginBottom: isPhone ? 10 : 12,
+                        padding: isPhone ? 10 : 12,
+                        borderRadius: isPhone ? 12 : 14,
                         background: 'rgba(255,255,255,0.55)',
                         border: '1px solid rgba(0,0,0,0.06)'
                       }}
                     >
                       {job.isStarted && (
                         <>
-                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                          <div style={{ marginBottom: 6, fontSize: isPhone ? 13 : 14 }}>
                             <strong>Start time:</strong> {formatTime(startedAt)}
                           </div>
-                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                          <div style={{ marginBottom: 6, fontSize: isPhone ? 13 : 14 }}>
                             <strong>Hours worked:</strong> {formatMinutes(getLiveWorkedMinutes(job, now))}
                           </div>
                         </>
@@ -2185,46 +2483,64 @@ Heavy rain made it unsafe`,
 
                       {job.isPaused && (
                         <>
-                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                          <div style={{ marginBottom: 6, fontSize: isPhone ? 13 : 14 }}>
                             <strong>Start time:</strong> {formatTime(startedAt)}
                           </div>
-                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                          <div style={{ marginBottom: 6, fontSize: isPhone ? 13 : 14 }}>
                             <strong>Paused at:</strong> {formatTime(pausedAt)}
                           </div>
-                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                          <div style={{ marginBottom: 6, fontSize: isPhone ? 13 : 14 }}>
                             <strong>Hours worked:</strong> {formatMinutes(getLiveWorkedMinutes(job, now))}
                           </div>
-                          <div style={{ marginBottom: 6, fontSize: 14 }}>
+                          <div style={{ marginBottom: 6, fontSize: isPhone ? 13 : 14 }}>
                             <strong>Paused live:</strong> {formatMinutes(livePausedMinutes)}
                           </div>
                         </>
                       )}
 
                       {job.notes && (
-                        <div style={{ fontSize: 14, whiteSpace: 'pre-line' }}>
+                        <div style={{ fontSize: isPhone ? 13 : 14, whiteSpace: 'pre-line' }}>
                           <strong>Notes:</strong> {job.notes}
                         </div>
                       )}
                     </div>
                   )}
 
-                  <div style={{ marginBottom: 12 }}>
+                  <div style={{ marginBottom: isPhone ? 10 : 12 }}>
                     {renderPrimaryAction(job)}
                   </div>
 
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                      gridTemplateColumns: `repeat(auto-fit, minmax(${actionGridMin}px, 1fr))`,
                       gap: 10
                     }}
                   >
-                    <a href={`/jobs/${job.id}`} style={styles.actionButton}>
+                    <a
+                      href={`/jobs/${job.id}`}
+                      style={{
+                        ...styles.actionButton,
+                        minHeight: mobileButtonMinHeight,
+                        padding: isPhone ? '10px 12px' : '12px 16px',
+                        borderRadius: isPhone ? 10 : 12,
+                        fontSize: isPhone ? 14 : 15
+                      }}
+                    >
                       Open Job
                     </a>
 
                     {job.customer?.phone && (
-                      <a href={`tel:${job.customer.phone}`} style={styles.actionButton}>
+                      <a
+                        href={`tel:${job.customer.phone}`}
+                        style={{
+                          ...styles.actionButton,
+                          minHeight: mobileButtonMinHeight,
+                          padding: isPhone ? '10px 12px' : '12px 16px',
+                          borderRadius: isPhone ? 10 : 12,
+                          fontSize: isPhone ? 14 : 15
+                        }}
+                      >
                         Call Customer
                       </a>
                     )}
@@ -2234,7 +2550,13 @@ Heavy rain made it unsafe`,
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationQuery)}`}
                         target="_blank"
                         rel="noreferrer"
-                        style={styles.actionButton}
+                        style={{
+                          ...styles.actionButton,
+                          minHeight: mobileButtonMinHeight,
+                          padding: isPhone ? '10px 12px' : '12px 16px',
+                          borderRadius: isPhone ? 10 : 12,
+                          fontSize: isPhone ? 14 : 15
+                        }}
                       >
                         Navigate
                       </a>
@@ -2248,6 +2570,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
                           }}
@@ -2261,6 +2587,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             background: colours.redSoft,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
@@ -2275,6 +2605,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
                           }}
@@ -2288,6 +2622,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
                           }}
@@ -2301,6 +2639,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
                           }}
@@ -2314,6 +2656,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
                           }}
@@ -2327,6 +2673,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
                           }}
@@ -2340,6 +2690,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
                           }}
@@ -2357,6 +2711,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
                           }}
@@ -2370,6 +2728,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             background: colours.redSoft,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
@@ -2384,6 +2746,10 @@ Heavy rain made it unsafe`,
                           disabled={busyJobId === job.id}
                           style={{
                             ...styles.actionButton,
+                            minHeight: mobileButtonMinHeight,
+                            padding: isPhone ? '10px 12px' : '12px 16px',
+                            borderRadius: isPhone ? 10 : 12,
+                            fontSize: isPhone ? 14 : 15,
                             opacity: busyJobId === job.id ? 0.6 : 1,
                             cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
                           }}
@@ -2400,7 +2766,7 @@ Heavy rain made it unsafe`,
         )}
 
         {!loading && !error && workerId && completedJobs.length > 0 && (
-          <section style={{ marginBottom: 20 }}>
+          <section style={{ marginBottom: isPhone ? 18 : 20 }}>
             <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>Completed today</div>
 
             {completedJobs.map((job) => {
@@ -2413,7 +2779,9 @@ Heavy rain made it unsafe`,
                   key={job.id}
                   style={{
                     ...styles.jobCard,
-                    ...getJobCardStyle(job)
+                    ...getJobCardStyle(job),
+                    padding: cardPadding,
+                    borderRadius: cardRadius
                   }}
                 >
                   <div
@@ -2426,12 +2794,26 @@ Heavy rain made it unsafe`,
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                        <div style={{ fontSize: 20, fontWeight: 900 }}>{job.title}</div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          flexWrap: 'wrap',
+                          marginBottom: 10
+                        }}
+                      >
+                        <div style={{ fontSize: isPhone ? 18 : 20, fontWeight: 900 }}>{job.title}</div>
                         <div style={getStatusPill(job)}>{getStatusText(job)}</div>
                       </div>
 
-                      <div style={{ ...styles.gridTwo, maxWidth: 620 }}>
+                      <div
+                        style={{
+                          ...styles.gridTwo,
+                          maxWidth: 620,
+                          gap: isPhone ? 8 : 10
+                        }}
+                      >
                         <div>
                           <div style={styles.label}>Completed</div>
                           <div style={styles.value}>{formatTime(completedAt)}</div>
@@ -2455,7 +2837,11 @@ Heavy rain made it unsafe`,
                       disabled={busyJobId === job.id}
                       style={{
                         ...styles.actionButton,
-                        minWidth: 120,
+                        minWidth: isPhone ? 100 : 120,
+                        minHeight: mobileButtonMinHeight,
+                        padding: isPhone ? '10px 12px' : '12px 16px',
+                        borderRadius: isPhone ? 10 : 12,
+                        fontSize: isPhone ? 14 : 15,
                         color: '#1d5d2c',
                         border: '1px solid #7bc586',
                         opacity: busyJobId === job.id ? 0.6 : 1,
@@ -2482,7 +2868,7 @@ Heavy rain made it unsafe`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 12,
+            padding: isPhone ? 8 : 12,
             zIndex: 1000
           }}
         >
@@ -2491,10 +2877,10 @@ Heavy rain made it unsafe`,
             style={{
               width: '100%',
               maxWidth: 820,
-              height: '86vh',
+              height: chasModalHeight,
               overflow: 'hidden',
               background: '#fff',
-              borderRadius: 20,
+              borderRadius: chasModalRadius,
               border: '1px solid #ddd',
               display: 'flex',
               flexDirection: 'column',
@@ -2503,7 +2889,7 @@ Heavy rain made it unsafe`,
           >
             <div
               style={{
-                padding: 16,
+                padding: chasHeaderPadding,
                 borderBottom: '1px solid rgba(255,255,255,0.08)',
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -2514,10 +2900,10 @@ Heavy rain made it unsafe`,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ChasMascot size={32} />
+                <ChasMascot size={isPhone ? 28 : 32} />
                 <div>
-                  <div style={{ fontSize: 20, fontWeight: 800 }}>Chas</div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                  <div style={{ fontSize: isPhone ? 18 : 20, fontWeight: 800 }}>Chas</div>
+                  <div style={{ fontSize: isPhone ? 12 : 13, opacity: 0.8 }}>
                     Friendly on-site help
                   </div>
                 </div>
@@ -2527,14 +2913,15 @@ Heavy rain made it unsafe`,
                 type="button"
                 onClick={closeChas}
                 style={{
-                  width: 42,
-                  height: 42,
+                  width: isPhone ? 38 : 42,
+                  height: isPhone ? 38 : 42,
                   borderRadius: 999,
                   border: '1px solid rgba(255,255,255,0.18)',
                   background: 'transparent',
                   color: '#fff',
                   cursor: 'pointer',
-                  fontSize: 20
+                  fontSize: isPhone ? 18 : 20,
+                  flexShrink: 0
                 }}
               >
                 ×
@@ -2545,18 +2932,18 @@ Heavy rain made it unsafe`,
               style={{
                 flex: 1,
                 overflowY: 'auto',
-                padding: 16,
+                padding: chasBodyPadding,
                 background: 'linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%)'
               }}
             >
               {chasMessages.length === 0 && (
                 <div
                   style={{
-                    padding: 16,
-                    borderRadius: 16,
+                    padding: isPhone ? 14 : 16,
+                    borderRadius: isPhone ? 14 : 16,
                     background: '#fffdf3',
                     border: '1px solid #f0e2a1',
-                    fontSize: 14,
+                    fontSize: isPhone ? 13 : 14,
                     lineHeight: 1.5,
                     maxWidth: 520
                   }}
@@ -2580,7 +2967,7 @@ Heavy rain made it unsafe`,
                 <div
                   key={message.id}
                   style={{
-                    marginBottom: 14,
+                    marginBottom: 12,
                     display: 'flex',
                     justifyContent:
                       message.role === 'user' ? 'flex-end' : 'flex-start'
@@ -2588,9 +2975,9 @@ Heavy rain made it unsafe`,
                 >
                   <div
                     style={{
-                      maxWidth: '86%',
-                      padding: 13,
-                      borderRadius: 16,
+                      maxWidth: isPhone ? '92%' : '86%',
+                      padding: chasBubblePadding,
+                      borderRadius: isPhone ? 14 : 16,
                       background: message.role === 'user' ? '#111' : '#fffdf5',
                       color: message.role === 'user' ? '#fff' : '#111',
                       border:
@@ -2608,8 +2995,8 @@ Heavy rain made it unsafe`,
                         src={message.imageDataUrl}
                         alt="Attached"
                         style={{
-                          width: 96,
-                          height: 96,
+                          width: isPhone ? 84 : 96,
+                          height: isPhone ? 84 : 96,
                           objectFit: 'cover',
                           borderRadius: 10,
                           marginBottom: 8,
@@ -2619,7 +3006,7 @@ Heavy rain made it unsafe`,
                       />
                     )}
 
-                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5, fontSize: isPhone ? 14 : 15 }}>
                       {message.text}
                     </div>
 
@@ -2639,16 +3026,16 @@ Heavy rain made it unsafe`,
               {chasBusy && (
                 <div
                   style={{
-                    marginBottom: 14,
+                    marginBottom: 12,
                     display: 'flex',
                     justifyContent: 'flex-start'
                   }}
                 >
                   <div
                     style={{
-                      maxWidth: '86%',
-                      padding: 13,
-                      borderRadius: 16,
+                      maxWidth: isPhone ? '92%' : '86%',
+                      padding: chasBubblePadding,
+                      borderRadius: isPhone ? 14 : 16,
                       background: '#fffdf5',
                       color: '#111',
                       border: '1px solid #eee0a2',
@@ -2703,7 +3090,7 @@ Heavy rain made it unsafe`,
 
             <div
               style={{
-                padding: 16,
+                padding: chasComposerPadding,
                 borderTop: '1px solid #eee',
                 background: '#fff'
               }}
@@ -2712,8 +3099,8 @@ Heavy rain made it unsafe`,
                 <div
                   style={{
                     marginBottom: 14,
-                    padding: 14,
-                    borderRadius: 14,
+                    padding: isPhone ? 12 : 14,
+                    borderRadius: isPhone ? 12 : 14,
                     border: '1px solid #ddd',
                     background: '#fafafa'
                   }}
@@ -2737,7 +3124,7 @@ Heavy rain made it unsafe`,
                         setQuoteMessage('')
                       }}
                       style={{
-                        padding: '10px 14px',
+                        padding: isPhone ? '10px 12px' : '10px 14px',
                         borderRadius: 10,
                         border:
                           quoteCustomerMode === 'existing'
@@ -2767,7 +3154,7 @@ Heavy rain made it unsafe`,
                         setQuoteMessage('')
                       }}
                       style={{
-                        padding: '10px 14px',
+                        padding: isPhone ? '10px 12px' : '10px 14px',
                         borderRadius: 10,
                         border:
                           quoteCustomerMode === 'new'
@@ -2986,7 +3373,7 @@ Heavy rain made it unsafe`,
                       onClick={handleSendQuoteRequest}
                       disabled={quoteBusy}
                       style={{
-                        padding: '12px 16px',
+                        padding: isPhone ? '12px 14px' : '12px 16px',
                         borderRadius: 10,
                         border: '1px solid #111',
                         background: '#111',
@@ -3004,7 +3391,7 @@ Heavy rain made it unsafe`,
                       onClick={() => setShowQuoteForm(false)}
                       disabled={quoteBusy}
                       style={{
-                        padding: '12px 16px',
+                        padding: isPhone ? '12px 14px' : '12px 16px',
                         borderRadius: 10,
                         border: '1px solid #ccc',
                         background: '#fff',
@@ -3022,7 +3409,7 @@ Heavy rain made it unsafe`,
                 <div
                   style={{
                     marginBottom: 12,
-                    padding: 12,
+                    padding: isPhone ? 10 : 12,
                     borderRadius: 12,
                     border: '1px solid #eadc97',
                     background: '#fff8d9'
@@ -3062,8 +3449,8 @@ Heavy rain made it unsafe`,
                     src={chasImageDataUrl}
                     alt="Preview"
                     style={{
-                      width: 96,
-                      height: 96,
+                      width: isPhone ? 84 : 96,
+                      height: isPhone ? 84 : 96,
                       objectFit: 'cover',
                       borderRadius: 10,
                       border: '1px solid #ddd'
@@ -3074,8 +3461,8 @@ Heavy rain made it unsafe`,
 
               <div
                 style={{
-                  padding: 10,
-                  borderRadius: 18,
+                  padding: isPhone ? 8 : 10,
+                  borderRadius: isPhone ? 16 : 18,
                   border: '1px solid #e3e3e3',
                   background: '#fafafa',
                   boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
@@ -3088,7 +3475,7 @@ Heavy rain made it unsafe`,
                   disabled={chasBusy}
                   style={{
                     width: '100%',
-                    minHeight: 90,
+                    minHeight: chasTextAreaMinHeight,
                     padding: 12,
                     borderRadius: 14,
                     border: '1px solid #d8d8d8',
@@ -3123,17 +3510,26 @@ Heavy rain made it unsafe`,
                     flexWrap: 'wrap'
                   }}
                 >
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 10,
+                      flexWrap: 'wrap',
+                      width: isPhone ? '100%' : 'auto'
+                    }}
+                  >
                     <label
                       style={{
-                        padding: '12px 16px',
+                        padding: isPhone ? '11px 14px' : '12px 16px',
                         borderRadius: 10,
                         border: '1px solid #ccc',
                         background: '#fff',
                         cursor: chasBusy ? 'not-allowed' : 'pointer',
                         display: 'inline-block',
                         opacity: chasBusy ? 0.6 : 1,
-                        fontWeight: 600
+                        fontWeight: 600,
+                        flex: isPhone ? '1 1 0' : '0 0 auto',
+                        textAlign: 'center'
                       }}
                     >
                       📸 Add Photo
@@ -3153,12 +3549,13 @@ Heavy rain made it unsafe`,
                         setQuoteMessage('')
                       }}
                       style={{
-                        padding: '12px 16px',
+                        padding: isPhone ? '11px 14px' : '12px 16px',
                         borderRadius: 10,
                         border: '1px solid #ccc',
                         background: '#fff',
                         cursor: 'pointer',
-                        fontWeight: 600
+                        fontWeight: 600,
+                        flex: isPhone ? '1 1 0' : '0 0 auto'
                       }}
                     >
                       {showQuoteForm ? 'Hide New Quote' : 'New Quote'}
@@ -3170,7 +3567,7 @@ Heavy rain made it unsafe`,
                     onClick={handleSendChasMessage}
                     disabled={chasBusy || !chasQuestion.trim()}
                     style={{
-                      padding: '12px 18px',
+                      padding: isPhone ? '12px 16px' : '12px 18px',
                       borderRadius: 12,
                       border: '1px solid #111',
                       background: '#111',
@@ -3178,7 +3575,7 @@ Heavy rain made it unsafe`,
                       cursor: chasBusy || !chasQuestion.trim() ? 'not-allowed' : 'pointer',
                       opacity: chasBusy || !chasQuestion.trim() ? 0.7 : 1,
                       fontWeight: 700,
-                      minWidth: 150
+                      minWidth: isPhone ? '100%' : 150
                     }}
                   >
                     {chasBusy ? 'Chas is typing...' : 'Send to Chas'}
