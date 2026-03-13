@@ -1,74 +1,34 @@
-"use client"
+import { redirect } from 'next/navigation'
 
-import { useSearchParams } from "next/navigation"
-import { useState } from "react"
+type PageProps = {
+  searchParams?: {
+    [key: string]: string | string[] | undefined
+  }
+}
 
-export default function NewJobPage() {
+function firstValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] ?? ''
+  return value ?? ''
+}
 
-  const params = useSearchParams()
+export default function AdminJobsNewPage({ searchParams }: PageProps) {
+  const name = firstValue(searchParams?.name)
+  const summary = firstValue(searchParams?.summary)
+  const address = firstValue(searchParams?.address)
+  const phone = firstValue(searchParams?.phone)
+  const email = firstValue(searchParams?.email)
+  const postcode = firstValue(searchParams?.postcode)
 
-  const name = params.get("name") ?? ""
-  const summary = params.get("summary") ?? ""
+  const params = new URLSearchParams()
 
-  const [title, setTitle] = useState(summary)
-  const [customerName, setCustomerName] = useState(name)
-  const [address, setAddress] = useState("")
-  const [notes, setNotes] = useState(summary)
+  if (name) params.set('name', name)
+  if (summary) params.set('summary', summary)
+  if (address) params.set('address', address)
+  if (phone) params.set('phone', phone)
+  if (email) params.set('email', email)
+  if (postcode) params.set('postcode', postcode)
 
-  return (
-    <div className="space-y-6 max-w-xl">
+  const query = params.toString()
 
-      <div>
-        <h1 className="text-2xl font-bold">Create Job</h1>
-        <p className="text-sm text-zinc-500">
-          Create a new job for the schedule
-        </p>
-      </div>
-
-      <div className="space-y-4">
-
-        <div>
-          <label className="text-sm font-medium">Title</label>
-          <input
-            className="w-full border rounded-lg p-2"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="text-sm font-medium">Customer Name</label>
-          <input
-            className="w-full border rounded-lg p-2"
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="text-sm font-medium">Address</label>
-          <input
-            className="w-full border rounded-lg p-2"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="text-sm font-medium">Notes</label>
-          <textarea
-            className="w-full border rounded-lg p-2"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </div>
-
-        <button className="bg-black text-white px-4 py-2 rounded-lg">
-          Save Job
-        </button>
-
-      </div>
-
-    </div>
-  )
+  redirect(query ? `/jobs/add?${query}` : '/jobs/add')
 }
