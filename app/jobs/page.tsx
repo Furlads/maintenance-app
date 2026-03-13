@@ -1,176 +1,721 @@
-import Link from "next/link"
-import { prisma } from "@/lib/prisma"
+'use client'
 
-export const dynamic = "force-dynamic"
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 
-function formatDate(date: Date | null) {
-  if (!date) return "Not scheduled"
-
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
-  }).format(new Date(date))
+type Worker = {
+  id: number
+  firstName?: string | null
+  lastName?: string | null
+  name?: string | null
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    unscheduled: "bg-zinc-100 text-zinc-700",
-    scheduled: "bg-blue-100 text-blue-700",
-    inprogress: "bg-yellow-100 text-yellow-700",
-    completed: "bg-green-100 text-green-700"
+type Assignment = {
+  id?: number
+  workerId?: number
+  worker?: Worker | null
+}
+
+type Customer = {
+  id: number
+  name?: string | null
+  firstName?: string | null
+  lastName?: string | null
+  companyName?: string | null
+}
+
+type Job = {
+  id: number
+  title?: string | null
+  address?: string | null
+  notes?: string | null
+  status?: string | null
+  jobType?: string | null
+  visitDate?: string | null
+  startTime?: string | null
+  durationMinutes?: number | null
+  durationMins?: number | null
+  overrunMins?: number | null
+  assignedTo?: string | null
+  customer?: Customer | null
+  assignments?: Assignment[]
+}
+
+function formatDate(dateValue?: string | null) {
+  if (!dateValue) return 'No date set'
+
+  const date = new Date(dateValue)
+  if (Number.isNaN(date.getTime())) return 'No date set'
+
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  }).format(date)
+}
+
+function formatStatus(status?: string | null) {
+  if (!status) return 'Unknown'
+
+  return status
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function getStatusStyles(status?: string | null) {
+  const value = (status || '').toLowerCase()
+
+  if (value === 'done') {
+    return {
+      background: '#dcfce7',
+      color: '#166534',
+      border: '1px solid #86efac'
+    }
   }
 
-  return (
-    <span
-      className={`text-xs px-2 py-1 rounded-lg font-medium ${
-        styles[status] ?? "bg-zinc-100 text-zinc-700"
-      }`}
-    >
-      {status}
-    </span>
-  )
+  if (value === 'in_progress') {
+    return {
+      background: '#dbeafe',
+      color: '#1d4ed8',
+      border: '1px solid #93c5fd'
+    }
+  }
+
+  if (value === 'paused') {
+    return {
+      background: '#fef3c7',
+      color: '#92400e',
+      border: '1px solid #fcd34d'
+    }
+  }
+
+  if (value === 'unscheduled') {
+    return {
+      background: '#f3f4f6',
+      color: '#374151',
+      border: '1px solid #d1d5db'
+    }
+  }
+
+  return {
+    background: '#fef3c7',
+    color: '#92400e',
+    border: '1px solid #fde68a'
+  }
 }
 
-export default async function JobsPage() {
+function getCustomerName(customer?: Customer | null) {
+  if (!customer) return 'No customer'
 
-  const jobs = await prisma.job.findMany({
-    include: {
-      customer: true,
-      assignments: {
-        include: {
-          worker: true
-        }
+  if (customer.name) return customer.name
+  if (customer.companyName) return customer.companyName
+
+  const fullName = `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim()
+  return fullName || 'No customer'
+}
+
+function getAssignedWorkers(job: Job) {
+  if (Array.isArray(job.assignments) && job.assignments.length > 0) {
+    const names = job.assignments
+      .map((assignment) => {
+        const worker = assignment.worker
+        if (!worker) return null
+
+        if (worker.name) return worker.name
+
+        const fullName = `${worker.firstName ?? ''} ${worker.lastName ?? ''}`.trim()
+        return fullName || null
+      })
+      .filter(Boolean) as string[]
+
+    if (names.length > 0) return names.join(', ')
+  }
+
+  if (job.assignedTo && job.assignedTo.trim()) {
+    return job.assignedTo
+  }
+
+  return 'Unassigned'
+}
+
+export default function JobsPage() {
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  async function loadJobs() {
+    try {
+      setLoading(true)
+      setError('')
+
+      const res = await fetch('/api/jobs', { cache: 'no-store' })
+
+      if (!res.ok) {
+        throw new Error('Failed to load jobs')
       }
-    },
-    orderBy: {
-      createdAt: "desc"
+
+      const data = await res.json()
+
+      const nextJobs = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.jobs)
+          ? data.jobs
+          : []
+
+      setJobs(nextJobs)
+    } catch (err) {
+      console.error(err)
+      setError('Failed to load jobs')
+    } finally {
+      setLoading(false)
     }
-  })
+  }
+
+  useEffect(() => {
+    loadJobs()
+  }, [])
+
+  const filteredJobs = useMemo(() => {
+    return jobs.filter((job) => {
+      const matchesStatus =
+        statusFilter === 'all'
+          ? true
+          : (job.status || '').toLowerCase() === statusFilter.toLowerCase()
+
+      const searchText = search.trim().toLowerCase()
+
+      const haystack = [
+        job.title,
+        job.address,
+        job.status,
+        job.jobType,
+        getCustomerName(job.customer),
+        getAssignedWorkers(job)
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      const matchesSearch = !searchText || haystack.includes(searchText)
+
+      return matchesStatus && matchesSearch
+    })
+  }, [jobs, search, statusFilter])
 
   return (
-    <div className="space-y-6">
+    <main
+      style={{
+        minHeight: '100vh',
+        background: '#f8fafc',
+        padding: '16px'
+      }}
+    >
+      <div
+        style={{
+          maxWidth: '1100px',
+          margin: '0 auto'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px',
+            flexWrap: 'wrap',
+            marginBottom: '18px'
+          }}
+        >
+          <div>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: '28px',
+                fontWeight: 800,
+                color: '#111827'
+              }}
+            >
+              Jobs
+            </h1>
 
-      {/* Page Header */}
+            <p
+              style={{
+                margin: '6px 0 0 0',
+                color: '#6b7280',
+                fontSize: '14px'
+              }}
+            >
+              Manage landscaping jobs, maintenance visits, worker assignments and progress.
+            </p>
+          </div>
 
-      <div className="flex items-center justify-between">
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              flexWrap: 'wrap'
+            }}
+          >
+            <button
+              onClick={loadJobs}
+              style={{
+                border: '1px solid #d1d5db',
+                background: '#fff',
+                color: '#111827',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              Refresh
+            </button>
 
-        <div>
-          <h1 className="text-2xl font-bold">
-            Jobs
-          </h1>
-
-          <p className="text-sm text-zinc-500">
-            Manage landscaping and maintenance work
-          </p>
+            <Link
+              href="/jobs/add"
+              style={{
+                textDecoration: 'none',
+                background: '#111827',
+                color: '#fff',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                fontWeight: 700
+              }}
+            >
+              + Add Job
+            </Link>
+          </div>
         </div>
 
-        <Link
-          href="/jobs/add"
-          className="bg-black text-white px-4 py-2 rounded-lg text-sm font-medium"
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid #e5e7eb',
+            borderRadius: '18px',
+            padding: '14px',
+            marginBottom: '18px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          }}
         >
-          Add Job
-        </Link>
-
-      </div>
-
-      {/* Jobs List */}
-
-      <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
-
-        <table className="w-full text-sm">
-
-          <thead className="bg-zinc-50 border-b border-zinc-200">
-
-            <tr className="text-left">
-
-              <th className="px-4 py-3 font-medium">Customer</th>
-              <th className="px-4 py-3 font-medium">Address</th>
-              <th className="px-4 py-3 font-medium">Type</th>
-              <th className="px-4 py-3 font-medium">Visit Date</th>
-              <th className="px-4 py-3 font-medium">Workers</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-
-            </tr>
-
-          </thead>
-
-          <tbody>
-
-            {jobs.length === 0 && (
-
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-zinc-500">
-                  No jobs yet
-                </td>
-              </tr>
-
-            )}
-
-            {jobs.map((job) => (
-
-              <tr
-                key={job.id}
-                className="border-b border-zinc-100 hover:bg-zinc-50"
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '12px'
+            }}
+          >
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  color: '#374151',
+                  marginBottom: '6px'
+                }}
               >
+                Search jobs
+              </label>
 
-                {/* Customer */}
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search title, address, customer or worker"
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '14px',
+                  outline: 'none'
+                }}
+              />
+            </div>
 
-                <td className="px-4 py-3">
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  color: '#374151',
+                  marginBottom: '6px'
+                }}
+              >
+                Filter by status
+              </label>
 
-                  <Link
-                    href={`/jobs/${job.id}`}
-                    className="font-medium text-zinc-900 hover:underline"
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '14px',
+                  outline: 'none',
+                  background: '#fff'
+                }}
+              >
+                <option value="all">All statuses</option>
+                <option value="unscheduled">Unscheduled</option>
+                <option value="todo">To Do</option>
+                <option value="in_progress">In Progress</option>
+                <option value="paused">Paused</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'end'
+              }}
+            >
+              <div
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  background: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  color: '#374151',
+                  fontSize: '14px',
+                  fontWeight: 700
+                }}
+              >
+                {filteredJobs.length} job{filteredJobs.length === 1 ? '' : 's'} shown
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid #e5e7eb',
+              borderRadius: '18px',
+              padding: '22px',
+              color: '#6b7280'
+            }}
+          >
+            Loading jobs...
+          </div>
+        ) : error ? (
+          <div
+            style={{
+              background: '#fff7ed',
+              border: '1px solid #fdba74',
+              color: '#9a3412',
+              borderRadius: '18px',
+              padding: '18px',
+              fontWeight: 700
+            }}
+          >
+            {error}
+          </div>
+        ) : filteredJobs.length === 0 ? (
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid #e5e7eb',
+              borderRadius: '18px',
+              padding: '22px',
+              color: '#6b7280'
+            }}
+          >
+            No jobs found.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gap: '14px'
+            }}
+          >
+            {filteredJobs.map((job) => {
+              const statusStyles = getStatusStyles(job.status)
+
+              return (
+                <div
+                  key={job.id}
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '18px',
+                    padding: '16px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      flexWrap: 'wrap',
+                      marginBottom: '12px'
+                    }}
                   >
-                    {job.customer?.name ?? "Unknown"}
-                  </Link>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          flexWrap: 'wrap',
+                          marginBottom: '8px'
+                        }}
+                      >
+                        <h2
+                          style={{
+                            margin: 0,
+                            fontSize: '20px',
+                            lineHeight: 1.2,
+                            color: '#111827'
+                          }}
+                        >
+                          {job.title || `Job #${job.id}`}
+                        </h2>
 
-                </td>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '6px 10px',
+                            borderRadius: '999px',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            ...statusStyles
+                          }}
+                        >
+                          {formatStatus(job.status)}
+                        </span>
+                      </div>
 
-                {/* Address */}
+                      <div
+                        style={{
+                          color: '#6b7280',
+                          fontSize: '14px',
+                          display: 'grid',
+                          gap: '6px'
+                        }}
+                      >
+                        <div>
+                          <strong style={{ color: '#111827' }}>Customer:</strong>{' '}
+                          {getCustomerName(job.customer)}
+                        </div>
 
-                <td className="px-4 py-3 text-zinc-600">
-                  {job.address}
-                </td>
+                        <div>
+                          <strong style={{ color: '#111827' }}>Address:</strong>{' '}
+                          {job.address || 'No address'}
+                        </div>
 
-                {/* Job Type */}
+                        <div>
+                          <strong style={{ color: '#111827' }}>Type:</strong>{' '}
+                          {job.jobType || 'Not set'}
+                        </div>
+                      </div>
+                    </div>
 
-                <td className="px-4 py-3 text-zinc-600">
-                  {job.jobType}
-                </td>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '10px',
+                        alignItems: 'flex-start',
+                        flexWrap: 'wrap'
+                      }}
+                    >
+                      <Link
+                        href={`/jobs/${job.id}`}
+                        style={{
+                          textDecoration: 'none',
+                          padding: '11px 14px',
+                          borderRadius: '12px',
+                          border: '1px solid #d1d5db',
+                          background: '#fff',
+                          color: '#111827',
+                          fontWeight: 700
+                        }}
+                      >
+                        View
+                      </Link>
 
-                {/* Visit Date */}
+                      <Link
+                        href={`/jobs/${job.id}`}
+                        style={{
+                          textDecoration: 'none',
+                          padding: '11px 14px',
+                          borderRadius: '12px',
+                          border: '1px solid #111827',
+                          background: '#111827',
+                          color: '#fff',
+                          fontWeight: 700
+                        }}
+                      >
+                        Edit
+                      </Link>
+                    </div>
+                  </div>
 
-                <td className="px-4 py-3 text-zinc-600">
-                  {formatDate(job.visitDate)}
-                </td>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                      gap: '10px',
+                      marginTop: '8px'
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: '#f9fafb',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '14px',
+                        padding: '12px'
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          color: '#6b7280',
+                          marginBottom: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}
+                      >
+                        Visit date
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: '#111827'
+                        }}
+                      >
+                        {formatDate(job.visitDate)}
+                      </div>
+                    </div>
 
-                {/* Workers */}
+                    <div
+                      style={{
+                        background: '#f9fafb',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '14px',
+                        padding: '12px'
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          color: '#6b7280',
+                          marginBottom: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}
+                      >
+                        Start time
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: '#111827'
+                        }}
+                      >
+                        {job.startTime || 'Not set'}
+                      </div>
+                    </div>
 
-                <td className="px-4 py-3 text-zinc-600">
+                    <div
+                      style={{
+                        background: '#f9fafb',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '14px',
+                        padding: '12px'
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          color: '#6b7280',
+                          marginBottom: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}
+                      >
+                        Duration
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: '#111827'
+                        }}
+                      >
+                        {job.durationMinutes ?? job.durationMins ?? 0} mins
+                      </div>
+                    </div>
 
-                  {job.assignments.length === 0 && "Unassigned"}
+                    <div
+                      style={{
+                        background: '#f9fafb',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '14px',
+                        padding: '12px'
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          color: '#6b7280',
+                          marginBottom: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}
+                      >
+                        Assigned workers
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: '#111827'
+                        }}
+                      >
+                        {getAssignedWorkers(job)}
+                      </div>
+                    </div>
+                  </div>
 
-                  {job.assignments.map(a => a.worker.firstName).join(", ")}
-
-                </td>
-
-                {/* Status */}
-
-                <td className="px-4 py-3">
-                  <StatusBadge status={job.status} />
-                </td>
-
-              </tr>
-
-            ))}
-
-          </tbody>
-
-        </table>
-
+                  {job.notes ? (
+                    <div
+                      style={{
+                        marginTop: '12px',
+                        padding: '12px',
+                        borderRadius: '14px',
+                        background: '#fffbea',
+                        border: '1px solid #fef08a',
+                        color: '#713f12',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <strong>Notes:</strong> {job.notes}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
-
-    </div>
+    </main>
   )
 }
