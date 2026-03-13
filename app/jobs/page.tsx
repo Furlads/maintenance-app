@@ -3,6 +3,13 @@ import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
+type JobsPageProps = {
+  searchParams?: {
+    q?: string
+    filter?: string
+  }
+}
+
 function formatDate(date: Date | null) {
   if (!date) return "Not scheduled"
 
@@ -65,6 +72,10 @@ function statusBadgeClass(status: string) {
     return "bg-orange-100 text-orange-800 ring-orange-200"
   }
 
+  if (value === "quoted") {
+    return "bg-purple-100 text-purple-800 ring-purple-200"
+  }
+
   return "bg-zinc-100 text-zinc-700 ring-zinc-200"
 }
 
@@ -125,7 +136,90 @@ function StatCard({
   )
 }
 
-export default async function JobsPage() {
+function londonDateOnlyString(date: Date) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+
+  const parts = formatter.formatToParts(date)
+
+  const year = parts.find((part) => part.type === "year")?.value
+  const month = parts.find((part) => part.type === "month")?.value
+  const day = parts.find((part) => part.type === "day")?.value
+
+  if (!year || !month || !day) {
+    return ""
+  }
+
+  return `${year}-${month}-${day}`
+}
+
+function isTodayLondon(date: Date | null) {
+  if (!date) return false
+  return londonDateOnlyString(date) === londonDateOnlyString(new Date())
+}
+
+function matchesFilter(status: string, filter: string, visitDate: Date | null) {
+  const value = String(status || "").toLowerCase()
+
+  if (filter === "all") return true
+  if (filter === "today") return isTodayLondon(visitDate)
+  if (filter === "scheduled") return value === "todo" || value === "scheduled"
+  if (filter === "in-progress") {
+    return value === "in_progress" || value === "inprogress" || value === "paused"
+  }
+  if (filter === "completed") {
+    return value === "done" || value === "completed"
+  }
+  if (filter === "quoted") {
+    return value === "quoted"
+  }
+
+  return true
+}
+
+function buildFilterHref(filter: string, search: string) {
+  const params = new URLSearchParams()
+
+  if (search.trim()) {
+    params.set("q", search.trim())
+  }
+
+  if (filter !== "all") {
+    params.set("filter", filter)
+  }
+
+  const queryString = params.toString()
+  return queryString ? `/jobs?${queryString}` : "/jobs"
+}
+
+function FilterTab({
+  href,
+  label,
+  active,
+}: {
+  href: string
+  label: string
+  active: boolean
+}) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+        active
+          ? "bg-zinc-900 text-white"
+          : "border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100"
+      }`}
+    >
+      {label}
+    </Link>
+  )
+}
+
+export default async function JobsPage({ searchParams }: JobsPageProps) {
   const jobs = await prisma.job.findMany({
     include: {
       customer: true,
@@ -139,6 +233,9 @@ export default async function JobsPage() {
       createdAt: "desc",
     },
   })
+
+  const search = String(searchParams?.q || "").trim()
+  const activeFilter = String(searchParams?.filter || "all").trim().toLowerCase()
 
   const maintenanceCount = jobs.filter((job) =>
     String(job.jobType || "").toLowerCase().includes("maint")
@@ -168,6 +265,29 @@ export default async function JobsPage() {
   }).length
 
   const unassignedCount = jobs.filter((job) => job.assignments.length === 0).length
+
+  const filteredJobs = jobs.filter((job) => {
+    const workerText = formatWorkers(job.assignments).toLowerCase()
+    const customerText = String(job.customer?.name || "").toLowerCase()
+    const titleText = String(job.title || "").toLowerCase()
+    const addressText = String(job.address || "").toLowerCase()
+    const searchText = search.toLowerCase()
+
+    const matchesSearch =
+      !searchText ||
+      customerText.includes(searchText) ||
+      titleText.includes(searchText) ||
+      addressText.includes(searchText) ||
+      workerText.includes(searchText)
+
+    const matchesSelectedFilter = matchesFilter(
+      job.status || "",
+      activeFilter,
+      job.visitDate
+    )
+
+    return matchesSearch && matchesSelectedFilter
+  })
 
   return (
     <main className="min-h-screen bg-zinc-50">
@@ -224,23 +344,88 @@ export default async function JobsPage() {
           </section>
 
           <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-2 border-b border-zinc-200 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-5">
-              <div>
-                <h2 className="text-lg font-bold text-zinc-900">All jobs</h2>
-                <p className="text-sm text-zinc-500">
-                  Open or edit any job to manage timings, notes, workers and details.
-                </p>
+            <div className="border-b border-zinc-200 px-4 py-4 md:px-5">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900">All jobs</h2>
+                  <p className="text-sm text-zinc-500">
+                    Open or edit any job to manage timings, notes, workers and details.
+                  </p>
+                </div>
+
+                <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-600">
+                  {filteredJobs.length} shown
+                </div>
               </div>
 
-              <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-600">
-                {jobs.length} total
+              <div className="mt-4">
+                <form action="/jobs" method="GET" className="flex flex-col gap-3 lg:flex-row">
+                  <input
+                    type="text"
+                    name="q"
+                    defaultValue={search}
+                    placeholder="Search customer, title, address or worker"
+                    className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  />
+
+                  <input type="hidden" name="filter" value={activeFilter === "all" ? "" : activeFilter} />
+
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
+                    >
+                      Search
+                    </button>
+
+                    <Link
+                      href="/jobs"
+                      className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    >
+                      Clear
+                    </Link>
+                  </div>
+                </form>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <FilterTab
+                  href={buildFilterHref("all", search)}
+                  label="All"
+                  active={activeFilter === "all"}
+                />
+                <FilterTab
+                  href={buildFilterHref("today", search)}
+                  label="Today"
+                  active={activeFilter === "today"}
+                />
+                <FilterTab
+                  href={buildFilterHref("scheduled", search)}
+                  label="Scheduled"
+                  active={activeFilter === "scheduled"}
+                />
+                <FilterTab
+                  href={buildFilterHref("in-progress", search)}
+                  label="In Progress"
+                  active={activeFilter === "in-progress"}
+                />
+                <FilterTab
+                  href={buildFilterHref("completed", search)}
+                  label="Completed"
+                  active={activeFilter === "completed"}
+                />
+                <FilterTab
+                  href={buildFilterHref("quoted", search)}
+                  label="Quoted"
+                  active={activeFilter === "quoted"}
+                />
               </div>
             </div>
 
-            {jobs.length === 0 ? (
+            {filteredJobs.length === 0 ? (
               <div className="p-5">
                 <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-6 text-sm text-zinc-600">
-                  No jobs yet.
+                  No jobs found for the current search or filter.
                 </div>
               </div>
             ) : (
@@ -262,7 +447,7 @@ export default async function JobsPage() {
                       </thead>
 
                       <tbody>
-                        {jobs.map((job) => (
+                        {filteredJobs.map((job) => (
                           <tr
                             key={job.id}
                             className="border-t border-zinc-100 align-top transition hover:bg-zinc-50"
@@ -334,7 +519,7 @@ export default async function JobsPage() {
                 </div>
 
                 <div className="space-y-4 p-4 xl:hidden">
-                  {jobs.map((job) => (
+                  {filteredJobs.map((job) => (
                     <div
                       key={job.id}
                       className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
