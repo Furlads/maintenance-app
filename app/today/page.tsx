@@ -336,6 +336,98 @@ function getInitials(name: string) {
   return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase()
 }
 
+function ChasMascot({ size = 26 }: { size?: number }) {
+  const hatHeight = Math.round(size * 0.3)
+  const faceSize = Math.round(size * 0.72)
+  const eyeSize = Math.max(2, Math.round(size * 0.08))
+  const mouthWidth = Math.max(8, Math.round(size * 0.22))
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: size,
+        height: size,
+        flexShrink: 0
+      }}
+      aria-hidden="true"
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: Math.round(size * 0.12),
+          width: Math.round(size * 0.76),
+          height: hatHeight,
+          borderRadius: `${hatHeight}px ${hatHeight}px 6px 6px`,
+          background: '#facc15',
+          border: '2px solid #111'
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: Math.round(size * 0.2),
+          left: Math.round(size * 0.06),
+          width: Math.round(size * 0.88),
+          height: Math.max(4, Math.round(size * 0.1)),
+          borderRadius: 999,
+          background: '#facc15',
+          border: '2px solid #111'
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: Math.round(size * 0.28),
+          left: Math.round((size - faceSize) / 2),
+          width: faceSize,
+          height: faceSize,
+          borderRadius: '50%',
+          background: '#fff4d6',
+          border: '2px solid #111',
+          overflow: 'hidden'
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: Math.round(faceSize * 0.34),
+            left: Math.round(faceSize * 0.23),
+            width: eyeSize,
+            height: eyeSize,
+            borderRadius: '50%',
+            background: '#111'
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            top: Math.round(faceSize * 0.34),
+            right: Math.round(faceSize * 0.23),
+            width: eyeSize,
+            height: eyeSize,
+            borderRadius: '50%',
+            background: '#111'
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: Math.round(faceSize * 0.18),
+            width: mouthWidth,
+            height: Math.max(4, Math.round(faceSize * 0.12)),
+            transform: 'translateX(-50%)',
+            borderBottom: '2px solid #111',
+            borderRadius: '0 0 999px 999px'
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
 const colours = {
   ink: '#111111',
   inkSoft: '#2b2b2b',
@@ -541,7 +633,6 @@ export default function TodayPage() {
   const [workerId, setWorkerId] = useState<number | null>(null)
   const [workerName, setWorkerName] = useState<string>('')
   const [workerPhotoUrl, setWorkerPhotoUrl] = useState<string>('')
-  const [companyKey, setCompanyKey] = useState<string>('furlads')
   const [logoHidden, setLogoHidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -616,7 +707,6 @@ export default function TodayPage() {
       localStorage.getItem('workerPhotoUrl') ||
       localStorage.getItem('photoUrl') ||
       ''
-    const savedCompany = (localStorage.getItem('company') || 'furlads').toLowerCase()
 
     if (savedWorkerId) {
       setWorkerId(Number(savedWorkerId))
@@ -629,8 +719,6 @@ export default function TodayPage() {
     if (savedWorkerPhotoUrl) {
       setWorkerPhotoUrl(savedWorkerPhotoUrl)
     }
-
-    setCompanyKey(savedCompany)
 
     loadJobs()
     loadCustomers()
@@ -823,11 +911,6 @@ export default function TodayPage() {
       customers.find((customer) => String(customer.id) === quoteSelectedCustomerId) || null
     )
   }, [customers, quoteSelectedCustomerId])
-
-  const companyLogoSrc =
-    companyKey.includes('three')
-      ? '/three-counties-logo.png'
-      : '/furlads-logo.png'
 
   useEffect(() => {
     if (quoteCustomerMode !== 'existing') return
@@ -1432,14 +1515,14 @@ Heavy rain made it unsafe`,
               {!logoHidden && (
                 <div style={{ marginBottom: 10 }}>
                   <img
-                    src={companyLogoSrc}
-                    alt="Company logo"
+                    src="/furlads-logo.png"
+                    alt="Furlads and Three Counties"
                     onError={() => setLogoHidden(true)}
                     style={{
                       height: 42,
                       width: 'auto',
                       display: 'block',
-                      maxWidth: 180,
+                      maxWidth: 280,
                       objectFit: 'contain'
                     }}
                   />
@@ -1476,7 +1559,8 @@ Heavy rain made it unsafe`,
                   minWidth: 150
                 }}
               >
-                Ask Chas
+                <ChasMascot size={24} />
+                <span>Ask Chas</span>
               </button>
 
               <div
@@ -2421,10 +2505,13 @@ Heavy rain made it unsafe`,
                 color: '#fff'
               }}
             >
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 800 }}>Chas 💬</div>
-                <div style={{ fontSize: 13, opacity: 0.8 }}>
-                  Friendly on-site help
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ChasMascot size={32} />
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 800 }}>Chas</div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    Friendly on-site help
+                  </div>
                 </div>
               </div>
 
