@@ -157,3 +157,19 @@ model ChasMessage {
   @@index([enquiryReadyForKelly, createdAt])
   @@index([conversationId])
 }
+
+model InboxMessage {
+  id           Int      @id @default(autoincrement())
+  source       String
+  senderName   String?
+  senderEmail  String?
+  subject      String?
+  preview      String?
+  body         String?
+  assignedTo   String?
+  status       String   @default("unread")
+  createdAt    DateTime @default(now())
+
+  @@index([source, createdAt])
+  @@index([status, createdAt])
+}
