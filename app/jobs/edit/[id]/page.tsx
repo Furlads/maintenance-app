@@ -47,6 +47,43 @@ function toDateInputValue(value?: string | null) {
   return date.toISOString().slice(0, 10)
 }
 
+function SectionCard({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description?: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+      <div className="mb-4">
+        <h2 className="text-lg font-bold text-zinc-900">{title}</h2>
+        {description ? (
+          <p className="mt-1 text-sm text-zinc-500">{description}</p>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function FieldLabel({
+  children,
+  required = false,
+}: {
+  children: React.ReactNode
+  required?: boolean
+}) {
+  return (
+    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+      {children}
+      {required ? <span className="ml-1 text-red-500">*</span> : null}
+    </label>
+  )
+}
+
 export default function EditJobPage() {
   const params = useParams()
   const router = useRouter()
@@ -230,273 +267,313 @@ export default function EditJobPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-5">
-        <p className="text-sm text-zinc-600">Loading job…</p>
+      <main className="min-h-screen bg-zinc-50">
+        <div className="mx-auto max-w-4xl px-4 py-6">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <p className="text-sm text-zinc-600">Loading job…</p>
+          </div>
+        </div>
       </main>
     )
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-5">
-      <div className="space-y-5">
-        <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-xs font-black uppercase tracking-[0.22em] text-zinc-500">
-                Jobs
+    <main className="min-h-screen bg-zinc-50">
+      <div className="mx-auto max-w-4xl px-4 py-5 md:px-6">
+        <div className="space-y-5">
+          <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+            <div className="bg-zinc-900 px-5 py-5 text-white md:px-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-400">
+                    Jobs
+                  </div>
+                  <h1 className="mt-1 text-3xl font-bold tracking-tight md:text-4xl">
+                    Edit Job
+                  </h1>
+                  <p className="mt-2 text-sm text-zinc-300 md:text-base">
+                    Update the job details, schedule and assigned workers.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/jobs/${id}`}
+                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
+                  >
+                    Cancel
+                  </Link>
+                </div>
               </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-900">
-                Edit Job
-              </h1>
-              <p className="mt-1 text-sm text-zinc-600">
-                Update the job details, timing and assigned workers.
-              </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={`/jobs/${id}`}
-                className="inline-flex rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-800"
-              >
-                Cancel
-              </Link>
+            <div className="border-t border-zinc-200 bg-zinc-50 px-5 py-3 text-sm text-zinc-600 md:px-6">
+              Job #{id}
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
-                Customer
-              </label>
-              <select
-                value={customerId}
-                onChange={(e) => {
-                  setCustomerId(e.target.value)
-                  setUseDifferentAddress(false)
-                  setJobAddress('')
-                }}
-                required
-                className="w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm"
-              >
-                <option value="">Select customer</option>
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
-                Job Title
-              </label>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-                className="w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
-                Job Type
-              </label>
-              <select
-                value={jobType}
-                onChange={(e) => setJobType(e.target.value)}
-                className="w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm"
-              >
-                <option value="Quote">Quote</option>
-                <option value="Maintenance">Maintenance</option>
-                <option value="Landscaping">Landscaping</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
-                Expected Time (minutes)
-              </label>
-
-              <div className="mb-3 flex flex-wrap gap-2">
-                {[30, 45, 60, 90, 120].map((minutes) => (
-                  <button
-                    key={minutes}
-                    type="button"
-                    onClick={() => setDurationMinutes(String(minutes))}
-                    className={`rounded-xl border px-3 py-2 text-sm ${
-                      durationMinutes === String(minutes)
-                        ? 'border-zinc-900 bg-zinc-900 text-white'
-                        : 'border-zinc-300 bg-white text-zinc-800'
-                    }`}
+            <SectionCard
+              title="Job Details"
+              description="Basic details for the customer and type of work."
+            >
+              <div className="grid gap-4">
+                <div>
+                  <FieldLabel required>Customer</FieldLabel>
+                  <select
+                    value={customerId}
+                    onChange={(e) => {
+                      setCustomerId(e.target.value)
+                      setUseDifferentAddress(false)
+                      setJobAddress('')
+                    }}
+                    required
+                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   >
-                    {minutes} mins
-                  </button>
-                ))}
+                    <option value="">Select customer</option>
+                    {customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <FieldLabel required>Job Title</FieldLabel>
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    required
+                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <FieldLabel>Job Type</FieldLabel>
+                    <select
+                      value={jobType}
+                      onChange={(e) => setJobType(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    >
+                      <option value="Quote">Quote</option>
+                      <option value="Maintenance">Maintenance</option>
+                      <option value="Landscaping">Landscaping</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <FieldLabel>Status</FieldLabel>
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    >
+                      <option value="scheduled">Scheduled</option>
+                      <option value="todo">To Do</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="paused">Paused</option>
+                      <option value="done">Done</option>
+                      <option value="quoted">Quoted</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </div>
+                </div>
               </div>
+            </SectionCard>
 
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(e.target.value)}
-                required
-                className="w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm"
-              />
-            </div>
+            <SectionCard
+              title="Timing"
+              description="Set expected duration and optional visit time."
+            >
+              <div className="grid gap-4">
+                <div>
+                  <FieldLabel required>Expected Time (minutes)</FieldLabel>
 
-            {selectedCustomer && (
-              <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-800">
-                  Customer Address
-                </label>
-                <textarea
-                  value={defaultCustomerAddress}
-                  readOnly
-                  rows={3}
-                  className="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-3 text-sm"
-                />
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {[30, 45, 60, 90, 120].map((minutes) => (
+                      <button
+                        key={minutes}
+                        type="button"
+                        onClick={() => setDurationMinutes(String(minutes))}
+                        className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                          durationMinutes === String(minutes)
+                            ? 'border-zinc-900 bg-zinc-900 text-white'
+                            : 'border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100'
+                        }`}
+                      >
+                        {minutes} mins
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(e.target.value)}
+                    required
+                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <FieldLabel>Visit Date</FieldLabel>
+                    <input
+                      type="date"
+                      value={visitDate}
+                      onChange={(e) => setVisitDate(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  </div>
+
+                  <div>
+                    <FieldLabel>Start Time</FieldLabel>
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  </div>
+                </div>
               </div>
-            )}
+            </SectionCard>
 
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
-                <input
-                  type="checkbox"
-                  checked={useDifferentAddress}
-                  onChange={(e) => setUseDifferentAddress(e.target.checked)}
-                />
-                Job is at a different address
-              </label>
-            </div>
+            <SectionCard
+              title="Address"
+              description="Use the customer address or set a different job address."
+            >
+              <div className="space-y-4">
+                {selectedCustomer && (
+                  <div>
+                    <FieldLabel>Customer Address</FieldLabel>
+                    <textarea
+                      value={defaultCustomerAddress}
+                      readOnly
+                      rows={3}
+                      className="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-3 text-sm text-zinc-700"
+                    />
+                  </div>
+                )}
 
-            {useDifferentAddress && (
-              <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-800">
-                  Job Address
-                </label>
-                <textarea
-                  value={jobAddress}
-                  onChange={(e) => setJobAddress(e.target.value)}
-                  rows={3}
-                  required={useDifferentAddress}
-                  className="w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm"
-                />
-              </div>
-            )}
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-800">
-                  Visit Date
-                </label>
-                <input
-                  type="date"
-                  value={visitDate}
-                  onChange={(e) => setVisitDate(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-800">
-                  Start Time
-                </label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
-                Assigned To
-              </label>
-
-              {workers.length === 0 && (
-                <p className="text-sm text-zinc-500">No active workers found.</p>
-              )}
-
-              <div className="space-y-2">
-                {workers.map((worker) => (
-                  <label
-                    key={worker.id}
-                    className="flex items-center gap-2 rounded-xl border border-zinc-200 px-3 py-3 text-sm text-zinc-800"
-                  >
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <label className="flex items-start gap-3 text-sm text-zinc-800">
                     <input
                       type="checkbox"
-                      checked={assignedTo.includes(worker.id)}
-                      onChange={() => toggleWorker(worker.id)}
+                      checked={useDifferentAddress}
+                      onChange={(e) => setUseDifferentAddress(e.target.checked)}
+                      className="mt-1"
                     />
-                    {worker.firstName} {worker.lastName}
+                    <span>
+                      <span className="block font-semibold">
+                        Job is at a different address
+                      </span>
+                      <span className="mt-1 block text-zinc-500">
+                        Tick this if the work is not being done at the customer's main address.
+                      </span>
+                    </span>
                   </label>
-                ))}
+                </div>
+
+                {useDifferentAddress && (
+                  <div>
+                    <FieldLabel required>Job Address</FieldLabel>
+                    <textarea
+                      value={jobAddress}
+                      onChange={(e) => setJobAddress(e.target.value)}
+                      rows={4}
+                      required={useDifferentAddress}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  </div>
+                )}
               </div>
-            </div>
+            </SectionCard>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
-                Notes
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={4}
-                className="w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm"
-              />
-            </div>
+            <SectionCard
+              title="Assigned Workers"
+              description="Choose which workers should be assigned to this job."
+            >
+              {workers.length === 0 ? (
+                <p className="text-sm text-zinc-500">No active workers found.</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {workers.map((worker) => {
+                    const checked = assignedTo.includes(worker.id)
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-800">
-                Status
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm"
-              >
-                <option value="scheduled">Scheduled</option>
-                <option value="todo">To Do</option>
-                <option value="in_progress">In Progress</option>
-                <option value="paused">Paused</option>
-                <option value="done">Done</option>
-                <option value="quoted">Quoted</option>
-                <option value="completed">Completed</option>
-              </select>
-            </div>
+                    return (
+                      <label
+                        key={worker.id}
+                        className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 text-sm transition ${
+                          checked
+                            ? 'border-zinc-900 bg-zinc-900 text-white'
+                            : 'border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleWorker(worker.id)}
+                          className="h-4 w-4"
+                        />
+                        <span className="font-semibold">
+                          {worker.firstName} {worker.lastName}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="Notes"
+              description="Internal notes for this job."
+            >
+              <div>
+                <FieldLabel>Notes</FieldLabel>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={5}
+                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                />
+              </div>
+            </SectionCard>
 
             {message && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-sm">
                 {message}
               </div>
             )}
 
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="submit"
-                disabled={saving}
-                className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {saving ? 'Saving…' : 'Save Changes'}
-              </button>
+            <div className="sticky bottom-3 z-10">
+              <div className="rounded-2xl border border-zinc-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                  <Link
+                    href={`/jobs/${id}`}
+                    className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                  >
+                    Cancel
+                  </Link>
 
-              <Link
-                href={`/jobs/${id}`}
-                className="inline-flex rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-800"
-              >
-                Cancel
-              </Link>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {saving ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
+              </div>
             </div>
           </form>
-        </section>
+        </div>
       </div>
     </main>
   )
