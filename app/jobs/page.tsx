@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { prisma } from "@/lib/prisma"
+import ScheduleNeedsSchedulingButton from "./ScheduleNeedsSchedulingButton"
 
 export const dynamic = "force-dynamic"
 
@@ -453,24 +454,29 @@ function JobSection({
   title,
   description,
   jobs,
+  action,
 }: {
   title: string
   description: string
   jobs: JobItem[]
+  action?: React.ReactNode
 }) {
   if (jobs.length === 0) return null
 
   return (
     <section className="border-t border-zinc-200 first:border-t-0">
       <div className="px-4 py-4 md:px-5">
-        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-base font-bold text-zinc-900">{title}</h3>
             <p className="text-sm text-zinc-500">{description}</p>
           </div>
 
-          <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-600">
-            {jobs.length}
+          <div className="flex flex-wrap items-center gap-2">
+            {action}
+            <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-600">
+              {jobs.length}
+            </div>
           </div>
         </div>
       </div>
@@ -767,6 +773,11 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                   title="Needs Scheduling"
                   description="Flexible jobs ready to be fitted into the diary in the next most appropriate slot."
                   jobs={needsSchedulingJobs}
+                  action={
+                    needsSchedulingJobs.length > 0 ? (
+                      <ScheduleNeedsSchedulingButton count={needsSchedulingJobs.length} />
+                    ) : undefined
+                  }
                 />
 
                 <JobSection
