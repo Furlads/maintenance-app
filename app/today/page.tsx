@@ -690,6 +690,60 @@ function getStatusText(job: TimedJob) {
   return 'Waiting to start'
 }
 
+function TopStatCard({
+  label,
+  value,
+  subtext,
+  active,
+  onClick,
+  clickable = true
+}: {
+  label: string
+  value: string | number
+  subtext: string
+  active?: boolean
+  onClick?: () => void
+  clickable?: boolean
+}) {
+  const sharedStyle: CSSProperties = {
+    ...styles.metaCard,
+    cursor: clickable ? 'pointer' : 'default',
+    border: active
+      ? '1px solid rgba(255,255,255,0.4)'
+      : '1px solid rgba(255,255,255,0.1)',
+    background: active
+      ? 'rgba(255,255,255,0.18)'
+      : 'rgba(255,255,255,0.08)',
+    boxShadow: active ? '0 10px 24px rgba(0,0,0,0.14)' : 'none'
+  }
+
+  if (!clickable) {
+    return (
+      <div style={sharedStyle}>
+        <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>{label}</div>
+        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>{value}</div>
+        <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>{subtext}</div>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...sharedStyle,
+        width: '100%',
+        textAlign: 'left'
+      }}
+    >
+      <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>{value}</div>
+      <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>{subtext}</div>
+    </button>
+  )
+}
+
 export default function TodayPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -701,6 +755,7 @@ export default function TodayPage() {
   const [error, setError] = useState('')
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
   const [now, setNow] = useState(new Date())
+  const [topFilter, setTopFilter] = useState<'all' | 'completed' | 'left'>('all')
 
   const [chasOpen, setChasOpen] = useState(false)
   const [chasSessionId, setChasSessionId] = useState<string>('')
@@ -932,6 +987,18 @@ export default function TodayPage() {
       left
     }
   }, [visibleJobs])
+
+  const showingCompletedOnly = topFilter === 'completed'
+  const showingLeftOnly = topFilter === 'left'
+
+  const filteredActiveJob =
+    topFilter === 'completed' ? null : activeJob
+
+  const filteredNextJobs =
+    topFilter === 'completed' ? [] : nextJobs
+
+  const filteredCompletedJobs =
+    topFilter === 'left' ? [] : completedJobs
 
   const upcomingJobs = useMemo(() => {
     const nowTime = now.getTime()
@@ -1727,57 +1794,40 @@ Heavy rain made it unsafe`,
               gap: 12
             }}
           >
-            <div style={styles.metaCard}>
-              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
-                Current time
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
-                {formatLiveNow(now)}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
-                {formatLiveDate(now)}
-              </div>
-            </div>
+            <TopStatCard
+              label="Current time"
+              value={formatLiveNow(now)}
+              subtext={formatLiveDate(now)}
+              clickable={false}
+            />
 
-            <div style={styles.metaCard}>
-              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
-                Jobs today
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
-                {progressCounts.todayTotal}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
-                Total jobs booked
-              </div>
-            </div>
+            <TopStatCard
+              label="Jobs today"
+              value={progressCounts.todayTotal}
+              subtext="Total jobs booked"
+              active={topFilter === 'all'}
+              onClick={() => setTopFilter('all')}
+            />
 
-            <div style={styles.metaCard}>
-              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
-                Jobs completed
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
-                {progressCounts.completed}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
-                Finished so far
-              </div>
-            </div>
+            <TopStatCard
+              label="Jobs completed"
+              value={progressCounts.completed}
+              subtext="Finished so far"
+              active={topFilter === 'completed'}
+              onClick={() => setTopFilter('completed')}
+            />
 
-            <div style={styles.metaCard}>
-              <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>
-                Jobs left
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
-                {progressCounts.left}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
-                Still to do
-              </div>
-            </div>
+            <TopStatCard
+              label="Jobs left"
+              value={progressCounts.left}
+              subtext="Still to do"
+              active={topFilter === 'left'}
+              onClick={() => setTopFilter('left')}
+            />
           </div>
         </section>
 
-        {activeJob && (
+        {filteredActiveJob && (
           <section
             style={{
               ...styles.panel,
@@ -1804,15 +1854,15 @@ Heavy rain made it unsafe`,
                 <div>
                   <div style={styles.sectionTitle}>Current job</div>
                   <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15 }}>
-                    {activeJob.title}
+                    {filteredActiveJob.title}
                   </div>
                   <div style={{ marginTop: 6, fontSize: 15 }}>
-                    {activeJob.customer?.name || 'Unknown customer'}
+                    {filteredActiveJob.customer?.name || 'Unknown customer'}
                   </div>
                 </div>
 
-                <div style={getStatusPill(activeJob)}>
-                  {getStatusText(activeJob)}
+                <div style={getStatusPill(filteredActiveJob)}>
+                  {getStatusText(filteredActiveJob)}
                 </div>
               </div>
 
@@ -1827,7 +1877,7 @@ Heavy rain made it unsafe`,
                 >
                   <div style={styles.label}>Start time</div>
                   <div style={{ ...styles.value, fontWeight: 800 }}>
-                    {formatTime(activeJob.arrivedAt)}
+                    {formatTime(filteredActiveJob.arrivedAt)}
                   </div>
                 </div>
 
@@ -1841,7 +1891,7 @@ Heavy rain made it unsafe`,
                 >
                   <div style={styles.label}>Projected finish</div>
                   <div style={{ ...styles.value, fontWeight: 800 }}>
-                    {formatClockTime(activeJob.etaFinish)}
+                    {formatClockTime(filteredActiveJob.etaFinish)}
                   </div>
                 </div>
 
@@ -1855,7 +1905,7 @@ Heavy rain made it unsafe`,
                 >
                   <div style={styles.label}>Hours worked</div>
                   <div style={{ ...styles.value, fontWeight: 800 }}>
-                    {formatMinutes(getLiveWorkedMinutes(activeJob, now))}
+                    {formatMinutes(getLiveWorkedMinutes(filteredActiveJob, now))}
                   </div>
                 </div>
 
@@ -1869,7 +1919,7 @@ Heavy rain made it unsafe`,
                 >
                   <div style={styles.label}>Address</div>
                   <div style={styles.value}>
-                    {activeJob.address || activeJob.customer?.address || '—'}
+                    {filteredActiveJob.address || filteredActiveJob.customer?.address || '—'}
                   </div>
                 </div>
               </div>
@@ -1881,80 +1931,80 @@ Heavy rain made it unsafe`,
                   gap: 10
                 }}
               >
-                {activeJob.isStarted && (
+                {filteredActiveJob.isStarted && (
                   <>
                     <button
                       type="button"
-                      onClick={() => handleFinishJob(activeJob.id)}
-                      disabled={busyJobId === activeJob.id}
+                      onClick={() => handleFinishJob(filteredActiveJob.id)}
+                      disabled={busyJobId === filteredActiveJob.id}
                       style={{
                         ...styles.actionButtonDark,
-                        opacity: busyJobId === activeJob.id ? 0.6 : 1,
-                        cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
+                        opacity: busyJobId === filteredActiveJob.id ? 0.6 : 1,
+                        cursor: busyJobId === filteredActiveJob.id ? 'not-allowed' : 'pointer'
                       }}
                     >
-                      {busyJobId === activeJob.id ? 'Updating...' : 'Finish Job'}
+                      {busyJobId === filteredActiveJob.id ? 'Updating...' : 'Finish Job'}
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => handlePauseJob(activeJob.id)}
-                      disabled={busyJobId === activeJob.id}
+                      onClick={() => handlePauseJob(filteredActiveJob.id)}
+                      disabled={busyJobId === filteredActiveJob.id}
                       style={{
                         ...styles.actionButton,
-                        opacity: busyJobId === activeJob.id ? 0.6 : 1,
-                        cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
+                        opacity: busyJobId === filteredActiveJob.id ? 0.6 : 1,
+                        cursor: busyJobId === filteredActiveJob.id ? 'not-allowed' : 'pointer'
                       }}
                     >
-                      {busyJobId === activeJob.id ? 'Updating...' : 'Pause Work'}
+                      {busyJobId === filteredActiveJob.id ? 'Updating...' : 'Pause Work'}
                     </button>
                   </>
                 )}
 
-                {activeJob.isPaused && (
+                {filteredActiveJob.isPaused && (
                   <>
                     <button
                       type="button"
-                      onClick={() => handleResumeJob(activeJob.id)}
-                      disabled={busyJobId === activeJob.id}
+                      onClick={() => handleResumeJob(filteredActiveJob.id)}
+                      disabled={busyJobId === filteredActiveJob.id}
                       style={{
                         ...styles.actionButtonDark,
-                        opacity: busyJobId === activeJob.id ? 0.6 : 1,
-                        cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
+                        opacity: busyJobId === filteredActiveJob.id ? 0.6 : 1,
+                        cursor: busyJobId === filteredActiveJob.id ? 'not-allowed' : 'pointer'
                       }}
                     >
-                      {busyJobId === activeJob.id ? 'Updating...' : 'Resume Work'}
+                      {busyJobId === filteredActiveJob.id ? 'Updating...' : 'Resume Work'}
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => handleFinishJob(activeJob.id)}
-                      disabled={busyJobId === activeJob.id}
+                      onClick={() => handleFinishJob(filteredActiveJob.id)}
+                      disabled={busyJobId === filteredActiveJob.id}
                       style={{
                         ...styles.actionButton,
-                        opacity: busyJobId === activeJob.id ? 0.6 : 1,
-                        cursor: busyJobId === activeJob.id ? 'not-allowed' : 'pointer'
+                        opacity: busyJobId === filteredActiveJob.id ? 0.6 : 1,
+                        cursor: busyJobId === filteredActiveJob.id ? 'not-allowed' : 'pointer'
                       }}
                     >
-                      {busyJobId === activeJob.id ? 'Updating...' : 'Finish Job'}
+                      {busyJobId === filteredActiveJob.id ? 'Updating...' : 'Finish Job'}
                     </button>
                   </>
                 )}
 
-                <a href={`/jobs/${activeJob.id}`} style={styles.actionButton}>
+                <a href={`/jobs/${filteredActiveJob.id}`} style={styles.actionButton}>
                   Open Job
                 </a>
 
-                {activeJob.customer?.phone && (
-                  <a href={`tel:${activeJob.customer.phone}`} style={styles.actionButton}>
+                {filteredActiveJob.customer?.phone && (
+                  <a href={`tel:${filteredActiveJob.customer.phone}`} style={styles.actionButton}>
                     Call Customer
                   </a>
                 )}
 
-                {(activeJob.customer?.postcode || activeJob.address || activeJob.customer?.address) && (
+                {(filteredActiveJob.customer?.postcode || filteredActiveJob.address || filteredActiveJob.customer?.address) && (
                   <a
                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      activeJob.customer?.postcode || activeJob.address || activeJob.customer?.address || ''
+                      filteredActiveJob.customer?.postcode || filteredActiveJob.address || filteredActiveJob.customer?.address || ''
                     )}`}
                     target="_blank"
                     rel="noreferrer"
@@ -2061,17 +2111,19 @@ Heavy rain made it unsafe`,
           </section>
         )}
 
-        {!loading && !error && workerId && listJobs.length === 0 && !activeJob && (
+        {!loading && !error && workerId && filteredNextJobs.length === 0 && !filteredActiveJob && filteredCompletedJobs.length === 0 && (
           <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
             <div style={{ fontWeight: 700 }}>No open jobs assigned to you.</div>
           </section>
         )}
 
-        {!loading && !error && workerId && nextJobs.length > 0 && (
+        {!loading && !error && workerId && filteredNextJobs.length > 0 && (
           <section style={{ marginBottom: 18 }}>
-            <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>Next jobs</div>
+            <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>
+              {showingLeftOnly ? 'Jobs left' : 'Next jobs'}
+            </div>
 
-            {nextJobs.map((job, index) => {
+            {filteredNextJobs.map((job, index) => {
               const navigationQuery =
                 job.customer?.postcode || job.address || job.customer?.address || ''
 
@@ -2079,7 +2131,7 @@ Heavy rain made it unsafe`,
               const pausedAt = job.pausedAt || null
               const livePausedMinutes = job.isPaused ? getPausedLiveMinutes(job, now) : 0
 
-              const firstCollapsedHeadlineIndex = nextJobs.findIndex(
+              const firstCollapsedHeadlineIndex = filteredNextJobs.findIndex(
                 (item) => item.isWaiting
               )
 
@@ -2465,11 +2517,13 @@ Heavy rain made it unsafe`,
           </section>
         )}
 
-        {!loading && !error && workerId && completedJobs.length > 0 && (
+        {!loading && !error && workerId && filteredCompletedJobs.length > 0 && (
           <section style={{ marginBottom: 20 }}>
-            <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>Completed today</div>
+            <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>
+              {showingCompletedOnly ? 'Jobs completed' : 'Completed today'}
+            </div>
 
-            {completedJobs.map((job) => {
+            {filteredCompletedJobs.map((job) => {
               const startedAt = job.arrivedAt || null
               const completedAt = job.finishedAt || null
               const totalTime = formatDurationMinutes(startedAt, completedAt)
