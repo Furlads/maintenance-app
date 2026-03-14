@@ -47,6 +47,47 @@ function toDateInputValue(value?: string | null) {
   return date.toISOString().slice(0, 10)
 }
 
+function normalizeEditStatus(value?: string | null) {
+  const status = String(value || '').trim().toLowerCase()
+
+  if (
+    status === 'scheduled' ||
+    status === 'todo' ||
+    status === 'to do'
+  ) {
+    return 'todo'
+  }
+
+  if (
+    status === 'in_progress' ||
+    status === 'in progress' ||
+    status === 'inprogress'
+  ) {
+    return 'in_progress'
+  }
+
+  if (status === 'paused') {
+    return 'paused'
+  }
+
+  if (
+    status === 'done' ||
+    status === 'completed' ||
+    status === 'complete'
+  ) {
+    return 'done'
+  }
+
+  if (
+    status === 'quoted' ||
+    status === 'quote'
+  ) {
+    return 'quoted'
+  }
+
+  return 'todo'
+}
+
 function SectionCard({
   title,
   description,
@@ -98,7 +139,7 @@ export default function EditJobPage() {
   const [customerId, setCustomerId] = useState('')
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
-  const [status, setStatus] = useState('scheduled')
+  const [status, setStatus] = useState('todo')
   const [jobType, setJobType] = useState('Quote')
   const [assignedTo, setAssignedTo] = useState<number[]>([])
   const [useDifferentAddress, setUseDifferentAddress] = useState(false)
@@ -137,7 +178,7 @@ export default function EditJobPage() {
         setCustomerId(String(jobData.customerId))
         setTitle(jobData.title || '')
         setNotes(jobData.notes || '')
-        setStatus(jobData.status || 'scheduled')
+        setStatus(normalizeEditStatus(jobData.status))
         setJobType(jobData.jobType || 'Quote')
         setAssignedTo(
           Array.isArray(jobData.assignments)
@@ -371,13 +412,11 @@ export default function EditJobPage() {
                       onChange={(e) => setStatus(e.target.value)}
                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
-                      <option value="scheduled">Scheduled</option>
-                      <option value="todo">To Do</option>
+                      <option value="todo">Scheduled</option>
                       <option value="in_progress">In Progress</option>
                       <option value="paused">Paused</option>
                       <option value="done">Done</option>
                       <option value="quoted">Quoted</option>
-                      <option value="completed">Completed</option>
                     </select>
                   </div>
                 </div>
