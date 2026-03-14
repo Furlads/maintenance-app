@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type Job = {
@@ -418,8 +419,9 @@ export default function SchedulePage() {
                       (Math.max(duration, 30) / TOTAL_DAY_MINUTES) * 100;
 
                     return (
-                      <div
+                      <Link
                         key={job.id}
+                        href={`/jobs/${job.id}`}
                         title={`${job.startTime ?? "TBD"} • ${job.title} • ${
                           job.customerName
                         } • ${job.postcode ?? ""}`}
@@ -436,6 +438,10 @@ export default function SchedulePage() {
                           overflow: "hidden",
                           fontSize: 12,
                           boxSizing: "border-box",
+                          textDecoration: "none",
+                          color: "#111",
+                          cursor: "pointer",
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
                         }}
                       >
                         <div
@@ -472,7 +478,7 @@ export default function SchedulePage() {
                           {job.durationMinutes ?? 60}m •{" "}
                           {getStatusLabel(job.status)}
                         </div>
-                      </div>
+                      </Link>
                     );
                   })}
 
