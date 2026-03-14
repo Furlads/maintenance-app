@@ -173,3 +173,12 @@ model InboxMessage {
   @@index([source, createdAt])
   @@index([status, createdAt])
 }
+
+model InboxConnection {
+  id        String   @id @default(cuid())
+  service   String   @unique
+  account   String?
+  lastSync  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
