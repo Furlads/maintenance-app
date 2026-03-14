@@ -31,6 +31,13 @@ type Job = {
   fixed: boolean;
 };
 
+type KellyTopFilter =
+  | "due-today"
+  | "done-today"
+  | "remaining-today"
+  | "overdue"
+  | "unscheduled";
+
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -43,12 +50,54 @@ function cleanLower(s: string | null | undefined) {
   return (s ?? "").trim().toLowerCase();
 }
 
+function startOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+
+function isDoneStatus(status: string | null | undefined) {
+  const value = cleanLower(status);
+  return value === "done" || value === "completed";
+}
+
+function StatCard({
+  label,
+  value,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: 14,
+        borderRadius: 14,
+        border: active ? "2px solid #111" : "1px solid #e6e6e6",
+        background: active ? "#111" : "#fff",
+        color: active ? "#fff" : "#111",
+        textAlign: "left",
+        cursor: "pointer",
+        transition: "all 0.15s ease",
+      }}
+    >
+      <div style={{ fontSize: 12, opacity: active ? 0.78 : 0.7 }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, marginTop: 6 }}>{value}</div>
+    </button>
+  );
+}
+
 export default function KellyCombinedDashboard() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [business, setBusiness] = useState<Business | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [err, setErr] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [topFilter, setTopFilter] = useState<KellyTopFilter>("due-today");
 
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -126,50 +175,79 @@ export default function KellyCombinedDashboard() {
   }
 
   const today = new Date();
+  const todayStart = startOfDay(today);
+
+  const dueTodayJobs = useMemo(() => {
+    return jobs.filter((j) => {
+      if (!j.visitDate) return false;
+      return isSameDay(new Date(j.visitDate), today);
+    });
+  }, [jobs, today]);
+
+  const overdueJobs = useMemo(() => {
+    return jobs.filter((j) => {
+      if (!j.visitDate) return false;
+      const vd = new Date(j.visitDate);
+      return vd < todayStart && !isSameDay(vd, today) && !isDoneStatus(j.status);
+    });
+  }, [jobs, today, todayStart]);
 
   const inPlayJobs = useMemo(() => {
     return jobs.filter((j) => {
       if (!j.visitDate) return false;
       const vd = new Date(j.visitDate);
       const isToday = isSameDay(vd, today);
-      const isOverdue = vd < today && !isSameDay(vd, today);
-      return isToday || (isOverdue && j.status !== "done");
+      const isOverdue = vd < todayStart && !isSameDay(vd, today);
+      return isToday || (isOverdue && !isDoneStatus(j.status));
     });
-  }, [jobs, today]);
+  }, [jobs, today, todayStart]);
+
+  const unscheduledJobs = useMemo(() => {
+    return jobs.filter((j) => j.status === "unscheduled" || j.visitDate === null);
+  }, [jobs]);
 
   const totals = useMemo(() => {
-    const dueToday = jobs.filter((j) => {
-      if (!j.visitDate) return false;
-      return isSameDay(new Date(j.visitDate), today);
-    });
-
-    const overdue = jobs.filter((j) => {
-      if (!j.visitDate) return false;
-      const vd = new Date(j.visitDate);
-      return vd < today && !isSameDay(vd, today) && j.status !== "done";
-    });
-
-    const doneToday = dueToday.filter((j) => j.status === "done").length;
-    const remainingToday = dueToday.filter((j) => j.status !== "done").length;
+    const doneToday = dueTodayJobs.filter((j) => isDoneStatus(j.status)).length;
+    const remainingToday = dueTodayJobs.filter((j) => !isDoneStatus(j.status)).length;
 
     return {
-      dueToday: dueToday.length,
+      dueToday: dueTodayJobs.length,
       doneToday,
       remainingToday,
-      overdue: overdue.length,
-      unscheduled: jobs.filter((j) => j.status === "unscheduled" || j.visitDate === null).length,
+      overdue: overdueJobs.length,
+      unscheduled: unscheduledJobs.length,
     };
-  }, [jobs, today]);
+  }, [dueTodayJobs, overdueJobs, unscheduledJobs]);
+
+  const filteredJobsForCards = useMemo(() => {
+    if (topFilter === "due-today") {
+      return dueTodayJobs;
+    }
+
+    if (topFilter === "done-today") {
+      return dueTodayJobs.filter((j) => isDoneStatus(j.status));
+    }
+
+    if (topFilter === "remaining-today") {
+      return inPlayJobs.filter((j) => !isDoneStatus(j.status));
+    }
+
+    if (topFilter === "overdue") {
+      return overdueJobs;
+    }
+
+    return unscheduledJobs;
+  }, [topFilter, dueTodayJobs, inPlayJobs, overdueJobs, unscheduledJobs]);
 
   const perWorker = useMemo(() => {
     const list = workers.map((w) => {
       const wk = cleanLower(w.key);
 
-      const mine = inPlayJobs
+      const mine = filteredJobsForCards
         .filter((j) => cleanLower(j.assignedTo) === wk)
         .sort((a, b) => {
-          if (a.status === "done" && b.status !== "done") return 1;
-          if (a.status !== "done" && b.status === "done") return -1;
+          if (isDoneStatus(a.status) && !isDoneStatus(b.status)) return 1;
+          if (!isDoneStatus(a.status) && isDoneStatus(b.status)) return -1;
 
           const ad = a.visitDate ? new Date(a.visitDate).getTime() : 0;
           const bd = b.visitDate ? new Date(b.visitDate).getTime() : 0;
@@ -180,31 +258,60 @@ export default function KellyCombinedDashboard() {
           return at.localeCompare(bt);
         });
 
-      const done = mine.filter((j) => j.status === "done").length;
-      const remaining = mine.filter((j) => j.status !== "done").length;
+      const done = mine.filter((j) => isDoneStatus(j.status)).length;
+      const remaining = mine.filter((j) => !isDoneStatus(j.status)).length;
 
-      const current = mine.find((j) => j.status !== "done") ?? null;
-
-      const nextAny = jobs
-        .filter((j) => cleanLower(j.assignedTo) === wk && j.status !== "done")
-        .sort((a, b) => {
-          const ad = a.visitDate ? new Date(a.visitDate).getTime() : Number.MAX_SAFE_INTEGER;
-          const bd = b.visitDate ? new Date(b.visitDate).getTime() : Number.MAX_SAFE_INTEGER;
-          if (ad !== bd) return ad - bd;
-          return (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99");
-        })[0];
+      const current = mine.find((j) => !isDoneStatus(j.status)) ?? null;
+      const fallback = mine[0] ?? null;
 
       return {
         worker: w,
         done,
         remaining,
         currentJob: current,
-        nextJob: current ? null : nextAny ?? null,
+        nextJob: current ? null : fallback,
+        matchingJobs: mine,
       };
     });
 
-    return list;
-  }, [workers, jobs, inPlayJobs]);
+    if (topFilter === "unscheduled") {
+      const unassignedJobs = filteredJobsForCards
+        .filter((j) => !cleanLower(j.assignedTo))
+        .sort((a, b) => {
+          const ad = a.visitDate ? new Date(a.visitDate).getTime() : Number.MAX_SAFE_INTEGER;
+          const bd = b.visitDate ? new Date(b.visitDate).getTime() : Number.MAX_SAFE_INTEGER;
+          if (ad !== bd) return ad - bd;
+          return (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99");
+        });
+
+      if (unassignedJobs.length > 0) {
+        list.unshift({
+          worker: {
+            id: 0,
+            key: "unassigned",
+            displayName: "Unassigned Jobs",
+            active: true,
+            sortOrder: -1,
+          },
+          done: 0,
+          remaining: unassignedJobs.length,
+          currentJob: unassignedJobs[0] ?? null,
+          nextJob: null,
+          matchingJobs: unassignedJobs,
+        });
+      }
+    }
+
+    return list.filter((row) => row.matchingJobs.length > 0);
+  }, [workers, filteredJobsForCards, topFilter]);
+
+  const filterTitle = useMemo(() => {
+    if (topFilter === "due-today") return "Due today";
+    if (topFilter === "done-today") return "Done today";
+    if (topFilter === "remaining-today") return "Remaining today";
+    if (topFilter === "overdue") return "Overdue";
+    return "Unscheduled";
+  }, [topFilter]);
 
   return (
     <main style={{ padding: 24, maxWidth: 1100 }}>
@@ -340,84 +447,110 @@ export default function KellyCombinedDashboard() {
           gap: 12,
         }}
       >
-        {[
-          { label: "Due today", value: totals.dueToday },
-          { label: "Done today", value: totals.doneToday },
-          { label: "Remaining today", value: totals.remainingToday },
-          { label: "Overdue", value: totals.overdue },
-          { label: "Unscheduled", value: totals.unscheduled },
-        ].map((k) => (
-          <div
-            key={k.label}
-            style={{
-              padding: 14,
-              borderRadius: 14,
-              border: "1px solid #e6e6e6",
-              background: "#fff",
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.7 }}>{k.label}</div>
-            <div style={{ fontSize: 26, fontWeight: 800, marginTop: 6 }}>{k.value}</div>
-          </div>
-        ))}
+        <StatCard
+          label="Due today"
+          value={totals.dueToday}
+          active={topFilter === "due-today"}
+          onClick={() => setTopFilter("due-today")}
+        />
+        <StatCard
+          label="Done today"
+          value={totals.doneToday}
+          active={topFilter === "done-today"}
+          onClick={() => setTopFilter("done-today")}
+        />
+        <StatCard
+          label="Remaining today"
+          value={totals.remainingToday}
+          active={topFilter === "remaining-today"}
+          onClick={() => setTopFilter("remaining-today")}
+        />
+        <StatCard
+          label="Overdue"
+          value={totals.overdue}
+          active={topFilter === "overdue"}
+          onClick={() => setTopFilter("overdue")}
+        />
+        <StatCard
+          label="Unscheduled"
+          value={totals.unscheduled}
+          active={topFilter === "unscheduled"}
+          onClick={() => setTopFilter("unscheduled")}
+        />
       </div>
 
-      <h2 style={{ marginTop: 22, marginBottom: 10 }}>Where everyone is</h2>
+      <h2 style={{ marginTop: 22, marginBottom: 10 }}>
+        {filterTitle}
+      </h2>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-        {perWorker.map((row) => {
-          const current = row.currentJob;
-          const fallback = row.nextJob;
+      {perWorker.length === 0 ? (
+        <div
+          style={{
+            padding: 14,
+            borderRadius: 14,
+            border: "1px solid #e6e6e6",
+            background: "#fff",
+            fontSize: 14,
+            opacity: 0.75,
+          }}
+        >
+          No matching results for this view.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          {perWorker.map((row) => {
+            const current = row.currentJob;
+            const fallback = row.nextJob;
 
-          return (
-            <div
-              key={row.worker.key}
-              style={{ padding: 14, borderRadius: 14, border: "1px solid #e6e6e6", background: "#fff" }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-                <div>
-                  <div style={{ fontWeight: 900, fontSize: 16 }}>{row.worker.displayName}</div>
-                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-                    Done: {row.done} • Remaining (today/overdue): {row.remaining}
+            return (
+              <div
+                key={`${row.worker.key}-${topFilter}`}
+                style={{ padding: 14, borderRadius: 14, border: "1px solid #e6e6e6", background: "#fff" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                  <div>
+                    <div style={{ fontWeight: 900, fontSize: 16 }}>{row.worker.displayName}</div>
+                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                      Done: {row.done} • Remaining: {row.remaining}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 12, opacity: 0.7, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                    {current ? "On now" : fallback ? "Next up" : "No jobs"}
                   </div>
                 </div>
 
-                <div style={{ fontSize: 12, opacity: 0.7, textTransform: "uppercase", letterSpacing: 0.6 }}>
-                  {current ? "On now" : fallback ? "Next up" : "No jobs"}
+                <div style={{ marginTop: 10 }}>
+                  {current ? (
+                    <>
+                      <div style={{ fontWeight: 800 }}>{current.title}</div>
+                      <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>{current.address}</div>
+                      <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+                        {current.visitDate ? gbDate(new Date(current.visitDate)) : ""}{" "}
+                        {current.startTime ? `• ${current.startTime}` : ""} • Status: {current.status}
+                      </div>
+                    </>
+                  ) : fallback ? (
+                    <>
+                      <div style={{ fontWeight: 800 }}>{fallback.title}</div>
+                      <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>{fallback.address}</div>
+                      <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+                        {fallback.visitDate ? gbDate(new Date(fallback.visitDate)) : "Unscheduled"}{" "}
+                        {fallback.startTime ? `• ${fallback.startTime}` : ""} • Status: {fallback.status}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 13, opacity: 0.75 }}>Nothing assigned yet.</div>
+                  )}
                 </div>
               </div>
-
-              <div style={{ marginTop: 10 }}>
-                {current ? (
-                  <>
-                    <div style={{ fontWeight: 800 }}>{current.title}</div>
-                    <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>{current.address}</div>
-                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-                      {current.visitDate ? gbDate(new Date(current.visitDate)) : ""}{" "}
-                      {current.startTime ? `• ${current.startTime}` : ""} • Status: {current.status}
-                    </div>
-                  </>
-                ) : fallback ? (
-                  <>
-                    <div style={{ fontWeight: 800 }}>{fallback.title}</div>
-                    <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>{fallback.address}</div>
-                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-                      {fallback.visitDate ? gbDate(new Date(fallback.visitDate)) : "Unscheduled"}{" "}
-                      {fallback.startTime ? `• ${fallback.startTime}` : ""} • Status: {fallback.status}
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ fontSize: 13, opacity: 0.75 }}>Nothing assigned yet.</div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{ marginTop: 18, fontSize: 12, opacity: 0.65 }}>
-        Tip: “On now” = first not-done job that’s due today/overdue (matches Today page behaviour).
-        If someone has none, it shows “Next up” based on their next dated/assigned job.
+        Tip: headline stats are clickable and filter the worker view below.
       </div>
     </main>
   );
