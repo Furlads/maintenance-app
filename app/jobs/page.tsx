@@ -219,6 +219,27 @@ function FilterTab({
   )
 }
 
+function getStatusPriority(status: string) {
+  const value = String(status || "").toLowerCase()
+
+  if (value === "in_progress" || value === "inprogress") return 1
+  if (value === "paused") return 2
+  if (value === "todo" || value === "scheduled") return 3
+  if (value === "quoted") return 4
+  if (value === "done" || value === "completed") return 5
+  if (value === "unscheduled") return 6
+
+  return 7
+}
+
+function getVisitDatePriority(date: Date | null) {
+  return date ? 0 : 1
+}
+
+function getStartTimePriority(startTime: string | null) {
+  return startTime ? startTime : "99:99"
+}
+
 export default async function JobsPage({ searchParams }: JobsPageProps) {
   const jobs = await prisma.job.findMany({
     include: {
@@ -266,28 +287,62 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
 
   const unassignedCount = jobs.filter((job) => job.assignments.length === 0).length
 
-  const filteredJobs = jobs.filter((job) => {
-    const workerText = formatWorkers(job.assignments).toLowerCase()
-    const customerText = String(job.customer?.name || "").toLowerCase()
-    const titleText = String(job.title || "").toLowerCase()
-    const addressText = String(job.address || "").toLowerCase()
-    const searchText = search.toLowerCase()
+  const filteredJobs = jobs
+    .filter((job) => {
+      const workerText = formatWorkers(job.assignments).toLowerCase()
+      const customerText = String(job.customer?.name || "").toLowerCase()
+      const titleText = String(job.title || "").toLowerCase()
+      const addressText = String(job.address || "").toLowerCase()
+      const searchText = search.toLowerCase()
 
-    const matchesSearch =
-      !searchText ||
-      customerText.includes(searchText) ||
-      titleText.includes(searchText) ||
-      addressText.includes(searchText) ||
-      workerText.includes(searchText)
+      const matchesSearch =
+        !searchText ||
+        customerText.includes(searchText) ||
+        titleText.includes(searchText) ||
+        addressText.includes(searchText) ||
+        workerText.includes(searchText)
 
-    const matchesSelectedFilter = matchesFilter(
-      job.status || "",
-      activeFilter,
-      job.visitDate
-    )
+      const matchesSelectedFilter = matchesFilter(
+        job.status || "",
+        activeFilter,
+        job.visitDate
+      )
 
-    return matchesSearch && matchesSelectedFilter
-  })
+      return matchesSearch && matchesSelectedFilter
+    })
+    .sort((a, b) => {
+      const datePriorityA = getVisitDatePriority(a.visitDate)
+      const datePriorityB = getVisitDatePriority(b.visitDate)
+
+      if (datePriorityA !== datePriorityB) {
+        return datePriorityA - datePriorityB
+      }
+
+      if (a.visitDate && b.visitDate) {
+        const visitDateDiff =
+          new Date(a.visitDate).getTime() - new Date(b.visitDate).getTime()
+
+        if (visitDateDiff !== 0) {
+          return visitDateDiff
+        }
+      }
+
+      const statusPriorityA = getStatusPriority(a.status)
+      const statusPriorityB = getStatusPriority(b.status)
+
+      if (statusPriorityA !== statusPriorityB) {
+        return statusPriorityA - statusPriorityB
+      }
+
+      const startTimeA = getStartTimePriority(a.startTime)
+      const startTimeB = getStartTimePriority(b.startTime)
+
+      if (startTimeA !== startTimeB) {
+        return startTimeA.localeCompare(startTimeB)
+      }
+
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    })
 
   return (
     <main className="min-h-screen bg-zinc-50">
@@ -368,7 +423,11 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                     className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
 
-                  <input type="hidden" name="filter" value={activeFilter === "all" ? "" : activeFilter} />
+                  <input
+                    type="hidden"
+                    name="filter"
+                    value={activeFilter === "all" ? "" : activeFilter}
+                  />
 
                   <div className="flex gap-2">
                     <button
