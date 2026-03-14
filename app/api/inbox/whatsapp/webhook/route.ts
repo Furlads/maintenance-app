@@ -7,8 +7,8 @@ function cleanPhone(value: string) {
   return value.replace(/\D/g, "")
 }
 
-function makeConversationId(phone: string) {
-  return `whatsapp:${cleanPhone(phone)}`
+function makeConversationRef(phone: string) {
+  return cleanPhone(phone)
 }
 
 export async function GET(req: NextRequest) {
@@ -54,7 +54,31 @@ export async function POST(req: NextRequest) {
 
     const contact = value.contacts?.[0]
     const senderName = contact?.profile?.name || from
-    const conversationId = makeConversationId(from)
+    const conversationRef = makeConversationRef(from)
+
+    let conversation = await prisma.conversation.findFirst({
+      where: {
+        source: "whatsapp",
+        contactRef: conversationRef,
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          source: "whatsapp",
+          contactName: senderName,
+          contactRef: conversationRef,
+          archived: false,
+        },
+        select: {
+          id: true,
+        },
+      })
+    }
 
     await prisma.inboxMessage.create({
       data: {
@@ -64,7 +88,7 @@ export async function POST(req: NextRequest) {
         preview: body.slice(0, 120),
         body,
         status: "unread",
-        conversationId,
+        conversationId: conversation.id,
       },
     })
 
