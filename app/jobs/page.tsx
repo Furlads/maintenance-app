@@ -142,22 +142,35 @@ function StatCard({
   label,
   value,
   accent,
+  href,
+  active = false,
 }: {
   label: string
   value: number
   accent?: string
+  href: string
+  active?: boolean
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+    <Link
+      href={href}
+      className={`block rounded-2xl border p-4 transition ${
+        active
+          ? "border-zinc-900 bg-zinc-900 text-white shadow-sm"
+          : "border-zinc-200 bg-zinc-50 hover:border-zinc-300 hover:bg-white"
+      }`}
+    >
       <div
         className={`text-[11px] font-bold uppercase tracking-[0.18em] ${
-          accent || "text-zinc-500"
+          active ? "text-zinc-300" : accent || "text-zinc-500"
         }`}
       >
         {label}
       </div>
-      <div className="mt-2 text-3xl font-bold text-zinc-900">{value}</div>
-    </div>
+      <div className={`mt-2 text-3xl font-bold ${active ? "text-white" : "text-zinc-900"}`}>
+        {value}
+      </div>
+    </Link>
   )
 }
 
@@ -187,20 +200,36 @@ function isTodayLondon(date: Date | null) {
   return londonDateOnlyString(date) === londonDateOnlyString(new Date())
 }
 
-function matchesFilter(status: string, filter: string, visitDate: Date | null) {
-  const value = String(status || "").toLowerCase()
+function matchesFilter(job: JobItem, filter: string) {
+  const status = String(job.status || "").toLowerCase()
+  const jobType = String(job.jobType || "").toLowerCase()
 
   if (filter === "all") return true
-  if (filter === "today") return isTodayLondon(visitDate)
-  if (filter === "scheduled") return value === "todo" || value === "scheduled"
+  if (filter === "today") return isTodayLondon(job.visitDate)
+  if (filter === "scheduled") return status === "todo" || status === "scheduled"
   if (filter === "in-progress") {
-    return value === "in_progress" || value === "inprogress" || value === "paused"
+    return status === "in_progress" || status === "inprogress" || status === "paused"
   }
   if (filter === "completed") {
-    return value === "done" || value === "completed"
+    return status === "done" || status === "completed"
   }
   if (filter === "quoted") {
-    return value === "quoted"
+    return status === "quoted"
+  }
+  if (filter === "maintenance") {
+    return jobType.includes("maint")
+  }
+  if (filter === "landscaping") {
+    return jobType.includes("land")
+  }
+  if (filter === "quotes") {
+    return jobType.includes("quote")
+  }
+  if (filter === "todo") {
+    return status === "scheduled" || status === "todo"
+  }
+  if (filter === "unassigned") {
+    return job.assignments.length === 0
   }
 
   return true
@@ -548,11 +577,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
       addressText.includes(searchText) ||
       workerText.includes(searchText)
 
-    const matchesSelectedFilter = matchesFilter(
-      job.status || "",
-      activeFilter,
-      job.visitDate
-    )
+    const matchesSelectedFilter = matchesFilter(job, activeFilter)
 
     return matchesSearch && matchesSelectedFilter
   })
@@ -651,14 +676,58 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
             </div>
 
             <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 xl:grid-cols-8 md:p-5">
-              <StatCard label="Total jobs" value={jobs.length} />
-              <StatCard label="Maintenance" value={maintenanceCount} />
-              <StatCard label="Landscaping" value={landscapingCount} />
-              <StatCard label="Quotes" value={quoteCount} />
-              <StatCard label="To do" value={todoCount} accent="text-amber-600" />
-              <StatCard label="In progress" value={inProgressCount} accent="text-blue-600" />
-              <StatCard label="Completed" value={doneCount} accent="text-green-600" />
-              <StatCard label="Unassigned" value={unassignedCount} accent="text-red-600" />
+              <StatCard
+                label="Total jobs"
+                value={jobs.length}
+                href={buildFilterHref("all", search)}
+                active={activeFilter === "all"}
+              />
+              <StatCard
+                label="Maintenance"
+                value={maintenanceCount}
+                href={buildFilterHref("maintenance", search)}
+                active={activeFilter === "maintenance"}
+              />
+              <StatCard
+                label="Landscaping"
+                value={landscapingCount}
+                href={buildFilterHref("landscaping", search)}
+                active={activeFilter === "landscaping"}
+              />
+              <StatCard
+                label="Quotes"
+                value={quoteCount}
+                href={buildFilterHref("quotes", search)}
+                active={activeFilter === "quotes"}
+              />
+              <StatCard
+                label="To do"
+                value={todoCount}
+                accent="text-amber-600"
+                href={buildFilterHref("todo", search)}
+                active={activeFilter === "todo"}
+              />
+              <StatCard
+                label="In progress"
+                value={inProgressCount}
+                accent="text-blue-600"
+                href={buildFilterHref("in-progress", search)}
+                active={activeFilter === "in-progress"}
+              />
+              <StatCard
+                label="Completed"
+                value={doneCount}
+                accent="text-green-600"
+                href={buildFilterHref("completed", search)}
+                active={activeFilter === "completed"}
+              />
+              <StatCard
+                label="Unassigned"
+                value={unassignedCount}
+                accent="text-red-600"
+                href={buildFilterHref("unassigned", search)}
+                active={activeFilter === "unassigned"}
+              />
             </div>
 
             <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 md:px-5">
