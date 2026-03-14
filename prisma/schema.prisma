@@ -188,6 +188,8 @@ model InboxMessage {
   preview     String?
   body        String?
 
+  externalMessageId String?
+
   assignedTo String?
   status     String  @default("unread")
 
@@ -204,13 +206,21 @@ model InboxMessage {
   @@index([status, createdAt])
   @@index([customerId])
   @@index([jobId])
+  @@unique([source, externalMessageId])
 }
 
 model InboxConnection {
-  id        String    @id @default(cuid())
-  service   String    @unique
+  id        String   @id @default(cuid())
+  service   String   @unique
   account   String?
   lastSync  DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+
+  accessToken       String?
+  refreshToken      String?
+  tokenExpiresAt    DateTime?
+  externalAccountId String?
+  syncError         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
