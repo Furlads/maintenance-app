@@ -427,7 +427,6 @@ export default async function AdminInboxPage() {
                         <Link
                           href={`/admin/inbox/${thread.conversationId}`}
                           className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
-                          onClick={(e) => e.stopPropagation()}
                         >
                           Open
                         </Link>
