@@ -8,24 +8,24 @@ datasource db {
 }
 
 model Company {
-  id        Int             @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   name      String
-  createdAt DateTime        @default(now())
+  createdAt DateTime @default(now())
 
-  workers   WorkerCompany[]
+  workers WorkerCompany[]
 }
 
 model Worker {
-  id             Int             @id @default(autoincrement())
-  firstName      String
-  lastName       String
-  jobTitle       String
-  accessLevel    String
-  phone          String?
-  email          String?
-  active         Boolean         @default(true)
-  createdAt      DateTime        @default(now())
-  pinHash        String?
+  id          Int      @id @default(autoincrement())
+  firstName   String
+  lastName    String
+  jobTitle    String
+  accessLevel String
+  phone       String?
+  email       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  pinHash     String?
 
   companies      WorkerCompany[]
   notes          JobNote[]
@@ -34,13 +34,13 @@ model Worker {
 }
 
 model WorkerCompany {
-  id        Int     @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   workerId  Int
   companyId Int
 
-  worker    Worker  @relation(fields: [workerId], references: [id])
-  company   Company @relation(fields: [companyId], references: [id])
+  worker  Worker  @relation(fields: [workerId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
 }
 
 model Customer {
@@ -53,35 +53,37 @@ model Customer {
   notes     String?
   createdAt DateTime @default(now())
 
-  jobs      Job[]
+  jobs          Job[]
+  inboxMessages InboxMessage[]
 }
 
 model Job {
-  id              Int             @id @default(autoincrement())
+  id              Int       @id @default(autoincrement())
   title           String
   customerId      Int
   address         String
   notes           String?
-  jobType         String          @default("Quote")
+  jobType         String    @default("Quote")
   visitDate       DateTime?
   startTime       String?
   durationMinutes Int?
-  overrunMins     Int             @default(0)
+  overrunMins     Int       @default(0)
 
-  arrivedAt       DateTime?
-  finishedAt      DateTime?
+  arrivedAt  DateTime?
+  finishedAt DateTime?
 
-  pausedAt        DateTime?
-  pausedMinutes   Int             @default(0)
+  pausedAt      DateTime?
+  pausedMinutes Int       @default(0)
 
-  status          String          @default("unscheduled")
-  createdAt       DateTime        @default(now())
+  status    String   @default("unscheduled")
+  createdAt DateTime @default(now())
 
-  customer        Customer        @relation(fields: [customerId], references: [id])
-  jobNotes        JobNote[]
-  assignments     JobAssignment[]
-  photos          JobPhoto[]
-  chasMessages    ChasMessage[]
+  customer      Customer        @relation(fields: [customerId], references: [id])
+  jobNotes      JobNote[]
+  assignments   JobAssignment[]
+  photos        JobPhoto[]
+  chasMessages  ChasMessage[]
+  inboxMessages InboxMessage[]
 }
 
 model JobAssignment {
@@ -90,8 +92,8 @@ model JobAssignment {
   workerId  Int
   createdAt DateTime @default(now())
 
-  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  worker    Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  worker Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
   @@unique([jobId, workerId])
 }
@@ -103,8 +105,8 @@ model JobNote {
   createdAt         DateTime @default(now())
   createdByWorkerId Int?
 
-  job               Job      @relation(fields: [jobId], references: [id])
-  worker            Worker?  @relation(fields: [createdByWorkerId], references: [id])
+  job    Job     @relation(fields: [jobId], references: [id])
+  worker Worker? @relation(fields: [createdByWorkerId], references: [id])
 }
 
 model JobPhoto {
@@ -115,41 +117,41 @@ model JobPhoto {
   imageUrl           String
   createdAt          DateTime @default(now())
 
-  job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  uploadedByWorker   Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
+  job              Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  uploadedByWorker Worker? @relation(fields: [uploadedByWorkerId], references: [id])
 }
 
 model ChasMessage {
-  id                    Int      @id @default(autoincrement())
-  company               String
-  worker                String
-  sessionId             String?
-  jobId                 Int?
-  question              String
-  answer                String
-  imageDataUrl          String?
-  responseId            String?
-  conversationId        String?
-  createdAt             DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  company        String
+  worker         String
+  sessionId      String?
+  jobId          Int?
+  question       String
+  answer         String
+  imageDataUrl   String?
+  responseId     String?
+  conversationId String?
+  createdAt      DateTime @default(now())
 
-  intent                String?
-  confidence            Float?
-  escalateTo            String?
-  safetyFlag            Boolean  @default(false)
+  intent     String?
+  confidence Float?
+  escalateTo String?
+  safetyFlag Boolean @default(false)
 
-  customerName          String?
-  customerPhone         String?
-  customerEmail         String?
-  customerAddress       String?
-  customerPostcode      String?
+  customerName     String?
+  customerPhone    String?
+  customerEmail    String?
+  customerAddress  String?
+  customerPostcode String?
 
-  workSummary           String?
-  estimatedHours        Float?
-  roughPriceText        String?
-  enquirySummary        String?
-  enquiryReadyForKelly  Boolean  @default(false)
+  workSummary          String?
+  estimatedHours       Float?
+  roughPriceText       String?
+  enquirySummary       String?
+  enquiryReadyForKelly Boolean @default(false)
 
-  job                   Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  job Job? @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
   @@index([company, worker, createdAt])
   @@index([company, worker, sessionId, createdAt])
@@ -159,26 +161,35 @@ model ChasMessage {
 }
 
 model InboxMessage {
-  id           Int      @id @default(autoincrement())
-  source       String
-  senderName   String?
-  senderEmail  String?
-  subject      String?
-  preview      String?
-  body         String?
-  assignedTo   String?
-  status       String   @default("unread")
-  createdAt    DateTime @default(now())
+  id          Int     @id @default(autoincrement())
+  source      String
+  senderName  String?
+  senderEmail String?
+  subject     String?
+  preview     String?
+  body        String?
+  assignedTo  String?
+  status      String  @default("unread")
+
+  customerId Int?
+  jobId      Int?
+
+  createdAt DateTime @default(now())
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+  job      Job?      @relation(fields: [jobId], references: [id])
 
   @@index([source, createdAt])
   @@index([status, createdAt])
+  @@index([customerId])
+  @@index([jobId])
 }
 
 model InboxConnection {
-  id        String   @id @default(cuid())
-  service   String   @unique
+  id        String    @id @default(cuid())
+  service   String    @unique
   account   String?
   lastSync  DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
