@@ -2,13 +2,46 @@ import { NextRequest, NextResponse } from "next/server";
 
 const GRAPH_URL = "https://graph.facebook.com/v18.0/me/messages";
 
+function getPageAccessToken(pageId: string) {
+  const furladsPageId = process.env.FACEBOOK_PAGE_ID_FURLADS;
+  const threeCountiesPageId = process.env.FACEBOOK_PAGE_ID_THREE_COUNTIES;
+
+  if (pageId === furladsPageId) {
+    return process.env.FACEBOOK_PAGE_TOKEN_FURLADS || null;
+  }
+
+  if (pageId === threeCountiesPageId) {
+    return process.env.FACEBOOK_PAGE_TOKEN_THREE_COUNTIES || null;
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { recipientPsid, messageText, pageAccessToken } = await req.json();
+    const { externalThreadId, messageText } = await req.json();
 
-    if (!recipientPsid || !messageText || !pageAccessToken) {
+    if (!externalThreadId || !messageText) {
       return NextResponse.json(
         { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    const [pageId, recipientPsid] = String(externalThreadId).split(":");
+
+    if (!pageId || !recipientPsid) {
+      return NextResponse.json(
+        { error: "Invalid externalThreadId format" },
+        { status: 400 }
+      );
+    }
+
+    const pageAccessToken = getPageAccessToken(pageId);
+
+    if (!pageAccessToken) {
+      return NextResponse.json(
+        { error: "No page access token found for pageId" },
         { status: 400 }
       );
     }
