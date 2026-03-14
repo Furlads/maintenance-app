@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     const senderName = contact?.profile?.name || from
     const conversationId = makeConversationId(from)
 
-    const exists = await prisma.inboxMessage.findUnique({
+    const exists = await prisma.inboxMessage.findFirst({
       where: {
         externalMessageId: messageId,
       },
