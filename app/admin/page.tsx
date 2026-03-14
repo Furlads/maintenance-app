@@ -2,10 +2,38 @@ import Link from 'next/link'
 import * as prismaModule from '@/lib/prisma'
 import SourceBadge from '@/components/admin/SourceBadge'
 import AdminSchedulerButton from '@/app/components/admin/AdminSchedulerButton'
+import { buildContactKey } from '@/lib/inbox/contactKey'
 
 export const dynamic = 'force-dynamic'
 
 const prisma = ((prismaModule as any).prisma ?? (prismaModule as any).default) as any
+
+type InboxMessageRow = {
+  id: number
+  conversationId: string | null
+  source: string
+  senderName: string | null
+  senderEmail: string | null
+  senderPhone: string | null
+  status: string
+  createdAt: Date
+  conversation: {
+    id: string
+    source: string
+    contactName: string | null
+    contactRef: string | null
+    archived: boolean
+    createdAt: Date
+  } | null
+}
+
+type DashboardInboxSource =
+  | 'whatsapp'
+  | 'furlads-email'
+  | 'threecounties-email'
+  | 'facebook'
+  | 'wix'
+  | 'worker-quote'
 
 function startOfToday() {
   const now = new Date()
@@ -77,11 +105,103 @@ function normaliseStatus(value?: string | null) {
   return value || 'Unscheduled'
 }
 
+function normaliseSource(value: string): DashboardInboxSource {
+  const source = String(value || '').toLowerCase()
+
+  if (source.includes('threecounties')) return 'threecounties-email'
+  if (source.includes('furlads')) return 'furlads-email'
+  if (source.includes('whatsapp')) return 'whatsapp'
+  if (source.includes('facebook')) return 'facebook'
+  if (source.includes('wix')) return 'wix'
+  return 'worker-quote'
+}
+
+function buildThreadKey(message: InboxMessageRow) {
+  const contactKey = buildContactKey({
+    senderPhone: message.senderPhone,
+    senderEmail: message.senderEmail,
+    contactRef: message.conversation?.contactRef ?? null,
+    conversationId: message.conversationId ?? null,
+  })
+
+  if (contactKey) return contactKey
+
+  return message.conversationId || `message-${message.id}`
+}
+
+function statusIsUnread(status: string) {
+  return String(status || '').toLowerCase() === 'unread'
+}
+
+function buildUnreadCountsBySource(messages: InboxMessageRow[]) {
+  const grouped = new Map<string, InboxMessageRow[]>()
+
+  for (const message of messages) {
+    const key = buildThreadKey(message)
+
+    if (!grouped.has(key)) {
+      grouped.set(key, [])
+    }
+
+    grouped.get(key)!.push(message)
+  }
+
+  const counts: Record<DashboardInboxSource, number> = {
+    whatsapp: 0,
+    'furlads-email': 0,
+    'threecounties-email': 0,
+    facebook: 0,
+    wix: 0,
+    'worker-quote': 0,
+  }
+
+  for (const items of grouped.values()) {
+    const sorted = [...items].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+
+    const latest = sorted[0]
+    const source = normaliseSource(latest.source)
+
+    if (statusIsUnread(latest.status)) {
+      counts[source] += 1
+    }
+  }
+
+  return counts
+}
+
+function DashboardSourceLink({
+  source,
+  unreadCount,
+}: {
+  source: DashboardInboxSource
+  unreadCount: number
+}) {
+  return (
+    <Link
+      href={`/admin/inbox?source=${encodeURIComponent(source)}`}
+      className="inline-flex items-center gap-2 rounded-full transition hover:scale-[1.01]"
+    >
+      <SourceBadge source={source} />
+      <span
+        className={`inline-flex min-w-[28px] items-center justify-center rounded-full px-2 py-1 text-[11px] font-bold ring-1 ring-inset ${
+          unreadCount > 0
+            ? 'bg-amber-50 text-amber-700 ring-amber-200'
+            : 'bg-zinc-100 text-zinc-500 ring-zinc-200'
+        }`}
+      >
+        {unreadCount}
+      </span>
+    </Link>
+  )
+}
+
 export default async function AdminPage() {
   const todayStart = startOfToday()
   const todayEnd = endOfToday()
 
-  const [jobsToday, workers, quotesWaiting] = await Promise.all([
+  const [jobsToday, workers, quotesWaiting, inboxMessages] = await Promise.all([
     prisma.job.findMany({
       where: {
         visitDate: {
@@ -114,6 +234,18 @@ export default async function AdminPage() {
         enquiryReadyForKelly: true,
       },
     }),
+    prisma.inboxMessage.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 300,
+      include: {
+        conversation: true,
+      },
+      where: {
+        OR: [{ conversation: { archived: false } }, { conversation: null }],
+      },
+    }) as Promise<InboxMessageRow[]>,
   ])
 
   const maintenanceToday = jobsToday.filter((job: any) =>
@@ -137,6 +269,7 @@ export default async function AdminPage() {
   }
 
   const activeWorkers = workers.filter((worker: any) => activeWorkerIds.has(worker.id))
+  const unreadBySource = buildUnreadCountsBySource(inboxMessages)
 
   return (
     <div className="space-y-4">
@@ -326,7 +459,7 @@ export default async function AdminPage() {
               <div>
                 <h3 className="text-base font-bold">Inbox sources</h3>
                 <p className="text-xs text-zinc-500">
-                  Colour-coded so office can scan quickly
+                  Unread thread counts with click-through to each channel
                 </p>
               </div>
               <Link href="/admin/inbox" className="text-sm font-semibold text-zinc-700">
@@ -336,12 +469,30 @@ export default async function AdminPage() {
 
             <div className="p-4">
               <div className="flex flex-wrap gap-2">
-                <SourceBadge source="whatsapp" />
-                <SourceBadge source="furlads-email" />
-                <SourceBadge source="threecounties-email" />
-                <SourceBadge source="worker-quote" />
-                <SourceBadge source="facebook" />
-                <SourceBadge source="wix" />
+                <DashboardSourceLink
+                  source="whatsapp"
+                  unreadCount={unreadBySource.whatsapp}
+                />
+                <DashboardSourceLink
+                  source="furlads-email"
+                  unreadCount={unreadBySource['furlads-email']}
+                />
+                <DashboardSourceLink
+                  source="threecounties-email"
+                  unreadCount={unreadBySource['threecounties-email']}
+                />
+                <DashboardSourceLink
+                  source="worker-quote"
+                  unreadCount={unreadBySource['worker-quote']}
+                />
+                <DashboardSourceLink
+                  source="facebook"
+                  unreadCount={unreadBySource.facebook}
+                />
+                <DashboardSourceLink
+                  source="wix"
+                  unreadCount={unreadBySource.wix}
+                />
               </div>
             </div>
           </div>

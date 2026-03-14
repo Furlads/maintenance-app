@@ -8,9 +8,23 @@ export const dynamic = "force-dynamic"
 
 const prisma = ((prismaModule as any).prisma ?? (prismaModule as any).default) as any
 
+type InboxSource =
+  | "whatsapp"
+  | "furlads-email"
+  | "threecounties-email"
+  | "facebook"
+  | "wix"
+  | "worker-quote"
+
+type PageProps = {
+  searchParams?: {
+    source?: string
+  }
+}
+
 type InboxMessageRow = {
   id: number
-  conversationId: string
+  conversationId: string | null
   source: string
   senderName: string | null
   senderEmail: string | null
@@ -62,15 +76,7 @@ function formatDateTime(value: Date | null | undefined) {
   }).format(new Date(value))
 }
 
-function normaliseSource(
-  value: string
-):
-  | "whatsapp"
-  | "furlads-email"
-  | "threecounties-email"
-  | "facebook"
-  | "wix"
-  | "worker-quote" {
+function normaliseSource(value: string): InboxSource {
   const source = String(value || "").toLowerCase()
 
   if (source.includes("threecounties")) return "threecounties-email"
@@ -97,6 +103,15 @@ function getSourceLabel(source: string) {
   if (normalised === "whatsapp") return "WhatsApp"
   if (normalised === "facebook") return "Facebook"
   if (normalised === "wix") return "Wix"
+  return "Worker Quote"
+}
+
+function getReadableSourceName(source: InboxSource) {
+  if (source === "threecounties-email") return "Three Counties Email"
+  if (source === "furlads-email") return "Furlads Email"
+  if (source === "whatsapp") return "WhatsApp"
+  if (source === "facebook") return "Facebook"
+  if (source === "wix") return "Wix"
   return "Worker Quote"
 }
 
@@ -292,17 +307,33 @@ function buildThreads(messages: InboxMessageRow[]): ThreadCard[] {
   )
 }
 
-export default async function AdminInboxPage() {
+function parseSourceFilter(value: string | undefined): InboxSource | null {
+  const raw = String(value || "").trim().toLowerCase()
+
+  if (!raw) return null
+  if (raw === "whatsapp") return "whatsapp"
+  if (raw === "furlads-email") return "furlads-email"
+  if (raw === "threecounties-email") return "threecounties-email"
+  if (raw === "facebook") return "facebook"
+  if (raw === "wix") return "wix"
+  if (raw === "worker-quote") return "worker-quote"
+
+  return null
+}
+
+export default async function AdminInboxPage({ searchParams }: PageProps) {
   let messages: InboxMessageRow[] = []
   let databaseReady = true
   let errorMessage = ""
+
+  const sourceFilter = parseSourceFilter(searchParams?.source)
 
   try {
     messages = (await prisma.inboxMessage.findMany({
       orderBy: {
         createdAt: "desc",
       },
-      take: 200,
+      take: 300,
       include: {
         conversation: true,
       },
@@ -318,7 +349,11 @@ export default async function AdminInboxPage() {
         : "Inbox messages are not ready yet."
   }
 
-  const threads = buildThreads(messages)
+  const filteredMessages = sourceFilter
+    ? messages.filter((message) => normaliseSource(message.source) === sourceFilter)
+    : messages
+
+  const threads = buildThreads(filteredMessages)
   const unreadThreads = threads.filter((thread) => statusIsUnread(thread.latestStatus))
   const furladsThreads = threads.filter((thread) => thread.businessLabel === "Furlads")
   const threeCountiesThreads = threads.filter(
@@ -340,9 +375,30 @@ export default async function AdminInboxPage() {
               Latest message first, cleaner thread view, and ready for a dashboard
               needs-reply widget.
             </p>
+
+            {sourceFilter ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  Filtered by
+                </span>
+                <SourceBadge source={sourceFilter} compact />
+                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
+                  {getReadableSourceName(sourceFilter)}
+                </span>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {sourceFilter ? (
+              <Link
+                href="/admin/inbox"
+                className="rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800"
+              >
+                Clear filter
+              </Link>
+            ) : null}
+
             <Link
               href="/admin/inbox/connections"
               className="rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800"
@@ -408,7 +464,9 @@ export default async function AdminInboxPage() {
         {!databaseReady ? null : threads.length === 0 ? (
           <div className="p-4">
             <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
-              No inbox threads yet.
+              {sourceFilter
+                ? `No inbox threads for ${getReadableSourceName(sourceFilter)} yet.`
+                : "No inbox threads yet."}
             </div>
           </div>
         ) : (
