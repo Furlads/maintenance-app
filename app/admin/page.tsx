@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import * as prismaModule from '@/lib/prisma'
 import SourceBadge from '@/components/admin/SourceBadge'
+import AdminSchedulerButton from '@/components/admin/AdminSchedulerButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -167,6 +168,7 @@ export default async function AdminPage() {
             >
               View jobs
             </Link>
+            <AdminSchedulerButton />
           </div>
         </div>
       </section>
