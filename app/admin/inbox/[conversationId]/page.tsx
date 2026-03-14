@@ -1,24 +1,16 @@
 import Link from "next/link"
+import SourceBadge from "@/components/admin/SourceBadge"
+import WhatsAppReplyComposer from "@/components/admin/WhatsAppReplyComposer"
 import * as prismaModule from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
 const prisma = ((prismaModule as any).prisma ?? (prismaModule as any).default) as any
 
-type InboxMessageRow = {
-  id: number
-  conversationId: string
-  source: string
-  senderName: string | null
-  senderEmail: string | null
-  senderPhone: string | null
-  subject: string | null
-  preview: string | null
-  body: string | null
-  status: string
-  customerId: number | null
-  jobId: number | null
-  createdAt: Date
+type PageProps = {
+  params: {
+    conversationId: string
+  }
 }
 
 function formatDateTime(value: Date | null | undefined) {
@@ -33,160 +25,212 @@ function formatDateTime(value: Date | null | undefined) {
   }).format(new Date(value))
 }
 
-function normalisePhoneForWhatsApp(phone: string) {
-  const cleaned = phone.replace(/\D/g, "")
+function normaliseSource(
+  value: string
+):
+  | "whatsapp"
+  | "furlads-email"
+  | "threecounties-email"
+  | "facebook"
+  | "wix"
+  | "worker-quote" {
+  const source = String(value || "").toLowerCase()
 
-  if (cleaned.startsWith("0")) {
-    return `44${cleaned.slice(1)}`
-  }
-
-  if (cleaned.startsWith("44")) {
-    return cleaned
-  }
-
-  return cleaned
+  if (source.includes("threecounties")) return "threecounties-email"
+  if (source.includes("furlads")) return "furlads-email"
+  if (source.includes("whatsapp")) return "whatsapp"
+  if (source.includes("facebook")) return "facebook"
+  if (source.includes("wix")) return "wix"
+  return "worker-quote"
 }
 
-export default async function ThreadPage({
-  params,
-}: {
-  params: { conversationId: string }
-}) {
-  const conversationId = params.conversationId
+function getBusinessLabel(source: string) {
+  const normalised = normaliseSource(source)
 
-  const messages: InboxMessageRow[] = await prisma.inboxMessage.findMany({
+  if (normalised === "threecounties-email") return "Three Counties"
+  if (normalised === "worker-quote") return "Internal"
+  return "Furlads"
+}
+
+function cleanPhone(value: string | null | undefined) {
+  return String(value || "").replace(/\D/g, "")
+}
+
+function isIncomingWhatsAppMessage(
+  conversationContactRef: string | null | undefined,
+  senderPhone: string | null | undefined,
+  senderName: string | null | undefined,
+  source: string
+) {
+  if (normaliseSource(source) !== "whatsapp") return true
+
+  const conversationPhone = cleanPhone(conversationContactRef)
+  const messagePhone = cleanPhone(senderPhone)
+
+  if (conversationPhone && messagePhone) {
+    return conversationPhone === messagePhone
+  }
+
+  return String(senderName || "").toLowerCase() !== "furlads"
+}
+
+export default async function AdminInboxThreadPage({ params }: PageProps) {
+  const conversation = await prisma.conversation.findUnique({
     where: {
-      conversationId: conversationId,
+      id: params.conversationId,
     },
-    orderBy: {
-      createdAt: "asc",
+    include: {
+      messages: {
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
     },
   })
 
-  if (!messages.length) {
+  if (!conversation) {
     return (
       <div className="space-y-4">
-        <Link
-          href="/admin/inbox"
-          className="text-blue-600 underline text-sm"
-        >
-          ← Back to Inbox
-        </Link>
+        <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <h1 className="text-2xl font-bold tracking-tight">Thread not found</h1>
+          <p className="mt-2 text-sm text-zinc-600">
+            This inbox thread could not be found.
+          </p>
 
-        <div className="rounded-xl border bg-white p-6">
-          Conversation not found.
-        </div>
+          <div className="mt-4">
+            <Link
+              href="/admin/inbox"
+              className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Back to inbox
+            </Link>
+          </div>
+        </section>
       </div>
     )
   }
 
-  const first = messages[0]
+  const businessLabel = getBusinessLabel(conversation.source)
+  const contactName =
+    conversation.contactName?.trim() ||
+    conversation.contactRef?.trim() ||
+    "Unknown contact"
 
-  const displayName =
-    first.senderName ||
-    first.senderEmail ||
-    first.senderPhone ||
-    "Unknown sender"
+  const contactRef =
+    conversation.contactRef?.trim() || "No contact details yet"
 
-  const phone = first.senderPhone
-  const email = first.senderEmail
-
-  const whatsappNumber = phone
-    ? normalisePhoneForWhatsApp(phone)
-    : ""
+  const isWhatsAppThread = normaliseSource(conversation.source) === "whatsapp"
 
   return (
     <div className="space-y-4">
-
-      <Link
-        href="/admin/inbox"
-        className="text-blue-600 underline text-sm"
-      >
-        ← Back to Inbox
-      </Link>
-
-      {/* CONTACT HEADER */}
-
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-
-        <h1 className="text-xl font-bold">{displayName}</h1>
-
-        <div className="mt-1 text-sm text-zinc-500 flex gap-4 flex-wrap">
-          {phone && <span>{phone}</span>}
-          {email && <span>{email}</span>}
-        </div>
-
-        <div className="flex flex-wrap gap-2 mt-4">
-
-          {phone && (
-            <a
-              href={`tel:${phone}`}
-              className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white"
-            >
-              📞 Call
-            </a>
-          )}
-
-          {phone && (
-            <a
-              href={`https://wa.me/${whatsappNumber}`}
-              target="_blank"
-              className="rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-white"
-            >
-              💬 WhatsApp
-            </a>
-          )}
-
-          {email && (
-            <a
-              href={`mailto:${email}`}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
-            >
-              ✉ Email
-            </a>
-          )}
-
-          {!first.customerId && (
-            <button className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">
-              Create Customer
-            </button>
-          )}
-
-          {!first.jobId && (
-            <button className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-800">
-              Create Job
-            </button>
-          )}
-        </div>
-
-      </section>
-
-      {/* MESSAGES */}
-
-      <section className="space-y-3">
-
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className="rounded-xl border border-zinc-200 bg-white p-4"
-          >
-            <div className="text-xs text-zinc-500 mb-2">
-              {formatDateTime(message.createdAt)}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <SourceBadge source={normaliseSource(conversation.source)} compact />
+              <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                {businessLabel}
+              </span>
+              {conversation.archived ? (
+                <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                  Archived
+                </span>
+              ) : null}
             </div>
 
-            {message.subject && (
-              <div className="font-semibold mb-1">
-                {message.subject}
-              </div>
-            )}
-
-            <div className="text-sm whitespace-pre-wrap text-zinc-700">
-              {message.body || message.preview}
-            </div>
+            <h1 className="text-2xl font-bold tracking-tight">{contactName}</h1>
+            <p className="mt-1 text-sm text-zinc-500">{contactRef}</p>
           </div>
-        ))}
 
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/admin/inbox"
+              className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800"
+            >
+              Back to inbox
+            </Link>
+          </div>
+        </div>
       </section>
+
+      <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
+        <div className="border-b border-zinc-200 px-4 py-3">
+          <h2 className="text-base font-bold">Conversation</h2>
+          <p className="text-xs text-zinc-500">
+            Full message history for this thread
+          </p>
+        </div>
+
+        <div className="space-y-4 p-4">
+          {conversation.messages.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
+              No messages in this thread yet.
+            </div>
+          ) : (
+            conversation.messages.map((message: any) => {
+              const incoming = isIncomingWhatsAppMessage(
+                conversation.contactRef,
+                message.senderPhone,
+                message.senderName,
+                message.source
+              )
+
+              return (
+                <div
+                  key={message.id}
+                  className={`flex ${incoming ? "justify-start" : "justify-end"}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                      incoming
+                        ? "border border-zinc-200 bg-white text-zinc-900"
+                        : "bg-zinc-900 text-white"
+                    }`}
+                  >
+                    <div
+                      className={`mb-1 text-xs font-semibold ${
+                        incoming ? "text-zinc-500" : "text-zinc-300"
+                      }`}
+                    >
+                      {incoming
+                        ? message.senderName || conversation.contactName || "Customer"
+                        : "Furlads"}
+                    </div>
+
+                    <div className="whitespace-pre-wrap text-sm leading-6">
+                      {message.body?.trim() ||
+                        message.preview?.trim() ||
+                        "No message content."}
+                    </div>
+
+                    <div
+                      className={`mt-2 text-xs ${
+                        incoming ? "text-zinc-400" : "text-zinc-300"
+                      }`}
+                    >
+                      {formatDateTime(message.createdAt)}
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </section>
+
+      {isWhatsAppThread ? (
+        <WhatsAppReplyComposer
+          conversationId={conversation.id}
+          contactName={conversation.contactName}
+        />
+      ) : (
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <h3 className="text-base font-bold text-zinc-900">Reply</h3>
+          <p className="mt-1 text-sm text-zinc-500">
+            Direct reply is currently enabled for WhatsApp threads only.
+          </p>
+        </section>
+      )}
     </div>
   )
 }
