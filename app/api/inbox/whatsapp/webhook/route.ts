@@ -45,11 +45,10 @@ export async function POST(req: NextRequest) {
     }
 
     const message = value.messages[0]
-    const messageId = message.id
     const from = message.from
     const body = message.text?.body || ""
 
-    if (!messageId || !from) {
+    if (!from) {
       return NextResponse.json({ received: true })
     }
 
@@ -57,32 +56,17 @@ export async function POST(req: NextRequest) {
     const senderName = contact?.profile?.name || from
     const conversationId = makeConversationId(from)
 
-    const exists = await prisma.inboxMessage.findFirst({
-      where: {
-        externalMessageId: messageId,
-      },
-      select: {
-        id: true,
+    await prisma.inboxMessage.create({
+      data: {
+        source: "whatsapp",
+        senderName,
+        senderPhone: from,
+        preview: body.slice(0, 120),
+        body,
+        status: "unread",
+        conversationId,
       },
     })
-
-    if (!exists) {
-      await prisma.inboxMessage.create({
-        data: {
-          conversationId,
-          externalMessageId: messageId,
-          externalThreadId: conversationId,
-          source: "whatsapp",
-          direction: "inbound",
-          status: "unread",
-          senderName,
-          senderPhone: from,
-          preview: body.slice(0, 120),
-          body,
-          rawPayload: JSON.stringify(payload),
-        },
-      })
-    }
 
     return NextResponse.json({ received: true })
   } catch (error) {
