@@ -160,10 +160,23 @@ model ChasMessage {
   @@index([conversationId])
 }
 
+model Conversation {
+  id          String   @id @default(cuid())
+  source      String
+  contactName String?
+  contactRef  String?
+  createdAt   DateTime @default(now())
+
+  messages InboxMessage[]
+}
+
 model InboxMessage {
-  id             Int     @id @default(autoincrement())
-  source         String
-  conversationId String?
+  id Int @id @default(autoincrement())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  source String
 
   senderName  String?
   senderEmail String?
@@ -182,9 +195,9 @@ model InboxMessage {
   customer Customer? @relation(fields: [customerId], references: [id])
   job      Job?      @relation(fields: [jobId], references: [id])
 
+  @@index([conversationId])
   @@index([source, createdAt])
   @@index([status, createdAt])
-  @@index([conversationId])
   @@index([customerId])
   @@index([jobId])
 }
