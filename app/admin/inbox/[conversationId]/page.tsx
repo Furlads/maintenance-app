@@ -1,10 +1,13 @@
 import Link from "next/link"
-import { prisma } from "@/lib/prisma"
+import * as prismaModule from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
-type MessageRow = {
+const prisma = ((prismaModule as any).prisma ?? (prismaModule as any).default) as any
+
+type InboxMessageRow = {
   id: number
+  conversationId: string
   source: string
   senderName: string | null
   senderEmail: string | null
@@ -18,7 +21,9 @@ type MessageRow = {
   createdAt: Date
 }
 
-function formatDate(value: Date) {
+function formatDateTime(value: Date | null | undefined) {
+  if (!value) return "—"
+
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "2-digit",
@@ -49,18 +54,28 @@ export default async function ThreadPage({
 }) {
   const conversationId = params.conversationId
 
-  const messages = await prisma.inboxMessage.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: "asc" },
+  const messages: InboxMessageRow[] = await prisma.inboxMessage.findMany({
+    where: {
+      conversationId: conversationId,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
   })
 
   if (!messages.length) {
     return (
-      <div className="p-6">
-        <Link href="/admin/inbox" className="text-blue-600 underline">
+      <div className="space-y-4">
+        <Link
+          href="/admin/inbox"
+          className="text-blue-600 underline text-sm"
+        >
           ← Back to Inbox
         </Link>
-        <p className="mt-4">Conversation not found.</p>
+
+        <div className="rounded-xl border bg-white p-6">
+          Conversation not found.
+        </div>
       </div>
     )
   }
@@ -68,7 +83,10 @@ export default async function ThreadPage({
   const first = messages[0]
 
   const displayName =
-    first.senderName || first.senderEmail || first.senderPhone || "Unknown"
+    first.senderName ||
+    first.senderEmail ||
+    first.senderPhone ||
+    "Unknown sender"
 
   const phone = first.senderPhone
   const email = first.senderEmail
@@ -78,28 +96,32 @@ export default async function ThreadPage({
     : ""
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
-      <div className="rounded-xl border bg-white p-5">
-        <Link href="/admin/inbox" className="text-sm text-blue-600 underline">
-          ← Back to Inbox
-        </Link>
+      <Link
+        href="/admin/inbox"
+        className="text-blue-600 underline text-sm"
+      >
+        ← Back to Inbox
+      </Link>
 
-        <h1 className="mt-2 text-2xl font-bold">
-          {displayName}
-        </h1>
+      {/* CONTACT HEADER */}
 
-        <div className="text-sm text-zinc-500 mt-1 flex gap-4 flex-wrap">
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+
+        <h1 className="text-xl font-bold">{displayName}</h1>
+
+        <div className="mt-1 text-sm text-zinc-500 flex gap-4 flex-wrap">
           {phone && <span>{phone}</span>}
           {email && <span>{email}</span>}
         </div>
 
-        <div className="flex gap-2 mt-4 flex-wrap">
+        <div className="flex flex-wrap gap-2 mt-4">
 
           {phone && (
             <a
               href={`tel:${phone}`}
-              className="px-3 py-2 bg-green-600 text-white rounded text-sm"
+              className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white"
             >
               📞 Call
             </a>
@@ -109,7 +131,7 @@ export default async function ThreadPage({
             <a
               href={`https://wa.me/${whatsappNumber}`}
               target="_blank"
-              className="px-3 py-2 bg-green-500 text-white rounded text-sm"
+              className="rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-white"
             >
               💬 WhatsApp
             </a>
@@ -118,35 +140,38 @@ export default async function ThreadPage({
           {email && (
             <a
               href={`mailto:${email}`}
-              className="px-3 py-2 bg-blue-600 text-white rounded text-sm"
+              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
             >
               ✉ Email
             </a>
           )}
 
           {!first.customerId && (
-            <button className="px-3 py-2 bg-black text-white rounded text-sm">
+            <button className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">
               Create Customer
             </button>
           )}
 
           {!first.jobId && (
-            <button className="px-3 py-2 border rounded text-sm">
+            <button className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-800">
               Create Job
             </button>
           )}
-
         </div>
-      </div>
 
-      <div className="space-y-3">
+      </section>
+
+      {/* MESSAGES */}
+
+      <section className="space-y-3">
+
         {messages.map((message) => (
           <div
             key={message.id}
-            className="rounded-xl border bg-white p-4"
+            className="rounded-xl border border-zinc-200 bg-white p-4"
           >
             <div className="text-xs text-zinc-500 mb-2">
-              {formatDate(message.createdAt)}
+              {formatDateTime(message.createdAt)}
             </div>
 
             {message.subject && (
@@ -155,13 +180,13 @@ export default async function ThreadPage({
               </div>
             )}
 
-            <div className="text-sm text-zinc-700 whitespace-pre-wrap">
+            <div className="text-sm whitespace-pre-wrap text-zinc-700">
               {message.body || message.preview}
             </div>
           </div>
         ))}
-      </div>
 
+      </section>
     </div>
   )
 }
