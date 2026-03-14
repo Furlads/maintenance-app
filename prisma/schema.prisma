@@ -173,8 +173,8 @@ model Conversation {
 model InboxMessage {
   id Int @id @default(autoincrement())
 
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
 
   source String
 
