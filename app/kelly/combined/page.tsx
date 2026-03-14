@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Worker = {
   id: number;
@@ -39,13 +39,6 @@ function gbDate(d: Date) {
   return d.toLocaleDateString("en-GB");
 }
 
-function isoDateOnly(d: Date) {
-  const yr = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
-  return `${yr}-${mo}-${da}`;
-}
-
 function cleanLower(s: string | null | undefined) {
   return (s ?? "").trim().toLowerCase();
 }
@@ -55,6 +48,9 @@ export default function KellyCombinedDashboard() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [err, setErr] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   async function loadAll() {
     setErr("");
@@ -81,13 +77,56 @@ export default function KellyCombinedDashboard() {
 
   useEffect(() => {
     loadAll();
-    const t = setInterval(loadAll, 20_000); // light auto-refresh
+    const t = setInterval(loadAll, 20_000);
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (!menuRef.current) return;
+      if (menuRef.current.contains(event.target as Node)) return;
+      setMenuOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    }
+
+    if (menuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [menuOpen]);
+
+  function clearUserStorage() {
+    localStorage.removeItem("workerName");
+    localStorage.removeItem("workerId");
+    localStorage.removeItem("company");
+    localStorage.removeItem("workerKey");
+    localStorage.removeItem("accessLevel");
+    localStorage.removeItem("pinVerified");
+    localStorage.removeItem("selectedWorker");
+  }
+
+  function handleSwitchUser() {
+    clearUserStorage();
+    window.location.href = "/";
+  }
+
+  function handleLogout() {
+    clearUserStorage();
+    window.location.href = "/";
+  }
+
   const today = new Date();
 
-  // “In play” = today or overdue and not done (mirrors your TodayPage logic) :contentReference[oaicite:3]{index=3}
   const inPlayJobs = useMemo(() => {
     return jobs.filter((j) => {
       if (!j.visitDate) return false;
@@ -96,7 +135,7 @@ export default function KellyCombinedDashboard() {
       const isOverdue = vd < today && !isSameDay(vd, today);
       return isToday || (isOverdue && j.status !== "done");
     });
-  }, [jobs]);
+  }, [jobs, today]);
 
   const totals = useMemo(() => {
     const dueToday = jobs.filter((j) => {
@@ -120,7 +159,7 @@ export default function KellyCombinedDashboard() {
       overdue: overdue.length,
       unscheduled: jobs.filter((j) => j.status === "unscheduled" || j.visitDate === null).length,
     };
-  }, [jobs]);
+  }, [jobs, today]);
 
   const perWorker = useMemo(() => {
     const list = workers.map((w) => {
@@ -129,11 +168,9 @@ export default function KellyCombinedDashboard() {
       const mine = inPlayJobs
         .filter((j) => cleanLower(j.assignedTo) === wk)
         .sort((a, b) => {
-          // done at bottom
           if (a.status === "done" && b.status !== "done") return 1;
           if (a.status !== "done" && b.status === "done") return -1;
 
-          // by date then time
           const ad = a.visitDate ? new Date(a.visitDate).getTime() : 0;
           const bd = b.visitDate ? new Date(b.visitDate).getTime() : 0;
           if (ad !== bd) return ad - bd;
@@ -148,7 +185,6 @@ export default function KellyCombinedDashboard() {
 
       const current = mine.find((j) => j.status !== "done") ?? null;
 
-      // If they have nothing “in play”, still show something sensible
       const nextAny = jobs
         .filter((j) => cleanLower(j.assignedTo) === wk && j.status !== "done")
         .sort((a, b) => {
@@ -172,7 +208,15 @@ export default function KellyCombinedDashboard() {
 
   return (
     <main style={{ padding: 24, maxWidth: 1100 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          alignItems: "flex-start",
+        }}
+      >
         <div>
           <h1 style={{ margin: 0 }}>{business?.name ?? "Dashboard"}</h1>
           <div style={{ fontSize: 13, opacity: 0.75, marginTop: 6 }}>
@@ -180,19 +224,122 @@ export default function KellyCombinedDashboard() {
           </div>
         </div>
 
-        <button onClick={loadAll} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #ddd" }}>
-          Refresh
-        </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button
+            onClick={loadAll}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Refresh
+          </button>
+
+          <div ref={menuRef} style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-label="Open Kelly menu"
+              aria-expanded={menuOpen}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                background: "#fff",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 22,
+                lineHeight: 1,
+              }}
+            >
+              ☰
+            </button>
+
+            {menuOpen ? (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 52,
+                  right: 0,
+                  minWidth: 210,
+                  background: "#fff",
+                  border: "1px solid #e6e6e6",
+                  borderRadius: 14,
+                  boxShadow: "0 12px 30px rgba(0,0,0,0.10)",
+                  padding: 8,
+                  zIndex: 50,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleSwitchUser}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  Switch User
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "#b91c1c",
+                  }}
+                >
+                  Logout
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {err ? (
-        <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#ffe6e6", border: "1px solid #ffb3b3" }}>
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 10,
+            background: "#ffe6e6",
+            border: "1px solid #ffb3b3",
+          }}
+        >
           {err}
         </div>
       ) : null}
 
-      {/* Day overview */}
-      <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
+      <div
+        style={{
+          marginTop: 16,
+          display: "grid",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+          gap: 12,
+        }}
+      >
         {[
           { label: "Due today", value: totals.dueToday },
           { label: "Done today", value: totals.doneToday },
@@ -200,14 +347,21 @@ export default function KellyCombinedDashboard() {
           { label: "Overdue", value: totals.overdue },
           { label: "Unscheduled", value: totals.unscheduled },
         ].map((k) => (
-          <div key={k.label} style={{ padding: 14, borderRadius: 14, border: "1px solid #e6e6e6", background: "#fff" }}>
+          <div
+            key={k.label}
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid #e6e6e6",
+              background: "#fff",
+            }}
+          >
             <div style={{ fontSize: 12, opacity: 0.7 }}>{k.label}</div>
             <div style={{ fontSize: 26, fontWeight: 800, marginTop: 6 }}>{k.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Where people are */}
       <h2 style={{ marginTop: 22, marginBottom: 10 }}>Where everyone is</h2>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
