@@ -24,6 +24,8 @@ export default function WorkersAdminPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
+  const [filter, setFilter] = useState<"active" | "archived" | "all">("active");
+
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState("");
@@ -49,14 +51,21 @@ export default function WorkersAdminPage() {
     loadWorkers();
   }, []);
 
-  const activeWorkers = useMemo(() => {
-    return workers.filter((w) => !w.archivedAt);
-  }, [workers]);
+  const activeWorkers = useMemo(() => workers.filter((w) => !w.archivedAt), [workers]);
+
+  const archivedWorkers = useMemo(() => workers.filter((w) => !!w.archivedAt), [workers]);
+
+  const visibleWorkers = useMemo(() => {
+    if (filter === "active") return activeWorkers;
+    if (filter === "archived") return archivedWorkers;
+    return workers;
+  }, [workers, activeWorkers, archivedWorkers, filter]);
 
   async function addWorker(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setErr(null);
+
     try {
       const res = await fetch("/api/workers", {
         method: "POST",
@@ -78,6 +87,7 @@ export default function WorkersAdminPage() {
       setPhone("");
       setRole("");
       setPhotoUrl("");
+
       await loadWorkers();
     } catch (e: any) {
       setErr(e?.message || "Failed to add worker");
@@ -86,12 +96,44 @@ export default function WorkersAdminPage() {
     }
   }
 
+  function StatCard({
+    label,
+    value,
+    active,
+    onClick,
+  }: {
+    label: string;
+    value: number;
+    active?: boolean;
+    onClick: () => void;
+  }) {
+    return (
+      <button
+        onClick={onClick}
+        style={{
+          border: active ? "2px solid #111" : "1px solid #e5e7eb",
+          borderRadius: 14,
+          padding: 14,
+          background: active ? "#111" : "#fff",
+          color: active ? "#fff" : "#111",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 700 }}>{label}</div>
+        <div style={{ fontSize: 28, fontWeight: 900 }}>{value}</div>
+      </button>
+    );
+  }
+
   return (
     <main style={{ padding: 24, maxWidth: 980 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ margin: 0 }}>Workers</h1>
-          <div style={{ opacity: 0.75, marginTop: 6 }}>Manage active workers (archived workers are hidden).</div>
+          <div style={{ opacity: 0.75, marginTop: 6 }}>
+            Manage active workers (archived workers are hidden).
+          </div>
         </div>
 
         <button
@@ -109,10 +151,44 @@ export default function WorkersAdminPage() {
         </button>
       </div>
 
-      {err ? (
-        <div style={{ color: "crimson", marginTop: 12, marginBottom: 12 }}>Error: {err}</div>
-      ) : null}
+      {err && (
+        <div style={{ color: "crimson", marginTop: 12, marginBottom: 12 }}>
+          Error: {err}
+        </div>
+      )}
 
+      {/* STATS */}
+      <section
+        style={{
+          marginTop: 16,
+          display: "grid",
+          gridTemplateColumns: "repeat(3,1fr)",
+          gap: 10,
+        }}
+      >
+        <StatCard
+          label="Active workers"
+          value={activeWorkers.length}
+          active={filter === "active"}
+          onClick={() => setFilter("active")}
+        />
+
+        <StatCard
+          label="Archived workers"
+          value={archivedWorkers.length}
+          active={filter === "archived"}
+          onClick={() => setFilter("archived")}
+        />
+
+        <StatCard
+          label="Total workers"
+          value={workers.length}
+          active={filter === "all"}
+          onClick={() => setFilter("all")}
+        />
+      </section>
+
+      {/* ADD WORKER */}
       <section
         style={{
           marginTop: 16,
@@ -126,82 +202,70 @@ export default function WorkersAdminPage() {
 
         <form onSubmit={addWorker} style={{ display: "grid", gap: 10 }}>
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 12, opacity: 0.75 }}>Name</span>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                placeholder="Jacob Walters"
-                style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ddd" }}
-              />
-            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              placeholder="Name"
+              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ddd" }}
+            />
 
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 12, opacity: 0.75 }}>Phone</span>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                required
-                placeholder="07400 000000"
-                style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ddd" }}
-              />
-            </label>
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              placeholder="Phone"
+              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ddd" }}
+            />
           </div>
 
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 12, opacity: 0.75 }}>Role (optional)</span>
-              <input
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                placeholder="Junior Landscaper"
-                style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ddd" }}
-              />
-            </label>
+            <input
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              placeholder="Role"
+              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ddd" }}
+            />
 
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 12, opacity: 0.75 }}>Photo URL (optional)</span>
-              <input
-                value={photoUrl}
-                onChange={(e) => setPhotoUrl(e.target.value)}
-                placeholder="/uploads/jacob.jpg"
-                style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ddd" }}
-              />
-            </label>
+            <input
+              value={photoUrl}
+              onChange={(e) => setPhotoUrl(e.target.value)}
+              placeholder="Photo URL"
+              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ddd" }}
+            />
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="submit"
-              disabled={saving}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid #111827",
-                background: saving ? "#f3f4f6" : "#111827",
-                color: saving ? "#111827" : "#fff",
-                cursor: saving ? "not-allowed" : "pointer",
-                fontWeight: 800,
-              }}
-            >
-              {saving ? "Saving…" : "Add worker"}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={saving}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: "1px solid #111827",
+              background: saving ? "#f3f4f6" : "#111827",
+              color: saving ? "#111827" : "#fff",
+              cursor: saving ? "not-allowed" : "pointer",
+              fontWeight: 800,
+            }}
+          >
+            {saving ? "Saving…" : "Add worker"}
+          </button>
         </form>
       </section>
 
+      {/* WORKER LIST */}
       <section style={{ marginTop: 16 }}>
-        <div style={{ fontWeight: 800, marginBottom: 10 }}>Active workers</div>
+        <div style={{ fontWeight: 800, marginBottom: 10 }}>Workers</div>
 
         {loading ? (
           <div style={{ opacity: 0.75 }}>Loading…</div>
-        ) : activeWorkers.length === 0 ? (
-          <div style={{ opacity: 0.75 }}>No active workers.</div>
+        ) : visibleWorkers.length === 0 ? (
+          <div style={{ opacity: 0.75 }}>No workers found.</div>
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
-            {activeWorkers.map((w) => {
+            {visibleWorkers.map((w) => {
               const hasPhoto = !!w.photoUrl;
+
               return (
                 <div
                   key={w.id}
@@ -216,13 +280,17 @@ export default function WorkersAdminPage() {
                     gap: 12,
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     {hasPhoto ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={w.photoUrl!}
                         alt={w.name}
-                        style={{ width: 42, height: 42, borderRadius: "999px", objectFit: "cover" }}
+                        style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: "999px",
+                          objectFit: "cover",
+                        }}
                       />
                     ) : (
                       <div
@@ -241,53 +309,27 @@ export default function WorkersAdminPage() {
                       </div>
                     )}
 
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {w.name}
-                      </div>
-                      <div style={{ opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <div>
+                      <div style={{ fontWeight: 800 }}>{w.name}</div>
+                      <div style={{ opacity: 0.75 }}>
                         {w.role ? `${w.role} • ` : ""}
                         {w.phone}
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {w.phone ? (
-                      <>
-                        <a
-                          href={`tel:${w.phone}`}
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: 12,
-                            border: "1px solid #ddd",
-                            background: "#fff",
-                            textDecoration: "none",
-                            color: "#111",
-                            fontWeight: 700,
-                          }}
-                        >
-                          Call
-                        </a>
-                        <a
-                          href={`https://wa.me/${w.phone.replace(/\s+/g, "")}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: 12,
-                            border: "1px solid #ddd",
-                            background: "#fff",
-                            textDecoration: "none",
-                            color: "#111",
-                            fontWeight: 700,
-                          }}
-                        >
-                          WhatsApp
-                        </a>
-                      </>
-                    ) : null}
-                  </div>
+                  {w.phone && (
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <a href={`tel:${w.phone}`}>Call</a>
+                      <a
+                        href={`https://wa.me/${w.phone.replace(/\s+/g, "")}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        WhatsApp
+                      </a>
+                    </div>
+                  )}
                 </div>
               );
             })}
