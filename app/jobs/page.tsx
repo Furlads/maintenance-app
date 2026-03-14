@@ -10,6 +10,26 @@ type JobsPageProps = {
   }
 }
 
+type JobItem = {
+  id: number
+  title: string
+  address: string
+  status: string
+  jobType: string
+  startTime: string | null
+  visitDate: Date | null
+  createdAt: Date
+  customer: {
+    name: string | null
+  } | null
+  assignments: Array<{
+    worker: {
+      firstName: string
+      lastName: string
+    }
+  }>
+}
+
 function formatDate(date: Date | null) {
   if (!date) return "Not scheduled"
 
@@ -223,25 +243,242 @@ function FilterTab({
   )
 }
 
-function getStatusPriority(status: string) {
-  const value = String(status || "").toLowerCase()
-
-  if (value === "in_progress" || value === "inprogress") return 1
-  if (value === "paused") return 2
-  if (value === "todo" || value === "scheduled") return 3
-  if (value === "unscheduled") return 4
-  if (value === "quoted") return 5
-  if (value === "done" || value === "completed") return 6
-
-  return 7
-}
-
-function getHasVisitDatePriority(date: Date | null) {
-  return date ? 0 : 1
-}
-
 function getStartTimePriority(startTime: string | null) {
   return startTime ? startTime : "99:99"
+}
+
+function sortScheduledJobs(a: JobItem, b: JobItem) {
+  if (a.visitDate && b.visitDate) {
+    const visitDateDiff =
+      new Date(a.visitDate).getTime() - new Date(b.visitDate).getTime()
+
+    if (visitDateDiff !== 0) {
+      return visitDateDiff
+    }
+  }
+
+  const startTimeA = getStartTimePriority(a.startTime)
+  const startTimeB = getStartTimePriority(b.startTime)
+
+  if (startTimeA !== startTimeB) {
+    return startTimeA.localeCompare(startTimeB)
+  }
+
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+}
+
+function sortUnscheduledJobs(a: JobItem, b: JobItem) {
+  const maintenanceA = String(a.jobType || "").toLowerCase().includes("maint") ? 0 : 1
+  const maintenanceB = String(b.jobType || "").toLowerCase().includes("maint") ? 0 : 1
+
+  if (maintenanceA !== maintenanceB) {
+    return maintenanceA - maintenanceB
+  }
+
+  const assignedA = a.assignments.length > 0 ? 0 : 1
+  const assignedB = b.assignments.length > 0 ? 0 : 1
+
+  if (assignedA !== assignedB) {
+    return assignedA - assignedB
+  }
+
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+}
+
+function JobTable({ jobs }: { jobs: JobItem[] }) {
+  return (
+    <div className="hidden xl:block">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50">
+            <tr className="text-left">
+              <th className="px-5 py-4 font-bold text-zinc-700">Customer / Job</th>
+              <th className="px-5 py-4 font-bold text-zinc-700">Address</th>
+              <th className="px-5 py-4 font-bold text-zinc-700">Type</th>
+              <th className="px-5 py-4 font-bold text-zinc-700">Visit Date</th>
+              <th className="px-5 py-4 font-bold text-zinc-700">Start</th>
+              <th className="px-5 py-4 font-bold text-zinc-700">Workers</th>
+              <th className="px-5 py-4 font-bold text-zinc-700">Status</th>
+              <th className="px-5 py-4 font-bold text-zinc-700">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {jobs.map((job) => (
+              <tr
+                key={job.id}
+                className="border-t border-zinc-100 align-top transition hover:bg-zinc-50"
+              >
+                <td className="px-5 py-4">
+                  <div className="font-semibold text-zinc-900">
+                    {job.customer?.name ?? "Unknown"}
+                  </div>
+                  <div className="mt-1 text-sm text-zinc-600">
+                    {job.title || "Untitled job"}
+                  </div>
+                  <div className="mt-2 text-xs text-zinc-400">Job #{job.id}</div>
+                </td>
+
+                <td className="px-5 py-4 text-zinc-600">
+                  <div className="max-w-[280px] whitespace-pre-line">
+                    {job.address || "No address"}
+                  </div>
+                </td>
+
+                <td className="px-5 py-4">
+                  <Pill className={typeBadgeClass(job.jobType || "")}>
+                    {formatJobType(job.jobType || "")}
+                  </Pill>
+                </td>
+
+                <td className="px-5 py-4 text-zinc-600">
+                  {formatDate(job.visitDate)}
+                </td>
+
+                <td className="px-5 py-4 text-zinc-600">
+                  {formatStartTime(job.startTime)}
+                </td>
+
+                <td className="px-5 py-4 text-zinc-600">
+                  <div className="max-w-[220px]">
+                    {formatWorkers(job.assignments)}
+                  </div>
+                </td>
+
+                <td className="px-5 py-4">
+                  <Pill className={statusBadgeClass(job.status || "")}>
+                    {formatStatus(job.status || "")}
+                  </Pill>
+                </td>
+
+                <td className="px-5 py-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/jobs/${job.id}`}
+                      className="inline-flex min-w-[82px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    >
+                      Open
+                    </Link>
+
+                    <Link
+                      href={`/jobs/edit/${job.id}`}
+                      className="inline-flex min-w-[82px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-black"
+                    >
+                      Edit
+                    </Link>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function JobCards({ jobs }: { jobs: JobItem[] }) {
+  return (
+    <div className="space-y-4 p-4 xl:hidden">
+      {jobs.map((job) => (
+        <div
+          key={job.id}
+          className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill className={typeBadgeClass(job.jobType || "")}>
+              {formatJobType(job.jobType || "")}
+            </Pill>
+            <Pill className={statusBadgeClass(job.status || "")}>
+              {formatStatus(job.status || "")}
+            </Pill>
+          </div>
+
+          <div className="mt-4">
+            <div className="text-lg font-bold text-zinc-900">
+              {job.customer?.name ?? "Unknown"}
+            </div>
+            <div className="mt-1 text-sm font-medium text-zinc-600">
+              {job.title || "Untitled job"}
+            </div>
+            <div className="mt-1 text-xs text-zinc-400">Job #{job.id}</div>
+          </div>
+
+          <div className="mt-4 grid gap-2 text-sm text-zinc-700">
+            <div className="rounded-xl bg-zinc-50 px-3 py-2">
+              <span className="font-semibold text-zinc-900">Address:</span>{" "}
+              {job.address || "No address"}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-zinc-50 px-3 py-2">
+                <span className="font-semibold text-zinc-900">Visit Date:</span>{" "}
+                {formatDate(job.visitDate)}
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 px-3 py-2">
+                <span className="font-semibold text-zinc-900">Start:</span>{" "}
+                {formatStartTime(job.startTime)}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-zinc-50 px-3 py-2">
+              <span className="font-semibold text-zinc-900">Workers:</span>{" "}
+              {formatWorkers(job.assignments)}
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Link
+              href={`/jobs/${job.id}`}
+              className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+            >
+              Open
+            </Link>
+
+            <Link
+              href={`/jobs/edit/${job.id}`}
+              className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
+            >
+              Edit
+            </Link>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function JobSection({
+  title,
+  description,
+  jobs,
+}: {
+  title: string
+  description: string
+  jobs: JobItem[]
+}) {
+  if (jobs.length === 0) return null
+
+  return (
+    <section className="border-t border-zinc-200 first:border-t-0">
+      <div className="px-4 py-4 md:px-5">
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-base font-bold text-zinc-900">{title}</h3>
+            <p className="text-sm text-zinc-500">{description}</p>
+          </div>
+
+          <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-600">
+            {jobs.length}
+          </div>
+        </div>
+      </div>
+
+      <JobTable jobs={jobs} />
+      <JobCards jobs={jobs} />
+    </section>
+  )
 }
 
 export default async function JobsPage({ searchParams }: JobsPageProps) {
@@ -291,62 +528,83 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
 
   const unassignedCount = jobs.filter((job) => job.assignments.length === 0).length
 
-  const filteredJobs = jobs
+  const baseFilteredJobs = jobs.filter((job) => {
+    const workerText = formatWorkers(job.assignments).toLowerCase()
+    const customerText = String(job.customer?.name || "").toLowerCase()
+    const titleText = String(job.title || "").toLowerCase()
+    const addressText = String(job.address || "").toLowerCase()
+    const searchText = search.toLowerCase()
+
+    const matchesSearch =
+      !searchText ||
+      customerText.includes(searchText) ||
+      titleText.includes(searchText) ||
+      addressText.includes(searchText) ||
+      workerText.includes(searchText)
+
+    const matchesSelectedFilter = matchesFilter(
+      job.status || "",
+      activeFilter,
+      job.visitDate
+    )
+
+    return matchesSearch && matchesSelectedFilter
+  })
+
+  const liveJobs = baseFilteredJobs
     .filter((job) => {
-      const workerText = formatWorkers(job.assignments).toLowerCase()
-      const customerText = String(job.customer?.name || "").toLowerCase()
-      const titleText = String(job.title || "").toLowerCase()
-      const addressText = String(job.address || "").toLowerCase()
-      const searchText = search.toLowerCase()
-
-      const matchesSearch =
-        !searchText ||
-        customerText.includes(searchText) ||
-        titleText.includes(searchText) ||
-        addressText.includes(searchText) ||
-        workerText.includes(searchText)
-
-      const matchesSelectedFilter = matchesFilter(
-        job.status || "",
-        activeFilter,
-        job.visitDate
-      )
-
-      return matchesSearch && matchesSelectedFilter
+      const value = String(job.status || "").toLowerCase()
+      return value === "in_progress" || value === "inprogress" || value === "paused"
     })
     .sort((a, b) => {
-      const statusPriorityA = getStatusPriority(a.status)
-      const statusPriorityB = getStatusPriority(b.status)
+      const statusA = String(a.status || "").toLowerCase()
+      const statusB = String(b.status || "").toLowerCase()
 
-      if (statusPriorityA !== statusPriorityB) {
-        return statusPriorityA - statusPriorityB
-      }
-
-      const hasVisitDatePriorityA = getHasVisitDatePriority(a.visitDate)
-      const hasVisitDatePriorityB = getHasVisitDatePriority(b.visitDate)
-
-      if (hasVisitDatePriorityA !== hasVisitDatePriorityB) {
-        return hasVisitDatePriorityA - hasVisitDatePriorityB
-      }
-
-      if (a.visitDate && b.visitDate) {
-        const visitDateDiff =
-          new Date(a.visitDate).getTime() - new Date(b.visitDate).getTime()
-
-        if (visitDateDiff !== 0) {
-          return visitDateDiff
-        }
-      }
-
-      const startTimeA = getStartTimePriority(a.startTime)
-      const startTimeB = getStartTimePriority(b.startTime)
-
-      if (startTimeA !== startTimeB) {
-        return startTimeA.localeCompare(startTimeB)
+      if (statusA !== statusB) {
+        if (statusA === "in_progress" || statusA === "inprogress") return -1
+        if (statusB === "in_progress" || statusB === "inprogress") return 1
       }
 
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     })
+
+  const scheduledJobs = baseFilteredJobs
+    .filter((job) => {
+      const value = String(job.status || "").toLowerCase()
+      return (value === "todo" || value === "scheduled") && !!job.visitDate
+    })
+    .sort(sortScheduledJobs)
+
+  const needsSchedulingJobs = baseFilteredJobs
+    .filter((job) => {
+      const value = String(job.status || "").toLowerCase()
+      return value === "unscheduled" || ((value === "todo" || value === "scheduled") && !job.visitDate)
+    })
+    .sort(sortUnscheduledJobs)
+
+  const quotedJobs = baseFilteredJobs
+    .filter((job) => String(job.status || "").toLowerCase() === "quoted")
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+
+  const completedJobs = baseFilteredJobs
+    .filter((job) => {
+      const value = String(job.status || "").toLowerCase()
+      return value === "done" || value === "completed"
+    })
+    .sort((a, b) => {
+      if (a.visitDate && b.visitDate) {
+        return new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()
+      }
+
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
+
+  const filteredJobsCount =
+    liveJobs.length +
+    scheduledJobs.length +
+    needsSchedulingJobs.length +
+    quotedJobs.length +
+    completedJobs.length
 
   return (
     <main className="min-h-screen bg-zinc-50">
@@ -413,7 +671,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                 </div>
 
                 <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-600">
-                  {filteredJobs.length} shown
+                  {filteredJobsCount} shown
                 </div>
               </div>
 
@@ -485,7 +743,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
               </div>
             </div>
 
-            {filteredJobs.length === 0 ? (
+            {filteredJobsCount === 0 ? (
               <div className="p-5">
                 <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-6 text-sm text-zinc-600">
                   No jobs found for the current search or filter.
@@ -493,161 +751,35 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
               </div>
             ) : (
               <>
-                <div className="hidden xl:block">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-zinc-50">
-                        <tr className="text-left">
-                          <th className="px-5 py-4 font-bold text-zinc-700">Customer / Job</th>
-                          <th className="px-5 py-4 font-bold text-zinc-700">Address</th>
-                          <th className="px-5 py-4 font-bold text-zinc-700">Type</th>
-                          <th className="px-5 py-4 font-bold text-zinc-700">Visit Date</th>
-                          <th className="px-5 py-4 font-bold text-zinc-700">Start</th>
-                          <th className="px-5 py-4 font-bold text-zinc-700">Workers</th>
-                          <th className="px-5 py-4 font-bold text-zinc-700">Status</th>
-                          <th className="px-5 py-4 font-bold text-zinc-700">Actions</th>
-                        </tr>
-                      </thead>
+                <JobSection
+                  title="Live Jobs"
+                  description="Jobs currently being worked on or paused on site."
+                  jobs={liveJobs}
+                />
 
-                      <tbody>
-                        {filteredJobs.map((job) => (
-                          <tr
-                            key={job.id}
-                            className="border-t border-zinc-100 align-top transition hover:bg-zinc-50"
-                          >
-                            <td className="px-5 py-4">
-                              <div className="font-semibold text-zinc-900">
-                                {job.customer?.name ?? "Unknown"}
-                              </div>
-                              <div className="mt-1 text-sm text-zinc-600">
-                                {job.title || "Untitled job"}
-                              </div>
-                              <div className="mt-2 text-xs text-zinc-400">Job #{job.id}</div>
-                            </td>
+                <JobSection
+                  title="Scheduled Jobs"
+                  description="Jobs already placed into the diary with a date and, where set, a start time."
+                  jobs={scheduledJobs}
+                />
 
-                            <td className="px-5 py-4 text-zinc-600">
-                              <div className="max-w-[280px] whitespace-pre-line">
-                                {job.address || "No address"}
-                              </div>
-                            </td>
+                <JobSection
+                  title="Needs Scheduling"
+                  description="Flexible jobs ready to be fitted into the diary in the next most appropriate slot."
+                  jobs={needsSchedulingJobs}
+                />
 
-                            <td className="px-5 py-4">
-                              <Pill className={typeBadgeClass(job.jobType || "")}>
-                                {formatJobType(job.jobType || "")}
-                              </Pill>
-                            </td>
+                <JobSection
+                  title="Quoted Jobs"
+                  description="Jobs currently sitting at quote stage."
+                  jobs={quotedJobs}
+                />
 
-                            <td className="px-5 py-4 text-zinc-600">
-                              {formatDate(job.visitDate)}
-                            </td>
-
-                            <td className="px-5 py-4 text-zinc-600">
-                              {formatStartTime(job.startTime)}
-                            </td>
-
-                            <td className="px-5 py-4 text-zinc-600">
-                              <div className="max-w-[220px]">
-                                {formatWorkers(job.assignments)}
-                              </div>
-                            </td>
-
-                            <td className="px-5 py-4">
-                              <Pill className={statusBadgeClass(job.status || "")}>
-                                {formatStatus(job.status || "")}
-                              </Pill>
-                            </td>
-
-                            <td className="px-5 py-4">
-                              <div className="flex flex-wrap gap-2">
-                                <Link
-                                  href={`/jobs/${job.id}`}
-                                  className="inline-flex min-w-[82px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-                                >
-                                  Open
-                                </Link>
-
-                                <Link
-                                  href={`/jobs/edit/${job.id}`}
-                                  className="inline-flex min-w-[82px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-black"
-                                >
-                                  Edit
-                                </Link>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="space-y-4 p-4 xl:hidden">
-                  {filteredJobs.map((job) => (
-                    <div
-                      key={job.id}
-                      className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Pill className={typeBadgeClass(job.jobType || "")}>
-                          {formatJobType(job.jobType || "")}
-                        </Pill>
-                        <Pill className={statusBadgeClass(job.status || "")}>
-                          {formatStatus(job.status || "")}
-                        </Pill>
-                      </div>
-
-                      <div className="mt-4">
-                        <div className="text-lg font-bold text-zinc-900">
-                          {job.customer?.name ?? "Unknown"}
-                        </div>
-                        <div className="mt-1 text-sm font-medium text-zinc-600">
-                          {job.title || "Untitled job"}
-                        </div>
-                        <div className="mt-1 text-xs text-zinc-400">Job #{job.id}</div>
-                      </div>
-
-                      <div className="mt-4 grid gap-2 text-sm text-zinc-700">
-                        <div className="rounded-xl bg-zinc-50 px-3 py-2">
-                          <span className="font-semibold text-zinc-900">Address:</span>{" "}
-                          {job.address || "No address"}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="rounded-xl bg-zinc-50 px-3 py-2">
-                            <span className="font-semibold text-zinc-900">Visit Date:</span>{" "}
-                            {formatDate(job.visitDate)}
-                          </div>
-
-                          <div className="rounded-xl bg-zinc-50 px-3 py-2">
-                            <span className="font-semibold text-zinc-900">Start:</span>{" "}
-                            {formatStartTime(job.startTime)}
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl bg-zinc-50 px-3 py-2">
-                          <span className="font-semibold text-zinc-900">Workers:</span>{" "}
-                          {formatWorkers(job.assignments)}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-2 gap-2">
-                        <Link
-                          href={`/jobs/${job.id}`}
-                          className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-                        >
-                          Open
-                        </Link>
-
-                        <Link
-                          href={`/jobs/edit/${job.id}`}
-                          className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
-                        >
-                          Edit
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <JobSection
+                  title="Completed Jobs"
+                  description="Finished jobs kept here for record and review."
+                  jobs={completedJobs}
+                />
               </>
             )}
           </section>
