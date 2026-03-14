@@ -23,29 +23,44 @@ function CloseIcon() {
 const navItems = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/inbox", label: "Inbox" },
-
   { href: "/jobs", label: "Jobs" },
   { href: "/customers", label: "Customers" },
   { href: "/workers", label: "Workers" }
 ]
+
+function clearUserStorage() {
+  localStorage.removeItem("workerName")
+  localStorage.removeItem("workerId")
+  localStorage.removeItem("company")
+  localStorage.removeItem("workerKey")
+  localStorage.removeItem("accessLevel")
+  localStorage.removeItem("pinVerified")
+  localStorage.removeItem("selectedWorker")
+}
 
 export default function AdminLayout({
   children
 }: {
   children: React.ReactNode
 }) {
-
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
 
+  function handleSwitchUser() {
+    clearUserStorage()
+    window.location.href = "/"
+  }
+
+  function handleLogout() {
+    clearUserStorage()
+    window.location.href = "/"
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
-
       <div className="flex min-h-screen">
-
         {/* Desktop Sidebar */}
         <aside className="hidden xl:flex xl:w-72 flex-col border-r border-zinc-200 bg-white">
-
           <div className="border-b border-zinc-200 px-5 py-5">
             <div className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
               Furlads Admin
@@ -57,12 +72,10 @@ export default function AdminLayout({
           </div>
 
           <nav className="flex flex-col gap-1 p-4">
-
             {navItems.map((item) => {
-
               const active =
                 pathname === item.href ||
-                pathname.startsWith(item.href)
+                (item.href !== "/admin" && pathname.startsWith(item.href))
 
               return (
                 <Link
@@ -78,20 +91,37 @@ export default function AdminLayout({
                 </Link>
               )
             })}
-
           </nav>
 
+          <div className="mt-auto border-t border-zinc-200 p-4">
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleSwitchUser}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                Switch User
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
         </aside>
 
         {/* Main Area */}
         <div className="flex-1 flex flex-col">
-
           {/* Mobile Header */}
           <header className="border-b border-zinc-200 bg-white px-4 py-3 flex items-center justify-between xl:hidden">
-
             <button
               onClick={() => setMenuOpen(!menuOpen)}
               className="p-2"
+              aria-label="Toggle menu"
             >
               {menuOpen ? <CloseIcon /> : <MenuIcon />}
             </button>
@@ -99,41 +129,65 @@ export default function AdminLayout({
             <div className="font-bold">
               Furlads Admin
             </div>
-
           </header>
 
           {/* Mobile Menu */}
           {menuOpen && (
             <div className="xl:hidden border-b border-zinc-200 bg-white">
-
               <nav className="flex flex-col gap-1 p-4">
+                {navItems.map((item) => {
+                  const active =
+                    pathname === item.href ||
+                    (item.href !== "/admin" && pathname.startsWith(item.href))
 
-                {navItems.map((item) => (
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                        active
+                          ? "bg-black text-white"
+                          : "text-zinc-700 hover:bg-zinc-100"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  )
+                })}
 
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMenuOpen(false)}
-                    className="px-3 py-2 rounded-lg text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                <div className="mt-3 border-t border-zinc-200 pt-3 flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      handleSwitchUser()
+                    }}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100"
                   >
-                    {item.label}
-                  </Link>
+                    Switch User
+                  </button>
 
-                ))}
-
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      handleLogout()
+                    }}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+                  >
+                    Logout
+                  </button>
+                </div>
               </nav>
-
             </div>
           )}
 
           <main className="flex-1 p-4">
             {children}
           </main>
-
         </div>
-
       </div>
-
     </div>
   )
 }
