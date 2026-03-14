@@ -36,13 +36,25 @@ function parseTimeToMinutes(time: string | null) {
   return h * 60 + m;
 }
 
+function formatRemaining(minutes: number) {
+  if (minutes <= 30) return "FULL";
+
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+
+  if (h === 0) return `${m}m free`;
+  if (m === 0) return `${h}h free`;
+
+  return `${h}h ${m}m free`;
+}
+
 export default function SchedulePage() {
   const [date, setDate] = useState(getTodayDateString());
   const [data, setData] = useState<ScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const dayStart = 9 * 60; // 09:00
-  const dayEnd = 16 * 60 + 30; // 16:30
+  const dayStart = 9 * 60;
+  const dayEnd = 16 * 60 + 30;
   const totalMinutes = dayEnd - dayStart;
 
   async function loadSchedule(selectedDate: string) {
@@ -82,108 +94,120 @@ export default function SchedulePage() {
 
       {!loading && data && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {data.workers.map((worker) => (
-            <div key={worker.id}>
-              <h2 style={{ marginBottom: 6 }}>{worker.name}</h2>
+          {data.workers.map((worker) => {
+            const scheduledMinutes = worker.jobs.reduce(
+              (total, job) => total + (job.durationMinutes ?? 60),
+              0
+            );
 
-              <div
-                style={{
-                  position: "relative",
-                  border: "1px solid #ddd",
-                  height: 70,
-                  background: "#f9f9f9",
-                }}
-              >
-                {/* Hour markers */}
-                {[9,10,11,12,13,14,15,16].map((hour) => {
-                  const left =
-                    ((hour * 60 - dayStart) / totalMinutes) * 100;
+            const remaining = totalMinutes - scheduledMinutes;
 
-                  return (
-                    <div
-                      key={hour}
-                      style={{
-                        position: "absolute",
-                        left: `${left}%`,
-                        top: 0,
-                        bottom: 0,
-                        width: 1,
-                        background: "#ddd",
-                      }}
-                    >
+            return (
+              <div key={worker.id}>
+                <h2 style={{ marginBottom: 6 }}>
+                  {worker.name} —{" "}
+                  <span style={{ color: "#666", fontWeight: 400 }}>
+                    {formatRemaining(remaining)}
+                  </span>
+                </h2>
+
+                <div
+                  style={{
+                    position: "relative",
+                    border: "1px solid #ddd",
+                    height: 70,
+                    background: "#f9f9f9",
+                  }}
+                >
+                  {[9,10,11,12,13,14,15,16].map((hour) => {
+                    const left =
+                      ((hour * 60 - dayStart) / totalMinutes) * 100;
+
+                    return (
                       <div
+                        key={hour}
                         style={{
                           position: "absolute",
-                          top: -18,
-                          fontSize: 11,
-                          color: "#777",
+                          left: `${left}%`,
+                          top: 0,
+                          bottom: 0,
+                          width: 1,
+                          background: "#ddd",
                         }}
                       >
-                        {hour}:00
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: -18,
+                            fontSize: 11,
+                            color: "#777",
+                          }}
+                        >
+                          {hour}:00
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
 
-                {/* Jobs */}
-                {worker.jobs.map((job) => {
-                  const start = parseTimeToMinutes(job.startTime);
-                  const duration = job.durationMinutes ?? 60;
+                  {worker.jobs.map((job) => {
+                    const start = parseTimeToMinutes(job.startTime);
+                    const duration = job.durationMinutes ?? 60;
 
-                  if (!start) return null;
+                    if (!start) return null;
 
-                  const left =
-                    ((start - dayStart) / totalMinutes) * 100;
+                    const left =
+                      ((start - dayStart) / totalMinutes) * 100;
 
-                  const width =
-                    (duration / totalMinutes) * 100;
+                    const width =
+                      (duration / totalMinutes) * 100;
 
-                  return (
+                    return (
+                      <div
+                        key={job.id}
+                        style={{
+                          position: "absolute",
+                          left: `${left}%`,
+                          width: `${width}%`,
+                          top: 10,
+                          height: 50,
+                          background: "#e8f3ff",
+                          border: "1px solid #8db6ff",
+                          borderRadius: 4,
+                          padding: 6,
+                          overflow: "hidden",
+                          fontSize: 12,
+                        }}
+                      >
+                        <div style={{ fontWeight: 600 }}>
+                          {job.startTime} {job.title}
+                        </div>
+
+                        <div>{job.customerName}</div>
+
+                        <div style={{ fontSize: 11, color: "#555" }}>
+                          {job.postcode ?? ""}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {worker.jobs.length === 0 && (
                     <div
-                      key={job.id}
                       style={{
                         position: "absolute",
-                        left: `${left}%`,
-                        width: `${width}%`,
-                        top: 10,
-                        height: 50,
-                        background: "#e8f3ff",
-                        border: "1px solid #8db6ff",
-                        borderRadius: 4,
-                        padding: 6,
-                        overflow: "hidden",
-                        fontSize: 12,
+                        left: 10,
+                        top: 25,
+                        fontSize: 13,
+                        color: "#888",
                       }}
                     >
-                      <div style={{ fontWeight: 600 }}>
-                        {job.startTime} {job.title}
-                      </div>
-
-                      <div>{job.customerName}</div>
-
-                      <div style={{ fontSize: 11, color: "#555" }}>
-                        {job.postcode ?? ""}
-                      </div>
+                      No jobs scheduled
                     </div>
-                  );
-                })}
-
-                {worker.jobs.length === 0 && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 10,
-                      top: 25,
-                      fontSize: 13,
-                      color: "#888",
-                    }}
-                  >
-                    No jobs scheduled
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
