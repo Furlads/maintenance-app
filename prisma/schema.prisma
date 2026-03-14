@@ -180,6 +180,7 @@ model InboxMessage {
 
   senderName  String?
   senderEmail String?
+  senderPhone String?
   subject     String?
   preview     String?
   body        String?
