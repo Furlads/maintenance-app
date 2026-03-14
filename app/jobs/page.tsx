@@ -76,6 +76,10 @@ function statusBadgeClass(status: string) {
     return "bg-purple-100 text-purple-800 ring-purple-200"
   }
 
+  if (value === "unscheduled") {
+    return "bg-zinc-100 text-zinc-700 ring-zinc-300"
+  }
+
   return "bg-zinc-100 text-zinc-700 ring-zinc-200"
 }
 
@@ -225,14 +229,14 @@ function getStatusPriority(status: string) {
   if (value === "in_progress" || value === "inprogress") return 1
   if (value === "paused") return 2
   if (value === "todo" || value === "scheduled") return 3
-  if (value === "quoted") return 4
-  if (value === "done" || value === "completed") return 5
-  if (value === "unscheduled") return 6
+  if (value === "unscheduled") return 4
+  if (value === "quoted") return 5
+  if (value === "done" || value === "completed") return 6
 
   return 7
 }
 
-function getVisitDatePriority(date: Date | null) {
+function getHasVisitDatePriority(date: Date | null) {
   return date ? 0 : 1
 }
 
@@ -311,11 +315,18 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
       return matchesSearch && matchesSelectedFilter
     })
     .sort((a, b) => {
-      const datePriorityA = getVisitDatePriority(a.visitDate)
-      const datePriorityB = getVisitDatePriority(b.visitDate)
+      const statusPriorityA = getStatusPriority(a.status)
+      const statusPriorityB = getStatusPriority(b.status)
 
-      if (datePriorityA !== datePriorityB) {
-        return datePriorityA - datePriorityB
+      if (statusPriorityA !== statusPriorityB) {
+        return statusPriorityA - statusPriorityB
+      }
+
+      const hasVisitDatePriorityA = getHasVisitDatePriority(a.visitDate)
+      const hasVisitDatePriorityB = getHasVisitDatePriority(b.visitDate)
+
+      if (hasVisitDatePriorityA !== hasVisitDatePriorityB) {
+        return hasVisitDatePriorityA - hasVisitDatePriorityB
       }
 
       if (a.visitDate && b.visitDate) {
@@ -325,13 +336,6 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
         if (visitDateDiff !== 0) {
           return visitDateDiff
         }
-      }
-
-      const statusPriorityA = getStatusPriority(a.status)
-      const statusPriorityB = getStatusPriority(b.status)
-
-      if (statusPriorityA !== statusPriorityB) {
-        return statusPriorityA - statusPriorityB
       }
 
       const startTimeA = getStartTimePriority(a.startTime)
