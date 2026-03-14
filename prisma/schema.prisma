@@ -161,15 +161,18 @@ model ChasMessage {
 }
 
 model InboxMessage {
-  id          Int     @id @default(autoincrement())
-  source      String
+  id             Int     @id @default(autoincrement())
+  source         String
+  conversationId String?
+
   senderName  String?
   senderEmail String?
   subject     String?
   preview     String?
   body        String?
-  assignedTo  String?
-  status      String  @default("unread")
+
+  assignedTo String?
+  status     String  @default("unread")
 
   customerId Int?
   jobId      Int?
@@ -181,6 +184,7 @@ model InboxMessage {
 
   @@index([source, createdAt])
   @@index([status, createdAt])
+  @@index([conversationId])
   @@index([customerId])
   @@index([jobId])
 }
