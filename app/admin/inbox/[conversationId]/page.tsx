@@ -1,3 +1,4 @@
+import InboxAutoRefresh from "@/components/admin/InboxAutoRefresh"
 import Link from "next/link"
 import SourceBadge from "@/components/admin/SourceBadge"
 import WhatsAppReplyComposer from "@/components/admin/WhatsAppReplyComposer"
@@ -123,6 +124,8 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
 
   return (
     <div className="space-y-4">
+      <InboxAutoRefresh />
+
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
