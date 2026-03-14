@@ -1,5 +1,6 @@
 import Link from "next/link"
 import SourceBadge from "@/components/admin/SourceBadge"
+import ArchiveThreadButton from "@/components/admin/ArchiveThreadButton"
 import * as prismaModule from "@/lib/prisma"
 import { buildContactKey } from "@/lib/inbox/contactKey"
 
@@ -26,6 +27,7 @@ type InboxMessageRow = {
     source: string
     contactName: string | null
     contactRef: string | null
+    archived: boolean
     createdAt: Date
   } | null
 }
@@ -236,6 +238,12 @@ export default async function AdminInboxPage() {
       include: {
         conversation: true,
       },
+      where: {
+        OR: [
+          { conversation: { archived: false } },
+          { conversation: null },
+        ],
+      },
     })) as InboxMessageRow[]
   } catch (error) {
     databaseReady = false
@@ -424,13 +432,7 @@ export default async function AdminInboxPage() {
                           Open
                         </Link>
 
-                        <button
-                          type="button"
-                          className="rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
-                          onClick={(e) => e.preventDefault()}
-                        >
-                          Delete
-                        </button>
+                        <ArchiveThreadButton conversationId={thread.conversationId} />
                       </div>
                     </div>
                   </summary>

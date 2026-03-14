@@ -165,9 +165,12 @@ model Conversation {
   source      String
   contactName String?
   contactRef  String?
+  archived    Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   messages InboxMessage[]
+
+  @@index([archived])
 }
 
 model InboxMessage {
