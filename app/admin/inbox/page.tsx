@@ -47,6 +47,7 @@ type ThreadCard = {
   customerId: number | null
   jobId: number | null
   sourceLabels: string[]
+  hasConversation: boolean
 }
 
 function formatDateTime(value: Date | null | undefined) {
@@ -100,9 +101,18 @@ function getSourceLabel(source: string) {
 }
 
 function buildPreview(message: InboxMessageRow) {
-  if (message.preview && message.preview.trim()) return message.preview.trim()
-  if (message.subject && message.subject.trim()) return message.subject.trim()
-  if (message.body && message.body.trim()) return message.body.trim()
+  if (message.preview && message.preview.trim()) {
+    return message.preview.trim().replace(/\s+/g, " ")
+  }
+
+  if (message.subject && message.subject.trim()) {
+    return message.subject.trim().replace(/\s+/g, " ")
+  }
+
+  if (message.body && message.body.trim()) {
+    return message.body.trim().replace(/\s+/g, " ")
+  }
+
   return "No message preview yet."
 }
 
@@ -135,24 +145,56 @@ function buildThreadKey(message: InboxMessageRow) {
   return message.conversationId || `message-${message.id}`
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    unread: "bg-amber-50 text-amber-700 ring-amber-200",
-    open: "bg-blue-50 text-blue-700 ring-blue-200",
-    replied: "bg-green-50 text-green-700 ring-green-200",
-    customer_created: "bg-purple-50 text-purple-700 ring-purple-200",
-    job_created: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+function getThreadHref(thread: ThreadCard) {
+  if (thread.hasConversation && thread.conversationId) {
+    return `/admin/inbox/${thread.conversationId}`
   }
 
-  const className =
-    map[String(status || "").toLowerCase()] ??
-    "bg-zinc-100 text-zinc-700 ring-zinc-200"
+  return "/admin/inbox"
+}
+
+function statusIsUnread(status: string) {
+  return String(status || "").toLowerCase() === "unread"
+}
+
+function ThreadStatusPill({ status }: { status: string }) {
+  const normalised = String(status || "").toLowerCase()
+
+  if (normalised === "unread") {
+    return (
+      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
+        Needs reply
+      </span>
+    )
+  }
+
+  if (normalised === "replied") {
+    return (
+      <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-semibold text-green-700 ring-1 ring-inset ring-green-200">
+        Replied
+      </span>
+    )
+  }
+
+  if (normalised === "customer_created") {
+    return (
+      <span className="rounded-full bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-700 ring-1 ring-inset ring-purple-200">
+        Customer created
+      </span>
+    )
+  }
+
+  if (normalised === "job_created") {
+    return (
+      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+        Job created
+      </span>
+    )
+  }
 
   return (
-    <span
-      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${className}`}
-    >
-      {String(status || "open").replace(/_/g, " ")}
+    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
+      Open
     </span>
   )
 }
@@ -172,6 +214,31 @@ function BusinessBadge({ label }: { label: string }) {
     >
       {label}
     </span>
+  )
+}
+
+function ThreadAvatar({
+  displayName,
+  businessLabel,
+}: {
+  displayName: string
+  businessLabel: string
+}) {
+  const initial = displayName.trim().charAt(0).toUpperCase() || "?"
+
+  const className =
+    businessLabel === "Three Counties"
+      ? "bg-blue-50 text-blue-700 ring-blue-200"
+      : businessLabel === "Internal"
+        ? "bg-zinc-100 text-zinc-700 ring-zinc-200"
+        : "bg-yellow-50 text-yellow-800 ring-yellow-200"
+
+  return (
+    <div
+      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-bold ring-1 ring-inset ${className}`}
+    >
+      {initial}
+    </div>
   )
 }
 
@@ -216,6 +283,7 @@ function buildThreads(messages: InboxMessageRow[]): ThreadCard[] {
       customerId: latest.customerId,
       jobId: latest.jobId,
       sourceLabels,
+      hasConversation: Boolean(latest.conversationId),
     })
   }
 
@@ -239,10 +307,7 @@ export default async function AdminInboxPage() {
         conversation: true,
       },
       where: {
-        OR: [
-          { conversation: { archived: false } },
-          { conversation: null },
-        ],
+        OR: [{ conversation: { archived: false } }, { conversation: null }],
       },
     })) as InboxMessageRow[]
   } catch (error) {
@@ -254,6 +319,11 @@ export default async function AdminInboxPage() {
   }
 
   const threads = buildThreads(messages)
+  const unreadThreads = threads.filter((thread) => statusIsUnread(thread.latestStatus))
+  const furladsThreads = threads.filter((thread) => thread.businessLabel === "Furlads")
+  const threeCountiesThreads = threads.filter(
+    (thread) => thread.businessLabel === "Three Counties"
+  )
 
   return (
     <div className="space-y-4">
@@ -264,11 +334,11 @@ export default async function AdminInboxPage() {
               Unified inbox
             </div>
             <h2 className="mt-1 text-2xl font-bold tracking-tight">
-              Main threads first
+              Conversations
             </h2>
             <p className="mt-1 max-w-3xl text-sm text-zinc-600">
-              One main thread per contact where possible, newest first, with source and
-              business tags for quick office scanning.
+              Latest message first, cleaner thread view, and ready for a dashboard
+              needs-reply widget.
             </p>
           </div>
 
@@ -291,7 +361,7 @@ export default async function AdminInboxPage() {
           <div className="mt-1 text-sm text-yellow-700">
             This page could not load the inbox messages from Prisma.
           </div>
-          <div className="mt-3 text-xs break-words text-yellow-700">
+          <div className="mt-3 break-words text-xs text-yellow-700">
             Technical error: {errorMessage}
           </div>
         </section>
@@ -307,166 +377,153 @@ export default async function AdminInboxPage() {
 
         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Unread threads
+            Needs reply
           </div>
-          <div className="mt-2 text-3xl font-bold">
-            {
-              threads.filter(
-                (thread) => String(thread.latestStatus).toLowerCase() === "unread"
-              ).length
-            }
-          </div>
+          <div className="mt-2 text-3xl font-bold">{unreadThreads.length}</div>
         </div>
 
         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
             Furlads
           </div>
-          <div className="mt-2 text-3xl font-bold">
-            {threads.filter((thread) => thread.businessLabel === "Furlads").length}
-          </div>
+          <div className="mt-2 text-3xl font-bold">{furladsThreads.length}</div>
         </div>
 
         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
             Three Counties
           </div>
-          <div className="mt-2 text-3xl font-bold">
-            {
-              threads.filter(
-                (thread) => thread.businessLabel === "Three Counties"
-              ).length
-            }
-          </div>
+          <div className="mt-2 text-3xl font-bold">{threeCountiesThreads.length}</div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
           <div>
             <h3 className="text-base font-bold">Threads</h3>
-            <p className="text-xs text-zinc-500">
-              Newest conversations at the top
-            </p>
+            <p className="text-xs text-zinc-500">Newest conversations at the top</p>
           </div>
         </div>
 
-        <div className="p-3">
-          {!databaseReady ? null : threads.length === 0 ? (
+        {!databaseReady ? null : threads.length === 0 ? (
+          <div className="p-4">
             <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
               No inbox threads yet.
             </div>
-          ) : (
-            <div className="space-y-3">
-              {threads.map((thread) => (
-                <details
+          </div>
+        ) : (
+          <div className="divide-y divide-zinc-200">
+            {threads.map((thread) => {
+              const href = getThreadHref(thread)
+              const isUnread = statusIsUnread(thread.latestStatus)
+
+              return (
+                <div
                   key={thread.threadKey}
-                  className="rounded-2xl border border-zinc-200 bg-white"
+                  className="group relative transition-colors hover:bg-zinc-50"
                 >
-                  <summary className="cursor-pointer list-none p-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <SourceBadge
-                            source={normaliseSource(thread.source)}
-                            compact
-                          />
-                          <BusinessBadge label={thread.businessLabel} />
-                          <StatusBadge status={thread.latestStatus} />
+                  <div className="flex items-start gap-3 px-4 py-4">
+                    <ThreadAvatar
+                      displayName={thread.displayName}
+                      businessLabel={thread.businessLabel}
+                    />
 
-                          <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
-                            {thread.messageCount} message
-                            {thread.messageCount === 1 ? "" : "s"}
-                          </span>
-
-                          {thread.customerId ? (
-                            <span className="rounded-full bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-700 ring-1 ring-inset ring-purple-200">
-                              Customer #{thread.customerId}
-                            </span>
-                          ) : null}
-
-                          {thread.jobId ? (
-                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                              Job #{thread.jobId}
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="mb-2 flex flex-wrap gap-2">
-                          {thread.sourceLabels.map((label) => (
-                            <span
-                              key={label}
-                              className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200"
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4
+                              className={`truncate text-sm ${
+                                isUnread ? "font-bold text-zinc-950" : "font-semibold text-zinc-900"
+                              }`}
                             >
-                              {label}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0">
-                            <h4 className="truncate text-base font-bold text-zinc-900">
                               {thread.displayName}
                             </h4>
-                            <div className="mt-1 text-sm text-zinc-500">
-                              {thread.displayContact}
-                            </div>
+
+                            {isUnread ? (
+                              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" />
+                            ) : null}
                           </div>
 
-                          <div className="shrink-0 text-sm font-medium text-zinc-500">
-                            {formatDateTime(thread.latestTime)}
+                          <div className="mt-0.5 truncate text-sm text-zinc-500">
+                            {thread.displayContact}
                           </div>
                         </div>
 
-                        <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-700">
-                          {thread.latestPreview}
-                        </p>
+                        <div className="shrink-0 text-right">
+                          <div
+                            className={`text-xs ${
+                              isUnread ? "font-semibold text-zinc-800" : "text-zinc-500"
+                            }`}
+                          >
+                            {formatDateTime(thread.latestTime)}
+                          </div>
+
+                          <div className="mt-2 hidden justify-end gap-2 md:flex">
+                            {thread.hasConversation ? (
+                              <ArchiveThreadButton conversationId={thread.conversationId} />
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="flex w-full shrink-0 flex-wrap gap-2 lg:w-auto lg:flex-col">
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <SourceBadge source={normaliseSource(thread.source)} compact />
+                        <BusinessBadge label={thread.businessLabel} />
+                        <ThreadStatusPill status={thread.latestStatus} />
+
+                        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                          {thread.messageCount} message{thread.messageCount === 1 ? "" : "s"}
+                        </span>
+
+                        {thread.customerId ? (
+                          <span className="rounded-full bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-700 ring-1 ring-inset ring-purple-200">
+                            Customer #{thread.customerId}
+                          </span>
+                        ) : null}
+
+                        {thread.jobId ? (
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                            Job #{thread.jobId}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 flex items-start gap-2">
+                        <p
+                          className={`min-w-0 flex-1 truncate text-sm ${
+                            isUnread ? "font-medium text-zinc-900" : "text-zinc-600"
+                          }`}
+                        >
+                          {thread.latestPreview}
+                        </p>
+
                         <Link
-                          href={`/admin/inbox/${thread.conversationId}`}
-                          className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+                          href={href}
+                          className="shrink-0 rounded-xl bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800"
                         >
                           Open
                         </Link>
-
-                        <ArchiveThreadButton conversationId={thread.conversationId} />
-                      </div>
-                    </div>
-                  </summary>
-
-                  <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl border border-zinc-200 bg-white p-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                          Thread key
-                        </div>
-                        <div className="mt-2 break-all text-sm text-zinc-700">
-                          {thread.threadKey}
-                        </div>
                       </div>
 
-                      <div className="rounded-xl border border-zinc-200 bg-white p-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                          Latest message ID
-                        </div>
-                        <div className="mt-2 text-sm text-zinc-700">
-                          {thread.latestMessageId}
-                        </div>
+                      <div className="mt-3 flex flex-wrap gap-2 md:hidden">
+                        {thread.hasConversation ? (
+                          <ArchiveThreadButton conversationId={thread.conversationId} />
+                        ) : null}
                       </div>
-                    </div>
-
-                    <div className="mt-3 text-sm text-zinc-600">
-                      This now groups threads by phone, then email, then contact reference,
-                      then conversation ID as a fallback.
                     </div>
                   </div>
-                </details>
-              ))}
-            </div>
-          )}
-        </div>
+
+                  <Link
+                    href={href}
+                    className="absolute inset-0 z-0"
+                    aria-label={`Open thread for ${thread.displayName}`}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
       </section>
     </div>
   )
