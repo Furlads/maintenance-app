@@ -1,6 +1,7 @@
 import Link from "next/link"
 import SourceBadge from "@/components/admin/SourceBadge"
 import * as prismaModule from "@/lib/prisma"
+import { buildContactKey } from "@/lib/inbox/contactKey"
 
 export const dynamic = "force-dynamic"
 
@@ -30,6 +31,7 @@ type InboxMessageRow = {
 }
 
 type ThreadCard = {
+  threadKey: string
   conversationId: string
   source: string
   businessLabel: string
@@ -42,6 +44,7 @@ type ThreadCard = {
   latestMessageId: number
   customerId: number | null
   jobId: number | null
+  sourceLabels: string[]
 }
 
 function formatDateTime(value: Date | null | undefined) {
@@ -83,6 +86,17 @@ function getBusinessLabel(source: string) {
   return "Furlads"
 }
 
+function getSourceLabel(source: string) {
+  const normalised = normaliseSource(source)
+
+  if (normalised === "threecounties-email") return "Three Counties Email"
+  if (normalised === "furlads-email") return "Furlads Email"
+  if (normalised === "whatsapp") return "WhatsApp"
+  if (normalised === "facebook") return "Facebook"
+  if (normalised === "wix") return "Wix"
+  return "Worker Quote"
+}
+
 function buildPreview(message: InboxMessageRow) {
   if (message.preview && message.preview.trim()) return message.preview.trim()
   if (message.subject && message.subject.trim()) return message.subject.trim()
@@ -104,6 +118,19 @@ function buildDisplayContact(message: InboxMessageRow) {
   if (message.senderEmail?.trim()) return message.senderEmail.trim()
   if (message.conversation?.contactRef?.trim()) return message.conversation.contactRef.trim()
   return "No contact details yet"
+}
+
+function buildThreadKey(message: InboxMessageRow) {
+  const contactKey = buildContactKey({
+    senderPhone: message.senderPhone,
+    senderEmail: message.senderEmail,
+    contactRef: message.conversation?.contactRef ?? null,
+    conversationId: message.conversationId ?? null,
+  })
+
+  if (contactKey) return contactKey
+
+  return message.conversationId || `message-${message.id}`
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -150,7 +177,7 @@ function buildThreads(messages: InboxMessageRow[]): ThreadCard[] {
   const grouped = new Map<string, InboxMessageRow[]>()
 
   for (const message of messages) {
-    const key = message.conversationId || `message-${message.id}`
+    const key = buildThreadKey(message)
 
     if (!grouped.has(key)) {
       grouped.set(key, [])
@@ -161,15 +188,20 @@ function buildThreads(messages: InboxMessageRow[]): ThreadCard[] {
 
   const threads: ThreadCard[] = []
 
-  for (const [conversationId, items] of grouped.entries()) {
+  for (const [threadKey, items] of grouped.entries()) {
     const sorted = [...items].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )
 
     const latest = sorted[0]
 
+    const sourceLabels = Array.from(
+      new Set(sorted.map((item) => getSourceLabel(item.source)))
+    )
+
     threads.push({
-      conversationId,
+      threadKey,
+      conversationId: latest.conversationId || threadKey,
       source: latest.source,
       businessLabel: getBusinessLabel(latest.source),
       displayName: buildDisplayName(latest),
@@ -181,6 +213,7 @@ function buildThreads(messages: InboxMessageRow[]): ThreadCard[] {
       latestMessageId: latest.id,
       customerId: latest.customerId,
       jobId: latest.jobId,
+      sourceLabels,
     })
   }
 
@@ -226,7 +259,7 @@ export default async function AdminInboxPage() {
               Main threads first
             </h2>
             <p className="mt-1 max-w-3xl text-sm text-zinc-600">
-              One main thread per conversation, newest first, with source and
+              One main thread per contact where possible, newest first, with source and
               business tags for quick office scanning.
             </p>
           </div>
@@ -319,7 +352,7 @@ export default async function AdminInboxPage() {
             <div className="space-y-3">
               {threads.map((thread) => (
                 <details
-                  key={thread.conversationId}
+                  key={thread.threadKey}
                   className="rounded-2xl border border-zinc-200 bg-white"
                 >
                   <summary className="cursor-pointer list-none p-4">
@@ -349,6 +382,17 @@ export default async function AdminInboxPage() {
                               Job #{thread.jobId}
                             </span>
                           ) : null}
+                        </div>
+
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {thread.sourceLabels.map((label) => (
+                            <span
+                              key={label}
+                              className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200"
+                            >
+                              {label}
+                            </span>
+                          ))}
                         </div>
 
                         <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
@@ -395,10 +439,10 @@ export default async function AdminInboxPage() {
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-xl border border-zinc-200 bg-white p-3">
                         <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                          Conversation ID
+                          Thread key
                         </div>
                         <div className="mt-2 break-all text-sm text-zinc-700">
-                          {thread.conversationId}
+                          {thread.threadKey}
                         </div>
                       </div>
 
@@ -413,8 +457,8 @@ export default async function AdminInboxPage() {
                     </div>
 
                     <div className="mt-3 text-sm text-zinc-600">
-                      This is now set up as a main thread list. The next safe step
-                      is wiring the proper thread detail page and real delete action.
+                      This now groups threads by phone, then email, then contact reference,
+                      then conversation ID as a fallback.
                     </div>
                   </div>
                 </details>
