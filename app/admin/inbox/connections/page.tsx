@@ -15,6 +15,18 @@ type InboxConnectionRow = {
   updatedAt: Date
 }
 
+type ServiceCard = {
+  key: string
+  name: string
+  icon: string
+  description: string
+  connectable: boolean
+}
+
+function hasValue(value: string | undefined | null) {
+  return String(value || "").trim().length > 0
+}
+
 export default async function InboxConnectionsPage() {
   let connections: InboxConnectionRow[] = []
   let databaseReady = true
@@ -32,7 +44,7 @@ export default async function InboxConnectionsPage() {
         : "Inbox connections table is not ready yet."
   }
 
-  const services = [
+  const services: ServiceCard[] = [
     {
       key: "furlads_email",
       name: "Furlads Email",
@@ -69,6 +81,26 @@ export default async function InboxConnectionsPage() {
       connectable: false,
     },
   ]
+
+  const facebookConfigured =
+    hasValue(process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN) &&
+    hasValue(process.env.FACEBOOK_PAGE_ID_FURLADS) &&
+    hasValue(process.env.FACEBOOK_PAGE_ID_THREE_COUNTIES) &&
+    hasValue(process.env.FACEBOOK_PAGE_TOKEN_FURLADS) &&
+    hasValue(process.env.FACEBOOK_PAGE_TOKEN_THREE_COUNTIES)
+
+  const facebookPages = [
+    {
+      name: "Furlads Facebook",
+      pageId: String(process.env.FACEBOOK_PAGE_ID_FURLADS || "").trim(),
+      hasToken: hasValue(process.env.FACEBOOK_PAGE_TOKEN_FURLADS),
+    },
+    {
+      name: "Three Counties Facebook",
+      pageId: String(process.env.FACEBOOK_PAGE_ID_THREE_COUNTIES || "").trim(),
+      hasToken: hasValue(process.env.FACEBOOK_PAGE_TOKEN_THREE_COUNTIES),
+    },
+  ].filter((page) => page.pageId)
 
   return (
     <div className="p-8">
@@ -118,7 +150,11 @@ npx prisma generate`}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
         {services.map((service) => {
           const connection = connections.find((c) => c.service === service.key)
-          const connected = !!connection?.accessToken
+
+          const connected =
+            service.key === "facebook"
+              ? facebookConfigured
+              : !!connection?.accessToken
 
           return (
             <div
@@ -134,62 +170,127 @@ npx prisma generate`}
                 {service.description}
               </div>
 
-              {connected ? (
-                <div className="mb-4">
-                  <div className="font-semibold text-green-600">Connected</div>
+              {service.key === "facebook" ? (
+                <>
+                  {connected ? (
+                    <div className="mb-4">
+                      <div className="font-semibold text-green-600">Connected</div>
 
-                  <div className="mt-1 text-xs text-gray-500">
-                    Account: {connection?.account || "Configured"}
-                  </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        Webhook: Active via environment configuration
+                      </div>
 
-                  <div className="text-xs text-gray-500">
-                    Last Sync:{" "}
-                    {connection?.lastSync
-                      ? new Date(connection.lastSync).toLocaleString("en-GB")
-                      : "Never"}
-                  </div>
-
-                  <div className="text-xs text-gray-500">
-                    Token Expiry:{" "}
-                    {connection?.tokenExpiresAt
-                      ? new Date(connection.tokenExpiresAt).toLocaleString("en-GB")
-                      : "Unknown"}
-                  </div>
-
-                  {connection?.syncError ? (
-                    <div className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
-                      {connection.syncError}
+                      <div className="mt-2 space-y-1">
+                        {facebookPages.map((page) => (
+                          <div
+                            key={page.pageId}
+                            className="rounded border border-zinc-200 bg-zinc-50 px-2 py-2 text-xs text-zinc-700"
+                          >
+                            <div className="font-medium">{page.name}</div>
+                            <div>Page ID: {page.pageId}</div>
+                            <div>
+                              Token: {page.hasToken ? "Configured" : "Missing"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="mb-4 font-semibold text-red-600">
-                  {databaseReady
-                    ? service.connectable
-                      ? "Not connected"
-                      : "Not wired up yet"
-                    : "Unavailable until DB is ready"}
-                </div>
-              )}
+                  ) : (
+                    <div className="mb-4">
+                      <div className="font-semibold text-red-600">
+                        {databaseReady ? "Not fully configured" : "Unavailable until DB is ready"}
+                      </div>
 
-              {service.connectable ? (
-                <a
-                  href={`/api/inbox/outlook/connect?service=${service.key}`}
-                  className={`block w-full rounded py-2 text-center text-white transition ${
-                    databaseReady
-                      ? "bg-black hover:bg-gray-800"
-                      : "cursor-not-allowed bg-gray-400 pointer-events-none"
-                  }`}
-                >
-                  {connected ? "Reconnect" : "Connect"}
-                </a>
+                      <div className="mt-2 text-xs text-gray-500">
+                        Facebook uses the Meta webhook and page tokens rather than the
+                        Outlook connection flow.
+                      </div>
+
+                      <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                        Required env vars:
+                        <div className="mt-1 font-mono text-[11px] leading-5">
+                          FACEBOOK_WEBHOOK_VERIFY_TOKEN
+                          <br />
+                          FACEBOOK_PAGE_ID_FURLADS
+                          <br />
+                          FACEBOOK_PAGE_TOKEN_FURLADS
+                          <br />
+                          FACEBOOK_PAGE_ID_THREE_COUNTIES
+                          <br />
+                          FACEBOOK_PAGE_TOKEN_THREE_COUNTIES
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    className={`w-full rounded py-2 text-center text-white ${
+                      connected ? "bg-green-600" : "bg-zinc-500"
+                    }`}
+                  >
+                    {connected ? "Webhook Connected" : "Needs Meta / Vercel setup"}
+                  </div>
+                </>
               ) : (
-                <button
-                  disabled
-                  className="w-full cursor-not-allowed rounded bg-gray-300 py-2 text-white"
-                >
-                  Coming later
-                </button>
+                <>
+                  {connected ? (
+                    <div className="mb-4">
+                      <div className="font-semibold text-green-600">Connected</div>
+
+                      <div className="mt-1 text-xs text-gray-500">
+                        Account: {connection?.account || "Configured"}
+                      </div>
+
+                      <div className="text-xs text-gray-500">
+                        Last Sync:{" "}
+                        {connection?.lastSync
+                          ? new Date(connection.lastSync).toLocaleString("en-GB")
+                          : "Never"}
+                      </div>
+
+                      <div className="text-xs text-gray-500">
+                        Token Expiry:{" "}
+                        {connection?.tokenExpiresAt
+                          ? new Date(connection.tokenExpiresAt).toLocaleString("en-GB")
+                          : "Unknown"}
+                      </div>
+
+                      {connection?.syncError ? (
+                        <div className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+                          {connection.syncError}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mb-4 font-semibold text-red-600">
+                      {databaseReady
+                        ? service.connectable
+                          ? "Not connected"
+                          : "Not wired up yet"
+                        : "Unavailable until DB is ready"}
+                    </div>
+                  )}
+
+                  {service.connectable ? (
+                    <a
+                      href={`/api/inbox/outlook/connect?service=${service.key}`}
+                      className={`block w-full rounded py-2 text-center text-white transition ${
+                        databaseReady
+                          ? "bg-black hover:bg-gray-800"
+                          : "pointer-events-none cursor-not-allowed bg-gray-400"
+                      }`}
+                    >
+                      {connected ? "Reconnect" : "Connect"}
+                    </a>
+                  ) : (
+                    <button
+                      disabled
+                      className="w-full cursor-not-allowed rounded bg-gray-300 py-2 text-white"
+                    >
+                      Coming later
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )
