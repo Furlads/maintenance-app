@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+export const dynamic = "force-dynamic"
+
 const VERIFY_TOKEN =
   process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN || "furlads_messenger_verify"
 
@@ -57,6 +59,7 @@ export async function POST(req: NextRequest) {
         const senderPsid = String(event?.sender?.id || "").trim()
         const messageId = String(event?.message?.mid || "").trim()
         const messageText = String(event?.message?.text || "").trim()
+        const timestamp = Number(event?.timestamp || 0)
 
         if (!pageId || !senderPsid || !messageId) {
           continue
@@ -106,7 +109,6 @@ export async function POST(req: NextRequest) {
           data: {
             conversationId: conversation.id,
             source: "facebook",
-            direction: "inbound",
             status: "unread",
             externalMessageId: messageId,
             externalThreadId: conversationRef,
@@ -116,6 +118,7 @@ export async function POST(req: NextRequest) {
             preview: messageText.slice(0, 120),
             body: messageText || "[Facebook message with no text]",
             rawPayload: JSON.stringify(event),
+            createdAt: timestamp ? new Date(timestamp) : new Date(),
           },
         })
       }
