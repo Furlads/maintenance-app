@@ -59,7 +59,6 @@ export async function POST(req: NextRequest) {
         const senderPsid = String(event?.sender?.id || "").trim()
         const messageId = String(event?.message?.mid || "").trim()
         const messageText = String(event?.message?.text || "").trim()
-        const timestamp = Number(event?.timestamp || 0)
 
         if (!pageId || !senderPsid || !messageId) {
           continue
@@ -107,18 +106,14 @@ export async function POST(req: NextRequest) {
 
         await prisma.inboxMessage.create({
           data: {
-            conversationId: conversation.id,
             source: "facebook",
-            status: "unread",
-            externalMessageId: messageId,
-            externalThreadId: conversationRef,
             senderName: pageLabel,
-            senderPhone: null,
-            senderEmail: null,
+            senderPhone: senderPsid,
             preview: messageText.slice(0, 120),
             body: messageText || "[Facebook message with no text]",
-            rawPayload: JSON.stringify(event),
-            createdAt: timestamp ? new Date(timestamp) : new Date(),
+            status: "unread",
+            conversationId: conversation.id,
+            externalMessageId: messageId,
           },
         })
       }
