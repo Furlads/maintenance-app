@@ -2,17 +2,35 @@ import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
-type InboxConnectionRow = {
-  id: string
-  service: string
-  account: string | null
-  lastSync: Date | null
-  accessToken: string | null
-  refreshToken: string | null
-  tokenExpiresAt: Date | null
-  syncError: string | null
-  createdAt: Date
-  updatedAt: Date
+function hasValue(value: string | undefined | null) {
+  return String(value || "").trim().length > 0
+}
+
+function formatDateTime(value: Date | string | null | undefined) {
+  if (!value) return "Never"
+
+  const date = value instanceof Date ? value : new Date(value)
+
+  if (Number.isNaN(date.getTime())) return "Unknown"
+
+  return date.toLocaleString("en-GB")
+}
+
+function isFutureDate(value: Date | string | null | undefined) {
+  if (!value) return false
+
+  const date = value instanceof Date ? value : new Date(value)
+
+  if (Number.isNaN(date.getTime())) return false
+
+  return date.getTime() > Date.now()
+}
+
+function isOutlookConnected(connection: {
+  accessToken?: string | null
+  tokenExpiresAt?: Date | string | null
+}) {
+  return hasValue(connection?.accessToken) && isFutureDate(connection?.tokenExpiresAt)
 }
 
 type ServiceCard = {
@@ -23,12 +41,8 @@ type ServiceCard = {
   connectable: boolean
 }
 
-function hasValue(value: string | undefined | null) {
-  return String(value || "").trim().length > 0
-}
-
 export default async function InboxConnectionsPage() {
-  let connections: InboxConnectionRow[] = []
+  let connections: any[] = []
   let databaseReady = true
   let errorMessage = ""
 
@@ -60,10 +74,17 @@ export default async function InboxConnectionsPage() {
       connectable: true,
     },
     {
-      key: "facebook",
-      name: "Facebook Messages",
+      key: "facebook_furlads",
+      name: "Furlads Facebook",
       icon: "📘",
-      description: "Facebook page messages",
+      description: "Furlads Facebook page messages",
+      connectable: false,
+    },
+    {
+      key: "facebook_threecounties",
+      name: "Three Counties Facebook",
+      icon: "📘",
+      description: "Three Counties Property Care Facebook messages",
       connectable: false,
     },
     {
@@ -82,25 +103,22 @@ export default async function InboxConnectionsPage() {
     },
   ]
 
-  const facebookConfigured =
-    hasValue(process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN) &&
-    hasValue(process.env.FACEBOOK_PAGE_ID_FURLADS) &&
-    hasValue(process.env.FACEBOOK_PAGE_ID_THREE_COUNTIES) &&
-    hasValue(process.env.FACEBOOK_PAGE_TOKEN_FURLADS) &&
-    hasValue(process.env.FACEBOOK_PAGE_TOKEN_THREE_COUNTIES)
+  const facebookFurladsPageId = String(
+    process.env.FACEBOOK_PAGE_ID_FURLADS || ""
+  ).trim()
+  const facebookThreeCountiesPageId = String(
+    process.env.FACEBOOK_PAGE_ID_THREE_COUNTIES || ""
+  ).trim()
 
-  const facebookPages = [
-    {
-      name: "Furlads Facebook",
-      pageId: String(process.env.FACEBOOK_PAGE_ID_FURLADS || "").trim(),
-      hasToken: hasValue(process.env.FACEBOOK_PAGE_TOKEN_FURLADS),
-    },
-    {
-      name: "Three Counties Facebook",
-      pageId: String(process.env.FACEBOOK_PAGE_ID_THREE_COUNTIES || "").trim(),
-      hasToken: hasValue(process.env.FACEBOOK_PAGE_TOKEN_THREE_COUNTIES),
-    },
-  ].filter((page) => page.pageId)
+  const facebookFurladsConnected =
+    hasValue(process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN) &&
+    hasValue(facebookFurladsPageId) &&
+    hasValue(process.env.FACEBOOK_PAGE_TOKEN_FURLADS)
+
+  const facebookThreeCountiesConnected =
+    hasValue(process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN) &&
+    hasValue(facebookThreeCountiesPageId) &&
+    hasValue(process.env.FACEBOOK_PAGE_TOKEN_THREE_COUNTIES)
 
   return (
     <div className="p-8">
@@ -115,15 +133,19 @@ export default async function InboxConnectionsPage() {
           <div className="font-semibold text-yellow-800">
             Inbox connections database is not ready yet
           </div>
+
           <div className="mt-1 text-sm text-yellow-700">
             This usually means the Prisma migration has not been run against the
             live Neon database yet.
           </div>
+
           <div className="mt-3 text-sm text-yellow-700">Run:</div>
+
           <pre className="mt-2 overflow-x-auto rounded bg-yellow-100 p-3 text-sm text-yellow-900">
 {`npx prisma migrate dev --name add_outlook_inbox_support
 npx prisma generate`}
           </pre>
+
           <div className="mt-3 break-words text-xs text-yellow-700">
             Technical error: {errorMessage}
           </div>
@@ -132,6 +154,7 @@ npx prisma generate`}
 
       <div className="mb-6 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
         <div className="text-lg font-semibold text-zinc-900">Outlook sync</div>
+
         <div className="mt-1 text-sm text-zinc-600">
           After connecting one or both Outlook mailboxes, run the sync route to pull
           recent emails into the inbox.
@@ -152,9 +175,18 @@ npx prisma generate`}
           const connection = connections.find((c) => c.service === service.key)
 
           const connected =
-            service.key === "facebook"
-              ? facebookConfigured
+            service.key === "facebook_furlads"
+              ? facebookFurladsConnected
+              : service.key === "facebook_threecounties"
+              ? facebookThreeCountiesConnected
+              : service.key === "furlads_email" || service.key === "threecounties_email"
+              ? isOutlookConnected(connection || {})
               : !!connection?.accessToken
+
+          const tokenExpired =
+            (service.key === "furlads_email" || service.key === "threecounties_email") &&
+            hasValue(connection?.accessToken) &&
+            !isFutureDate(connection?.tokenExpiresAt)
 
           return (
             <div
@@ -170,7 +202,7 @@ npx prisma generate`}
                 {service.description}
               </div>
 
-              {service.key === "facebook" ? (
+              {service.key === "facebook_furlads" ? (
                 <>
                   {connected ? (
                     <div className="mb-4">
@@ -180,45 +212,58 @@ npx prisma generate`}
                         Webhook: Active via environment configuration
                       </div>
 
-                      <div className="mt-2 space-y-1">
-                        {facebookPages.map((page) => (
-                          <div
-                            key={page.pageId}
-                            className="rounded border border-zinc-200 bg-zinc-50 px-2 py-2 text-xs text-zinc-700"
-                          >
-                            <div className="font-medium">{page.name}</div>
-                            <div>Page ID: {page.pageId}</div>
-                            <div>
-                              Token: {page.hasToken ? "Configured" : "Missing"}
-                            </div>
-                          </div>
-                        ))}
+                      <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-2 text-xs text-zinc-700">
+                        <div className="font-medium">Furlads Facebook</div>
+                        <div>Page ID: {facebookFurladsPageId}</div>
+                        <div>Token: Configured</div>
                       </div>
                     </div>
                   ) : (
                     <div className="mb-4">
                       <div className="font-semibold text-red-600">
-                        {databaseReady ? "Not fully configured" : "Unavailable until DB is ready"}
+                        Not fully configured
                       </div>
 
                       <div className="mt-2 text-xs text-gray-500">
-                        Facebook uses the Meta webhook and page tokens rather than the
-                        Outlook connection flow.
+                        This page needs the Furlads Facebook page ID and page token in
+                        Vercel environment variables.
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    className={`w-full rounded py-2 text-center text-white ${
+                      connected ? "bg-green-600" : "bg-zinc-500"
+                    }`}
+                  >
+                    {connected ? "Webhook Connected" : "Needs Meta / Vercel setup"}
+                  </div>
+                </>
+              ) : service.key === "facebook_threecounties" ? (
+                <>
+                  {connected ? (
+                    <div className="mb-4">
+                      <div className="font-semibold text-green-600">Connected</div>
+
+                      <div className="mt-1 text-xs text-gray-500">
+                        Webhook: Active via environment configuration
                       </div>
 
-                      <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                        Required env vars:
-                        <div className="mt-1 font-mono text-[11px] leading-5">
-                          FACEBOOK_WEBHOOK_VERIFY_TOKEN
-                          <br />
-                          FACEBOOK_PAGE_ID_FURLADS
-                          <br />
-                          FACEBOOK_PAGE_TOKEN_FURLADS
-                          <br />
-                          FACEBOOK_PAGE_ID_THREE_COUNTIES
-                          <br />
-                          FACEBOOK_PAGE_TOKEN_THREE_COUNTIES
-                        </div>
+                      <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-2 text-xs text-zinc-700">
+                        <div className="font-medium">Three Counties Facebook</div>
+                        <div>Page ID: {facebookThreeCountiesPageId}</div>
+                        <div>Token: Configured</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mb-4">
+                      <div className="font-semibold text-red-600">
+                        Not fully configured
+                      </div>
+
+                      <div className="mt-2 text-xs text-gray-500">
+                        This page needs the Three Counties Facebook page ID and page
+                        token in Vercel environment variables.
                       </div>
                     </div>
                   )}
@@ -242,17 +287,11 @@ npx prisma generate`}
                       </div>
 
                       <div className="text-xs text-gray-500">
-                        Last Sync:{" "}
-                        {connection?.lastSync
-                          ? new Date(connection.lastSync).toLocaleString("en-GB")
-                          : "Never"}
+                        Last Sync: {formatDateTime(connection?.lastSync)}
                       </div>
 
                       <div className="text-xs text-gray-500">
-                        Token Expiry:{" "}
-                        {connection?.tokenExpiresAt
-                          ? new Date(connection.tokenExpiresAt).toLocaleString("en-GB")
-                          : "Unknown"}
+                        Token Expiry: {formatDateTime(connection?.tokenExpiresAt)}
                       </div>
 
                       {connection?.syncError ? (
@@ -262,12 +301,23 @@ npx prisma generate`}
                       ) : null}
                     </div>
                   ) : (
-                    <div className="mb-4 font-semibold text-red-600">
-                      {databaseReady
-                        ? service.connectable
-                          ? "Not connected"
-                          : "Not wired up yet"
-                        : "Unavailable until DB is ready"}
+                    <div className="mb-4">
+                      <div className="font-semibold text-red-600">
+                        {databaseReady
+                          ? service.connectable
+                            ? tokenExpired
+                              ? "Disconnected"
+                              : "Not connected"
+                            : "Not wired up yet"
+                          : "Unavailable until DB is ready"}
+                      </div>
+
+                      {tokenExpired ? (
+                        <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                          The Outlook access token has expired. Reconnect this mailbox to
+                          restore inbox syncing.
+                        </div>
+                      ) : null}
                     </div>
                   )}
 
@@ -276,7 +326,9 @@ npx prisma generate`}
                       href={`/api/inbox/outlook/connect?service=${service.key}`}
                       className={`block w-full rounded py-2 text-center text-white transition ${
                         databaseReady
-                          ? "bg-black hover:bg-gray-800"
+                          ? connected
+                            ? "bg-black hover:bg-gray-800"
+                            : "bg-red-600 hover:bg-red-700"
                           : "pointer-events-none cursor-not-allowed bg-gray-400"
                       }`}
                     >
