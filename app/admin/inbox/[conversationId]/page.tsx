@@ -2,6 +2,7 @@ import InboxAutoRefresh from "@/components/admin/InboxAutoRefresh"
 import Link from "next/link"
 import SourceBadge from "@/components/admin/SourceBadge"
 import WhatsAppReplyComposer from "@/components/admin/WhatsAppReplyComposer"
+import FacebookReplyComposer from "@/components/admin/FacebookReplyComposer"
 import * as prismaModule from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -57,22 +58,32 @@ function cleanPhone(value: string | null | undefined) {
   return String(value || "").replace(/\D/g, "")
 }
 
-function isIncomingWhatsAppMessage(
-  conversationContactRef: string | null | undefined,
-  senderPhone: string | null | undefined,
-  senderName: string | null | undefined,
-  source: string
+function isIncomingMessage(
+  conversation: any,
+  message: any
 ) {
-  if (normaliseSource(source) !== "whatsapp") return true
+  const source = normaliseSource(message?.source || conversation?.source || "")
 
-  const conversationPhone = cleanPhone(conversationContactRef)
-  const messagePhone = cleanPhone(senderPhone)
+  if (source === "whatsapp") {
+    const conversationPhone = cleanPhone(conversation?.contactRef)
+    const messagePhone = cleanPhone(message?.senderPhone)
 
-  if (conversationPhone && messagePhone) {
-    return conversationPhone === messagePhone
+    if (conversationPhone && messagePhone) {
+      return conversationPhone === messagePhone
+    }
+
+    return String(message?.senderName || "").toLowerCase() !== "furlads"
   }
 
-  return String(senderName || "").toLowerCase() !== "furlads"
+  if (source === "facebook") {
+    const direction = String(message?.direction || "").toLowerCase()
+    if (direction === "outbound") return false
+    if (direction === "inbound") return true
+
+    return String(message?.senderName || "").toLowerCase() !== "furlads"
+  }
+
+  return true
 }
 
 export default async function AdminInboxThreadPage({ params }: PageProps) {
@@ -120,7 +131,17 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
   const contactRef =
     conversation.contactRef?.trim() || "No contact details yet"
 
-  const isWhatsAppThread = normaliseSource(conversation.source) === "whatsapp"
+  const normalisedConversationSource = normaliseSource(conversation.source)
+  const isWhatsAppThread = normalisedConversationSource === "whatsapp"
+  const isFacebookThread = normalisedConversationSource === "facebook"
+
+  const facebookExternalThreadId =
+    conversation.contactRef?.trim() ||
+    conversation.messages.find((message: any) =>
+      normaliseSource(message.source) === "facebook" &&
+      String(message.externalThreadId || "").includes(":")
+    )?.externalThreadId ||
+    ""
 
   return (
     <div className="space-y-4">
@@ -130,7 +151,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <SourceBadge source={normaliseSource(conversation.source)} compact />
+              <SourceBadge source={normalisedConversationSource} compact />
               <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
                 {businessLabel}
               </span>
@@ -171,12 +192,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
             </div>
           ) : (
             conversation.messages.map((message: any) => {
-              const incoming = isIncomingWhatsAppMessage(
-                conversation.contactRef,
-                message.senderPhone,
-                message.senderName,
-                message.source
-              )
+              const incoming = isIncomingMessage(conversation, message)
 
               return (
                 <div
@@ -226,11 +242,25 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
           conversationId={conversation.id}
           contactName={conversation.contactName}
         />
+      ) : isFacebookThread ? (
+        facebookExternalThreadId ? (
+          <FacebookReplyComposer
+            externalThreadId={facebookExternalThreadId}
+            contactName={conversation.contactName}
+          />
+        ) : (
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <h3 className="text-base font-bold text-zinc-900">Reply</h3>
+            <p className="mt-1 text-sm text-zinc-500">
+              This Facebook thread is missing its external thread reference, so reply is unavailable right now.
+            </p>
+          </section>
+        )
       ) : (
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <h3 className="text-base font-bold text-zinc-900">Reply</h3>
           <p className="mt-1 text-sm text-zinc-500">
-            Direct reply is currently enabled for WhatsApp threads only.
+            Direct reply is currently enabled for WhatsApp and Facebook threads only.
           </p>
         </section>
       )}
