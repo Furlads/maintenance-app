@@ -63,6 +63,10 @@ function isIncomingMessage(
   message: any
 ) {
   const source = normaliseSource(message?.source || conversation?.source || "")
+  const direction = String(message?.direction || "").toLowerCase()
+
+  if (direction === "outbound") return false
+  if (direction === "inbound") return true
 
   if (source === "whatsapp") {
     const conversationPhone = cleanPhone(conversation?.contactRef)
@@ -76,10 +80,6 @@ function isIncomingMessage(
   }
 
   if (source === "facebook") {
-    const direction = String(message?.direction || "").toLowerCase()
-    if (direction === "outbound") return false
-    if (direction === "inbound") return true
-
     return String(message?.senderName || "").toLowerCase() !== "furlads"
   }
 
@@ -137,9 +137,10 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
 
   const facebookExternalThreadId =
     conversation.contactRef?.trim() ||
-    conversation.messages.find((message: any) =>
-      normaliseSource(message.source) === "facebook" &&
-      String(message.externalThreadId || "").includes(":")
+    conversation.messages.find(
+      (message: any) =>
+        normaliseSource(message.source) === "facebook" &&
+        String(message.externalThreadId || "").includes(":")
     )?.externalThreadId ||
     ""
 
