@@ -131,10 +131,6 @@ export async function POST(req: NextRequest) {
           senderEmail: null,
           preview: messageText.slice(0, 120),
           body: messageText,
-          rawPayload: JSON.stringify({
-            meta: parsed,
-            externalThreadId,
-          }),
         },
       })
 

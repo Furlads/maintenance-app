@@ -252,14 +252,6 @@ export async function POST(req: NextRequest) {
             senderEmail: null,
             preview: body.slice(0, 120),
             body,
-            rawPayload: JSON.stringify({
-              event,
-              pageId,
-              pageKey: pageConfig.key,
-              business: pageConfig.business,
-              resolvedCustomerName: customerName,
-              profile,
-            }),
             createdAt: timestamp ? new Date(timestamp) : new Date(),
           },
         })
