@@ -1,5 +1,5 @@
-import InboxAutoRefresh from "@/components/admin/InboxAutoRefresh"
 import Link from "next/link"
+import InboxAutoRefresh from "@/components/admin/InboxAutoRefresh"
 import SourceBadge from "@/components/admin/SourceBadge"
 import WhatsAppReplyComposer from "@/components/admin/WhatsAppReplyComposer"
 import FacebookReplyComposer from "@/components/admin/FacebookReplyComposer"
@@ -15,7 +15,7 @@ type PageProps = {
   }
 }
 
-function formatDateTime(value: Date | null | undefined) {
+function formatDateTime(value: Date | string | null | undefined) {
   if (!value) return "—"
 
   return new Intl.DateTimeFormat("en-GB", {
@@ -58,10 +58,7 @@ function cleanPhone(value: string | null | undefined) {
   return String(value || "").replace(/\D/g, "")
 }
 
-function isIncomingMessage(
-  conversation: any,
-  message: any
-) {
+function isIncomingMessage(conversation: any, message: any) {
   const source = normaliseSource(message?.source || conversation?.source || "")
   const direction = String(message?.direction || "").toLowerCase()
 
@@ -104,7 +101,9 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
     return (
       <div className="space-y-4">
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <h1 className="text-2xl font-bold tracking-tight">Thread not found</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
+            Thread not found
+          </h1>
           <p className="mt-2 text-sm text-zinc-600">
             This inbox thread could not be found.
           </p>
@@ -123,26 +122,28 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
   }
 
   const businessLabel = getBusinessLabel(conversation.source)
+
   const contactName =
-    conversation.contactName?.trim() ||
-    conversation.contactRef?.trim() ||
+    String(conversation.contactName || "").trim() ||
+    String(conversation.contactRef || "").trim() ||
     "Unknown contact"
 
   const contactRef =
-    conversation.contactRef?.trim() || "No contact details yet"
+    String(conversation.contactRef || "").trim() || "No contact details yet"
 
   const normalisedConversationSource = normaliseSource(conversation.source)
   const isWhatsAppThread = normalisedConversationSource === "whatsapp"
   const isFacebookThread = normalisedConversationSource === "facebook"
 
   const facebookExternalThreadId =
-    conversation.contactRef?.trim() ||
-    conversation.messages.find(
-      (message: any) =>
-        normaliseSource(message.source) === "facebook" &&
-        String(message.externalThreadId || "").includes(":")
-    )?.externalThreadId ||
-    ""
+    String(conversation.contactRef || "").trim() ||
+    String(
+      conversation.messages.find(
+        (message: any) =>
+          normaliseSource(message?.source || "") === "facebook" &&
+          String(message?.externalThreadId || "").includes(":")
+      )?.externalThreadId || ""
+    ).trim()
 
   return (
     <div className="space-y-4">
@@ -163,7 +164,9 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
               ) : null}
             </div>
 
-            <h1 className="text-2xl font-bold tracking-tight">{contactName}</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
+              {contactName}
+            </h1>
             <p className="mt-1 text-sm text-zinc-500">{contactRef}</p>
           </div>
 
@@ -180,7 +183,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
 
       <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="border-b border-zinc-200 px-4 py-3">
-          <h2 className="text-base font-bold">Conversation</h2>
+          <h2 className="text-base font-bold text-zinc-900">Conversation</h2>
           <p className="text-xs text-zinc-500">
             Full message history for this thread
           </p>
@@ -213,13 +216,15 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
                       }`}
                     >
                       {incoming
-                        ? message.senderName || conversation.contactName || "Customer"
+                        ? message.senderName ||
+                          conversation.contactName ||
+                          "Customer"
                         : "Furlads"}
                     </div>
 
                     <div className="whitespace-pre-wrap text-sm leading-6">
-                      {message.body?.trim() ||
-                        message.preview?.trim() ||
+                      {String(message.body || "").trim() ||
+                        String(message.preview || "").trim() ||
                         "No message content."}
                     </div>
 
@@ -244,16 +249,18 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
           contactName={conversation.contactName}
         />
       ) : isFacebookThread ? (
-<FacebookReplyComposer
-  conversationId={conversation.id}
-  externalThreadId={facebookExternalThreadId}
-  contactName={conversation.contactName}
-/>
+        facebookExternalThreadId ? (
+          <FacebookReplyComposer
+            conversationId={conversation.id}
+            externalThreadId={facebookExternalThreadId}
+            contactName={conversation.contactName}
+          />
         ) : (
           <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <h3 className="text-base font-bold text-zinc-900">Reply</h3>
             <p className="mt-1 text-sm text-zinc-500">
-              This Facebook thread is missing its external thread reference, so reply is unavailable right now.
+              This Facebook thread is missing its external thread reference, so
+              reply is unavailable right now.
             </p>
           </section>
         )
@@ -261,7 +268,8 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <h3 className="text-base font-bold text-zinc-900">Reply</h3>
           <p className="mt-1 text-sm text-zinc-500">
-            Direct reply is currently enabled for WhatsApp and Facebook threads only.
+            Direct reply is currently enabled for WhatsApp and Facebook threads
+            only.
           </p>
         </section>
       )}
