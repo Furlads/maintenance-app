@@ -15,9 +15,12 @@ type InboxSource =
   | "wix"
   | "worker-quote"
 
+type InboxView = "all" | "needs-reply" | "furlads" | "three-counties"
+
 type PageProps = {
   searchParams?: {
     source?: string
+    view?: string
   }
 }
 
@@ -101,6 +104,13 @@ function getReadableSourceName(source: InboxSource) {
   if (source === "facebook") return "Facebook"
   if (source === "wix") return "Wix"
   return "Worker Quote"
+}
+
+function getReadableViewName(view: InboxView) {
+  if (view === "needs-reply") return "Needs reply"
+  if (view === "furlads") return "Furlads"
+  if (view === "three-counties") return "Three Counties"
+  return "Main threads"
 }
 
 function buildPreview(message: InboxMessageRow) {
@@ -220,20 +230,65 @@ function parseSourceFilter(value: string | undefined): InboxSource | null {
   return null
 }
 
+function parseViewFilter(value: string | undefined): InboxView {
+  const raw = String(value || "").trim().toLowerCase()
+
+  if (raw === "needs-reply") return "needs-reply"
+  if (raw === "furlads") return "furlads"
+  if (raw === "three-counties") return "three-counties"
+  return "all"
+}
+
+function buildInboxHref({
+  source,
+  view,
+}: {
+  source?: InboxSource | null
+  view?: InboxView
+}) {
+  const params = new URLSearchParams()
+
+  if (source) {
+    params.set("source", source)
+  }
+
+  if (view && view !== "all") {
+    params.set("view", view)
+  }
+
+  const query = params.toString()
+  return query ? `/admin/inbox?${query}` : "/admin/inbox"
+}
+
 function SummaryCard({
   label,
   value,
+  href,
+  active,
 }: {
   label: string
   value: number
+  href: string
+  active: boolean
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-      <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+    <Link
+      href={href}
+      className={`rounded-xl border px-4 py-3 shadow-sm transition ${
+        active
+          ? "border-zinc-900 bg-zinc-900 text-white"
+          : "border-zinc-200 bg-white text-zinc-950 hover:border-zinc-300 hover:bg-zinc-50"
+      }`}
+    >
+      <div
+        className={`text-[11px] font-bold uppercase tracking-[0.16em] ${
+          active ? "text-zinc-200" : "text-zinc-500"
+        }`}
+      >
         {label}
       </div>
-      <div className="mt-1 text-2xl font-bold tracking-tight text-zinc-950">{value}</div>
-    </div>
+      <div className="mt-1 text-2xl font-bold tracking-tight">{value}</div>
+    </Link>
   )
 }
 
@@ -366,6 +421,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
   let errorMessage = ""
 
   const sourceFilter = parseSourceFilter(searchParams?.source)
+  const viewFilter = parseViewFilter(searchParams?.view)
 
   try {
     messages = (await prisma.inboxMessage.findMany({
@@ -388,16 +444,29 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
         : "Inbox messages are not ready yet."
   }
 
-  const filteredMessages = sourceFilter
+  const sourceFilteredMessages = sourceFilter
     ? messages.filter((message) => normaliseSource(message.source) === sourceFilter)
     : messages
 
-  const threads = buildThreads(filteredMessages)
-  const unreadThreads = threads.filter((thread) => statusIsUnread(thread.latestStatus))
-  const furladsThreads = threads.filter((thread) => thread.businessLabel === "Furlads")
-  const threeCountiesThreads = threads.filter(
+  const sourceFilteredThreads = buildThreads(sourceFilteredMessages)
+  const unreadThreads = sourceFilteredThreads.filter((thread) =>
+    statusIsUnread(thread.latestStatus)
+  )
+  const furladsThreads = sourceFilteredThreads.filter(
+    (thread) => thread.businessLabel === "Furlads"
+  )
+  const threeCountiesThreads = sourceFilteredThreads.filter(
     (thread) => thread.businessLabel === "Three Counties"
   )
+
+  const threads =
+    viewFilter === "needs-reply"
+      ? unreadThreads
+      : viewFilter === "furlads"
+        ? furladsThreads
+        : viewFilter === "three-counties"
+          ? threeCountiesThreads
+          : sourceFilteredThreads
 
   return (
     <div className="space-y-3">
@@ -414,23 +483,30 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
               Compact thread list with cleaner source icons and less wasted space.
             </p>
 
-            {sourceFilter ? (
+            {(sourceFilter || viewFilter !== "all") ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                  Filtered by
+                  Filters
                 </span>
-                <SourceMiniBadge source={sourceFilter} />
+
+                {sourceFilter ? <SourceMiniBadge source={sourceFilter} /> : null}
+
+                {viewFilter !== "all" ? (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
+                    {getReadableViewName(viewFilter)}
+                  </span>
+                ) : null}
               </div>
             ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {sourceFilter ? (
+            {sourceFilter || viewFilter !== "all" ? (
               <Link
                 href="/admin/inbox"
                 className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800"
               >
-                Clear filter
+                Clear filters
               </Link>
             ) : null}
 
@@ -459,25 +535,49 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
       )}
 
       <section className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-        <SummaryCard label="Main threads" value={threads.length} />
-        <SummaryCard label="Needs reply" value={unreadThreads.length} />
-        <SummaryCard label="Furlads" value={furladsThreads.length} />
-        <SummaryCard label="Three Counties" value={threeCountiesThreads.length} />
+        <SummaryCard
+          label="Main threads"
+          value={sourceFilteredThreads.length}
+          href={buildInboxHref({ source: sourceFilter, view: "all" })}
+          active={viewFilter === "all"}
+        />
+        <SummaryCard
+          label="Needs reply"
+          value={unreadThreads.length}
+          href={buildInboxHref({ source: sourceFilter, view: "needs-reply" })}
+          active={viewFilter === "needs-reply"}
+        />
+        <SummaryCard
+          label="Furlads"
+          value={furladsThreads.length}
+          href={buildInboxHref({ source: sourceFilter, view: "furlads" })}
+          active={viewFilter === "furlads"}
+        />
+        <SummaryCard
+          label="Three Counties"
+          value={threeCountiesThreads.length}
+          href={buildInboxHref({ source: sourceFilter, view: "three-counties" })}
+          active={viewFilter === "three-counties"}
+        />
       </section>
 
       <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
           <div>
             <h3 className="text-base font-bold text-zinc-950">Threads</h3>
-            <p className="text-xs text-zinc-500">Newest first, tighter layout</p>
+            <p className="text-xs text-zinc-500">
+              {viewFilter === "all"
+                ? "Newest first, tighter layout"
+                : `${getReadableViewName(viewFilter)} threads`}
+            </p>
           </div>
         </div>
 
         {!databaseReady ? null : threads.length === 0 ? (
           <div className="p-4">
             <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
-              {sourceFilter
-                ? `No inbox threads for ${getReadableSourceName(sourceFilter)} yet.`
+              {sourceFilter || viewFilter !== "all"
+                ? "No inbox threads match the current filters yet."
                 : "No inbox threads yet."}
             </div>
           </div>
