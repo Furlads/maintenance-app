@@ -1,25 +1,40 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"
 
 const VERIFY_TOKEN =
-  process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN || "furlads_messenger_verify";
+  process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN || "furlads_messenger_verify"
 
 type FacebookPageConfig = {
-  pageId: string;
-  key: string;
-  label: string;
-  business: "furlads" | "three_counties";
-};
+  pageId: string
+  key: string
+  label: string
+  business: "furlads" | "three_counties"
+  token: string | null
+}
+
+type FacebookProfile = {
+  first_name?: string
+  last_name?: string
+  name?: string
+  id?: string
+}
 
 function getFacebookPages(): FacebookPageConfig[] {
-  const pages: FacebookPageConfig[] = [];
+  const pages: FacebookPageConfig[] = []
 
-  const furladsPageId = String(process.env.FACEBOOK_PAGE_ID_FURLADS || "").trim();
+  const furladsPageId = String(process.env.FACEBOOK_PAGE_ID_FURLADS || "").trim()
   const threeCountiesPageId = String(
     process.env.FACEBOOK_PAGE_ID_THREE_COUNTIES || ""
-  ).trim();
+  ).trim()
+
+  const furladsToken = String(
+    process.env.FACEBOOK_PAGE_TOKEN_FURLADS || ""
+  ).trim()
+  const threeCountiesToken = String(
+    process.env.FACEBOOK_PAGE_TOKEN_THREE_COUNTIES || ""
+  ).trim()
 
   if (furladsPageId) {
     pages.push({
@@ -27,7 +42,8 @@ function getFacebookPages(): FacebookPageConfig[] {
       key: "facebook_furlads",
       label: "Furlads Facebook",
       business: "furlads",
-    });
+      token: furladsToken || null,
+    })
   }
 
   if (threeCountiesPageId) {
@@ -36,74 +52,132 @@ function getFacebookPages(): FacebookPageConfig[] {
       key: "facebook_threecounties",
       label: "Three Counties Facebook",
       business: "three_counties",
-    });
+      token: threeCountiesToken || null,
+    })
   }
 
-  return pages;
+  return pages
 }
 
 function getPageConfig(pageId: string): FacebookPageConfig {
-  const pages = getFacebookPages();
-  const found = pages.find((page) => page.pageId === pageId);
+  const pages = getFacebookPages()
+  const found = pages.find((page) => page.pageId === pageId)
 
-  if (found) return found;
+  if (found) return found
 
   return {
     pageId,
     key: "facebook_unknown",
     label: "Facebook",
     business: "furlads",
-  };
+    token: null,
+  }
 }
 
 function makeConversationRef(pageId: string, senderPsid: string) {
-  return `${pageId}:${senderPsid}`;
+  return `${pageId}:${senderPsid}`
+}
+
+function buildDisplayName(profile: FacebookProfile | null, senderPsid: string) {
+  const fullName = String(profile?.name || "").trim()
+  if (fullName) return fullName
+
+  const first = String(profile?.first_name || "").trim()
+  const last = String(profile?.last_name || "").trim()
+  const joined = [first, last].filter(Boolean).join(" ").trim()
+  if (joined) return joined
+
+  const shortPsid = senderPsid.slice(-6)
+  return shortPsid ? `Facebook contact ${shortPsid}` : "Facebook contact"
+}
+
+async function fetchMessengerProfile(
+  senderPsid: string,
+  pageAccessToken: string | null
+): Promise<FacebookProfile | null> {
+  if (!senderPsid || !pageAccessToken) {
+    return null
+  }
+
+  try {
+    const url = new URL(`https://graph.facebook.com/${senderPsid}`)
+    url.searchParams.set("fields", "name,first_name,last_name")
+    url.searchParams.set("access_token", pageAccessToken)
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      cache: "no-store",
+    })
+
+    const text = await response.text()
+
+    let parsed: any = null
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      parsed = { raw: text }
+    }
+
+    if (!response.ok) {
+      console.error("FACEBOOK PROFILE LOOKUP ERROR:", {
+        senderPsid,
+        status: response.status,
+        details: parsed,
+      })
+      return null
+    }
+
+    return parsed as FacebookProfile
+  } catch (error) {
+    console.error("FACEBOOK PROFILE LOOKUP FAILED:", {
+      senderPsid,
+      error,
+    })
+    return null
+  }
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req.url)
 
-  const mode = searchParams.get("hub.mode");
-  const token = searchParams.get("hub.verify_token");
-  const challenge = searchParams.get("hub.challenge");
+  const mode = searchParams.get("hub.mode")
+  const token = searchParams.get("hub.verify_token")
+  const challenge = searchParams.get("hub.challenge")
 
   if (mode === "subscribe" && token === VERIFY_TOKEN && challenge) {
     return new NextResponse(challenge, {
       status: 200,
       headers: { "Content-Type": "text/plain" },
-    });
+    })
   }
 
-  return new NextResponse("Verification failed", { status: 403 });
+  return new NextResponse("Verification failed", { status: 403 })
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json();
-
-    console.log("FACEBOOK WEBHOOK PAYLOAD:", JSON.stringify(payload, null, 2));
+    const payload = await req.json()
 
     if (payload.object !== "page") {
-      return NextResponse.json({ ignored: true });
+      return NextResponse.json({ ignored: true })
     }
 
     for (const entry of payload.entry || []) {
-      const pageId = String(entry?.id || "").trim();
-      const pageConfig = getPageConfig(pageId);
+      const pageId = String(entry?.id || "").trim()
+      const pageConfig = getPageConfig(pageId)
 
       for (const event of entry.messaging || []) {
-        const senderPsid = String(event?.sender?.id || "").trim();
-        const messageId = String(event?.message?.mid || "").trim();
-        const messageText = String(event?.message?.text || "").trim();
+        if (!event?.message) {
+          continue
+        }
+
+        const senderPsid = String(event?.sender?.id || "").trim()
+        const messageId = String(event?.message?.mid || "").trim()
+        const messageText = String(event?.message?.text || "").trim()
+        const timestamp = Number(event?.timestamp || 0)
 
         if (!pageId || !senderPsid || !messageId) {
-          console.log("FACEBOOK WEBHOOK SKIP:", {
-            reason: "missing_page_or_sender_or_message_id",
-            pageId,
-            senderPsid,
-            messageId,
-          });
-          continue;
+          continue
         }
 
         const existingMessage = await prisma.inboxMessage.findFirst({
@@ -113,17 +187,15 @@ export async function POST(req: NextRequest) {
           select: {
             id: true,
           },
-        });
+        })
 
         if (existingMessage) {
-          console.log("FACEBOOK WEBHOOK DUPLICATE SKIP:", {
-            messageId,
-            pageId,
-          });
-          continue;
+          continue
         }
 
-        const conversationRef = makeConversationRef(pageId, senderPsid);
+        const conversationRef = makeConversationRef(pageId, senderPsid)
+        const profile = await fetchMessengerProfile(senderPsid, pageConfig.token)
+        const customerName = buildDisplayName(profile, senderPsid)
 
         let conversation = await prisma.conversation.findFirst({
           where: {
@@ -132,64 +204,73 @@ export async function POST(req: NextRequest) {
           },
           select: {
             id: true,
+            contactName: true,
           },
-        });
+        })
 
         if (!conversation) {
           conversation = await prisma.conversation.create({
             data: {
               source: "facebook",
-              contactName: pageConfig.label,
+              contactName: customerName,
               contactRef: conversationRef,
               archived: false,
             },
             select: {
               id: true,
+              contactName: true,
             },
-          });
-
-          console.log("FACEBOOK CONVERSATION CREATED:", {
-            conversationId: conversation.id,
-            pageId,
-            pageKey: pageConfig.key,
-            business: pageConfig.business,
-            contactRef: conversationRef,
-          });
+          })
+        } else if (
+          !conversation.contactName ||
+          conversation.contactName === pageConfig.label ||
+          conversation.contactName === "Facebook"
+        ) {
+          await prisma.conversation.update({
+            where: {
+              id: conversation.id,
+            },
+            data: {
+              contactName: customerName,
+            },
+          })
         }
 
         const body =
           messageText && messageText.length > 0
             ? messageText
-            : "[Facebook message with no text]";
+            : "[Facebook message with no text]"
 
         await prisma.inboxMessage.create({
           data: {
             source: "facebook",
-            senderName: pageConfig.label,
+            direction: "inbound",
+            status: "unread",
+            conversationId: conversation.id,
+            externalMessageId: messageId,
+            externalThreadId: conversationRef,
+            senderName: customerName,
             senderPhone: senderPsid,
             senderEmail: null,
             preview: body.slice(0, 120),
             body,
-            status: "unread",
-            conversationId: conversation.id,
-            externalMessageId: messageId,
+            rawPayload: JSON.stringify({
+              event,
+              pageId,
+              pageKey: pageConfig.key,
+              business: pageConfig.business,
+              resolvedCustomerName: customerName,
+              profile,
+            }),
+            createdAt: timestamp ? new Date(timestamp) : new Date(),
           },
-        });
-
-        console.log("FACEBOOK MESSAGE SAVED:", {
-          pageId,
-          pageKey: pageConfig.key,
-          business: pageConfig.business,
-          messageId,
-          conversationId: conversation.id,
-          senderPsid,
-        });
+        })
       }
     }
 
-    return NextResponse.json({ received: true });
+    return NextResponse.json({ received: true })
   } catch (error) {
-    console.error("FACEBOOK WEBHOOK ERROR:", error);
-    return new NextResponse("Server error", { status: 500 });
+    console.error("FACEBOOK WEBHOOK ERROR:", error)
+    return new NextResponse("Server error", { status: 500 })
   }
 }
