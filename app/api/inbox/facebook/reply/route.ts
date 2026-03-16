@@ -1,152 +1,275 @@
 import { NextRequest, NextResponse } from "next/server"
-import * as prismaModule from "@/lib/prisma"
+import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
-const prisma = ((prismaModule as any).prisma ?? (prismaModule as any).default) as any
+const VERIFY_TOKEN =
+  process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN || "furlads_messenger_verify"
 
-const GRAPH_URL = "https://graph.facebook.com/v18.0/me/messages"
+type FacebookPageConfig = {
+  pageId: string
+  key: string
+  label: string
+  business: "furlads" | "three_counties"
+  token: string | null
+}
 
-function getPageAccessToken(pageId: string) {
-  const furladsPageId = process.env.FACEBOOK_PAGE_ID_FURLADS
-  const threeCountiesPageId = process.env.FACEBOOK_PAGE_ID_THREE_COUNTIES
+type FacebookProfile = {
+  first_name?: string
+  last_name?: string
+  name?: string
+  id?: string
+}
 
-  if (pageId === furladsPageId) {
-    return process.env.FACEBOOK_PAGE_TOKEN_FURLADS || null
+function getFacebookPages(): FacebookPageConfig[] {
+  const pages: FacebookPageConfig[] = []
+
+  const furladsPageId = String(process.env.FACEBOOK_PAGE_ID_FURLADS || "").trim()
+  const threeCountiesPageId = String(
+    process.env.FACEBOOK_PAGE_ID_THREE_COUNTIES || ""
+  ).trim()
+
+  const furladsToken = String(
+    process.env.FACEBOOK_PAGE_TOKEN_FURLADS || ""
+  ).trim()
+  const threeCountiesToken = String(
+    process.env.FACEBOOK_PAGE_TOKEN_THREE_COUNTIES || ""
+  ).trim()
+
+  if (furladsPageId) {
+    pages.push({
+      pageId: furladsPageId,
+      key: "facebook_furlads",
+      label: "Furlads Facebook",
+      business: "furlads",
+      token: furladsToken || null,
+    })
   }
 
-  if (pageId === threeCountiesPageId) {
-    return process.env.FACEBOOK_PAGE_TOKEN_THREE_COUNTIES || null
+  if (threeCountiesPageId) {
+    pages.push({
+      pageId: threeCountiesPageId,
+      key: "facebook_threecounties",
+      label: "Three Counties Facebook",
+      business: "three_counties",
+      token: threeCountiesToken || null,
+    })
   }
 
-  return null
+  return pages
+}
+
+function getPageConfig(pageId: string): FacebookPageConfig {
+  const pages = getFacebookPages()
+  const found = pages.find((page) => page.pageId === pageId)
+
+  if (found) return found
+
+  return {
+    pageId,
+    key: "facebook_unknown",
+    label: "Facebook",
+    business: "furlads",
+    token: null,
+  }
+}
+
+function makeConversationRef(pageId: string, senderPsid: string) {
+  return `${pageId}:${senderPsid}`
+}
+
+function buildDisplayName(profile: FacebookProfile | null, senderPsid: string) {
+  const fullName = String(profile?.name || "").trim()
+  if (fullName) return fullName
+
+  const first = String(profile?.first_name || "").trim()
+  const last = String(profile?.last_name || "").trim()
+  const joined = [first, last].filter(Boolean).join(" ").trim()
+  if (joined) return joined
+
+  const shortPsid = senderPsid.slice(-6)
+  return shortPsid ? `Facebook contact ${shortPsid}` : "Facebook contact"
+}
+
+async function fetchMessengerProfile(
+  senderPsid: string,
+  pageAccessToken: string | null
+): Promise<FacebookProfile | null> {
+  if (!senderPsid || !pageAccessToken) {
+    return null
+  }
+
+  try {
+    const url = new URL(`https://graph.facebook.com/${senderPsid}`)
+    url.searchParams.set("fields", "name,first_name,last_name")
+    url.searchParams.set("access_token", pageAccessToken)
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      cache: "no-store",
+    })
+
+    const text = await response.text()
+
+    let parsed: any = null
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      parsed = { raw: text }
+    }
+
+    if (!response.ok) {
+      console.error("FACEBOOK PROFILE LOOKUP ERROR:", {
+        senderPsid,
+        status: response.status,
+        details: parsed,
+      })
+      return null
+    }
+
+    return parsed as FacebookProfile
+  } catch (error) {
+    console.error("FACEBOOK PROFILE LOOKUP FAILED:", {
+      senderPsid,
+      error,
+    })
+    return null
+  }
+}
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+
+  const mode = searchParams.get("hub.mode")
+  const token = searchParams.get("hub.verify_token")
+  const challenge = searchParams.get("hub.challenge")
+
+  if (mode === "subscribe" && token === VERIFY_TOKEN && challenge) {
+    return new NextResponse(challenge, {
+      status: 200,
+      headers: { "Content-Type": "text/plain" },
+    })
+  }
+
+  return new NextResponse("Verification failed", { status: 403 })
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
+    const payload = await req.json()
 
-    const conversationId = String(body?.conversationId || "").trim()
-    const externalThreadId = String(body?.externalThreadId || "").trim()
-    const messageText = String(body?.messageText || "").trim()
-
-    if (!conversationId) {
-      return NextResponse.json(
-        { ok: false, error: "Missing conversationId." },
-        { status: 400 }
-      )
+    if (payload.object !== "page") {
+      return NextResponse.json({ ignored: true })
     }
 
-    if (!externalThreadId) {
-      return NextResponse.json(
-        { ok: false, error: "Missing externalThreadId." },
-        { status: 400 }
-      )
+    for (const entry of payload.entry || []) {
+      const pageId = String(entry?.id || "").trim()
+      const pageConfig = getPageConfig(pageId)
+
+      for (const event of entry.messaging || []) {
+        if (!event?.message) {
+          continue
+        }
+
+        const senderPsid = String(event?.sender?.id || "").trim()
+        const messageId = String(event?.message?.mid || "").trim()
+        const messageText = String(event?.message?.text || "").trim()
+        const timestamp = Number(event?.timestamp || 0)
+
+        if (!pageId || !senderPsid || !messageId) {
+          continue
+        }
+
+        const existingMessage = await prisma.inboxMessage.findFirst({
+          where: {
+            externalMessageId: messageId,
+          },
+          select: {
+            id: true,
+          },
+        })
+
+        if (existingMessage) {
+          continue
+        }
+
+        const conversationRef = makeConversationRef(pageId, senderPsid)
+        const profile = await fetchMessengerProfile(senderPsid, pageConfig.token)
+        const customerName = buildDisplayName(profile, senderPsid)
+
+        let conversation = await prisma.conversation.findFirst({
+          where: {
+            source: "facebook",
+            contactRef: conversationRef,
+          },
+          select: {
+            id: true,
+            contactName: true,
+          },
+        })
+
+        if (!conversation) {
+          conversation = await prisma.conversation.create({
+            data: {
+              source: "facebook",
+              contactName: customerName,
+              contactRef: conversationRef,
+              archived: false,
+            },
+            select: {
+              id: true,
+              contactName: true,
+            },
+          })
+        } else if (
+          !conversation.contactName ||
+          conversation.contactName === pageConfig.label ||
+          conversation.contactName === "Facebook"
+        ) {
+          await prisma.conversation.update({
+            where: {
+              id: conversation.id,
+            },
+            data: {
+              contactName: customerName,
+            },
+          })
+        }
+
+        const body =
+          messageText && messageText.length > 0
+            ? messageText
+            : "[Facebook message with no text]"
+
+        await prisma.inboxMessage.create({
+          data: {
+            source: "facebook",
+            status: "unread",
+            conversationId: conversation.id,
+            externalMessageId: messageId,
+            externalThreadId: conversationRef,
+            senderName: customerName,
+            senderPhone: senderPsid,
+            senderEmail: null,
+            preview: body.slice(0, 120),
+            body,
+            rawPayload: JSON.stringify({
+              event,
+              pageId,
+              pageKey: pageConfig.key,
+              business: pageConfig.business,
+              resolvedCustomerName: customerName,
+              profile,
+            }),
+            createdAt: timestamp ? new Date(timestamp) : new Date(),
+          },
+        })
+      }
     }
 
-    if (!messageText) {
-      return NextResponse.json(
-        { ok: false, error: "Message cannot be empty." },
-        { status: 400 }
-      )
-    }
-
-    const [pageId, recipientPsid] = externalThreadId.split(":")
-
-    if (!pageId || !recipientPsid) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid externalThreadId format." },
-        { status: 400 }
-      )
-    }
-
-    const pageAccessToken = getPageAccessToken(pageId)
-
-    if (!pageAccessToken) {
-      return NextResponse.json(
-        { ok: false, error: "No Facebook page token found for this thread." },
-        { status: 400 }
-      )
-    }
-
-    const sendResponse = await fetch(`${GRAPH_URL}?access_token=${pageAccessToken}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        recipient: { id: recipientPsid },
-        message: { text: messageText },
-      }),
-    })
-
-    const responseText = await sendResponse.text()
-
-    let parsed: any = null
-    try {
-      parsed = JSON.parse(responseText)
-    } catch {
-      parsed = { raw: responseText }
-    }
-
-    if (!sendResponse.ok) {
-      console.error("FACEBOOK SEND ERROR:", parsed)
-
-      return NextResponse.json(
-        {
-          ok: false,
-          error: parsed?.error?.message || "Meta rejected the Facebook message.",
-          details: parsed,
-        },
-        { status: 500 }
-      )
-    }
-
-    try {
-      await prisma.inboxMessage.create({
-        data: {
-          conversationId,
-          source: "facebook",
-          direction: "outbound",
-          status: "replied",
-          externalMessageId:
-            String(
-              parsed?.message_id ||
-                parsed?.messageId ||
-                parsed?.messages?.[0]?.id ||
-                ""
-            ).trim() || null,
-          externalThreadId,
-          senderName: "Furlads",
-          senderPhone: null,
-          senderEmail: null,
-          preview: messageText.slice(0, 120),
-          body: messageText,
-          rawPayload: JSON.stringify(parsed),
-        },
-      })
-    } catch (dbError) {
-      console.error("FACEBOOK MESSAGE LOGGING ERROR:", dbError)
-
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Facebook message sent but failed to save into the conversation.",
-        },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({
-      ok: true,
-      meta: parsed,
-    })
+    return NextResponse.json({ received: true })
   } catch (error) {
-    console.error("FACEBOOK REPLY ROUTE ERROR:", error)
-
-    return NextResponse.json(
-      { ok: false, error: "Server error sending Facebook reply." },
-      { status: 500 }
-    )
+    console.error("FACEBOOK WEBHOOK ERROR:", error)
+    return new NextResponse("Server error", { status: 500 })
   }
 }

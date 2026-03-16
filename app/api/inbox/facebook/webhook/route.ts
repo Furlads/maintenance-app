@@ -244,7 +244,6 @@ export async function POST(req: NextRequest) {
         await prisma.inboxMessage.create({
           data: {
             source: "facebook",
-            direction: "inbound",
             status: "unread",
             conversationId: conversation.id,
             externalMessageId: messageId,

@@ -60,10 +60,6 @@ function cleanPhone(value: string | null | undefined) {
 
 function isIncomingMessage(conversation: any, message: any) {
   const source = normaliseSource(message?.source || conversation?.source || "")
-  const direction = String(message?.direction || "").toLowerCase()
-
-  if (direction === "outbound") return false
-  if (direction === "inbound") return true
 
   if (source === "whatsapp") {
     const conversationPhone = cleanPhone(conversation?.contactRef)
