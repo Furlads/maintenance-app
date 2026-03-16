@@ -247,7 +247,6 @@ export async function POST(req: NextRequest) {
             status: "unread",
             conversationId: conversation.id,
             externalMessageId: messageId,
-            externalThreadId: conversationRef,
             senderName: customerName,
             senderPhone: senderPsid,
             senderEmail: null,
