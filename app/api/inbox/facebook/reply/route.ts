@@ -24,19 +24,26 @@ function getPageAccessToken(pageId: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { externalThreadId, messageText } = await req.json()
+    const body = await req.json()
 
-    const trimmedExternalThreadId = String(externalThreadId || "").trim()
-    const trimmedMessageText = String(messageText || "").trim()
+    const externalThreadId = String(body?.externalThreadId || "").trim()
+    const messageText = String(body?.messageText || "").trim()
 
-    if (!trimmedExternalThreadId || !trimmedMessageText) {
+    if (!externalThreadId) {
       return NextResponse.json(
-        { ok: false, error: "Missing required fields." },
+        { ok: false, error: "Missing externalThreadId." },
         { status: 400 }
       )
     }
 
-    const [pageId, recipientPsid] = trimmedExternalThreadId.split(":")
+    if (!messageText) {
+      return NextResponse.json(
+        { ok: false, error: "Message cannot be empty." },
+        { status: 400 }
+      )
+    }
+
+    const [pageId, recipientPsid] = externalThreadId.split(":")
 
     if (!pageId || !recipientPsid) {
       return NextResponse.json(
@@ -49,7 +56,7 @@ export async function POST(req: NextRequest) {
 
     if (!pageAccessToken) {
       return NextResponse.json(
-        { ok: false, error: "No page access token found for pageId." },
+        { ok: false, error: "No Facebook page token found for this thread." },
         { status: 400 }
       )
     }
@@ -61,19 +68,28 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         recipient: { id: recipientPsid },
-        message: { text: trimmedMessageText },
+        message: { text: messageText },
       }),
     })
 
-    const data = await response.json()
+    const responseText = await response.text()
+
+    let parsed: any = null
+    try {
+      parsed = JSON.parse(responseText)
+    } catch {
+      parsed = { raw: responseText }
+    }
 
     if (!response.ok) {
-      console.error("Facebook send error:", data)
+      console.error("FACEBOOK SEND ERROR:", parsed)
+
       return NextResponse.json(
         {
           ok: false,
-          error: data?.error?.message || "Facebook send failed.",
-          details: data,
+          error:
+            parsed?.error?.message || "Meta rejected the Facebook message.",
+          details: parsed,
         },
         { status: 500 }
       )
@@ -83,8 +99,16 @@ export async function POST(req: NextRequest) {
       where: {
         source: "facebook",
         OR: [
-          { contactRef: trimmedExternalThreadId },
-          { messages: { some: { externalThreadId: trimmedExternalThreadId } } },
+          {
+            contactRef: externalThreadId,
+          },
+          {
+            messages: {
+              some: {
+                externalThreadId,
+              },
+            },
+          },
         ],
       },
       select: {
@@ -100,26 +124,32 @@ export async function POST(req: NextRequest) {
           direction: "outbound",
           status: "replied",
           externalMessageId:
-            String(data?.message_id || data?.messageId || "").trim() || null,
-          externalThreadId: trimmedExternalThreadId,
+            String(
+              parsed?.message_id ||
+                parsed?.messageId ||
+                parsed?.messages?.[0]?.id ||
+                ""
+            ).trim() || null,
+          externalThreadId,
           senderName: "Furlads",
           senderPhone: null,
           senderEmail: null,
-          preview: trimmedMessageText.slice(0, 120),
-          body: trimmedMessageText,
-          rawPayload: JSON.stringify(data),
+          preview: messageText.slice(0, 120),
+          body: messageText,
+          rawPayload: JSON.stringify(parsed),
         },
       })
     }
 
     return NextResponse.json({
       ok: true,
-      data,
+      meta: parsed,
     })
   } catch (error) {
-    console.error("Facebook reply error:", error)
+    console.error("FACEBOOK REPLY ROUTE ERROR:", error)
+
     return NextResponse.json(
-      { ok: false, error: "Reply failed." },
+      { ok: false, error: "Server error sending Facebook reply." },
       { status: 500 }
     )
   }
