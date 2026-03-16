@@ -4,11 +4,13 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 
 type Props = {
+  conversationId: string
   externalThreadId: string
   contactName?: string | null
 }
 
 export default function FacebookReplyComposer({
+  conversationId,
   externalThreadId,
   contactName,
 }: Props) {
@@ -38,6 +40,7 @@ export default function FacebookReplyComposer({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          conversationId,
           externalThreadId,
           messageText: trimmed,
         }),

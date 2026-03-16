@@ -244,11 +244,11 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
           contactName={conversation.contactName}
         />
       ) : isFacebookThread ? (
-        facebookExternalThreadId ? (
-          <FacebookReplyComposer
-            externalThreadId={facebookExternalThreadId}
-            contactName={conversation.contactName}
-          />
+<FacebookReplyComposer
+  conversationId={conversation.id}
+  externalThreadId={facebookExternalThreadId}
+  contactName={conversation.contactName}
+/>
         ) : (
           <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <h3 className="text-base font-bold text-zinc-900">Reply</h3>

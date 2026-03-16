@@ -26,8 +26,16 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
+    const conversationId = String(body?.conversationId || "").trim()
     const externalThreadId = String(body?.externalThreadId || "").trim()
     const messageText = String(body?.messageText || "").trim()
+
+    if (!conversationId) {
+      return NextResponse.json(
+        { ok: false, error: "Missing conversationId." },
+        { status: 400 }
+      )
+    }
 
     if (!externalThreadId) {
       return NextResponse.json(
@@ -61,7 +69,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const response = await fetch(`${GRAPH_URL}?access_token=${pageAccessToken}`, {
+    const sendResponse = await fetch(`${GRAPH_URL}?access_token=${pageAccessToken}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -72,7 +80,7 @@ export async function POST(req: NextRequest) {
       }),
     })
 
-    const responseText = await response.text()
+    const responseText = await sendResponse.text()
 
     let parsed: any = null
     try {
@@ -81,14 +89,13 @@ export async function POST(req: NextRequest) {
       parsed = { raw: responseText }
     }
 
-    if (!response.ok) {
+    if (!sendResponse.ok) {
       console.error("FACEBOOK SEND ERROR:", parsed)
 
       return NextResponse.json(
         {
           ok: false,
-          error:
-            parsed?.error?.message || "Meta rejected the Facebook message.",
+          error: parsed?.error?.message || "Meta rejected the Facebook message.",
           details: parsed,
         },
         { status: 500 }
@@ -96,53 +103,38 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const conversation = await prisma.conversation.findFirst({
-        where: {
+      await prisma.inboxMessage.create({
+        data: {
+          conversationId,
           source: "facebook",
-          OR: [
-            {
-              contactRef: externalThreadId,
-            },
-            {
-              messages: {
-                some: {
-                  externalThreadId,
-                },
-              },
-            },
-          ],
-        },
-        select: {
-          id: true,
+          direction: "outbound",
+          status: "replied",
+          externalMessageId:
+            String(
+              parsed?.message_id ||
+                parsed?.messageId ||
+                parsed?.messages?.[0]?.id ||
+                ""
+            ).trim() || null,
+          externalThreadId,
+          senderName: "Furlads",
+          senderPhone: null,
+          senderEmail: null,
+          preview: messageText.slice(0, 120),
+          body: messageText,
+          rawPayload: JSON.stringify(parsed),
         },
       })
-
-      if (conversation) {
-        await prisma.inboxMessage.create({
-          data: {
-            conversationId: conversation.id,
-            source: "facebook",
-            direction: "outbound",
-            status: "replied",
-            externalMessageId:
-              String(
-                parsed?.message_id ||
-                  parsed?.messageId ||
-                  parsed?.messages?.[0]?.id ||
-                  ""
-              ).trim() || null,
-            externalThreadId,
-            senderName: "Furlads",
-            senderPhone: null,
-            senderEmail: null,
-            preview: messageText.slice(0, 120),
-            body: messageText,
-            rawPayload: JSON.stringify(parsed),
-          },
-        })
-      }
     } catch (dbError) {
       console.error("FACEBOOK MESSAGE LOGGING ERROR:", dbError)
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Facebook message sent but failed to save into the conversation.",
+        },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({
