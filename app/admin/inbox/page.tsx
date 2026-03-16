@@ -309,20 +309,20 @@ function SummaryCard({
   return (
     <Link
       href={href}
-      className={`rounded-xl border px-4 py-3 shadow-sm transition ${
+      className={`rounded-xl border px-3 py-3 shadow-sm transition ${
         active
           ? "border-zinc-900 bg-zinc-900 text-white"
           : "border-zinc-200 bg-white text-zinc-950 hover:border-zinc-300 hover:bg-zinc-50"
       }`}
     >
       <div
-        className={`text-[11px] font-bold uppercase tracking-[0.16em] ${
+        className={`text-[10px] font-bold uppercase tracking-[0.16em] ${
           active ? "text-zinc-200" : "text-zinc-500"
         }`}
       >
         {label}
       </div>
-      <div className="mt-1 text-2xl font-bold tracking-tight">{value}</div>
+      <div className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">{value}</div>
     </Link>
   )
 }
@@ -521,14 +521,14 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
     : viewThreads
 
   return (
-    <div className="space-y-3">
-      <section className="rounded-xl border border-zinc-200 bg-white px-5 py-4 shadow-sm">
+    <div className="space-y-3 px-0 sm:px-0">
+      <section className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm sm:px-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+          <div className="min-w-0">
             <div className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Unified inbox
             </div>
-            <h2 className="mt-1 text-2xl font-bold tracking-tight text-zinc-950">
+            <h2 className="mt-1 text-xl font-bold tracking-tight text-zinc-950 sm:text-2xl">
               Conversations
             </h2>
             <p className="mt-1 text-sm text-zinc-600">
@@ -552,7 +552,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
                 ) : null}
 
                 {searchQuery ? (
-                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                  <span className="max-w-full truncate rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
                     Search: {searchQuery}
                   </span>
                 ) : null}
@@ -588,7 +588,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
               type="text"
               name="q"
               defaultValue={searchQuery}
-              placeholder="Search name, email, phone, message text, customer or job..."
+              placeholder="Search name, email, phone, message text..."
               className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-500"
             />
 
@@ -653,7 +653,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
             <h3 className="text-base font-bold text-zinc-950">Threads</h3>
             <p className="text-xs text-zinc-500">
               {viewFilter === "all"
-                ? "Newest first, tighter layout"
+                ? "Newest first, tighter mobile layout"
                 : `${getReadableViewName(viewFilter)} threads`}
             </p>
           </div>
@@ -679,14 +679,14 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
                   key={thread.threadKey}
                   className="group relative transition-colors hover:bg-zinc-50"
                 >
-                  <div className="flex items-start gap-3 px-4 py-3">
+                  <div className="flex items-start gap-3 px-3 py-3 sm:px-4">
                     <ThreadAvatar
                       displayName={thread.displayName}
                       businessLabel={thread.businessLabel}
                     />
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <h4
@@ -707,7 +707,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
                           </div>
                         </div>
 
-                        <div className="shrink-0 text-right">
+                        <div className="shrink-0 text-left sm:text-right">
                           <div
                             className={`text-[11px] ${
                               isUnread ? "font-semibold text-zinc-800" : "text-zinc-500"
@@ -740,30 +740,17 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
                         ) : null}
                       </div>
 
-                      <div className="mt-2 flex items-center gap-2">
+                      <div className="mt-2">
                         <p
-                          className={`min-w-0 flex-1 truncate text-sm ${
+                          className={`truncate text-sm ${
                             isUnread ? "font-medium text-zinc-900" : "text-zinc-600"
                           }`}
                         >
                           {thread.latestPreview}
                         </p>
-
-                        <div className="relative z-10 hidden items-center gap-2 md:flex">
-                          {thread.hasConversation ? (
-                            <ArchiveThreadButton conversationId={thread.conversationId} />
-                          ) : null}
-
-                          <Link
-                            href={href}
-                            className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800"
-                          >
-                            Open
-                          </Link>
-                        </div>
                       </div>
 
-                      <div className="relative z-10 mt-2 flex flex-wrap items-center gap-2 md:hidden">
+                      <div className="relative z-10 mt-3 flex flex-wrap items-center gap-2">
                         {thread.hasConversation ? (
                           <ArchiveThreadButton conversationId={thread.conversationId} />
                         ) : null}
