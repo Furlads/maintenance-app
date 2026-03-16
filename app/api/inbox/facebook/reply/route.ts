@@ -95,50 +95,54 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const conversation = await prisma.conversation.findFirst({
-      where: {
-        source: "facebook",
-        OR: [
-          {
-            contactRef: externalThreadId,
-          },
-          {
-            messages: {
-              some: {
-                externalThreadId,
+    try {
+      const conversation = await prisma.conversation.findFirst({
+        where: {
+          source: "facebook",
+          OR: [
+            {
+              contactRef: externalThreadId,
+            },
+            {
+              messages: {
+                some: {
+                  externalThreadId,
+                },
               },
             },
-          },
-        ],
-      },
-      select: {
-        id: true,
-      },
-    })
-
-    if (conversation) {
-      await prisma.inboxMessage.create({
-        data: {
-          conversationId: conversation.id,
-          source: "facebook",
-          direction: "outbound",
-          status: "replied",
-          externalMessageId:
-            String(
-              parsed?.message_id ||
-                parsed?.messageId ||
-                parsed?.messages?.[0]?.id ||
-                ""
-            ).trim() || null,
-          externalThreadId,
-          senderName: "Furlads",
-          senderPhone: null,
-          senderEmail: null,
-          preview: messageText.slice(0, 120),
-          body: messageText,
-          rawPayload: JSON.stringify(parsed),
+          ],
+        },
+        select: {
+          id: true,
         },
       })
+
+      if (conversation) {
+        await prisma.inboxMessage.create({
+          data: {
+            conversationId: conversation.id,
+            source: "facebook",
+            direction: "outbound",
+            status: "replied",
+            externalMessageId:
+              String(
+                parsed?.message_id ||
+                  parsed?.messageId ||
+                  parsed?.messages?.[0]?.id ||
+                  ""
+              ).trim() || null,
+            externalThreadId,
+            senderName: "Furlads",
+            senderPhone: null,
+            senderEmail: null,
+            preview: messageText.slice(0, 120),
+            body: messageText,
+            rawPayload: JSON.stringify(parsed),
+          },
+        })
+      }
+    } catch (dbError) {
+      console.error("FACEBOOK MESSAGE LOGGING ERROR:", dbError)
     }
 
     return NextResponse.json({
