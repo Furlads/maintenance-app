@@ -21,6 +21,7 @@ type PageProps = {
   searchParams?: {
     source?: string
     view?: string
+    q?: string
   }
 }
 
@@ -62,7 +63,6 @@ type ThreadCard = {
   latestMessageId: number
   customerId: number | null
   jobId: number | null
-  sourceLabels: string[]
   hasConversation: boolean
 }
 
@@ -87,14 +87,6 @@ function normaliseSource(value: string): InboxSource {
   if (source.includes("facebook")) return "facebook"
   if (source.includes("wix")) return "wix"
   return "worker-quote"
-}
-
-function getBusinessLabel(source: string) {
-  const normalised = normaliseSource(source)
-
-  if (normalised === "threecounties-email") return "Three Counties"
-  if (normalised === "worker-quote") return "Internal"
-  return "Furlads"
 }
 
 function getReadableSourceName(source: InboxSource) {
@@ -170,6 +162,23 @@ function statusIsUnread(status: string) {
   return String(status || "").toLowerCase() === "unread"
 }
 
+function detectBusinessLabel(message: InboxMessageRow) {
+  const source = normaliseSource(message.source)
+  const contactName = String(message.conversation?.contactName || "").toLowerCase()
+  const senderName = String(message.senderName || "").toLowerCase()
+  const contactRef = String(message.conversation?.contactRef || "").toLowerCase()
+  const joined = `${contactName} ${senderName} ${contactRef}`
+
+  if (source === "threecounties-email") return "Three Counties"
+  if (source === "worker-quote") return "Internal"
+
+  if (joined.includes("three counties") || joined.includes("threecounties")) {
+    return "Three Counties"
+  }
+
+  return "Furlads"
+}
+
 function buildThreads(messages: InboxMessageRow[]): ThreadCard[] {
   const grouped = new Map<string, InboxMessageRow[]>()
 
@@ -196,7 +205,7 @@ function buildThreads(messages: InboxMessageRow[]): ThreadCard[] {
       threadKey,
       conversationId: latest.conversationId || threadKey,
       source: latest.source,
-      businessLabel: getBusinessLabel(latest.source),
+      businessLabel: detectBusinessLabel(latest),
       displayName: buildDisplayName(latest),
       displayContact: buildDisplayContact(latest),
       latestPreview: buildPreview(latest),
@@ -206,7 +215,6 @@ function buildThreads(messages: InboxMessageRow[]): ThreadCard[] {
       latestMessageId: latest.id,
       customerId: latest.customerId,
       jobId: latest.jobId,
-      sourceLabels: [],
       hasConversation: Boolean(latest.conversationId),
     })
   }
@@ -239,12 +247,35 @@ function parseViewFilter(value: string | undefined): InboxView {
   return "all"
 }
 
+function normaliseSearch(value: string | undefined) {
+  return String(value || "").trim()
+}
+
+function threadMatchesSearch(thread: ThreadCard, q: string) {
+  const needle = q.toLowerCase()
+
+  return [
+    thread.displayName,
+    thread.displayContact,
+    thread.latestPreview,
+    thread.businessLabel,
+    getReadableSourceName(normaliseSource(thread.source)),
+    thread.customerId ? `customer ${thread.customerId}` : "",
+    thread.jobId ? `job ${thread.jobId}` : "",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(needle)
+}
+
 function buildInboxHref({
   source,
   view,
+  q,
 }: {
   source?: InboxSource | null
   view?: InboxView
+  q?: string
 }) {
   const params = new URLSearchParams()
 
@@ -254,6 +285,10 @@ function buildInboxHref({
 
   if (view && view !== "all") {
     params.set("view", view)
+  }
+
+  if (q && q.trim()) {
+    params.set("q", q.trim())
   }
 
   const query = params.toString()
@@ -379,14 +414,20 @@ function ThreadAvatar({
 
 function SourceIcon({
   source,
+  businessLabel,
 }: {
   source: InboxSource
+  businessLabel: string
 }) {
   const baseClass =
     "inline-flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-bold ring-1 ring-inset"
 
   if (source === "facebook") {
-    return <span className={`${baseClass} bg-blue-50 text-blue-700 ring-blue-200`}>f</span>
+    if (businessLabel === "Three Counties") {
+      return <span className={`${baseClass} bg-blue-50 text-blue-700 ring-blue-200`}>f</span>
+    }
+
+    return <span className={`${baseClass} bg-yellow-50 text-yellow-800 ring-yellow-200`}>f</span>
   }
 
   if (source === "whatsapp") {
@@ -394,6 +435,10 @@ function SourceIcon({
   }
 
   if (source === "furlads-email" || source === "threecounties-email") {
+    if (businessLabel === "Three Counties") {
+      return <span className={`${baseClass} bg-blue-50 text-blue-700 ring-blue-200`}>@</span>
+    }
+
     return <span className={`${baseClass} bg-orange-50 text-orange-700 ring-orange-200`}>@</span>
   }
 
@@ -404,12 +449,18 @@ function SourceIcon({
   return <span className={`${baseClass} bg-zinc-100 text-zinc-700 ring-zinc-200`}>i</span>
 }
 
-function SourceMiniBadge({ source }: { source: InboxSource }) {
+function SourceMiniBadge({
+  source,
+  businessLabel,
+}: {
+  source: InboxSource
+  businessLabel: string
+}) {
   const readable = getReadableSourceName(source)
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
-      <SourceIcon source={source} />
+      <SourceIcon source={source} businessLabel={businessLabel} />
       <span>{readable}</span>
     </span>
   )
@@ -422,6 +473,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
 
   const sourceFilter = parseSourceFilter(searchParams?.source)
   const viewFilter = parseViewFilter(searchParams?.view)
+  const searchQuery = normaliseSearch(searchParams?.q)
 
   try {
     messages = (await prisma.inboxMessage.findMany({
@@ -448,25 +500,25 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
     ? messages.filter((message) => normaliseSource(message.source) === sourceFilter)
     : messages
 
-  const sourceFilteredThreads = buildThreads(sourceFilteredMessages)
-  const unreadThreads = sourceFilteredThreads.filter((thread) =>
-    statusIsUnread(thread.latestStatus)
-  )
-  const furladsThreads = sourceFilteredThreads.filter(
-    (thread) => thread.businessLabel === "Furlads"
-  )
-  const threeCountiesThreads = sourceFilteredThreads.filter(
+  const allThreads = buildThreads(sourceFilteredMessages)
+  const unreadThreads = allThreads.filter((thread) => statusIsUnread(thread.latestStatus))
+  const furladsThreads = allThreads.filter((thread) => thread.businessLabel === "Furlads")
+  const threeCountiesThreads = allThreads.filter(
     (thread) => thread.businessLabel === "Three Counties"
   )
 
-  const threads =
+  const viewThreads =
     viewFilter === "needs-reply"
       ? unreadThreads
       : viewFilter === "furlads"
         ? furladsThreads
         : viewFilter === "three-counties"
           ? threeCountiesThreads
-          : sourceFilteredThreads
+          : allThreads
+
+  const threads = searchQuery
+    ? viewThreads.filter((thread) => threadMatchesSearch(thread, searchQuery))
+    : viewThreads
 
   return (
     <div className="space-y-3">
@@ -480,20 +532,28 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
               Conversations
             </h2>
             <p className="mt-1 text-sm text-zinc-600">
-              Compact thread list with cleaner source icons and less wasted space.
+              Compact thread list with cleaner source icons, quick filters, and keyword search.
             </p>
 
-            {(sourceFilter || viewFilter !== "all") ? (
+            {(sourceFilter || viewFilter !== "all" || searchQuery) ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                   Filters
                 </span>
 
-                {sourceFilter ? <SourceMiniBadge source={sourceFilter} /> : null}
+                {sourceFilter ? (
+                  <SourceMiniBadge source={sourceFilter} businessLabel="Furlads" />
+                ) : null}
 
                 {viewFilter !== "all" ? (
                   <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
                     {getReadableViewName(viewFilter)}
+                  </span>
+                ) : null}
+
+                {searchQuery ? (
+                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                    Search: {searchQuery}
                   </span>
                 ) : null}
               </div>
@@ -501,7 +561,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {sourceFilter || viewFilter !== "all" ? (
+            {(sourceFilter || viewFilter !== "all" || searchQuery) ? (
               <Link
                 href="/admin/inbox"
                 className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800"
@@ -518,6 +578,28 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
             </Link>
           </div>
         </div>
+
+        <form method="GET" className="mt-4">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {sourceFilter ? <input type="hidden" name="source" value={sourceFilter} /> : null}
+            {viewFilter !== "all" ? <input type="hidden" name="view" value={viewFilter} /> : null}
+
+            <input
+              type="text"
+              name="q"
+              defaultValue={searchQuery}
+              placeholder="Search name, email, phone, message text, customer or job..."
+              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-500"
+            />
+
+            <button
+              type="submit"
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+            >
+              Search
+            </button>
+          </div>
+        </form>
       </section>
 
       {!databaseReady && (
@@ -537,26 +619,30 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
       <section className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         <SummaryCard
           label="Main threads"
-          value={sourceFilteredThreads.length}
-          href={buildInboxHref({ source: sourceFilter, view: "all" })}
+          value={allThreads.length}
+          href={buildInboxHref({ source: sourceFilter, view: "all", q: searchQuery })}
           active={viewFilter === "all"}
         />
         <SummaryCard
           label="Needs reply"
           value={unreadThreads.length}
-          href={buildInboxHref({ source: sourceFilter, view: "needs-reply" })}
+          href={buildInboxHref({ source: sourceFilter, view: "needs-reply", q: searchQuery })}
           active={viewFilter === "needs-reply"}
         />
         <SummaryCard
           label="Furlads"
           value={furladsThreads.length}
-          href={buildInboxHref({ source: sourceFilter, view: "furlads" })}
+          href={buildInboxHref({ source: sourceFilter, view: "furlads", q: searchQuery })}
           active={viewFilter === "furlads"}
         />
         <SummaryCard
           label="Three Counties"
           value={threeCountiesThreads.length}
-          href={buildInboxHref({ source: sourceFilter, view: "three-counties" })}
+          href={buildInboxHref({
+            source: sourceFilter,
+            view: "three-counties",
+            q: searchQuery,
+          })}
           active={viewFilter === "three-counties"}
         />
       </section>
@@ -576,7 +662,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
         {!databaseReady ? null : threads.length === 0 ? (
           <div className="p-4">
             <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
-              {sourceFilter || viewFilter !== "all"
+              {sourceFilter || viewFilter !== "all" || searchQuery
                 ? "No inbox threads match the current filters yet."
                 : "No inbox threads yet."}
             </div>
@@ -633,7 +719,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <SourceMiniBadge source={source} />
+                        <SourceMiniBadge source={source} businessLabel={thread.businessLabel} />
                         <BusinessBadge label={thread.businessLabel} />
                         <ThreadStatusPill status={thread.latestStatus} />
 
