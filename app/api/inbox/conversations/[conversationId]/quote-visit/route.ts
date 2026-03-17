@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 
+const TREV_QUOTE_DEFAULT_SLOTS = ["11:00", "12:00", "13:00"]
+
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : ""
 }
@@ -71,6 +73,128 @@ async function findTrevWorkers() {
   })
 }
 
+async function resolveTrevQuoteVisitSchedule(params: {
+  visitDate: Date
+  startTime: string | null
+  allowQuoteTimeOverride: boolean
+  trevWorkerIds: number[]
+}) {
+  const { visitDate, startTime, allowQuoteTimeOverride, trevWorkerIds } = params
+
+  if (allowQuoteTimeOverride && !startTime) {
+    return {
+      error: NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Override was enabled but no manual startTime was provided for this Trev quote visit.",
+        },
+        { status: 400 }
+      ),
+    }
+  }
+
+  const dayStart = startOfLondonDayUtc(visitDate)
+  const dayEnd = nextLondonDayUtc(visitDate)
+
+  const existingTrevQuoteJobs = await prisma.job.findMany({
+    where: {
+      jobType: {
+        equals: "Quote",
+        mode: "insensitive",
+      },
+      visitDate: {
+        gte: dayStart,
+        lt: dayEnd,
+      },
+      assignments: {
+        some: {
+          workerId: {
+            in: trevWorkerIds,
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+      startTime: true,
+    },
+  })
+
+  if (existingTrevQuoteJobs.length >= 3) {
+    return {
+      error: NextResponse.json(
+        {
+          ok: false,
+          error: "Trev already has 3 quote visits booked for that day.",
+        },
+        { status: 400 }
+      ),
+    }
+  }
+
+  const takenTimes = new Set(
+    existingTrevQuoteJobs
+      .map((job) => cleanString(job.startTime))
+      .filter(Boolean)
+  )
+
+  let resolvedStartTime = startTime
+
+  if (!resolvedStartTime) {
+    const nextFreeDefaultSlot = TREV_QUOTE_DEFAULT_SLOTS.find(
+      (slot) => !takenTimes.has(slot)
+    )
+
+    if (!nextFreeDefaultSlot) {
+      return {
+        error: NextResponse.json(
+          {
+            ok: false,
+            error:
+              "No Trev quote slots are left for that day. Available default slots are 11:00, 12:00 and 13:00 only.",
+          },
+          { status: 400 }
+        ),
+      }
+    }
+
+    resolvedStartTime = nextFreeDefaultSlot
+  }
+
+  if (
+    !allowQuoteTimeOverride &&
+    !TREV_QUOTE_DEFAULT_SLOTS.includes(resolvedStartTime)
+  ) {
+    return {
+      error: NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Trev quote visits can only be booked at 11:00, 12:00 or 13:00 unless override is enabled.",
+        },
+        { status: 400 }
+      ),
+    }
+  }
+
+  if (takenTimes.has(resolvedStartTime)) {
+    return {
+      error: NextResponse.json(
+        {
+          ok: false,
+          error: "Trev already has a quote visit booked at that time.",
+        },
+        { status: 400 }
+      ),
+    }
+  }
+
+  return {
+    startTime: resolvedStartTime,
+  }
+}
+
 export async function POST(
   req: Request,
   { params }: { params: { conversationId: string } }
@@ -80,7 +204,7 @@ export async function POST(
     const body = await req.json().catch(() => ({}))
 
     const visitDateRaw = cleanString(body.visitDate)
-    const startTime = cleanString(body.startTime)
+    const requestedStartTimeRaw = cleanString(body.startTime)
     const notes = cleanString(body.notes)
     const allowQuoteTimeOverride = isTrue(body.allowQuoteTimeOverride)
 
@@ -98,7 +222,7 @@ export async function POST(
       )
     }
 
-    if (!isValidHHMM(startTime)) {
+    if (requestedStartTimeRaw && !isValidHHMM(requestedStartTimeRaw)) {
       return NextResponse.json(
         { ok: false, error: "startTime must be HH:MM." },
         { status: 400 }
@@ -136,69 +260,19 @@ export async function POST(
 
     const trevWorkerIds = trevWorkers.map((worker) => worker.id)
     const visitDate = new Date(`${visitDateRaw}T00:00:00.000Z`)
-    const dayStart = startOfLondonDayUtc(visitDate)
-    const dayEnd = nextLondonDayUtc(visitDate)
 
-    const allowedDefaultSlots = ["11:00", "12:00", "13:00"]
-
-    if (!allowQuoteTimeOverride && !allowedDefaultSlots.includes(startTime)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Trev quote visits can only be booked at 11:00, 12:00 or 13:00 unless override is enabled.",
-        },
-        { status: 400 }
-      )
-    }
-
-    const existingTrevQuoteJobs = await prisma.job.findMany({
-      where: {
-        jobType: {
-          equals: "Quote",
-          mode: "insensitive",
-        },
-        visitDate: {
-          gte: dayStart,
-          lt: dayEnd,
-        },
-        assignments: {
-          some: {
-            workerId: {
-              in: trevWorkerIds,
-            },
-          },
-        },
-      },
-      select: {
-        id: true,
-        startTime: true,
-      },
+    const resolvedQuoteSchedule = await resolveTrevQuoteVisitSchedule({
+      visitDate,
+      startTime: requestedStartTimeRaw || null,
+      allowQuoteTimeOverride,
+      trevWorkerIds,
     })
 
-    if (existingTrevQuoteJobs.length >= 3) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Trev already has 3 quote visits booked for that day.",
-        },
-        { status: 400 }
-      )
+    if ("error" in resolvedQuoteSchedule) {
+      return resolvedQuoteSchedule.error
     }
 
-    const exactTimeTaken = existingTrevQuoteJobs.some(
-      (job) => cleanString(job.startTime) === startTime
-    )
-
-    if (exactTimeTaken) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Trev already has a quote visit booked at that time.",
-        },
-        { status: 400 }
-      )
-    }
+    const resolvedStartTime = resolvedQuoteSchedule.startTime
 
     const latestMessage = conversation.messages[0]
     const conversationContactRef = cleanString(conversation.contactRef)
@@ -221,8 +295,8 @@ export async function POST(
       where: derivedEmail
         ? { email: derivedEmail }
         : derivedPhone
-        ? { phone: derivedPhone }
-        : { name: derivedName },
+          ? { phone: derivedPhone }
+          : { name: derivedName },
     })
 
     if (!customer) {
@@ -271,7 +345,7 @@ export async function POST(
         notes: finalNotes,
         jobType: "Quote",
         visitDate,
-        startTime,
+        startTime: resolvedStartTime,
         durationMinutes: 60,
         status: "todo",
         assignments: {
