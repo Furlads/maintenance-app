@@ -13,6 +13,18 @@ type Customer = {
   createdAt: string
 }
 
+function formatDate(value: string) {
+  try {
+    return new Date(value).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    })
+  } catch {
+    return value
+  }
+}
+
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,216 +66,521 @@ export default function CustomersPage() {
     })
   }, [customers, search])
 
+  const customersWithPhone = customers.filter((customer) => customer.phone).length
+  const customersWithAddress = customers.filter(
+    (customer) => customer.address || customer.postcode
+  ).length
+
   return (
     <main
       style={{
-        padding: 20,
-        fontFamily: 'sans-serif',
-        maxWidth: 860,
-        margin: '0 auto'
+        minHeight: '100vh',
+        background: '#f5f5f5',
+        padding: 16,
+        fontFamily: 'sans-serif'
       }}
     >
       <div
         style={{
-          marginBottom: 20,
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12
+          maxWidth: 980,
+          margin: '0 auto'
         }}
       >
-        <div>
-          <h1 style={{ fontSize: 30, margin: '0 0 6px 0' }}>Customers</h1>
-          <p style={{ margin: 0, color: '#666', fontSize: 15 }}>
-            View customer details, contact info, notes and job history.
-          </p>
-        </div>
-
-        <a
-          href="/customers/add"
+        <section
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '12px 16px',
-            borderRadius: 10,
-            border: '1px solid #111',
-            textDecoration: 'none',
-            color: '#111',
-            fontWeight: 600,
-            background: '#fff',
-            minHeight: 44
+            background: 'linear-gradient(135deg, #111 0%, #1e1e1e 100%)',
+            color: '#fff',
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 18,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+            border: '1px solid #222'
           }}
         >
-          Add Customer
-        </a>
-      </div>
-
-      <div
-        style={{
-          marginBottom: 20,
-          border: '1px solid #ddd',
-          borderRadius: 12,
-          background: '#fff',
-          padding: 14
-        }}
-      >
-        <label
-          htmlFor="customer-search"
-          style={{
-            display: 'block',
-            fontSize: 13,
-            fontWeight: 600,
-            marginBottom: 8,
-            color: '#444'
-          }}
-        >
-          Search customers
-        </label>
-
-        <input
-          id="customer-search"
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name, phone, address, postcode or notes"
-          style={{
-            width: '100%',
-            padding: '12px 14px',
-            borderRadius: 10,
-            border: '1px solid #ccc',
-            fontSize: 16,
-            outline: 'none',
-            boxSizing: 'border-box'
-          }}
-        />
-      </div>
-
-      <div style={{ marginBottom: 16, color: '#555', fontSize: 14 }}>
-        {!loading && (
-          <>
-            {filteredCustomers.length} customer
-            {filteredCustomers.length === 1 ? '' : 's'} shown
-          </>
-        )}
-      </div>
-
-      {loading && (
-        <div
-          style={{
-            border: '1px solid #ddd',
-            borderRadius: 12,
-            padding: 16,
-            background: '#fff'
-          }}
-        >
-          Loading customers...
-        </div>
-      )}
-
-      {!loading && filteredCustomers.length === 0 && (
-        <div
-          style={{
-            border: '1px solid #ddd',
-            borderRadius: 12,
-            padding: 18,
-            background: '#fff'
-          }}
-        >
-          {search.trim() ? 'No matching customers found.' : 'No customers found.'}
-        </div>
-      )}
-
-      {!loading &&
-        filteredCustomers.map((customer) => (
-          <a
-            key={customer.id}
-            href={`/customers/${customer.id}`}
+          <div
             style={{
-              display: 'block',
-              padding: 18,
-              border: '1px solid #ddd',
-              borderRadius: 14,
-              marginBottom: 14,
-              textDecoration: 'none',
-              color: 'inherit',
-              background: '#fff',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 16,
+              flexWrap: 'wrap'
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(255, 204, 0, 0.14)',
+                  color: '#ffcc00',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: 0.3,
+                  marginBottom: 12
+                }}
+              >
+                CUSTOMER DATABASE
+              </div>
+
+              <h1
+                style={{
+                  fontSize: 32,
+                  lineHeight: 1.1,
+                  margin: '0 0 8px 0'
+                }}
+              >
+                Customers
+              </h1>
+
+              <p
+                style={{
+                  margin: 0,
+                  color: 'rgba(255,255,255,0.78)',
+                  fontSize: 15,
+                  maxWidth: 560
+                }}
+              >
+                View customer records, contact details, addresses and notes in one
+                place.
+              </p>
+            </div>
+
+            <a
+              href="/customers/add"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '13px 16px',
+                borderRadius: 12,
+                textDecoration: 'none',
+                background: '#ffcc00',
+                color: '#111',
+                fontWeight: 800,
+                minHeight: 46,
+                boxShadow: '0 6px 18px rgba(255, 204, 0, 0.22)'
+              }}
+            >
+              + Add Customer
+            </a>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: 12,
+              marginTop: 18
             }}
           >
             <div
               style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                gap: 12,
-                flexWrap: 'wrap',
-                marginBottom: 10
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 14,
+                padding: 14
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 22, lineHeight: 1.2 }}>
-                {customer.name}
-              </h2>
-
-              {customer.postcode && (
-                <div
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: 999,
-                    background: '#f4f4f4',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: '#444'
-                  }}
-                >
-                  {customer.postcode}
-                </div>
-              )}
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 6 }}>
+                Total customers
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 800 }}>{customers.length}</div>
             </div>
 
             <div
               style={{
-                display: 'grid',
-                gap: 8
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 14,
+                padding: 14
               }}
             >
-              {customer.phone && (
-                <div style={{ fontSize: 15 }}>
-                  <strong>Phone:</strong> {customer.phone}
-                </div>
-              )}
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 6 }}>
+                With phone number
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 800 }}>{customersWithPhone}</div>
+            </div>
 
-              {customer.email && (
-                <div style={{ fontSize: 15 }}>
-                  <strong>Email:</strong> {customer.email}
-                </div>
-              )}
+            <div
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 14,
+                padding: 14
+              }}
+            >
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 6 }}>
+                With address/postcode
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 800 }}>{customersWithAddress}</div>
+            </div>
+          </div>
+        </section>
 
-              {customer.address && (
-                <div style={{ fontSize: 15, whiteSpace: 'pre-line' }}>
-                  <strong>Address:</strong> {customer.address}
-                </div>
-              )}
+        <section
+          style={{
+            background: '#fff',
+            border: '1px solid #e7e7e7',
+            borderRadius: 18,
+            padding: 16,
+            marginBottom: 18,
+            boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr auto',
+              gap: 12,
+              alignItems: 'end'
+            }}
+          >
+            <div>
+              <label
+                htmlFor="customer-search"
+                style={{
+                  display: 'block',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: '#444',
+                  marginBottom: 8
+                }}
+              >
+                Search customers
+              </label>
 
-              {customer.notes && (
-                <div
-                  style={{
-                    fontSize: 14,
-                    color: '#555',
-                    background: '#fafafa',
-                    border: '1px solid #eee',
-                    borderRadius: 10,
-                    padding: 10,
-                    whiteSpace: 'pre-line'
-                  }}
-                >
-                  <strong style={{ color: '#333' }}>Notes:</strong> {customer.notes}
-                </div>
+              <input
+                id="customer-search"
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, phone, email, address, postcode or notes"
+                style={{
+                  width: '100%',
+                  padding: '14px 16px',
+                  borderRadius: 12,
+                  border: '1px solid #d6d6d6',
+                  fontSize: 16,
+                  boxSizing: 'border-box',
+                  background: '#fcfcfc',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                minWidth: 120,
+                textAlign: 'right',
+                fontSize: 14,
+                fontWeight: 700,
+                color: '#555'
+              }}
+            >
+              {!loading && (
+                <>
+                  {filteredCustomers.length} result
+                  {filteredCustomers.length === 1 ? '' : 's'}
+                </>
               )}
             </div>
-          </a>
-        ))}
+          </div>
+        </section>
+
+        {loading && (
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid #e7e7e7',
+              borderRadius: 18,
+              padding: 20,
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+            }}
+          >
+            Loading customers...
+          </div>
+        )}
+
+        {!loading && filteredCustomers.length === 0 && (
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid #e7e7e7',
+              borderRadius: 18,
+              padding: 24,
+              textAlign: 'center',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+            }}
+          >
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                marginBottom: 8,
+                color: '#222'
+              }}
+            >
+              {search.trim() ? 'No matching customers found' : 'No customers yet'}
+            </div>
+
+            <div style={{ color: '#666', fontSize: 14, marginBottom: 16 }}>
+              {search.trim()
+                ? 'Try a different search term.'
+                : 'Add your first customer to get started.'}
+            </div>
+
+            {!search.trim() && (
+              <a
+                href="/customers/add"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '12px 16px',
+                  borderRadius: 12,
+                  textDecoration: 'none',
+                  background: '#111',
+                  color: '#fff',
+                  fontWeight: 700
+                }}
+              >
+                Add Customer
+              </a>
+            )}
+          </div>
+        )}
+
+        {!loading && filteredCustomers.length > 0 && (
+          <div
+            style={{
+              display: 'grid',
+              gap: 14
+            }}
+          >
+            {filteredCustomers.map((customer) => (
+              <a
+                key={customer.id}
+                href={`/customers/${customer.id}`}
+                style={{
+                  display: 'block',
+                  textDecoration: 'none',
+                  color: 'inherit',
+                  background: '#fff',
+                  border: '1px solid #e6e6e6',
+                  borderRadius: 18,
+                  padding: 18,
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                    marginBottom: 14
+                  }}
+                >
+                  <div>
+                    <h2
+                      style={{
+                        margin: '0 0 6px 0',
+                        fontSize: 22,
+                        lineHeight: 1.15,
+                        color: '#111'
+                      }}
+                    >
+                      {customer.name}
+                    </h2>
+
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: '#777'
+                      }}
+                    >
+                      Added {formatDate(customer.createdAt)}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 8,
+                      flexWrap: 'wrap'
+                    }}
+                  >
+                    {customer.postcode && (
+                      <div
+                        style={{
+                          padding: '7px 10px',
+                          borderRadius: 999,
+                          background: '#fff8d9',
+                          border: '1px solid #ffe27a',
+                          fontSize: 12,
+                          fontWeight: 800,
+                          color: '#6a5600'
+                        }}
+                      >
+                        {customer.postcode}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        padding: '7px 10px',
+                        borderRadius: 999,
+                        background: '#f4f4f4',
+                        border: '1px solid #e3e3e3',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#555'
+                      }}
+                    >
+                      View customer
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: 12,
+                    marginBottom: customer.notes ? 14 : 0
+                  }}
+                >
+                  <div
+                    style={{
+                      background: '#fafafa',
+                      border: '1px solid #efefef',
+                      borderRadius: 12,
+                      padding: 12
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#777',
+                        marginBottom: 6,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.3
+                      }}
+                    >
+                      Phone
+                    </div>
+                    <div style={{ fontSize: 15, color: '#222' }}>
+                      {customer.phone || 'Not added'}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#fafafa',
+                      border: '1px solid #efefef',
+                      borderRadius: 12,
+                      padding: 12
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#777',
+                        marginBottom: 6,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.3
+                      }}
+                    >
+                      Email
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        color: '#222',
+                        wordBreak: 'break-word'
+                      }}
+                    >
+                      {customer.email || 'Not added'}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#fafafa',
+                      border: '1px solid #efefef',
+                      borderRadius: 12,
+                      padding: 12,
+                      gridColumn: '1 / -1'
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#777',
+                        marginBottom: 6,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.3
+                      }}
+                    >
+                      Address
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        color: '#222',
+                        whiteSpace: 'pre-line'
+                      }}
+                    >
+                      {customer.address || 'Not added'}
+                    </div>
+                  </div>
+                </div>
+
+                {customer.notes && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      background: '#fffdf4',
+                      border: '1px solid #f3e6a8',
+                      borderRadius: 12,
+                      padding: 12
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#7a6700',
+                        marginBottom: 6,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.3
+                      }}
+                    >
+                      Notes
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        color: '#3f3a22',
+                        whiteSpace: 'pre-line'
+                      }}
+                    >
+                      {customer.notes}
+                    </div>
+                  </div>
+                )}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
     </main>
   )
 }
