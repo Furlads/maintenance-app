@@ -87,16 +87,54 @@ export default function CustomerPage() {
 
   if (loading) {
     return (
-      <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 900, margin: '0 auto' }}>
-        <p>Loading...</p>
+      <main
+        style={{
+          minHeight: '100vh',
+          background: '#f5f5f5',
+          padding: 16,
+          fontFamily: 'sans-serif'
+        }}
+      >
+        <div style={{ maxWidth: 980, margin: '0 auto' }}>
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid #e6e6e6',
+              borderRadius: 18,
+              padding: 20,
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+            }}
+          >
+            <p style={{ margin: 0 }}>Loading...</p>
+          </div>
+        </div>
       </main>
     )
   }
 
   if (!customer) {
     return (
-      <main style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 900, margin: '0 auto' }}>
-        <p>Customer not found</p>
+      <main
+        style={{
+          minHeight: '100vh',
+          background: '#f5f5f5',
+          padding: 16,
+          fontFamily: 'sans-serif'
+        }}
+      >
+        <div style={{ maxWidth: 980, margin: '0 auto' }}>
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid #e6e6e6',
+              borderRadius: 18,
+              padding: 20,
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+            }}
+          >
+            <p style={{ margin: 0 }}>Customer not found</p>
+          </div>
+        </div>
       </main>
     )
   }
@@ -106,123 +144,114 @@ export default function CustomerPage() {
   return (
     <main
       style={{
-        padding: 20,
-        fontFamily: 'sans-serif',
-        maxWidth: 900,
-        margin: '0 auto'
+        minHeight: '100vh',
+        background: '#f5f5f5',
+        padding: 16,
+        fontFamily: 'sans-serif'
       }}
     >
-      <div style={{ marginBottom: 14 }}>
-        <a
-          href="/customers"
-          style={{
-            display: 'inline-block',
-            textDecoration: 'none',
-            color: '#444',
-            fontSize: 14,
-            marginBottom: 12
-          }}
-        >
-          ← Back to customers
-        </a>
-      </div>
-
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: 12,
-          marginBottom: 20,
-          flexWrap: 'wrap'
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 30, margin: '0 0 6px 0' }}>{customer.name}</h1>
-          <p style={{ margin: 0, color: '#666', fontSize: 14 }}>
-            Customer since {formatDate(customer.createdAt)}
-          </p>
-        </div>
-
-        <WorkerMenu />
-      </div>
-
-      <div
-        style={{
-          display: 'grid',
-          gap: 20,
-          marginBottom: 24
+          maxWidth: 980,
+          margin: '0 auto'
         }}
       >
         <section
           style={{
-            border: '1px solid #ddd',
+            background: 'linear-gradient(135deg, #111 0%, #1e1e1e 100%)',
+            color: '#fff',
+            borderRadius: 20,
             padding: 20,
-            borderRadius: 14,
-            background: '#fff'
+            marginBottom: 18,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+            border: '1px solid #222'
           }}
         >
-          <h2 style={{ fontSize: 20, margin: '0 0 16px 0' }}>Customer Details</h2>
+          <div style={{ marginBottom: 14 }}>
+            <a
+              href="/customers"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                textDecoration: 'none',
+                color: 'rgba(255,255,255,0.78)',
+                fontSize: 14,
+                fontWeight: 600
+              }}
+            >
+              ← Back to customers
+            </a>
+          </div>
 
-          <div style={{ display: 'grid', gap: 12 }}>
-            {customer.phone && (
-              <div style={{ fontSize: 15 }}>
-                <strong>Phone:</strong> {customer.phone}
-              </div>
-            )}
-
-            {customer.email && (
-              <div style={{ fontSize: 15 }}>
-                <strong>Email:</strong> {customer.email}
-              </div>
-            )}
-
-            {customer.address && (
-              <div style={{ fontSize: 15, whiteSpace: 'pre-line' }}>
-                <strong>Address:</strong> {customer.address}
-              </div>
-            )}
-
-            {customer.postcode && (
-              <div style={{ fontSize: 15 }}>
-                <strong>Postcode:</strong> {customer.postcode}
-              </div>
-            )}
-
-            {customer.notes && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 16,
+              flexWrap: 'wrap'
+            }}
+          >
+            <div>
               <div
                 style={{
-                  marginTop: 4,
-                  padding: 12,
-                  borderRadius: 10,
-                  background: '#fafafa',
-                  border: '1px solid #eee',
-                  whiteSpace: 'pre-line',
-                  fontSize: 14
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(255, 204, 0, 0.14)',
+                  color: '#ffcc00',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: 0.3,
+                  marginBottom: 12
                 }}
               >
-                <strong>Notes:</strong> {customer.notes}
+                CUSTOMER PROFILE
               </div>
-            )}
 
-            {!customer.phone &&
-              !customer.email &&
-              !customer.address &&
-              !customer.postcode &&
-              !customer.notes && (
-                <p style={{ margin: 0, color: '#666' }}>
-                  No customer details saved yet.
-                </p>
-              )}
+              <h1
+                style={{
+                  fontSize: 32,
+                  lineHeight: 1.1,
+                  margin: '0 0 8px 0'
+                }}
+              >
+                {customer.name}
+              </h1>
+
+              <p
+                style={{
+                  margin: 0,
+                  color: 'rgba(255,255,255,0.78)',
+                  fontSize: 15
+                }}
+              >
+                Customer since {formatDate(customer.createdAt)}
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start'
+              }}
+            >
+              <WorkerMenu />
+            </div>
           </div>
         </section>
 
         <section
           style={{
-            border: '1px solid #ddd',
+            background: '#fff',
+            border: '1px solid #e7e7e7',
+            borderRadius: 18,
             padding: 16,
-            borderRadius: 14,
-            background: '#fff'
+            marginBottom: 18,
+            boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
           }}
         >
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -231,11 +260,11 @@ export default function CustomerPage() {
                 href={`tel:${customer.phone}`}
                 style={{
                   padding: '12px 16px',
-                  borderRadius: 10,
-                  border: '1px solid #ccc',
+                  borderRadius: 12,
+                  border: '1px solid #d8d8d8',
                   textDecoration: 'none',
                   color: '#111',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   background: '#fff'
                 }}
               >
@@ -248,11 +277,11 @@ export default function CustomerPage() {
                 href={`mailto:${customer.email}`}
                 style={{
                   padding: '12px 16px',
-                  borderRadius: 10,
-                  border: '1px solid #ccc',
+                  borderRadius: 12,
+                  border: '1px solid #d8d8d8',
                   textDecoration: 'none',
                   color: '#111',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   background: '#fff'
                 }}
               >
@@ -267,11 +296,11 @@ export default function CustomerPage() {
                 rel="noreferrer"
                 style={{
                   padding: '12px 16px',
-                  borderRadius: 10,
-                  border: '1px solid #ccc',
+                  borderRadius: 12,
+                  border: '1px solid #d8d8d8',
                   textDecoration: 'none',
                   color: '#111',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   background: '#fff'
                 }}
               >
@@ -283,121 +312,354 @@ export default function CustomerPage() {
               href={`/jobs/add?customerId=${customer.id}`}
               style={{
                 padding: '12px 16px',
-                borderRadius: 10,
+                borderRadius: 12,
                 border: '1px solid #111',
                 textDecoration: 'none',
-                color: '#fff',
-                fontWeight: 600,
-                background: '#111'
+                color: '#111',
+                fontWeight: 800,
+                background: '#ffcc00',
+                boxShadow: '0 6px 18px rgba(255, 204, 0, 0.18)'
               }}
             >
-              Add Job
+              + Add Job
             </a>
           </div>
         </section>
-      </div>
 
-      <section
-        style={{
-          border: '1px solid #ddd',
-          borderRadius: 14,
-          padding: 20,
-          background: '#fff',
-          marginBottom: 24
-        }}
-      >
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 12,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            marginBottom: 16
+            display: 'grid',
+            gap: 18,
+            marginBottom: 24
           }}
         >
-          <h2 style={{ fontSize: 22, margin: 0 }}>Jobs</h2>
-          <div style={{ fontSize: 14, color: '#666' }}>
-            {jobs.length} job{jobs.length === 1 ? '' : 's'}
-          </div>
-        </div>
-
-        {jobs.length === 0 && <p style={{ margin: 0 }}>No jobs yet for this customer.</p>}
-
-        {jobs.map((job) => (
-          <div
-            key={job.id}
+          <section
             style={{
-              border: '1px solid #e6e6e6',
-              padding: 16,
-              borderRadius: 12,
-              marginBottom: 12,
-              background: '#fafafa'
+              border: '1px solid #e7e7e7',
+              padding: 20,
+              borderRadius: 18,
+              background: '#fff',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
             }}
           >
             <div
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'flex-start',
                 gap: 12,
+                alignItems: 'center',
                 flexWrap: 'wrap',
-                marginBottom: 8
+                marginBottom: 16
               }}
             >
-              <h3 style={{ margin: 0, fontSize: 18 }}>{job.title}</h3>
+              <h2 style={{ fontSize: 22, margin: 0 }}>Customer Details</h2>
+
+              {customer.postcode && (
+                <div
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: 999,
+                    background: '#fff8d9',
+                    border: '1px solid #ffe27a',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: '#6a5600'
+                  }}
+                >
+                  {customer.postcode}
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 12
+              }}
+            >
+              <div
+                style={{
+                  background: '#fafafa',
+                  border: '1px solid #efefef',
+                  borderRadius: 12,
+                  padding: 12
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#777',
+                    marginBottom: 6,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.3
+                  }}
+                >
+                  Phone
+                </div>
+                <div style={{ fontSize: 15, color: '#222' }}>
+                  {customer.phone || 'Not added'}
+                </div>
+              </div>
 
               <div
                 style={{
-                  padding: '6px 10px',
-                  borderRadius: 999,
-                  background: '#fff',
-                  border: '1px solid #ddd',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: '#444'
+                  background: '#fafafa',
+                  border: '1px solid #efefef',
+                  borderRadius: 12,
+                  padding: 12
                 }}
               >
-                {formatStatus(job.status)}
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#777',
+                    marginBottom: 6,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.3
+                  }}
+                >
+                  Email
+                </div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    color: '#222',
+                    wordBreak: 'break-word'
+                  }}
+                >
+                  {customer.email || 'Not added'}
+                </div>
               </div>
-            </div>
 
-            {job.address && (
-              <p style={{ margin: '4px 0', whiteSpace: 'pre-line' }}>
-                <strong>Address:</strong> {job.address}
-              </p>
-            )}
-
-            {job.notes && (
               <div
                 style={{
-                  marginTop: 8,
-                  whiteSpace: 'pre-line',
-                  fontSize: 14,
-                  color: '#444'
+                  background: '#fafafa',
+                  border: '1px solid #efefef',
+                  borderRadius: 12,
+                  padding: 12,
+                  gridColumn: '1 / -1'
                 }}
               >
-                <strong>Notes:</strong> {job.notes}
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#777',
+                    marginBottom: 6,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.3
+                  }}
+                >
+                  Address
+                </div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    color: '#222',
+                    whiteSpace: 'pre-line'
+                  }}
+                >
+                  {customer.address || 'Not added'}
+                </div>
+              </div>
+            </div>
+
+            {customer.notes && (
+              <div
+                style={{
+                  marginTop: 14,
+                  background: '#fffdf4',
+                  border: '1px solid #f3e6a8',
+                  borderRadius: 12,
+                  padding: 12
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#7a6700',
+                    marginBottom: 6,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.3
+                  }}
+                >
+                  Notes
+                </div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    color: '#3f3a22',
+                    whiteSpace: 'pre-line'
+                  }}
+                >
+                  {customer.notes}
+                </div>
               </div>
             )}
 
-            <div style={{ marginTop: 10, fontSize: 13, color: '#666' }}>
-              Created {formatDate(job.createdAt)}
-            </div>
-          </div>
-        ))}
-      </section>
+            {!customer.phone &&
+              !customer.email &&
+              !customer.address &&
+              !customer.postcode &&
+              !customer.notes && (
+                <p style={{ margin: '12px 0 0 0', color: '#666' }}>
+                  No customer details saved yet.
+                </p>
+              )}
+          </section>
 
-      <section
-        style={{
-          border: '1px solid #ddd',
-          borderRadius: 14,
-          padding: 20,
-          background: '#fff'
-        }}
-      >
-        <CustomerHistory customerId={customer.id} />
-      </section>
+          <section
+            style={{
+              border: '1px solid #e7e7e7',
+              borderRadius: 18,
+              padding: 20,
+              background: '#fff',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+              marginBottom: 24
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 12,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                marginBottom: 16
+              }}
+            >
+              <h2 style={{ fontSize: 22, margin: 0 }}>Jobs</h2>
+              <div style={{ fontSize: 14, color: '#666', fontWeight: 700 }}>
+                {jobs.length} job{jobs.length === 1 ? '' : 's'}
+              </div>
+            </div>
+
+            {jobs.length === 0 && <p style={{ margin: 0 }}>No jobs yet for this customer.</p>}
+
+            {jobs.map((job) => (
+              <div
+                key={job.id}
+                style={{
+                  border: '1px solid #e6e6e6',
+                  padding: 16,
+                  borderRadius: 14,
+                  marginBottom: 12,
+                  background: '#fafafa'
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                    marginBottom: 8
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 18, color: '#111' }}>{job.title}</h3>
+
+                  <div
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 999,
+                      background: '#fff',
+                      border: '1px solid #ddd',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: '#444'
+                    }}
+                  >
+                    {formatStatus(job.status)}
+                  </div>
+                </div>
+
+                {job.address && (
+                  <div
+                    style={{
+                      background: '#fff',
+                      border: '1px solid #ececec',
+                      borderRadius: 10,
+                      padding: 10,
+                      marginTop: 8
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#777',
+                        marginBottom: 6,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.3
+                      }}
+                    >
+                      Address
+                    </div>
+                    <div style={{ whiteSpace: 'pre-line', fontSize: 14, color: '#222' }}>
+                      {job.address}
+                    </div>
+                  </div>
+                )}
+
+                {job.notes && (
+                  <div
+                    style={{
+                      background: '#fff',
+                      border: '1px solid #ececec',
+                      borderRadius: 10,
+                      padding: 10,
+                      marginTop: 8
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#777',
+                        marginBottom: 6,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.3
+                      }}
+                    >
+                      Notes
+                    </div>
+                    <div
+                      style={{
+                        whiteSpace: 'pre-line',
+                        fontSize: 14,
+                        color: '#444'
+                      }}
+                    >
+                      {job.notes}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ marginTop: 10, fontSize: 13, color: '#666' }}>
+                  Created {formatDate(job.createdAt)}
+                </div>
+              </div>
+            ))}
+          </section>
+        </div>
+
+        <section
+          style={{
+            border: '1px solid #e7e7e7',
+            borderRadius: 18,
+            padding: 20,
+            background: '#fff',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+          }}
+        >
+          <CustomerHistory customerId={customer.id} />
+        </section>
+      </div>
     </main>
   )
 }
