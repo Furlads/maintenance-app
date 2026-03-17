@@ -74,11 +74,6 @@ export default function FacebookReplyComposer({
     await sendMessage(message)
   }
 
-  async function handleQuickSend(text: string) {
-    setMessage(text)
-    await sendMessage(text)
-  }
-
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
       <div className="mb-3">
@@ -95,24 +90,15 @@ export default function FacebookReplyComposer({
           </p>
           <div className="flex flex-wrap gap-2">
             {QUICK_REPLIES.map((reply) => (
-              <div key={reply} className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMessage(reply)}
-                  disabled={sending}
-                  className="rounded-full border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Fill
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickSend(reply)}
-                  disabled={sending}
-                  className="rounded-full bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Send now
-                </button>
-              </div>
+              <button
+                key={reply}
+                type="button"
+                onClick={() => setMessage(reply)}
+                disabled={sending}
+                className="rounded-full border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {reply}
+              </button>
             ))}
           </div>
         </div>

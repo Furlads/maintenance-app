@@ -8,6 +8,13 @@ type Props = {
   contactName?: string | null
 }
 
+const QUICK_REPLIES = [
+  "Thanks for your message — we’ll get back to you shortly.",
+  "What postcode is the job at please?",
+  "Can you send a few photos of the area please?",
+  "When would you like us to come out and have a look?",
+]
+
 export default function WhatsAppReplyComposer({
   conversationId,
   contactName,
@@ -18,8 +25,8 @@ export default function WhatsAppReplyComposer({
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
 
-  async function handleSend() {
-    const trimmed = message.trim()
+  async function sendMessage(text: string) {
+    const trimmed = text.trim()
 
     if (!trimmed) {
       setError("Please type a message first.")
@@ -50,9 +57,7 @@ export default function WhatsAppReplyComposer({
       }
 
       setMessage("")
-      setSuccess(
-        `Reply sent${contactName ? ` to ${contactName}` : ""}.`
-      )
+      setSuccess(`Reply sent${contactName ? ` to ${contactName}` : ""}.`)
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send reply.")
@@ -60,6 +65,10 @@ export default function WhatsAppReplyComposer({
     } finally {
       setSending(false)
     }
+  }
+
+  async function handleSend() {
+    await sendMessage(message)
   }
 
   return (
@@ -72,6 +81,25 @@ export default function WhatsAppReplyComposer({
       </div>
 
       <div className="space-y-3">
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Quick replies
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {QUICK_REPLIES.map((reply) => (
+              <button
+                key={reply}
+                type="button"
+                onClick={() => setMessage(reply)}
+                disabled={sending}
+                className="rounded-full border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {reply}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}

@@ -4,6 +4,7 @@ import SourceBadge from "@/components/admin/SourceBadge"
 import WhatsAppReplyComposer from "@/components/admin/WhatsAppReplyComposer"
 import FacebookReplyComposer from "@/components/admin/FacebookReplyComposer"
 import OutlookReplyComposer from "@/components/admin/OutlookReplyComposer"
+import CreateQuoteVisitFromInbox from "@/components/admin/CreateQuoteVisitFromInbox"
 import * as prismaModule from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -77,10 +78,7 @@ function isIncomingMessage(conversation: any, message: any) {
     return String(message?.senderName || "").toLowerCase() !== "furlads"
   }
 
-  if (
-    source === "furlads-email" ||
-    source === "threecounties-email"
-  ) {
+  if (source === "furlads-email" || source === "threecounties-email") {
     return String(message?.senderName || "").toLowerCase() !== "furlads"
   }
 
@@ -188,6 +186,11 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
           </div>
         </div>
       </section>
+
+      <CreateQuoteVisitFromInbox
+        conversationId={conversation.id}
+        contactName={conversation.contactName}
+      />
 
       <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="border-b border-zinc-200 px-4 py-3">
