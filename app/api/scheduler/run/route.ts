@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 
+const TREV_QUOTE_DEFAULT_SLOTS = ["11:00", "12:00", "13:00"]
+
 function timeToMinutes(time: string) {
   const [h, m] = time.split(":").map(Number)
   return h * 60 + m
@@ -15,6 +17,156 @@ function minutesToTime(mins: number) {
 function startOfToday() {
   const now = new Date()
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+}
+
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : ""
+}
+
+function isQuoteJobType(jobType: string | null | undefined) {
+  const value = cleanString(jobType).toLowerCase()
+  return value === "quote" || value === "quoted"
+}
+
+function isTrevWorker(worker: {
+  firstName: string | null
+  lastName: string | null
+  email?: string | null
+}) {
+  const first = cleanString(worker.firstName).toLowerCase()
+  const last = cleanString(worker.lastName).toLowerCase()
+  const email = cleanString(worker.email).toLowerCase()
+
+  const firstMatches = first === "trevor" || first === "trev"
+  const lastMatches = last.includes("fudger")
+  const emailMatches = email.includes("trevor.fudger")
+
+  return (firstMatches && lastMatches) || emailMatches
+}
+
+function sameUtcDay(a: Date, b: Date) {
+  return (
+    a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth() &&
+    a.getUTCDate() === b.getUTCDate()
+  )
+}
+
+async function assignJobToWorkerIfNeeded(jobId: number, workerId: number) {
+  const existingAssignment = await prisma.jobAssignment.findFirst({
+    where: {
+      jobId,
+      workerId,
+    },
+    select: {
+      id: true,
+    },
+  })
+
+  if (existingAssignment) {
+    return
+  }
+
+  await prisma.jobAssignment.create({
+    data: {
+      jobId,
+      workerId,
+    },
+  })
+}
+
+async function tryScheduleTrevQuoteJob(params: {
+  jobId: number
+  duration: number
+  worker: {
+    id: number
+    firstName: string | null
+    lastName: string | null
+    email?: string | null
+  }
+  existingAssignedWorkerIds: number[]
+  today: Date
+}) {
+  const { jobId, duration, worker, existingAssignedWorkerIds, today } = params
+
+  if (!isTrevWorker(worker)) {
+    return false
+  }
+
+  if (duration > 60) {
+    return false
+  }
+
+  for (let dayOffset = 0; dayOffset < 30; dayOffset++) {
+    const scheduledDate = new Date(today)
+    scheduledDate.setDate(today.getDate() + dayOffset)
+
+    const dayStart = new Date(scheduledDate)
+    dayStart.setHours(0, 0, 0, 0)
+
+    const dayEnd = new Date(scheduledDate)
+    dayEnd.setHours(23, 59, 59, 999)
+
+    const trevQuoteJobsForDay = await prisma.job.findMany({
+      where: {
+        id: {
+          not: jobId,
+        },
+        visitDate: {
+          gte: dayStart,
+          lte: dayEnd,
+        },
+        jobType: {
+          equals: "Quote",
+          mode: "insensitive",
+        },
+        assignments: {
+          some: {
+            workerId: worker.id,
+          },
+        },
+      },
+      select: {
+        id: true,
+        startTime: true,
+      },
+    })
+
+    if (trevQuoteJobsForDay.length >= 3) {
+      continue
+    }
+
+    const takenSlots = new Set(
+      trevQuoteJobsForDay
+        .map((job) => cleanString(job.startTime))
+        .filter(Boolean)
+    )
+
+    const nextFreeSlot = TREV_QUOTE_DEFAULT_SLOTS.find(
+      (slot) => !takenSlots.has(slot)
+    )
+
+    if (!nextFreeSlot) {
+      continue
+    }
+
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        visitDate: new Date(scheduledDate),
+        startTime: nextFreeSlot,
+        status: "todo",
+      },
+    })
+
+    if (!existingAssignedWorkerIds.includes(worker.id)) {
+      await assignJobToWorkerIfNeeded(jobId, worker.id)
+    }
+
+    return true
+  }
+
+  return false
 }
 
 export async function POST() {
@@ -61,9 +213,31 @@ export async function POST() {
           ? job.durationMinutes
           : 120
 
+      const existingAssignedWorkerIds = job.assignments.map(
+        (assignment) => assignment.workerId
+      )
+
       let scheduled = false
 
       for (const worker of workers) {
+        if (isQuoteJobType(job.jobType) && isTrevWorker(worker)) {
+          const trevQuoteScheduled = await tryScheduleTrevQuoteJob({
+            jobId: job.id,
+            duration,
+            worker,
+            existingAssignedWorkerIds,
+            today,
+          })
+
+          if (trevQuoteScheduled) {
+            scheduled = true
+            scheduledCount += 1
+            break
+          }
+
+          continue
+        }
+
         const existingJobs = await prisma.job.findMany({
           where: {
             assignments: {
@@ -85,22 +259,14 @@ export async function POST() {
           ],
         })
 
-        let scheduledDate = new Date(today)
-
         for (let dayOffset = 0; dayOffset < 30 && !scheduled; dayOffset++) {
-          scheduledDate = new Date(today)
+          const scheduledDate = new Date(today)
           scheduledDate.setDate(today.getDate() + dayOffset)
 
           const dayJobs = existingJobs
             .filter((existingJob) => {
               if (!existingJob.visitDate) return false
-
-              const visitDate = new Date(existingJob.visitDate)
-              return (
-                visitDate.getFullYear() === scheduledDate.getFullYear() &&
-                visitDate.getMonth() === scheduledDate.getMonth() &&
-                visitDate.getDate() === scheduledDate.getDate()
-              )
+              return sameUtcDay(new Date(existingJob.visitDate), scheduledDate)
             })
             .sort((a, b) => {
               const aStart = a.startTime ?? "99:99"
@@ -130,17 +296,8 @@ export async function POST() {
                 },
               })
 
-              const alreadyAssigned = job.assignments.some(
-                (assignment) => assignment.workerId === worker.id
-              )
-
-              if (!alreadyAssigned) {
-                await prisma.jobAssignment.create({
-                  data: {
-                    jobId: job.id,
-                    workerId: worker.id,
-                  },
-                })
+              if (!existingAssignedWorkerIds.includes(worker.id)) {
+                await assignJobToWorkerIfNeeded(job.id, worker.id)
               }
 
               scheduled = true
@@ -163,17 +320,8 @@ export async function POST() {
               },
             })
 
-            const alreadyAssigned = job.assignments.some(
-              (assignment) => assignment.workerId === worker.id
-            )
-
-            if (!alreadyAssigned) {
-              await prisma.jobAssignment.create({
-                data: {
-                  jobId: job.id,
-                  workerId: worker.id,
-                },
-              })
+            if (!existingAssignedWorkerIds.includes(worker.id)) {
+              await assignJobToWorkerIfNeeded(job.id, worker.id)
             }
 
             scheduled = true
