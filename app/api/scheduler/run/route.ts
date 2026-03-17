@@ -2,6 +2,13 @@ import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 
 const TREV_QUOTE_DEFAULT_SLOTS = ["11:00", "12:00", "13:00"]
+const FARM_POSTCODE = "TF9 4BQ"
+
+const PREP_START_MINUTES = 8 * 60 + 30
+const JOBS_START_MINUTES = 9 * 60
+const END_OF_DAY_MINUTES = 16 * 60 + 30
+const BREAK_THRESHOLD_MINUTES = 6 * 60
+const BREAK_DURATION_MINUTES = 20
 
 function timeToMinutes(time: string) {
   const [h, m] = time.split(":").map(Number)
@@ -21,6 +28,82 @@ function startOfToday() {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : ""
+}
+
+function normalisePostcode(value: unknown) {
+  return cleanString(value).toUpperCase()
+}
+
+function postcodeOutward(value: unknown) {
+  const postcode = normalisePostcode(value)
+  if (!postcode) return ""
+  return postcode.split(" ")[0] || ""
+}
+
+function postcodeAreaLetters(value: unknown) {
+  const outward = postcodeOutward(value)
+  const match = outward.match(/^[A-Z]+/)
+  return match ? match[0] : ""
+}
+
+function postcodeDistrict(value: unknown) {
+  const outward = postcodeOutward(value)
+  const match = outward.match(/^([A-Z]+)(\d+)/)
+  if (!match) return null
+  return {
+    area: match[1],
+    district: Number(match[2]),
+  }
+}
+
+function getTravelMinutes(fromPostcode: unknown, toPostcode: unknown) {
+  const from = normalisePostcode(fromPostcode)
+  const to = normalisePostcode(toPostcode)
+
+  if (!from || !to) return 30
+  if (from === to) return 10
+
+  const fromOutward = postcodeOutward(from)
+  const toOutward = postcodeOutward(to)
+
+  if (fromOutward && fromOutward === toOutward) return 12
+
+  const fromDistrict = postcodeDistrict(from)
+  const toDistrict = postcodeDistrict(to)
+
+  if (
+    fromDistrict &&
+    toDistrict &&
+    fromDistrict.area === toDistrict.area &&
+    Number.isFinite(fromDistrict.district) &&
+    Number.isFinite(toDistrict.district)
+  ) {
+    const diff = Math.abs(fromDistrict.district - toDistrict.district)
+    if (diff <= 1) return 18
+    if (diff <= 3) return 25
+    return 35
+  }
+
+  const fromArea = postcodeAreaLetters(from)
+  const toArea = postcodeAreaLetters(to)
+
+  if (fromArea && toArea && fromArea === toArea) return 35
+
+  if (
+    (fromArea === "TF" && ["ST", "SY", "CW"].includes(toArea)) ||
+    (toArea === "TF" && ["ST", "SY", "CW"].includes(fromArea))
+  ) {
+    return 40
+  }
+
+  if (
+    ["TF", "ST", "SY", "CW"].includes(fromArea) &&
+    ["TF", "ST", "SY", "CW"].includes(toArea)
+  ) {
+    return 50
+  }
+
+  return 60
 }
 
 function isQuoteJobType(jobType: string | null | undefined) {
@@ -169,6 +252,120 @@ async function tryScheduleTrevQuoteJob(params: {
   return false
 }
 
+function getJobPostcode(job: {
+  postcode?: string | null
+  address?: string | null
+  customer?: { postcode?: string | null } | null
+}) {
+  return (
+    normalisePostcode(job.postcode) ||
+    normalisePostcode(job.customer?.postcode) ||
+    ""
+  )
+}
+
+function getJobDurationMinutes(job: { durationMinutes?: number | null }) {
+  return typeof job.durationMinutes === "number" && job.durationMinutes > 0
+    ? job.durationMinutes
+    : 120
+}
+
+function getScheduledJobWindow(job: {
+  startTime?: string | null
+  durationMinutes?: number | null
+}) {
+  if (!job.startTime) return null
+
+  const start = timeToMinutes(job.startTime)
+  const duration = getJobDurationMinutes(job)
+  const end = start + duration
+
+  return { start, end, duration }
+}
+
+function buildDayRouteMetrics(
+  dayJobs: Array<{
+    startTime?: string | null
+    durationMinutes?: number | null
+    postcode?: string | null
+    address?: string | null
+    customer?: { postcode?: string | null } | null
+  }>
+) {
+  const sorted = [...dayJobs]
+    .filter((job) => !!job.startTime)
+    .sort((a, b) => {
+      const aStart = a.startTime ?? "99:99"
+      const bStart = b.startTime ?? "99:99"
+      return aStart.localeCompare(bStart)
+    })
+
+  let currentPostcode = FARM_POSTCODE
+  let totalWorkMinutes = 0
+
+  const enriched = sorted.map((job, index) => {
+    const window = getScheduledJobWindow(job)
+    const jobPostcode = getJobPostcode(job)
+    const travelMinutes =
+      index === 0
+        ? getTravelMinutes(FARM_POSTCODE, jobPostcode)
+        : getTravelMinutes(currentPostcode, jobPostcode)
+
+    currentPostcode = jobPostcode || currentPostcode
+
+    if (window) {
+      totalWorkMinutes += window.duration
+    }
+
+    return {
+      job,
+      window,
+      travelMinutes,
+      postcode: jobPostcode,
+    }
+  })
+
+  return {
+    enriched,
+    totalWorkMinutes,
+  }
+}
+
+function scoreCandidateJob(params: {
+  currentPostcode: string
+  worker: {
+    firstName: string | null
+    lastName: string | null
+    email?: string | null
+  }
+  job: {
+    jobType?: string | null
+    postcode?: string | null
+    address?: string | null
+    customer?: { postcode?: string | null } | null
+  }
+}) {
+  const { currentPostcode, worker, job } = params
+  const jobPostcode = getJobPostcode(job)
+  const travelMinutes = getTravelMinutes(currentPostcode, jobPostcode)
+
+  let score = travelMinutes
+
+  if (isQuoteJobType(job.jobType)) {
+    if (isTrevWorker(worker)) {
+      score -= 15
+    } else {
+      score += 5000
+    }
+  }
+
+  return {
+    score,
+    travelMinutes,
+    jobPostcode,
+  }
+}
+
 export async function POST() {
   try {
     const workers = await prisma.worker.findMany({
@@ -178,14 +375,16 @@ export async function POST() {
 
     const unscheduledJobs = await prisma.job.findMany({
       where: {
-        OR: [
-          { status: "unscheduled" },
-          { visitDate: null },
-        ],
+        OR: [{ status: "unscheduled" }, { visitDate: null }],
       },
       orderBy: { createdAt: "asc" },
       include: {
         assignments: true,
+        customer: {
+          select: {
+            postcode: true,
+          },
+        },
       },
     })
 
@@ -202,120 +401,141 @@ export async function POST() {
     }
 
     const today = startOfToday()
-    const startOfDay = 8 * 60
-    const endOfDay = 17 * 60
-
     let scheduledCount = 0
+    const scheduledJobIds = new Set<number>()
 
-    for (const job of unscheduledJobs) {
-      const duration =
-        typeof job.durationMinutes === "number" && job.durationMinutes > 0
-          ? job.durationMinutes
-          : 120
+    for (const worker of workers) {
+      const workerExistingJobs = await prisma.job.findMany({
+        where: {
+          assignments: {
+            some: {
+              workerId: worker.id,
+            },
+          },
+          visitDate: {
+            gte: today,
+          },
+        },
+        orderBy: [
+          { visitDate: "asc" },
+          { startTime: "asc" },
+          { createdAt: "asc" },
+        ],
+        include: {
+          customer: {
+            select: {
+              postcode: true,
+            },
+          },
+        },
+      })
 
-      const existingAssignedWorkerIds = job.assignments.map(
-        (assignment) => assignment.workerId
-      )
+      for (let dayOffset = 0; dayOffset < 30; dayOffset++) {
+        const scheduledDate = new Date(today)
+        scheduledDate.setDate(today.getDate() + dayOffset)
 
-      let scheduled = false
-
-      for (const worker of workers) {
-        if (isQuoteJobType(job.jobType) && isTrevWorker(worker)) {
-          const trevQuoteScheduled = await tryScheduleTrevQuoteJob({
-            jobId: job.id,
-            duration,
-            worker,
-            existingAssignedWorkerIds,
-            today,
+        const dayJobs = workerExistingJobs
+          .filter((existingJob) => {
+            if (!existingJob.visitDate) return false
+            return sameUtcDay(new Date(existingJob.visitDate), scheduledDate)
+          })
+          .sort((a, b) => {
+            const aStart = a.startTime ?? "99:99"
+            const bStart = b.startTime ?? "99:99"
+            return aStart.localeCompare(bStart)
           })
 
-          if (trevQuoteScheduled) {
-            scheduled = true
-            scheduledCount += 1
+        let mutableDayJobs = [...dayJobs]
+
+        while (true) {
+          const routeMetrics = buildDayRouteMetrics(mutableDayJobs)
+          const lastScheduled = routeMetrics.enriched[routeMetrics.enriched.length - 1]
+
+          const currentPostcode = lastScheduled?.postcode || FARM_POSTCODE
+          const currentTime = lastScheduled?.window?.end ?? JOBS_START_MINUTES
+
+          let totalWorkMinutes = routeMetrics.totalWorkMinutes
+          let breakAlreadyAdded = totalWorkMinutes >= BREAK_THRESHOLD_MINUTES
+
+          const availableJobs = unscheduledJobs.filter((job) => {
+            if (scheduledJobIds.has(job.id)) return false
+            return true
+          })
+
+          if (availableJobs.length === 0) {
             break
           }
 
-          continue
-        }
-
-        const existingJobs = await prisma.job.findMany({
-          where: {
-            assignments: {
-              some: {
-                workerId: worker.id,
-              },
-            },
-            visitDate: {
-              gte: today,
-            },
-            NOT: {
-              id: job.id,
-            },
-          },
-          orderBy: [
-            { visitDate: "asc" },
-            { startTime: "asc" },
-            { createdAt: "asc" },
-          ],
-        })
-
-        for (let dayOffset = 0; dayOffset < 30 && !scheduled; dayOffset++) {
-          const scheduledDate = new Date(today)
-          scheduledDate.setDate(today.getDate() + dayOffset)
-
-          const dayJobs = existingJobs
-            .filter((existingJob) => {
-              if (!existingJob.visitDate) return false
-              return sameUtcDay(new Date(existingJob.visitDate), scheduledDate)
-            })
-            .sort((a, b) => {
-              const aStart = a.startTime ?? "99:99"
-              const bStart = b.startTime ?? "99:99"
-              return aStart.localeCompare(bStart)
-            })
-
-          let pointer = startOfDay
-
-          for (const existingJob of dayJobs) {
-            if (!existingJob.startTime) continue
-
-            const existingStart = timeToMinutes(existingJob.startTime)
-            const existingEnd =
-              existingStart +
-              (typeof existingJob.durationMinutes === "number" && existingJob.durationMinutes > 0
-                ? existingJob.durationMinutes
-                : 120)
-
-            if (pointer + duration <= existingStart) {
-              await prisma.job.update({
-                where: { id: job.id },
-                data: {
-                  visitDate: new Date(scheduledDate),
-                  startTime: minutesToTime(pointer),
-                  status: "todo",
-                },
+          const rankedJobs = availableJobs
+            .map((job) => {
+              const candidate = scoreCandidateJob({
+                currentPostcode,
+                worker,
+                job,
               })
 
-              if (!existingAssignedWorkerIds.includes(worker.id)) {
-                await assignJobToWorkerIfNeeded(job.id, worker.id)
+              return {
+                job,
+                ...candidate,
+              }
+            })
+            .sort((a, b) => {
+              if (a.score !== b.score) return a.score - b.score
+              return a.job.createdAt.getTime() - b.job.createdAt.getTime()
+            })
+
+          let placedOne = false
+
+          for (const candidate of rankedJobs) {
+            const job = candidate.job
+            const duration = getJobDurationMinutes(job)
+            const existingAssignedWorkerIds = job.assignments.map(
+              (assignment) => assignment.workerId
+            )
+
+            if (isQuoteJobType(job.jobType) && isTrevWorker(worker)) {
+              const trevQuoteScheduled = await tryScheduleTrevQuoteJob({
+                jobId: job.id,
+                duration,
+                worker,
+                existingAssignedWorkerIds,
+                today,
+              })
+
+              if (trevQuoteScheduled) {
+                scheduledJobIds.add(job.id)
+                scheduledCount += 1
+                placedOne = true
+                break
               }
 
-              scheduled = true
-              scheduledCount += 1
-              break
+              continue
             }
 
-            if (existingEnd > pointer) {
-              pointer = existingEnd
+            if (isQuoteJobType(job.jobType) && !isTrevWorker(worker)) {
+              continue
             }
-          }
 
-          if (!scheduled && pointer + duration <= endOfDay) {
+            const proposedTravel = candidate.travelMinutes
+            const proposedStart = Math.max(currentTime + proposedTravel, JOBS_START_MINUTES)
+
+            let proposedEnd = proposedStart + duration
+            let breakToAdd = 0
+
+            if (!breakAlreadyAdded && totalWorkMinutes + duration >= BREAK_THRESHOLD_MINUTES) {
+              breakToAdd = BREAK_DURATION_MINUTES
+              proposedEnd += BREAK_DURATION_MINUTES
+            }
+
+            if (proposedEnd > END_OF_DAY_MINUTES) {
+              continue
+            }
+
             await prisma.job.update({
               where: { id: job.id },
               data: {
                 visitDate: new Date(scheduledDate),
-                startTime: minutesToTime(pointer),
+                startTime: minutesToTime(proposedStart),
                 status: "todo",
               },
             })
@@ -324,12 +544,41 @@ export async function POST() {
               await assignJobToWorkerIfNeeded(job.id, worker.id)
             }
 
-            scheduled = true
+            const refreshedJob = await prisma.job.findUnique({
+              where: { id: job.id },
+              include: {
+                customer: {
+                  select: {
+                    postcode: true,
+                  },
+                },
+              },
+            })
+
+            if (refreshedJob) {
+              mutableDayJobs.push(refreshedJob)
+              mutableDayJobs = mutableDayJobs.sort((a, b) => {
+                const aStart = a.startTime ?? "99:99"
+                const bStart = b.startTime ?? "99:99"
+                return aStart.localeCompare(bStart)
+              })
+            }
+
+            totalWorkMinutes += duration
+            if (breakToAdd > 0) {
+              breakAlreadyAdded = true
+            }
+
+            scheduledJobIds.add(job.id)
             scheduledCount += 1
+            placedOne = true
+            break
+          }
+
+          if (!placedOne) {
+            break
           }
         }
-
-        if (scheduled) break
       }
     }
 
