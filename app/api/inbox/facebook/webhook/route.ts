@@ -21,6 +21,12 @@ type FacebookProfile = {
   id?: string
 }
 
+function maskToken(token?: string | null) {
+  if (!token) return "missing"
+  if (token.length <= 10) return "***"
+  return `${token.slice(0, 6)}...${token.slice(-4)}`
+}
+
 function getFacebookPages(): FacebookPageConfig[] {
   const pages: FacebookPageConfig[] = []
 
@@ -105,16 +111,35 @@ function isGenericFacebookName(value: string | null | undefined) {
 
 async function fetchMessengerProfile(
   senderPsid: string,
-  pageAccessToken: string | null
+  pageConfig: FacebookPageConfig
 ): Promise<FacebookProfile | null> {
-  if (!senderPsid || !pageAccessToken) {
+  if (!senderPsid || !pageConfig.token) {
+    console.warn("[FB PROFILE LOOKUP SKIPPED]", {
+      senderPsid,
+      pageId: pageConfig.pageId,
+      pageLabel: pageConfig.label,
+      pageKey: pageConfig.key,
+      reason: !senderPsid ? "missing sender psid" : "missing page token",
+      tokenPreview: maskToken(pageConfig.token),
+    })
     return null
   }
 
   try {
     const url = new URL(`https://graph.facebook.com/${senderPsid}`)
     url.searchParams.set("fields", "name,first_name,last_name")
-    url.searchParams.set("access_token", pageAccessToken)
+    url.searchParams.set("access_token", pageConfig.token)
+
+    console.log("[FB PROFILE LOOKUP START]", {
+      senderPsid,
+      pageId: pageConfig.pageId,
+      pageLabel: pageConfig.label,
+      pageKey: pageConfig.key,
+      tokenPreview: maskToken(pageConfig.token),
+      urlPreview: `https://graph.facebook.com/${senderPsid}?fields=name,first_name,last_name&access_token=${maskToken(
+        pageConfig.token
+      )}`,
+    })
 
     const response = await fetch(url.toString(), {
       method: "GET",
@@ -130,19 +155,47 @@ async function fetchMessengerProfile(
       parsed = { raw: text }
     }
 
+    console.log("[FB PROFILE LOOKUP RESPONSE]", {
+      senderPsid,
+      pageId: pageConfig.pageId,
+      pageLabel: pageConfig.label,
+      pageKey: pageConfig.key,
+      status: response.status,
+      ok: response.ok,
+      details: parsed,
+    })
+
     if (!response.ok) {
-      console.error("FACEBOOK PROFILE LOOKUP ERROR:", {
+      console.error("[FB PROFILE LOOKUP ERROR]", {
         senderPsid,
+        pageId: pageConfig.pageId,
+        pageLabel: pageConfig.label,
+        pageKey: pageConfig.key,
+        tokenPreview: maskToken(pageConfig.token),
         status: response.status,
         details: parsed,
       })
       return null
     }
 
-    return parsed as FacebookProfile
-  } catch (error) {
-    console.error("FACEBOOK PROFILE LOOKUP FAILED:", {
+    const profile = parsed as FacebookProfile
+
+    console.log("[FB PROFILE LOOKUP SUCCESS]", {
       senderPsid,
+      pageId: pageConfig.pageId,
+      name: String(profile?.name || "").trim() || null,
+      first_name: String(profile?.first_name || "").trim() || null,
+      last_name: String(profile?.last_name || "").trim() || null,
+    })
+
+    return profile
+  } catch (error) {
+    console.error("[FB PROFILE LOOKUP FAILED]", {
+      senderPsid,
+      pageId: pageConfig.pageId,
+      pageLabel: pageConfig.label,
+      pageKey: pageConfig.key,
+      tokenPreview: maskToken(pageConfig.token),
       error,
     })
     return null
@@ -170,6 +223,14 @@ async function findOrCreateConversation(params: {
   })
 
   if (!conversation) {
+    console.log("[FB CONVERSATION CREATE]", {
+      pageId,
+      customerPsid,
+      conversationRef,
+      customerName,
+      pageLabel,
+    })
+
     conversation = await prisma.conversation.create({
       data: {
         source: "facebook",
@@ -187,12 +248,22 @@ async function findOrCreateConversation(params: {
   }
 
   const currentName = String(conversation.contactName || "").trim()
-
-  if (
+  const shouldUpdateName =
     customerName &&
     !isGenericFacebookName(customerName) &&
     (isGenericFacebookName(currentName) || currentName === pageLabel)
-  ) {
+
+  console.log("[FB NAME SAVE DECISION]", {
+    conversationId: conversation.id,
+    pageId,
+    customerPsid,
+    currentName,
+    customerName,
+    pageLabel,
+    shouldUpdateName,
+  })
+
+  if (shouldUpdateName) {
     await prisma.conversation.update({
       where: {
         id: conversation.id,
@@ -200,6 +271,12 @@ async function findOrCreateConversation(params: {
       data: {
         contactName: customerName,
       },
+    })
+
+    console.log("[FB CONVERSATION NAME UPDATED]", {
+      conversationId: conversation.id,
+      oldName: currentName,
+      newName: customerName,
     })
   }
 
@@ -231,12 +308,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ignored: true })
     }
 
+    console.log("[FB WEBHOOK PAYLOAD RECEIVED]", {
+      object: payload.object,
+      entryCount: Array.isArray(payload.entry) ? payload.entry.length : 0,
+    })
+
     for (const entry of payload.entry || []) {
       const pageId = String(entry?.id || "").trim()
       const pageConfig = getPageConfig(pageId)
 
+      console.log("[FB WEBHOOK ENTRY]", {
+        pageId,
+        resolvedPageKey: pageConfig.key,
+        resolvedPageLabel: pageConfig.label,
+        resolvedBusiness: pageConfig.business,
+        tokenPreview: maskToken(pageConfig.token),
+        messagingCount: Array.isArray(entry?.messaging) ? entry.messaging.length : 0,
+      })
+
       for (const event of entry.messaging || []) {
         if (!event?.message) {
+          console.log("[FB WEBHOOK EVENT IGNORED]", {
+            reason: "no message object",
+            hasSender: !!event?.sender?.id,
+            hasRecipient: !!event?.recipient?.id,
+          })
           continue
         }
 
@@ -247,7 +343,22 @@ export async function POST(req: NextRequest) {
         const recipientPsid = String(event?.recipient?.id || "").trim()
         const isEcho = Boolean(event?.message?.is_echo)
 
+        console.log("[FB WEBHOOK MESSAGE]", {
+          pageId,
+          messageId,
+          senderPsid,
+          recipientPsid,
+          isEcho,
+          hasText: Boolean(messageText),
+          textPreview: messageText ? messageText.slice(0, 120) : null,
+        })
+
         if (!pageId || !messageId) {
+          console.warn("[FB WEBHOOK MESSAGE SKIPPED]", {
+            reason: "missing pageId or messageId",
+            pageId,
+            messageId,
+          })
           continue
         }
 
@@ -261,6 +372,10 @@ export async function POST(req: NextRequest) {
         })
 
         if (existingMessage) {
+          console.log("[FB MESSAGE DUPLICATE SKIPPED]", {
+            messageId,
+            existingMessageId: existingMessage.id,
+          })
           continue
         }
 
@@ -273,6 +388,11 @@ export async function POST(req: NextRequest) {
           const customerPsid = recipientPsid
 
           if (!customerPsid) {
+            console.warn("[FB ECHO MESSAGE SKIPPED]", {
+              reason: "missing recipient/customer psid",
+              messageId,
+              pageId,
+            })
             continue
           }
 
@@ -289,6 +409,13 @@ export async function POST(req: NextRequest) {
           })
 
           if (!conversation) {
+            console.warn("[FB ECHO MESSAGE SKIPPED]", {
+              reason: "conversation not found",
+              messageId,
+              pageId,
+              customerPsid,
+              conversationRef,
+            })
             continue
           }
 
@@ -307,17 +434,36 @@ export async function POST(req: NextRequest) {
             },
           })
 
+          console.log("[FB ECHO MESSAGE SAVED]", {
+            messageId,
+            conversationId: conversation.id,
+            customerPsid,
+          })
+
           continue
         }
 
         const customerPsid = senderPsid
 
         if (!customerPsid) {
+          console.warn("[FB INBOUND MESSAGE SKIPPED]", {
+            reason: "missing sender/customer psid",
+            messageId,
+            pageId,
+          })
           continue
         }
 
-        const profile = await fetchMessengerProfile(customerPsid, pageConfig.token)
+        const profile = await fetchMessengerProfile(customerPsid, pageConfig)
         const customerName = buildDisplayName(profile, customerPsid)
+
+        console.log("[FB CUSTOMER NAME RESOLVED]", {
+          pageId,
+          customerPsid,
+          customerName,
+          usedGenericFallback: isGenericFacebookName(customerName),
+          hasProfile: !!profile,
+        })
 
         const conversation = await findOrCreateConversation({
           pageId,
@@ -339,6 +485,13 @@ export async function POST(req: NextRequest) {
             body,
             createdAt: timestamp ? new Date(timestamp) : new Date(),
           },
+        })
+
+        console.log("[FB INBOUND MESSAGE SAVED]", {
+          messageId,
+          conversationId: conversation.id,
+          customerPsid,
+          customerName,
         })
       }
     }
