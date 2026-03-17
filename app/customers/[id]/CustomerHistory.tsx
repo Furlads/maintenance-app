@@ -77,6 +77,41 @@ function stripCannotCompleteLines(value?: string | null) {
     .join('\n')
 }
 
+function formatDateTime(value: string) {
+  try {
+    const date = new Date(value)
+
+    const dateText = date.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    })
+
+    const timeText = date.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+
+    return `${dateText} • ${timeText}`
+  } catch {
+    return value
+  }
+}
+
+function formatStatus(value?: string) {
+  if (!value) return 'Unknown'
+
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function getTypeLabel(type: HistoryItem['type']) {
+  if (type === 'job') return 'Job update'
+  if (type === 'note') return 'Note'
+  return 'Photo'
+}
+
 export default function CustomerHistory({ customerId }: { customerId: number }) {
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -107,31 +142,32 @@ export default function CustomerHistory({ customerId }: { customerId: number }) 
   }, [customerId])
 
   if (loading) {
-    return <p>Loading history...</p>
+    return <p style={{ margin: 0 }}>Loading history...</p>
   }
 
   if (history.length === 0) {
-    return <p>No customer history yet.</p>
+    return <p style={{ margin: 0 }}>No customer history yet.</p>
   }
 
   return (
-    <div style={{ marginTop: 30 }}>
-      <h2 style={{ marginBottom: 15 }}>Customer History</h2>
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+          marginBottom: 16
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 22 }}>Customer History</h2>
+        <div style={{ fontSize: 14, color: '#666' }}>
+          {history.length} item{history.length === 1 ? '' : 's'}
+        </div>
+      </div>
 
       {history.map((item) => {
-        const date = new Date(item.createdAt)
-
-        const dateText = date.toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric'
-        })
-
-        const timeText = date.toLocaleTimeString('en-GB', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })
-
         const sourceText =
           item.type === 'job'
             ? item.notes
@@ -149,30 +185,58 @@ export default function CustomerHistory({ customerId }: { customerId: number }) 
           <div
             key={item.id}
             style={{
-              border: '1px solid #ddd',
-              borderRadius: 10,
-              padding: 14,
-              marginBottom: 10,
+              border: '1px solid #e4e4e4',
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 12,
               background: '#fafafa'
             }}
           >
-            <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 4 }}>
-              {dateText} • {timeText}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 12,
+                flexWrap: 'wrap',
+                marginBottom: 8
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 6 }}>
+                  {formatDateTime(item.createdAt)}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
+                  {item.title}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  background: '#fff',
+                  border: '1px solid #ddd',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: '#555'
+                }}
+              >
+                {getTypeLabel(item.type)}
+              </div>
             </div>
 
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>{item.title}</div>
-
-            <div style={{ fontSize: 14, marginBottom: 4 }}>
-              Job: {item.jobTitle}
+            <div style={{ fontSize: 14, marginBottom: 8, color: '#444' }}>
+              <strong>Job:</strong> {item.jobTitle}
             </div>
 
             {cannotCompleteInfo && (
               <div
                 style={{
                   marginTop: 8,
-                  marginBottom: 8,
+                  marginBottom: 10,
                   padding: 12,
-                  borderRadius: 8,
+                  borderRadius: 10,
                   border: '1px solid #e09b00',
                   background: '#fff4d6'
                 }}
@@ -207,10 +271,10 @@ export default function CustomerHistory({ customerId }: { customerId: number }) 
             )}
 
             {item.type === 'note' && (
-              <div style={{ fontSize: 14 }}>
-                {cleanedNoteText}
+              <div style={{ fontSize: 14, whiteSpace: 'pre-line' }}>
+                {cleanedNoteText || 'No note text.'}
                 {item.createdByWorkerName && (
-                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
+                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
                     Added by {item.createdByWorkerName}
                   </div>
                 )}
@@ -220,21 +284,23 @@ export default function CustomerHistory({ customerId }: { customerId: number }) 
             {item.type === 'photo' && item.imageUrl && (
               <div style={{ marginTop: 6 }}>
                 {item.label && (
-                  <div style={{ fontSize: 14, marginBottom: 6 }}>{item.label}</div>
+                  <div style={{ fontSize: 14, marginBottom: 8 }}>{item.label}</div>
                 )}
 
                 <img
                   src={item.imageUrl}
                   alt={item.label || item.jobTitle}
                   style={{
-                    maxWidth: 200,
-                    borderRadius: 6,
-                    display: 'block'
+                    width: '100%',
+                    maxWidth: 280,
+                    borderRadius: 10,
+                    display: 'block',
+                    border: '1px solid #ddd'
                   }}
                 />
 
                 {item.uploadedByWorkerName && (
-                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
+                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
                     Uploaded by {item.uploadedByWorkerName}
                   </div>
                 )}
@@ -243,9 +309,12 @@ export default function CustomerHistory({ customerId }: { customerId: number }) 
 
             {item.type === 'job' && (
               <div style={{ fontSize: 14 }}>
-                <div>Status: {item.status || 'Unknown'}</div>
+                <div>
+                  <strong>Status:</strong> {formatStatus(item.status)}
+                </div>
+
                 {cleanedJobNotes && (
-                  <div style={{ marginTop: 4, whiteSpace: 'pre-line' }}>
+                  <div style={{ marginTop: 8, whiteSpace: 'pre-line', color: '#444' }}>
                     {cleanedJobNotes}
                   </div>
                 )}
