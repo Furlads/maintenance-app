@@ -3,34 +3,7 @@ import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
-type WixSubmissionValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | { value?: string | number | boolean | null; label?: string | null }
-  | Array<string | number | boolean | null | undefined>
-
-type WixSubmissionMap = Record<string, WixSubmissionValue>
-
-type WixSubmissionEntity = {
-  id?: string
-  formId?: string
-  createdDate?: string
-  submissions?: WixSubmissionMap
-}
-
-type WixCreatedEvent = {
-  id?: string
-  eventTime?: string
-  entity?: WixSubmissionEntity
-  entityId?: string
-}
-
-type WixWebhookPayload = {
-  createdEvent?: WixCreatedEvent
-}
+type LooseRecord = Record<string, any>
 
 function parseJwtPayload(token: string) {
   const parts = token.split(".")
@@ -44,32 +17,55 @@ function parseJwtPayload(token: string) {
   return JSON.parse(json)
 }
 
-function valueToText(value: WixSubmissionValue): string {
+function safeString(value: unknown) {
   if (value === null || value === undefined) return ""
   if (typeof value === "string") return value.trim()
   if (typeof value === "number" || typeof value === "boolean") return String(value)
+  return ""
+}
+
+function valueToText(value: unknown): string {
+  if (value === null || value === undefined) return ""
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value).trim()
+  }
 
   if (Array.isArray(value)) {
     return value
-      .map((item) => String(item ?? "").trim())
+      .map((item) => valueToText(item))
       .filter(Boolean)
       .join(", ")
   }
 
   if (typeof value === "object") {
-    if ("value" in value && value.value !== undefined && value.value !== null) {
-      return String(value.value).trim()
+    const obj = value as LooseRecord
+
+    if (obj.value !== undefined && obj.value !== null) {
+      const nested = valueToText(obj.value)
+      if (nested) return nested
     }
-    if ("label" in value && value.label) {
-      return String(value.label).trim()
+
+    if (obj.label !== undefined && obj.label !== null) {
+      const label = valueToText(obj.label)
+      if (label) return label
+    }
+
+    if (obj.name !== undefined && obj.name !== null) {
+      const name = valueToText(obj.name)
+      if (name) return name
     }
   }
 
   return ""
 }
 
-function findField(submissions: WixSubmissionMap, keywords: string[]) {
-  for (const [key, rawValue] of Object.entries(submissions || {})) {
+function findField(source: LooseRecord, keywords: string[]) {
+  for (const [key, rawValue] of Object.entries(source || {})) {
     const normalisedKey = key.toLowerCase()
 
     if (keywords.some((keyword) => normalisedKey.includes(keyword))) {
@@ -81,10 +77,13 @@ function findField(submissions: WixSubmissionMap, keywords: string[]) {
   return ""
 }
 
-function buildContactName(submissions: WixSubmissionMap) {
+function buildContactName(fields: LooseRecord) {
   const fullName =
-    findField(submissions, ["full name", "fullname", "name"]) ||
-    [findField(submissions, ["first name", "firstname"]), findField(submissions, ["last name", "lastname"])]
+    findField(fields, ["full name", "fullname", "name"]) ||
+    [
+      findField(fields, ["first name", "firstname"]),
+      findField(fields, ["last name", "lastname"]),
+    ]
       .filter(Boolean)
       .join(" ")
       .trim()
@@ -92,25 +91,26 @@ function buildContactName(submissions: WixSubmissionMap) {
   return fullName || "Wix form lead"
 }
 
-function buildContactEmail(submissions: WixSubmissionMap) {
-  return findField(submissions, ["email", "e-mail"])
+function buildContactEmail(fields: LooseRecord) {
+  return findField(fields, ["email", "e-mail"])
 }
 
-function buildContactPhone(submissions: WixSubmissionMap) {
-  return findField(submissions, ["phone", "mobile", "telephone", "tel"])
+function buildContactPhone(fields: LooseRecord) {
+  return findField(fields, ["phone", "mobile", "telephone", "tel"])
 }
 
-function buildSubject(submissions: WixSubmissionMap) {
+function buildSubject(fields: LooseRecord) {
   return (
-    findField(submissions, ["subject"]) ||
-    findField(submissions, ["service"]) ||
-    findField(submissions, ["project"]) ||
+    findField(fields, ["subject"]) ||
+    findField(fields, ["service"]) ||
+    findField(fields, ["project"]) ||
+    findField(fields, ["enquiry"]) ||
     "Wix form enquiry"
   )
 }
 
-function buildBody(submissions: WixSubmissionMap) {
-  const lines = Object.entries(submissions || [])
+function buildBody(fields: LooseRecord) {
+  const lines = Object.entries(fields || {})
     .map(([key, value]) => {
       const text = valueToText(value)
       if (!text) return ""
@@ -121,37 +121,101 @@ function buildBody(submissions: WixSubmissionMap) {
   return lines.join("\n")
 }
 
-function buildContactRef(email: string, phone: string, submissionId: string) {
+function buildContactRef(email: string, phone: string, externalId: string) {
   if (email) return email.toLowerCase()
   if (phone) return phone
-  return `wix-submission:${submissionId}`
+  return `wix:${externalId}`
+}
+
+function looksLikeJwt(raw: string) {
+  const trimmed = raw.trim()
+  return trimmed.split(".").length >= 2 && !trimmed.startsWith("{")
+}
+
+function extractPossibleSubmissionData(payload: LooseRecord) {
+  const createdEvent = payload?.createdEvent || payload?.data?.createdEvent || null
+  const entity = createdEvent?.entity || payload?.entity || payload?.data?.entity || null
+
+  const externalId =
+    safeString(entity?.id) ||
+    safeString(createdEvent?.entityId) ||
+    safeString(payload?.entityId) ||
+    safeString(payload?.submissionId) ||
+    safeString(payload?.id)
+
+  const createdAt =
+    safeString(entity?.createdDate) ||
+    safeString(createdEvent?.eventTime) ||
+    safeString(payload?.createdDate) ||
+    safeString(payload?.eventTime)
+
+  const fieldMaps: LooseRecord[] = []
+
+  if (entity?.submissions && typeof entity.submissions === "object") {
+    fieldMaps.push(entity.submissions as LooseRecord)
+  }
+
+  if (entity?.submission && typeof entity.submission === "object") {
+    fieldMaps.push(entity.submission as LooseRecord)
+  }
+
+  if (payload?.submissions && typeof payload.submissions === "object") {
+    fieldMaps.push(payload.submissions as LooseRecord)
+  }
+
+  if (payload?.submission && typeof payload.submission === "object") {
+    fieldMaps.push(payload.submission as LooseRecord)
+  }
+
+  if (payload?.fields && typeof payload.fields === "object") {
+    fieldMaps.push(payload.fields as LooseRecord)
+  }
+
+  const flattened: LooseRecord = {}
+  for (const map of fieldMaps) {
+    for (const [key, value] of Object.entries(map)) {
+      flattened[key] = value
+    }
+  }
+
+  return {
+    externalId,
+    createdAt,
+    fields: flattened,
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization") || ""
-    const bearerToken = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7).trim()
-      : ""
+    const rawBody = await req.text()
 
-    if (!bearerToken) {
+    if (!rawBody.trim()) {
       return NextResponse.json(
-        { ok: false, error: "Missing Wix bearer token." },
+        { ok: false, error: "Empty request body." },
         { status: 400 }
       )
     }
 
-    // Pragmatic first step:
-    // decode the JWT payload so we can build the inbox flow.
-    // You should still verify the JWT signature before production use.
-    const decoded = parseJwtPayload(bearerToken) as WixWebhookPayload
-    const createdEvent = decoded?.createdEvent
-    const entity = createdEvent?.entity
+    let payload: LooseRecord = {}
 
-    const submissionId =
-      String(entity?.id || createdEvent?.entityId || "").trim()
+    try {
+      if (looksLikeJwt(rawBody)) {
+        payload = parseJwtPayload(rawBody)
+      } else {
+        payload = JSON.parse(rawBody)
+      }
+    } catch (error) {
+      console.error("WIX FORMS PARSE ERROR:", error)
+      return NextResponse.json(
+        { ok: false, error: "Could not parse Wix payload." },
+        { status: 400 }
+      )
+    }
 
-    if (!submissionId) {
+    const { externalId, createdAt, fields } = extractPossibleSubmissionData(payload)
+
+    if (!externalId) {
+      console.error("WIX FORMS MISSING ID:", payload)
       return NextResponse.json(
         { ok: false, error: "Missing submission id." },
         { status: 400 }
@@ -161,7 +225,7 @@ export async function POST(req: NextRequest) {
     const existing = await prisma.inboxMessage.findFirst({
       where: {
         source: "wix",
-        externalMessageId: submissionId,
+        externalMessageId: externalId,
       },
       select: {
         id: true,
@@ -172,14 +236,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true })
     }
 
-    const submissions = entity?.submissions || {}
-    const contactName = buildContactName(submissions)
-    const contactEmail = buildContactEmail(submissions)
-    const contactPhone = buildContactPhone(submissions)
-    const subject = buildSubject(submissions)
-    const body = buildBody(submissions) || "Wix form submission received."
+    const contactName = buildContactName(fields)
+    const contactEmail = buildContactEmail(fields)
+    const contactPhone = buildContactPhone(fields)
+    const subject = buildSubject(fields)
+    const body = buildBody(fields) || "Wix form submission received."
     const preview = body.slice(0, 120)
-    const contactRef = buildContactRef(contactEmail, contactPhone, submissionId)
+    const contactRef = buildContactRef(contactEmail, contactPhone, externalId)
 
     let conversation = await prisma.conversation.findFirst({
       where: {
@@ -188,6 +251,7 @@ export async function POST(req: NextRequest) {
       },
       select: {
         id: true,
+        contactName: true,
       },
     })
 
@@ -201,9 +265,10 @@ export async function POST(req: NextRequest) {
         },
         select: {
           id: true,
+          contactName: true,
         },
       })
-    } else {
+    } else if (!safeString(conversation.contactName) || conversation.contactName === "Wix form lead") {
       await prisma.conversation.update({
         where: {
           id: conversation.id,
@@ -224,13 +289,9 @@ export async function POST(req: NextRequest) {
         subject,
         preview,
         body,
-        externalMessageId: submissionId,
+        externalMessageId: externalId,
         status: "unread",
-        createdAt: entity?.createdDate
-          ? new Date(entity.createdDate)
-          : createdEvent?.eventTime
-          ? new Date(createdEvent.eventTime)
-          : new Date(),
+        createdAt: createdAt ? new Date(createdAt) : new Date(),
       },
     })
 
