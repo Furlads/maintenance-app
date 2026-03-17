@@ -201,12 +201,17 @@ export async function POST(
     }
 
     const latestMessage = conversation.messages[0]
+    const conversationContactRef = cleanString(conversation.contactRef)
+    const conversationRefIsEmail = conversationContactRef.includes("@")
+
     const derivedEmail =
       cleanString(latestMessage?.senderEmail) ||
-      (conversation.contactRef.includes("@") ? cleanString(conversation.contactRef) : "")
+      (conversationRefIsEmail ? conversationContactRef : "")
+
     const derivedPhone =
       cleanString(latestMessage?.senderPhone) ||
-      (!conversation.contactRef.includes("@") ? cleanString(conversation.contactRef) : "")
+      (!conversationRefIsEmail ? conversationContactRef : "")
+
     const derivedName =
       cleanString(conversation.contactName) ||
       cleanString(latestMessage?.senderName) ||
