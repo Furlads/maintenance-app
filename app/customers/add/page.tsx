@@ -55,252 +55,363 @@ export default function AddCustomerPage() {
   return (
     <main
       style={{
-        padding: 20,
-        fontFamily: 'sans-serif',
-        maxWidth: 720,
-        margin: '0 auto'
+        minHeight: '100vh',
+        background: '#f5f5f5',
+        padding: 16,
+        fontFamily: 'sans-serif'
       }}
     >
-      <div style={{ marginBottom: 20 }}>
-        <a
-          href="/customers"
-          style={{
-            display: 'inline-block',
-            marginBottom: 12,
-            textDecoration: 'none',
-            color: '#444',
-            fontSize: 14
-          }}
-        >
-          ← Back to customers
-        </a>
-
-        <h1 style={{ fontSize: 30, margin: '0 0 6px 0' }}>Add Customer</h1>
-        <p style={{ margin: 0, color: '#666', fontSize: 15 }}>
-          Save customer contact details, address and any important notes.
-        </p>
-      </div>
-
-      <form
-        onSubmit={handleSubmit}
+      <div
         style={{
-          border: '1px solid #ddd',
-          borderRadius: 14,
-          background: '#fff',
-          padding: 18
+          maxWidth: 860,
+          margin: '0 auto'
         }}
       >
-        <div style={{ marginBottom: 18 }}>
-          <label
-            htmlFor="name"
-            style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}
-          >
-            Name
-          </label>
-          <input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            placeholder="Customer name"
-            style={{
-              width: '100%',
-              padding: 12,
-              borderRadius: 10,
-              border: '1px solid #ccc',
-              fontSize: 16,
-              boxSizing: 'border-box'
-            }}
-          />
-        </div>
-
-        <div
+        <section
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: 16,
-            marginBottom: 18
+            background: 'linear-gradient(135deg, #111 0%, #1e1e1e 100%)',
+            color: '#fff',
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 18,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+            border: '1px solid #222'
           }}
         >
-          <div>
-            <label
-              htmlFor="phone"
-              style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}
-            >
-              Phone
-            </label>
-            <input
-              id="phone"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Phone number"
+          <div style={{ marginBottom: 12 }}>
+            <a
+              href="/customers"
               style={{
-                width: '100%',
-                padding: 12,
-                borderRadius: 10,
-                border: '1px solid #ccc',
-                fontSize: 16,
-                boxSizing: 'border-box'
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                textDecoration: 'none',
+                color: 'rgba(255,255,255,0.78)',
+                fontSize: 14,
+                fontWeight: 600
               }}
-            />
+            >
+              ← Back to customers
+            </a>
           </div>
 
-          <div>
-            <label
-              htmlFor="email"
-              style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email address"
-              style={{
-                width: '100%',
-                padding: 12,
-                borderRadius: 10,
-                border: '1px solid #ccc',
-                fontSize: 16,
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 18 }}>
-          <label
-            htmlFor="address"
-            style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}
-          >
-            Address
-          </label>
-          <textarea
-            id="address"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            rows={4}
-            placeholder="Customer address"
-            style={{
-              width: '100%',
-              padding: 12,
-              borderRadius: 10,
-              border: '1px solid #ccc',
-              fontSize: 16,
-              boxSizing: 'border-box',
-              resize: 'vertical'
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: 18 }}>
-          <label
-            htmlFor="postcode"
-            style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}
-          >
-            Postcode
-          </label>
-          <input
-            id="postcode"
-            value={postcode}
-            onChange={(e) => setPostcode(e.target.value.toUpperCase())}
-            placeholder="Postcode"
-            style={{
-              width: '100%',
-              padding: 12,
-              borderRadius: 10,
-              border: '1px solid #ccc',
-              fontSize: 16,
-              boxSizing: 'border-box'
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: 18 }}>
-          <label
-            htmlFor="notes"
-            style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}
-          >
-            Customer Notes
-          </label>
-          <textarea
-            id="notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={4}
-            placeholder="Gate codes, access details, preferences, pets, anything useful..."
-            style={{
-              width: '100%',
-              padding: 12,
-              borderRadius: 10,
-              border: '1px solid #ccc',
-              fontSize: 16,
-              boxSizing: 'border-box',
-              resize: 'vertical'
-            }}
-          />
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            alignItems: 'center',
-            flexWrap: 'wrap'
-          }}
-        >
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              padding: '12px 18px',
-              borderRadius: 10,
-              border: '1px solid #111',
-              background: '#111',
-              color: '#fff',
-              cursor: loading ? 'default' : 'pointer',
-              fontWeight: 600,
-              minWidth: 140
-            }}
-          >
-            {loading ? 'Saving...' : 'Save Customer'}
-          </button>
-
-          <a
-            href="/customers"
-            style={{
-              padding: '12px 18px',
-              borderRadius: 10,
-              border: '1px solid #ccc',
-              textDecoration: 'none',
-              color: '#333',
-              background: '#fff',
-              fontWeight: 600
-            }}
-          >
-            Cancel
-          </a>
-        </div>
-
-        {message && (
           <div
             style={{
-              marginTop: 16,
-              padding: '12px 14px',
-              borderRadius: 10,
-              background: message.includes('successfully') ? '#f3f9f1' : '#fff4f4',
-              border: message.includes('successfully')
-                ? '1px solid #cfe7c7'
-                : '1px solid #f0c9c9',
-              color: '#333'
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              borderRadius: 999,
+              background: 'rgba(255, 204, 0, 0.14)',
+              color: '#ffcc00',
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: 0.3,
+              marginBottom: 12
             }}
           >
-            {message}
+            NEW CUSTOMER
           </div>
-        )}
-      </form>
+
+          <h1 style={{ fontSize: 32, margin: '0 0 8px 0', lineHeight: 1.1 }}>
+            Add Customer
+          </h1>
+
+          <p
+            style={{
+              margin: 0,
+              color: 'rgba(255,255,255,0.78)',
+              fontSize: 15,
+              maxWidth: 560
+            }}
+          >
+            Save customer contact details, address and any important notes.
+          </p>
+        </section>
+
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            border: '1px solid #e7e7e7',
+            borderRadius: 18,
+            background: '#fff',
+            padding: 20,
+            boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+          }}
+        >
+          <div style={{ marginBottom: 18 }}>
+            <label
+              htmlFor="name"
+              style={{
+                display: 'block',
+                marginBottom: 8,
+                fontWeight: 700,
+                fontSize: 13,
+                color: '#555',
+                textTransform: 'uppercase',
+                letterSpacing: 0.3
+              }}
+            >
+              Name
+            </label>
+            <input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              placeholder="Customer name"
+              style={{
+                width: '100%',
+                padding: 14,
+                borderRadius: 12,
+                border: '1px solid #d6d6d6',
+                fontSize: 16,
+                boxSizing: 'border-box',
+                background: '#fcfcfc',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: 16,
+              marginBottom: 18
+            }}
+          >
+            <div>
+              <label
+                htmlFor="phone"
+                style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: '#555',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.3
+                }}
+              >
+                Phone
+              </label>
+              <input
+                id="phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Phone number"
+                style={{
+                  width: '100%',
+                  padding: 14,
+                  borderRadius: 12,
+                  border: '1px solid #d6d6d6',
+                  fontSize: 16,
+                  boxSizing: 'border-box',
+                  background: '#fcfcfc',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="email"
+                style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: '#555',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.3
+                }}
+              >
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email address"
+                style={{
+                  width: '100%',
+                  padding: 14,
+                  borderRadius: 12,
+                  border: '1px solid #d6d6d6',
+                  fontSize: 16,
+                  boxSizing: 'border-box',
+                  background: '#fcfcfc',
+                  outline: 'none'
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <label
+              htmlFor="address"
+              style={{
+                display: 'block',
+                marginBottom: 8,
+                fontWeight: 700,
+                fontSize: 13,
+                color: '#555',
+                textTransform: 'uppercase',
+                letterSpacing: 0.3
+              }}
+            >
+              Address
+            </label>
+            <textarea
+              id="address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              rows={4}
+              placeholder="Customer address"
+              style={{
+                width: '100%',
+                padding: 14,
+                borderRadius: 12,
+                border: '1px solid #d6d6d6',
+                fontSize: 16,
+                boxSizing: 'border-box',
+                resize: 'vertical',
+                background: '#fcfcfc',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <label
+              htmlFor="postcode"
+              style={{
+                display: 'block',
+                marginBottom: 8,
+                fontWeight: 700,
+                fontSize: 13,
+                color: '#555',
+                textTransform: 'uppercase',
+                letterSpacing: 0.3
+              }}
+            >
+              Postcode
+            </label>
+            <input
+              id="postcode"
+              value={postcode}
+              onChange={(e) => setPostcode(e.target.value.toUpperCase())}
+              placeholder="Postcode"
+              style={{
+                width: '100%',
+                padding: 14,
+                borderRadius: 12,
+                border: '1px solid #d6d6d6',
+                fontSize: 16,
+                boxSizing: 'border-box',
+                background: '#fcfcfc',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <label
+              htmlFor="notes"
+              style={{
+                display: 'block',
+                marginBottom: 8,
+                fontWeight: 700,
+                fontSize: 13,
+                color: '#555',
+                textTransform: 'uppercase',
+                letterSpacing: 0.3
+              }}
+            >
+              Customer Notes
+            </label>
+            <textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+              placeholder="Gate codes, access details, preferences, pets, anything useful..."
+              style={{
+                width: '100%',
+                padding: 14,
+                borderRadius: 12,
+                border: '1px solid #d6d6d6',
+                fontSize: 16,
+                boxSizing: 'border-box',
+                resize: 'vertical',
+                background: '#fcfcfc',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              alignItems: 'center',
+              flexWrap: 'wrap'
+            }}
+          >
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                padding: '12px 18px',
+                borderRadius: 12,
+                border: '1px solid #111',
+                background: '#ffcc00',
+                color: '#111',
+                cursor: loading ? 'default' : 'pointer',
+                fontWeight: 800,
+                minWidth: 140,
+                boxShadow: '0 6px 18px rgba(255, 204, 0, 0.18)'
+              }}
+            >
+              {loading ? 'Saving...' : 'Save Customer'}
+            </button>
+
+            <a
+              href="/customers"
+              style={{
+                padding: '12px 18px',
+                borderRadius: 12,
+                border: '1px solid #d8d8d8',
+                textDecoration: 'none',
+                color: '#333',
+                background: '#fff',
+                fontWeight: 700
+              }}
+            >
+              Cancel
+            </a>
+          </div>
+
+          {message && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: '12px 14px',
+                borderRadius: 12,
+                background: message.includes('successfully') ? '#f3f9f1' : '#fff4f4',
+                border: message.includes('successfully')
+                  ? '1px solid #cfe7c7'
+                  : '1px solid #f0c9c9',
+                color: '#333'
+              }}
+            >
+              {message}
+            </div>
+          )}
+        </form>
+      </div>
     </main>
   )
 }
