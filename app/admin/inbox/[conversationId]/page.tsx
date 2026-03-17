@@ -3,6 +3,7 @@ import InboxAutoRefresh from "@/components/admin/InboxAutoRefresh"
 import SourceBadge from "@/components/admin/SourceBadge"
 import WhatsAppReplyComposer from "@/components/admin/WhatsAppReplyComposer"
 import FacebookReplyComposer from "@/components/admin/FacebookReplyComposer"
+import OutlookReplyComposer from "@/components/admin/OutlookReplyComposer"
 import * as prismaModule from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -76,6 +77,13 @@ function isIncomingMessage(conversation: any, message: any) {
     return String(message?.senderName || "").toLowerCase() !== "furlads"
   }
 
+  if (
+    source === "furlads-email" ||
+    source === "threecounties-email"
+  ) {
+    return String(message?.senderName || "").toLowerCase() !== "furlads"
+  }
+
   return true
 }
 
@@ -128,8 +136,12 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
     String(conversation.contactRef || "").trim() || "No contact details yet"
 
   const normalisedConversationSource = normaliseSource(conversation.source)
+
   const isWhatsAppThread = normalisedConversationSource === "whatsapp"
   const isFacebookThread = normalisedConversationSource === "facebook"
+  const isEmailThread =
+    normalisedConversationSource === "furlads-email" ||
+    normalisedConversationSource === "threecounties-email"
 
   const facebookExternalThreadId =
     String(conversation.contactRef || "").trim() ||
@@ -239,6 +251,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
         </div>
       </section>
 
+      {/* REPLY SECTION */}
       {isWhatsAppThread ? (
         <WhatsAppReplyComposer
           conversationId={conversation.id}
@@ -251,21 +264,17 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
             externalThreadId={facebookExternalThreadId}
             contactName={conversation.contactName}
           />
-        ) : (
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <h3 className="text-base font-bold text-zinc-900">Reply</h3>
-            <p className="mt-1 text-sm text-zinc-500">
-              This Facebook thread is missing its external thread reference, so
-              reply is unavailable right now.
-            </p>
-          </section>
-        )
+        ) : null
+      ) : isEmailThread ? (
+        <OutlookReplyComposer
+          conversationId={conversation.id}
+          contactName={conversation.contactName}
+        />
       ) : (
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <h3 className="text-base font-bold text-zinc-900">Reply</h3>
           <p className="mt-1 text-sm text-zinc-500">
-            Direct reply is currently enabled for WhatsApp and Facebook threads
-            only.
+            Direct reply is currently enabled for WhatsApp, Facebook and email threads.
           </p>
         </section>
       )}
