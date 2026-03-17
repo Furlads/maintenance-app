@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { prisma } from "@/lib/prisma"
 import ScheduleNeedsSchedulingButton from "./ScheduleNeedsSchedulingButton"
+import JobQuickActions from "./JobQuickActions"
 
 export const dynamic = "force-dynamic"
 
@@ -99,6 +100,14 @@ function statusBadgeClass(status: string) {
 
   if (value === "unscheduled") {
     return "bg-zinc-100 text-zinc-700 ring-zinc-300"
+  }
+
+  if (value === "cancelled") {
+    return "bg-red-100 text-red-700 ring-red-200"
+  }
+
+  if (value === "archived") {
+    return "bg-zinc-200 text-zinc-700 ring-zinc-300"
   }
 
   return "bg-zinc-100 text-zinc-700 ring-zinc-200"
@@ -322,7 +331,7 @@ function JobTable({ jobs }: { jobs: JobItem[] }) {
         <table className="w-full text-sm">
           <thead className="bg-zinc-50">
             <tr className="text-left">
-              <th className="px-5 py-4 font-bold text-zinc-700">Customer / Job</th>
+              <th className="px-5 py-4 font-bold text-zinc-700">Customer</th>
               <th className="px-5 py-4 font-bold text-zinc-700">Address</th>
               <th className="px-5 py-4 font-bold text-zinc-700">Type</th>
               <th className="px-5 py-4 font-bold text-zinc-700">Visit Date</th>
@@ -342,9 +351,6 @@ function JobTable({ jobs }: { jobs: JobItem[] }) {
                 <td className="px-5 py-4">
                   <div className="font-semibold text-zinc-900">
                     {job.customer?.name ?? "Unknown"}
-                  </div>
-                  <div className="mt-1 text-sm text-zinc-600">
-                    {job.title || "Untitled job"}
                   </div>
                   <div className="mt-2 text-xs text-zinc-400">Job #{job.id}</div>
                 </td>
@@ -396,6 +402,11 @@ function JobTable({ jobs }: { jobs: JobItem[] }) {
                     >
                       Edit
                     </Link>
+
+                    <JobQuickActions
+                      jobId={job.id}
+                      customerName={job.customer?.name ?? `Job #${job.id}`}
+                    />
                   </div>
                 </td>
               </tr>
@@ -427,9 +438,6 @@ function JobCards({ jobs }: { jobs: JobItem[] }) {
           <div className="mt-4">
             <div className="text-lg font-bold text-zinc-900">
               {job.customer?.name ?? "Unknown"}
-            </div>
-            <div className="mt-1 text-sm font-medium text-zinc-600">
-              {job.title || "Untitled job"}
             </div>
             <div className="mt-1 text-xs text-zinc-400">Job #{job.id}</div>
           </div>
@@ -472,6 +480,13 @@ function JobCards({ jobs }: { jobs: JobItem[] }) {
             >
               Edit
             </Link>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-2">
+            <JobQuickActions
+              jobId={job.id}
+              customerName={job.customer?.name ?? `Job #${job.id}`}
+            />
           </div>
         </div>
       ))}
@@ -534,46 +549,49 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
   const search = String(searchParams?.q || "").trim()
   const activeFilter = String(searchParams?.filter || "all").trim().toLowerCase()
 
-  const maintenanceCount = jobs.filter((job) =>
+  const visibleJobs = jobs.filter((job) => {
+    const status = String(job.status || "").toLowerCase()
+    return status !== "cancelled" && status !== "archived"
+  })
+
+  const maintenanceCount = visibleJobs.filter((job) =>
     String(job.jobType || "").toLowerCase().includes("maint")
   ).length
 
-  const landscapingCount = jobs.filter((job) =>
+  const landscapingCount = visibleJobs.filter((job) =>
     String(job.jobType || "").toLowerCase().includes("land")
   ).length
 
-  const quoteCount = jobs.filter((job) =>
+  const quoteCount = visibleJobs.filter((job) =>
     String(job.jobType || "").toLowerCase().includes("quote")
   ).length
 
-  const doneCount = jobs.filter((job) => {
+  const doneCount = visibleJobs.filter((job) => {
     const value = String(job.status || "").toLowerCase()
     return value === "done" || value === "completed"
   }).length
 
-  const todoCount = jobs.filter((job) => {
+  const todoCount = visibleJobs.filter((job) => {
     const value = String(job.status || "").toLowerCase()
     return value === "scheduled" || value === "todo"
   }).length
 
-  const inProgressCount = jobs.filter((job) => {
+  const inProgressCount = visibleJobs.filter((job) => {
     const value = String(job.status || "").toLowerCase()
     return value === "inprogress" || value === "in_progress"
   }).length
 
-  const unassignedCount = jobs.filter((job) => job.assignments.length === 0).length
+  const unassignedCount = visibleJobs.filter((job) => job.assignments.length === 0).length
 
-  const baseFilteredJobs = jobs.filter((job) => {
+  const baseFilteredJobs = visibleJobs.filter((job) => {
     const workerText = formatWorkers(job.assignments).toLowerCase()
     const customerText = String(job.customer?.name || "").toLowerCase()
-    const titleText = String(job.title || "").toLowerCase()
     const addressText = String(job.address || "").toLowerCase()
     const searchText = search.toLowerCase()
 
     const matchesSearch =
       !searchText ||
       customerText.includes(searchText) ||
-      titleText.includes(searchText) ||
       addressText.includes(searchText) ||
       workerText.includes(searchText)
 
@@ -678,7 +696,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
             <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 xl:grid-cols-8 md:p-5">
               <StatCard
                 label="Total jobs"
-                value={jobs.length}
+                value={visibleJobs.length}
                 href={buildFilterHref("all", search)}
                 active={activeFilter === "all"}
               />
@@ -756,7 +774,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                     type="text"
                     name="q"
                     defaultValue={search}
-                    placeholder="Search customer, title, address or worker"
+                    placeholder="Search customer, address or worker"
                     className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
 

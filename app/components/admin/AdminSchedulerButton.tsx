@@ -11,22 +11,24 @@ export default function AdminSchedulerButton() {
     setRunning(true)
 
     try {
-      const res = await fetch('/api/scheduler/run', {
+      const res = await fetch('/api/schedule/rebuild', {
         method: 'POST',
       })
 
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        throw new Error(data?.error || 'Scheduler failed')
+        throw new Error(data?.error || 'Scheduler rebuild failed')
       }
 
-      window.alert('Unscheduled jobs have been automatically placed into the diary.')
+      window.alert(
+        'The diary has been rebuilt and reorganised to keep it as economical as possible, while leaving fixed jobs in place.'
+      )
       window.location.reload()
     } catch (error) {
       console.error(error)
       window.alert(
-        error instanceof Error ? error.message : 'Scheduler failed to run.'
+        error instanceof Error ? error.message : 'Scheduler rebuild failed.'
       )
     } finally {
       setRunning(false)
@@ -40,7 +42,7 @@ export default function AdminSchedulerButton() {
       disabled={running}
       className="rounded-xl bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-zinc-900 disabled:cursor-not-allowed disabled:opacity-70"
     >
-      {running ? 'Scheduling jobs...' : 'Auto schedule jobs'}
+      {running ? 'Rebuilding diary...' : 'Auto schedule jobs'}
     </button>
   )
 }
