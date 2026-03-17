@@ -154,7 +154,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
     ).trim()
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-36">
       <InboxAutoRefresh />
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -251,33 +251,37 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
         </div>
       </section>
 
-      {/* REPLY SECTION */}
-      {isWhatsAppThread ? (
-        <WhatsAppReplyComposer
-          conversationId={conversation.id}
-          contactName={conversation.contactName}
-        />
-      ) : isFacebookThread ? (
-        facebookExternalThreadId ? (
-          <FacebookReplyComposer
-            conversationId={conversation.id}
-            externalThreadId={facebookExternalThreadId}
-            contactName={conversation.contactName}
-          />
-        ) : null
-      ) : isEmailThread ? (
-        <OutlookReplyComposer
-          conversationId={conversation.id}
-          contactName={conversation.contactName}
-        />
-      ) : (
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <h3 className="text-base font-bold text-zinc-900">Reply</h3>
-          <p className="mt-1 text-sm text-zinc-500">
-            Direct reply is currently enabled for WhatsApp, Facebook and email threads.
-          </p>
-        </section>
-      )}
+      <div className="sticky bottom-0 z-10 -mx-0 bg-white/95 pt-2 backdrop-blur supports-[backdrop-filter]:bg-white/85">
+        <div className="border-t border-zinc-200 pt-2">
+          {isWhatsAppThread ? (
+            <WhatsAppReplyComposer
+              conversationId={conversation.id}
+              contactName={conversation.contactName}
+            />
+          ) : isFacebookThread ? (
+            facebookExternalThreadId ? (
+              <FacebookReplyComposer
+                conversationId={conversation.id}
+                externalThreadId={facebookExternalThreadId}
+                contactName={conversation.contactName}
+              />
+            ) : null
+          ) : isEmailThread ? (
+            <OutlookReplyComposer
+              conversationId={conversation.id}
+              contactName={conversation.contactName}
+            />
+          ) : (
+            <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <h3 className="text-base font-bold text-zinc-900">Reply</h3>
+              <p className="mt-1 text-sm text-zinc-500">
+                Direct reply is currently enabled for WhatsApp, Facebook and email
+                threads.
+              </p>
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
