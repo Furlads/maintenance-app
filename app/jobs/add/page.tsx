@@ -54,6 +54,16 @@ function FieldLabel({
   )
 }
 
+function isTrevWorker(worker: Worker) {
+  const first = worker.firstName.trim().toLowerCase()
+  const last = worker.lastName.trim().toLowerCase()
+
+  const firstMatches = first === 'trevor' || first === 'trev'
+  const lastMatches = last.includes('fudger')
+
+  return firstMatches && lastMatches
+}
+
 export default function AddJobPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [workers, setWorkers] = useState<Worker[]>([])
@@ -66,6 +76,10 @@ export default function AddJobPage() {
   const [useDifferentAddress, setUseDifferentAddress] = useState(false)
   const [jobAddress, setJobAddress] = useState('')
   const [durationMinutes, setDurationMinutes] = useState('60')
+
+  const [visitDate, setVisitDate] = useState('')
+  const [startTime, setStartTime] = useState('')
+  const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
 
   const [visitPattern, setVisitPattern] = useState('one-off')
   const [maintenanceFrequency, setMaintenanceFrequency] = useState('2')
@@ -90,11 +104,16 @@ export default function AddJobPage() {
     const titleFromUrl = params.get('title') || ''
     const addressFromUrl = params.get('address') || ''
     const jobTypeFromUrl = params.get('jobType') || ''
+    const visitDateFromUrl = params.get('visitDate') || ''
+    const startTimeFromUrl = params.get('startTime') || ''
 
     setCustomerId(customerIdFromUrl)
 
     if (titleFromUrl) setTitle(titleFromUrl)
     if (jobTypeFromUrl) setJobType(jobTypeFromUrl)
+    if (visitDateFromUrl) setVisitDate(visitDateFromUrl)
+    if (startTimeFromUrl) setStartTime(startTimeFromUrl)
+
     if (addressFromUrl) {
       setUseDifferentAddress(true)
       setJobAddress(addressFromUrl)
@@ -137,10 +156,32 @@ export default function AddJobPage() {
     return parts.join('\n')
   }, [selectedCustomer])
 
+  const selectedWorkers = useMemo(() => {
+    return workers.filter((worker) => assignedTo.includes(worker.id))
+  }, [workers, assignedTo])
+
+  const trevAssigned = useMemo(() => {
+    return selectedWorkers.some((worker) => isTrevWorker(worker))
+  }, [selectedWorkers])
+
+  const isTrevQuoteJob = jobType === 'Quote' && trevAssigned
+
   const finalAddress = useDifferentAddress ? jobAddress : defaultCustomerAddress
   const isRegularMaintenance =
     jobType === 'Maintenance' && visitPattern === 'regular-maintenance'
   const useSpecificVisitPreference = timePreferenceMode === 'specific'
+
+  useEffect(() => {
+    if (!isTrevQuoteJob) {
+      setAllowQuoteTimeOverride(false)
+    }
+  }, [isTrevQuoteJob])
+
+  useEffect(() => {
+    if (isTrevQuoteJob && !allowQuoteTimeOverride) {
+      setStartTime('')
+    }
+  }, [isTrevQuoteJob, allowQuoteTimeOverride])
 
   function toggleWorker(workerId: number) {
     setAssignedTo((prev) =>
@@ -229,6 +270,14 @@ export default function AddJobPage() {
         throw new Error('Expected time must be greater than 0')
       }
 
+      if (isTrevQuoteJob && !visitDate) {
+        throw new Error('Trev quote visits must have a visit date')
+      }
+
+      if (isTrevQuoteJob && allowQuoteTimeOverride && !startTime) {
+        throw new Error('Please choose a manual time override for this Trev quote visit')
+      }
+
       const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: {
@@ -243,6 +292,12 @@ export default function AddJobPage() {
           jobType,
           assignedTo,
           durationMinutes: parsedDuration,
+          visitDate: visitDate || null,
+          startTime:
+            isTrevQuoteJob && !allowQuoteTimeOverride
+              ? null
+              : startTime || null,
+          allowQuoteTimeOverride: isTrevQuoteJob ? allowQuoteTimeOverride : false,
 
           visitPattern,
           isRegularMaintenance,
@@ -261,8 +316,10 @@ export default function AddJobPage() {
         })
       })
 
+      const data = await res.json().catch(() => null)
+
       if (!res.ok) {
-        throw new Error('Failed to save job')
+        throw new Error(data?.error || 'Failed to save job')
       }
 
       setTitle('')
@@ -273,6 +330,9 @@ export default function AddJobPage() {
       setJobAddress('')
       setAssignedTo([])
       setDurationMinutes('60')
+      setVisitDate('')
+      setStartTime('')
+      setAllowQuoteTimeOverride(false)
       setVisitPattern('one-off')
       setMaintenanceFrequency('2')
       setTimePreferenceMode('best-fit')
@@ -476,6 +536,10 @@ export default function AddJobPage() {
                         if (nextType !== 'Maintenance') {
                           setVisitPattern('one-off')
                         }
+
+                        if (nextType !== 'Quote') {
+                          setAllowQuoteTimeOverride(false)
+                        }
                       }}
                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
@@ -530,6 +594,81 @@ export default function AddJobPage() {
                     className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
                 </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Scheduling"
+              description="Set a visit date and time if you want this job added straight into the diary."
+            >
+              <div className="grid gap-4">
+                {isTrevQuoteJob && (
+                  <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-zinc-800">
+                    <div className="font-bold text-zinc-900">Trev quote visit rules</div>
+                    <div className="mt-1 space-y-1 text-zinc-700">
+                      <p>• Trev can only have 3 quote visits per day.</p>
+                      <p>• Default quote slots are 11:00, 12:00 and 13:00.</p>
+                      <p>• If you leave manual override off, the system will pick the next free slot automatically.</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <FieldLabel required={isTrevQuoteJob}>Visit Date</FieldLabel>
+                    <input
+                      type="date"
+                      value={visitDate}
+                      onChange={(e) => setVisitDate(e.target.value)}
+                      required={isTrevQuoteJob}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  </div>
+
+                  <div>
+                    <FieldLabel>
+                      {isTrevQuoteJob && !allowQuoteTimeOverride
+                        ? 'Start Time (automatic)'
+                        : 'Start Time'}
+                    </FieldLabel>
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      disabled={isTrevQuoteJob && !allowQuoteTimeOverride}
+                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                        isTrevQuoteJob && !allowQuoteTimeOverride
+                          ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
+                          : 'border-zinc-300 bg-white text-zinc-900'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {isTrevQuoteJob ? (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <label className="flex items-start gap-3 text-sm text-zinc-800">
+                      <input
+                        type="checkbox"
+                        checked={allowQuoteTimeOverride}
+                        onChange={(e) => setAllowQuoteTimeOverride(e.target.checked)}
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="block font-semibold">
+                          Manually choose a different quote time
+                        </span>
+                        <span className="mt-1 block text-zinc-500">
+                          Only tick this if you need to override the normal 11:00 / 12:00 / 13:00 Trev quote slots.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-sm text-zinc-500">
+                    Leave date and time blank if this job should stay unscheduled for now.
+                  </p>
+                )}
               </div>
             </SectionCard>
 
