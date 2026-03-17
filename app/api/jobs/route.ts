@@ -113,6 +113,160 @@ function nextLondonDayUtc(date: Date) {
   return new Date(start.getTime() + 24 * 60 * 60 * 1000)
 }
 
+function isQuoteJobType(jobType: string) {
+  const value = cleanString(jobType).toLowerCase()
+  return value === 'quote' || value === 'quoted'
+}
+
+function isTrue(value: unknown) {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
+async function findTrevWorkerIds() {
+  const workers = await prisma.worker.findMany({
+    where: {
+      OR: [
+        {
+          AND: [
+            { firstName: { equals: 'Trevor', mode: 'insensitive' } },
+            { lastName: { contains: 'Fudger', mode: 'insensitive' } }
+          ]
+        },
+        {
+          AND: [
+            { firstName: { equals: 'Trev', mode: 'insensitive' } },
+            { lastName: { contains: 'Fudger', mode: 'insensitive' } }
+          ]
+        },
+        {
+          email: { contains: 'trevor.fudger', mode: 'insensitive' }
+        }
+      ]
+    },
+    select: {
+      id: true
+    }
+  })
+
+  return workers.map((worker) => worker.id)
+}
+
+async function validateTrevQuoteVisitRules(params: {
+  visitDate: Date | null
+  startTime: string | null
+  jobType: string
+  assignedWorkerIds: number[]
+  allowQuoteTimeOverride: boolean
+}) {
+  const {
+    visitDate,
+    startTime,
+    jobType,
+    assignedWorkerIds,
+    allowQuoteTimeOverride
+  } = params
+
+  if (!isQuoteJobType(jobType)) {
+    return null
+  }
+
+  const trevWorkerIds = await findTrevWorkerIds()
+
+  if (trevWorkerIds.length === 0) {
+    return NextResponse.json(
+      { error: 'Could not find Trev in the worker database.' },
+      { status: 400 }
+    )
+  }
+
+  const isAssignedToTrev = assignedWorkerIds.some((workerId) =>
+    trevWorkerIds.includes(workerId)
+  )
+
+  if (!isAssignedToTrev) {
+    return null
+  }
+
+  if (!visitDate) {
+    return NextResponse.json(
+      { error: 'Quote visits for Trev must have a visitDate.' },
+      { status: 400 }
+    )
+  }
+
+  if (!startTime) {
+    return NextResponse.json(
+      { error: 'Quote visits for Trev must have a startTime.' },
+      { status: 400 }
+    )
+  }
+
+  const allowedDefaultSlots = ['11:00', '12:00', '13:00']
+
+  if (!allowQuoteTimeOverride && !allowedDefaultSlots.includes(startTime)) {
+    return NextResponse.json(
+      {
+        error:
+          'Trev quote visits can only be booked at 11:00, 12:00 or 13:00 unless override is enabled.'
+      },
+      { status: 400 }
+    )
+  }
+
+  const dayStart = startOfLondonDayUtc(visitDate)
+  const dayEnd = nextLondonDayUtc(visitDate)
+
+  const existingTrevQuoteJobs = await prisma.job.findMany({
+    where: {
+      jobType: {
+        equals: 'Quote',
+        mode: 'insensitive'
+      },
+      visitDate: {
+        gte: dayStart,
+        lt: dayEnd
+      },
+      assignments: {
+        some: {
+          workerId: {
+            in: trevWorkerIds
+          }
+        }
+      }
+    },
+    select: {
+      id: true,
+      startTime: true
+    }
+  })
+
+  if (existingTrevQuoteJobs.length >= 3) {
+    return NextResponse.json(
+      {
+        error:
+          'Trev already has 3 quote visits booked for that day. Maximum reached.'
+      },
+      { status: 400 }
+    )
+  }
+
+  const exactTimeTaken = existingTrevQuoteJobs.some(
+    (job) => cleanString(job.startTime) === startTime
+  )
+
+  if (exactTimeTaken) {
+    return NextResponse.json(
+      {
+        error:
+          'Trev already has a quote visit booked at that time on that day.'
+      },
+      { status: 400 }
+    )
+  }
+
+  return null
+}
+
 async function ensureMorningPrepJobs() {
   const now = new Date()
   const dayStart = startOfLondonDayUtc(now)
@@ -263,6 +417,7 @@ export async function POST(req: Request) {
     const address = cleanString(body.address)
     const notes = cleanString(body.notes)
     const jobType = cleanString(body.jobType) || 'Other'
+    const allowQuoteTimeOverride = isTrue(body.allowQuoteTimeOverride)
 
     const assignedWorkerIds = uniquePositiveInts(
       Array.isArray(body.assignedTo)
@@ -340,6 +495,18 @@ export async function POST(req: Request) {
       }
 
       durationMinutes = Math.round(parsed)
+    }
+
+    const trevQuoteRuleError = await validateTrevQuoteVisitRules({
+      visitDate,
+      startTime,
+      jobType,
+      assignedWorkerIds,
+      allowQuoteTimeOverride
+    })
+
+    if (trevQuoteRuleError) {
+      return trevQuoteRuleError
     }
 
     const status = normalizeJobStatus(body.status, !!visitDate)
