@@ -1,21 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import jwt from "jsonwebtoken"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
 type LooseRecord = Record<string, any>
-
-function parseJwtPayload(token: string) {
-  const parts = token.split(".")
-  if (parts.length < 2) {
-    throw new Error("Invalid JWT format")
-  }
-
-  const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/")
-  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")
-  const json = Buffer.from(padded, "base64").toString("utf8")
-  return JSON.parse(json)
-}
 
 function safeString(value: unknown) {
   if (value === null || value === undefined) return ""
@@ -36,10 +25,7 @@ function valueToText(value: unknown): string {
   }
 
   if (Array.isArray(value)) {
-    return value
-      .map((item) => valueToText(item))
-      .filter(Boolean)
-      .join(", ")
+    return value.map((item) => valueToText(item)).filter(Boolean).join(", ")
   }
 
   if (typeof value === "object") {
@@ -127,66 +113,75 @@ function buildContactRef(email: string, phone: string, externalId: string) {
   return `wix:${externalId}`
 }
 
-function looksLikeJwt(raw: string) {
-  const trimmed = raw.trim()
-  return trimmed.split(".").length >= 2 && !trimmed.startsWith("{")
-}
+function parseEventDataObject(eventData: any): LooseRecord {
+  if (!eventData) return {}
 
-function extractPossibleSubmissionData(payload: LooseRecord) {
-  const createdEvent = payload?.createdEvent || payload?.data?.createdEvent || null
-  const entity = createdEvent?.entity || payload?.entity || payload?.data?.entity || null
-
-  const externalId =
-    safeString(entity?.id) ||
-    safeString(createdEvent?.entityId) ||
-    safeString(payload?.entityId) ||
-    safeString(payload?.submissionId) ||
-    safeString(payload?.id)
-
-  const createdAt =
-    safeString(entity?.createdDate) ||
-    safeString(createdEvent?.eventTime) ||
-    safeString(payload?.createdDate) ||
-    safeString(payload?.eventTime)
-
-  const fieldMaps: LooseRecord[] = []
-
-  if (entity?.submissions && typeof entity.submissions === "object") {
-    fieldMaps.push(entity.submissions as LooseRecord)
-  }
-
-  if (entity?.submission && typeof entity.submission === "object") {
-    fieldMaps.push(entity.submission as LooseRecord)
-  }
-
-  if (payload?.submissions && typeof payload.submissions === "object") {
-    fieldMaps.push(payload.submissions as LooseRecord)
-  }
-
-  if (payload?.submission && typeof payload.submission === "object") {
-    fieldMaps.push(payload.submission as LooseRecord)
-  }
-
-  if (payload?.fields && typeof payload.fields === "object") {
-    fieldMaps.push(payload.fields as LooseRecord)
-  }
-
-  const flattened: LooseRecord = {}
-  for (const map of fieldMaps) {
-    for (const [key, value] of Object.entries(map)) {
-      flattened[key] = value
+  if (typeof eventData === "string") {
+    try {
+      return JSON.parse(eventData)
+    } catch {
+      return {}
     }
   }
 
-  return {
-    externalId,
-    createdAt,
-    fields: flattened,
+  if (typeof eventData === "object") {
+    return eventData as LooseRecord
   }
+
+  return {}
+}
+
+function flattenPossibleFields(eventData: LooseRecord): LooseRecord {
+  const flattened: LooseRecord = {}
+
+  const candidates = [
+    eventData?.submission,
+    eventData?.submissions,
+    eventData?.fields,
+    eventData?.formData,
+    eventData?.data,
+    eventData?.payload,
+    eventData?.entity?.submission,
+    eventData?.entity?.submissions,
+  ]
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      for (const [key, value] of Object.entries(candidate)) {
+        flattened[key] = value
+      }
+    }
+  }
+
+  if (Object.keys(flattened).length === 0) {
+    for (const [key, value] of Object.entries(eventData || {})) {
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean" ||
+        Array.isArray(value) ||
+        (value && typeof value === "object")
+      ) {
+        flattened[key] = value
+      }
+    }
+  }
+
+  return flattened
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const publicKey = process.env.WIX_WEBHOOK_PUBLIC_KEY
+
+    if (!publicKey) {
+      console.error("WIX WEBHOOK ERROR: Missing WIX_WEBHOOK_PUBLIC_KEY")
+      return NextResponse.json(
+        { ok: false, error: "Missing Wix public key." },
+        { status: 500 }
+      )
+    }
+
     const rawBody = await req.text()
 
     if (!rawBody.trim()) {
@@ -196,26 +191,37 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    let payload: LooseRecord = {}
-
+    let decoded: any
     try {
-      if (looksLikeJwt(rawBody)) {
-        payload = parseJwtPayload(rawBody)
-      } else {
-        payload = JSON.parse(rawBody)
-      }
+      decoded = jwt.verify(rawBody, publicKey, {
+        algorithms: ["RS256"],
+      })
     } catch (error) {
-      console.error("WIX FORMS PARSE ERROR:", error)
+      console.error("WIX JWT VERIFY ERROR:", error)
       return NextResponse.json(
-        { ok: false, error: "Could not parse Wix payload." },
+        { ok: false, error: "Invalid Wix webhook signature." },
         { status: 400 }
       )
     }
 
-    const { externalId, createdAt, fields } = extractPossibleSubmissionData(payload)
+    const envelope =
+      typeof decoded?.data === "string" ? JSON.parse(decoded.data) : decoded?.data || decoded
+
+    const eventType = safeString(envelope?.eventType)
+    const instanceId = safeString(envelope?.instanceId)
+    const eventData = parseEventDataObject(envelope?.data)
+
+    const externalId =
+      safeString(eventData?.id) ||
+      safeString(envelope?.entityId) ||
+      safeString(envelope?.id)
 
     if (!externalId) {
-      console.error("WIX FORMS MISSING ID:", payload)
+      console.error("WIX WEBHOOK ERROR: Missing external id", {
+        eventType,
+        instanceId,
+        envelope,
+      })
       return NextResponse.json(
         { ok: false, error: "Missing submission id." },
         { status: 400 }
@@ -235,6 +241,8 @@ export async function POST(req: NextRequest) {
     if (existing) {
       return NextResponse.json({ ok: true, skipped: true })
     }
+
+    const fields = flattenPossibleFields(eventData)
 
     const contactName = buildContactName(fields)
     const contactEmail = buildContactEmail(fields)
@@ -291,14 +299,13 @@ export async function POST(req: NextRequest) {
         body,
         externalMessageId: externalId,
         status: "unread",
-        createdAt: createdAt ? new Date(createdAt) : new Date(),
+        createdAt: envelope?.eventTime ? new Date(envelope.eventTime) : new Date(),
       },
     })
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true }, { status: 200 })
   } catch (error) {
     console.error("WIX FORMS WEBHOOK ERROR:", error)
-
     return NextResponse.json(
       { ok: false, error: "Failed to process Wix form submission." },
       { status: 500 }
