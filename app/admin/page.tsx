@@ -66,8 +66,40 @@ function formatDate(value: Date | null | undefined) {
   }).format(new Date(value))
 }
 
+function parseTimeToMinutes(value?: string | null) {
+  if (!value) return 9999
+
+  const trimmed = String(value).trim()
+  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed)
+
+  if (!match) return 9999
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+
+  if (
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return 9999
+  }
+
+  return hours * 60 + minutes
+}
+
 function normaliseJobType(value?: string | null) {
   const raw = String(value || '').toLowerCase()
+
+  if (raw.includes('prep')) {
+    return {
+      label: 'Prep',
+      className: 'bg-zinc-100 text-zinc-700 ring-zinc-200',
+    }
+  }
 
   if (raw.includes('maint')) {
     return {
@@ -101,7 +133,9 @@ function normaliseStatus(value?: string | null) {
 
   if (raw.includes('progress')) return 'In progress'
   if (raw.includes('done') || raw.includes('finish')) return 'Done'
-  if (raw.includes('sched')) return 'Scheduled'
+  if (raw.includes('sched') || raw.includes('todo')) return 'Scheduled'
+  if (raw.includes('cancel')) return 'Cancelled'
+  if (raw.includes('archive')) return 'Archived'
   return value || 'Unscheduled'
 }
 
@@ -201,16 +235,17 @@ export default async function AdminPage() {
   const todayStart = startOfToday()
   const todayEnd = endOfToday()
 
-  const [jobsToday, workers, quotesWaiting, inboxMessages] = await Promise.all([
+  const [jobsTodayRaw, workers, quotesWaiting, inboxMessages] = await Promise.all([
     prisma.job.findMany({
       where: {
         visitDate: {
           gte: todayStart,
           lte: todayEnd,
         },
+        status: {
+          notIn: ['cancelled', 'archived'],
+        },
       },
-      orderBy: [{ visitDate: 'asc' }, { createdAt: 'desc' }],
-      take: 20,
       include: {
         customer: true,
         assignments: {
@@ -219,6 +254,7 @@ export default async function AdminPage() {
           },
         },
       },
+      take: 50,
     }),
     prisma.worker.findMany({
       where: {
@@ -247,6 +283,17 @@ export default async function AdminPage() {
       },
     }) as Promise<InboxMessageRow[]>,
   ])
+
+  const jobsToday = [...jobsTodayRaw].sort((a: any, b: any) => {
+    const aStart = parseTimeToMinutes(a.startTime)
+    const bStart = parseTimeToMinutes(b.startTime)
+
+    if (aStart !== bStart) {
+      return aStart - bStart
+    }
+
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  })
 
   const maintenanceToday = jobsToday.filter((job: any) =>
     String(job.jobType || '').toLowerCase().includes('maint')
@@ -349,7 +396,7 @@ export default async function AdminPage() {
               <div>
                 <h3 className="text-base font-bold">Today&apos;s jobs</h3>
                 <p className="text-xs text-zinc-500">
-                  Mixed view of maintenance and landscaping work
+                  Earliest job first, with Morning Prep at the top if present
                 </p>
               </div>
               <Link href="/jobs" className="text-sm font-semibold text-zinc-700">
@@ -386,7 +433,7 @@ export default async function AdminPage() {
                             </div>
 
                             <h4 className="mt-3 text-base font-bold text-zinc-900">
-                              {job.customer?.name || job.title}
+                              {job.customer?.name || 'Unknown customer'}
                             </h4>
                             <p className="mt-1 text-sm text-zinc-500">
                               {job.address || 'No address'} • {formatDate(job.visitDate)}
@@ -394,17 +441,21 @@ export default async function AdminPage() {
 
                             <div className="mt-3 grid gap-2 text-sm text-zinc-700 sm:grid-cols-2">
                               <div>
-                                <span className="font-semibold">Title:</span> {job.title}
+                                <span className="font-semibold">Start:</span>{' '}
+                                {job.startTime || 'Time TBC'}
                               </div>
                               <div>
-                                <span className="font-semibold">Start:</span>{' '}
-                                {job.startTime || formatTime(job.visitDate)}
+                                <span className="font-semibold">Job ID:</span> #{job.id}
                               </div>
                               <div className="sm:col-span-2">
                                 <span className="font-semibold">Assigned:</span>{' '}
                                 {assignedNames.length > 0 ? assignedNames.join(', ') : 'Unassigned'}
                               </div>
                             </div>
+                          </div>
+
+                          <div className="text-sm font-bold text-zinc-700">
+                            {job.startTime || formatTime(job.visitDate)}
                           </div>
                         </div>
                       </div>
