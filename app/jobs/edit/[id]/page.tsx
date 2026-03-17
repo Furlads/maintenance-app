@@ -125,6 +125,16 @@ function FieldLabel({
   )
 }
 
+function isTrevWorker(worker: Worker) {
+  const first = worker.firstName.trim().toLowerCase()
+  const last = worker.lastName.trim().toLowerCase()
+
+  const firstMatches = first === 'trevor' || first === 'trev'
+  const lastMatches = last.includes('fudger')
+
+  return firstMatches && lastMatches
+}
+
 export default function EditJobPage() {
   const params = useParams()
   const router = useRouter()
@@ -147,6 +157,7 @@ export default function EditJobPage() {
   const [durationMinutes, setDurationMinutes] = useState('60')
   const [visitDate, setVisitDate] = useState('')
   const [startTime, setStartTime] = useState('')
+  const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -168,12 +179,13 @@ export default function EditJobPage() {
         const customerData = await customerRes.json()
         const workerData = await workerRes.json()
 
-        setCustomers(Array.isArray(customerData) ? customerData : [])
-        setWorkers(
-          Array.isArray(workerData)
-            ? workerData.filter((worker) => worker.active)
-            : []
-        )
+        const safeCustomers = Array.isArray(customerData) ? customerData : []
+        const safeWorkers = Array.isArray(workerData)
+          ? workerData.filter((worker) => worker.active)
+          : []
+
+        setCustomers(safeCustomers)
+        setWorkers(safeWorkers)
 
         setCustomerId(String(jobData.customerId))
         setTitle(jobData.title || '')
@@ -190,10 +202,10 @@ export default function EditJobPage() {
         )
         setVisitDate(toDateInputValue(jobData.visitDate))
         setStartTime(jobData.startTime || '')
+        setAllowQuoteTimeOverride(false)
 
-        const customerList = Array.isArray(customerData) ? customerData : []
         const selectedCustomer =
-          customerList.find(
+          safeCustomers.find(
             (customer: Customer) => String(customer.id) === String(jobData.customerId)
           ) || null
 
@@ -235,7 +247,28 @@ export default function EditJobPage() {
     return parts.join('\n')
   }, [selectedCustomer])
 
+  const selectedWorkers = useMemo(() => {
+    return workers.filter((worker) => assignedTo.includes(worker.id))
+  }, [workers, assignedTo])
+
+  const trevAssigned = useMemo(() => {
+    return selectedWorkers.some((worker) => isTrevWorker(worker))
+  }, [selectedWorkers])
+
+  const isTrevQuoteJob = jobType === 'Quote' && trevAssigned
   const finalAddress = useDifferentAddress ? jobAddress : defaultCustomerAddress
+
+  useEffect(() => {
+    if (!isTrevQuoteJob) {
+      setAllowQuoteTimeOverride(false)
+    }
+  }, [isTrevQuoteJob])
+
+  useEffect(() => {
+    if (isTrevQuoteJob && !allowQuoteTimeOverride) {
+      setStartTime('')
+    }
+  }, [isTrevQuoteJob, allowQuoteTimeOverride])
 
   function toggleWorker(workerId: number) {
     setAssignedTo((prev) =>
@@ -269,6 +302,14 @@ export default function EditJobPage() {
         throw new Error('Expected time must be greater than 0')
       }
 
+      if (isTrevQuoteJob && !visitDate) {
+        throw new Error('Trev quote visits must have a visit date')
+      }
+
+      if (isTrevQuoteJob && allowQuoteTimeOverride && !startTime) {
+        throw new Error('Please choose a manual time override for this Trev quote visit')
+      }
+
       const res = await fetch(`/api/jobs/${id}`, {
         method: 'PATCH',
         headers: {
@@ -284,7 +325,11 @@ export default function EditJobPage() {
           assignedTo,
           durationMinutes: parsedDuration,
           visitDate: visitDate || null,
-          startTime: startTime || null
+          startTime:
+            isTrevQuoteJob && !allowQuoteTimeOverride
+              ? null
+              : startTime || null,
+          allowQuoteTimeOverride: isTrevQuoteJob ? allowQuoteTimeOverride : false
         })
       })
 
@@ -395,7 +440,14 @@ export default function EditJobPage() {
                     <FieldLabel>Job Type</FieldLabel>
                     <select
                       value={jobType}
-                      onChange={(e) => setJobType(e.target.value)}
+                      onChange={(e) => {
+                        const nextType = e.target.value
+                        setJobType(nextType)
+
+                        if (nextType !== 'Quote') {
+                          setAllowQuoteTimeOverride(false)
+                        }
+                      }}
                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
                       <option value="Quote">Quote</option>
@@ -459,27 +511,73 @@ export default function EditJobPage() {
                   />
                 </div>
 
+                {isTrevQuoteJob && (
+                  <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-zinc-800">
+                    <div className="font-bold text-zinc-900">Trev quote visit rules</div>
+                    <div className="mt-1 space-y-1 text-zinc-700">
+                      <p>• Trev can only have 3 quote visits per day.</p>
+                      <p>• Default quote slots are 11:00, 12:00 and 13:00.</p>
+                      <p>• If you leave manual override off, the system will pick the next free slot automatically.</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <FieldLabel>Visit Date</FieldLabel>
+                    <FieldLabel required={isTrevQuoteJob}>Visit Date</FieldLabel>
                     <input
                       type="date"
                       value={visitDate}
                       onChange={(e) => setVisitDate(e.target.value)}
+                      required={isTrevQuoteJob}
                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     />
                   </div>
 
                   <div>
-                    <FieldLabel>Start Time</FieldLabel>
+                    <FieldLabel>
+                      {isTrevQuoteJob && !allowQuoteTimeOverride
+                        ? 'Start Time (automatic)'
+                        : 'Start Time'}
+                    </FieldLabel>
                     <input
                       type="time"
                       value={startTime}
                       onChange={(e) => setStartTime(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      disabled={isTrevQuoteJob && !allowQuoteTimeOverride}
+                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                        isTrevQuoteJob && !allowQuoteTimeOverride
+                          ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
+                          : 'border-zinc-300 bg-white text-zinc-900'
+                      }`}
                     />
                   </div>
                 </div>
+
+                {isTrevQuoteJob ? (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <label className="flex items-start gap-3 text-sm text-zinc-800">
+                      <input
+                        type="checkbox"
+                        checked={allowQuoteTimeOverride}
+                        onChange={(e) => setAllowQuoteTimeOverride(e.target.checked)}
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="block font-semibold">
+                          Manually choose a different quote time
+                        </span>
+                        <span className="mt-1 block text-zinc-500">
+                          Only tick this if you need to override the normal 11:00 / 12:00 / 13:00 Trev quote slots.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-sm text-zinc-500">
+                    Leave date and time blank if this job should stay unscheduled for now.
+                  </p>
+                )}
               </div>
             </SectionCard>
 
