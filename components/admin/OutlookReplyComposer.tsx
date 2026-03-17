@@ -8,6 +8,13 @@ type Props = {
   contactName?: string | null
 }
 
+const QUICK_REPLIES = [
+  "Thanks for your message — we’ll get back to you shortly.",
+  "What postcode is the job at please?",
+  "Can you send a few photos of the area please?",
+  "When would you like us to come out and have a look?",
+]
+
 export default function OutlookReplyComposer({
   conversationId,
   contactName,
@@ -19,9 +26,9 @@ export default function OutlookReplyComposer({
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
 
-  async function handleSend() {
-    const trimmedMessage = message.trim()
-    const trimmedSubject = subject.trim()
+  async function sendMessage(text: string, subjectText?: string) {
+    const trimmedMessage = text.trim()
+    const trimmedSubject = String(subjectText || "").trim()
 
     if (!trimmedMessage) {
       setError("Please type a message first.")
@@ -64,6 +71,15 @@ export default function OutlookReplyComposer({
     }
   }
 
+  async function handleSend() {
+    await sendMessage(message, subject)
+  }
+
+  async function handleQuickSend(text: string) {
+    setMessage(text)
+    await sendMessage(text, subject)
+  }
+
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
       <div className="mb-3">
@@ -74,6 +90,34 @@ export default function OutlookReplyComposer({
       </div>
 
       <div className="space-y-3">
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Quick replies
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {QUICK_REPLIES.map((reply) => (
+              <div key={reply} className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMessage(reply)}
+                  disabled={sending}
+                  className="rounded-full border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Fill
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickSend(reply)}
+                  disabled={sending}
+                  className="rounded-full bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Send now
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <input
           type="text"
           value={subject}
