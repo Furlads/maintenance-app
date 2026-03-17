@@ -6,6 +6,11 @@ export const dynamic = "force-dynamic"
 
 type LooseRecord = Record<string, any>
 
+type WixFieldRow = {
+  fieldName?: string
+  fieldValue?: string
+}
+
 function safeString(value: unknown) {
   if (value === null || value === undefined) return ""
   if (typeof value === "string") return value.trim()
@@ -13,62 +18,64 @@ function safeString(value: unknown) {
   return ""
 }
 
-function valueToText(value: unknown): string {
-  if (value === null || value === undefined) return ""
+function parseJsonSafely(value: unknown): any {
+  if (typeof value !== "string") return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
 
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return String(value).trim()
+function getNestedWixData(envelope: LooseRecord) {
+  const level1 = parseJsonSafely(envelope?.data) as LooseRecord
+  const level2 = parseJsonSafely(level1?.data) as LooseRecord
+  const level3 = parseJsonSafely(level2?.data) as LooseRecord
+
+  // Some Wix payloads may stop one level earlier, so pick the richest object.
+  if (level3 && typeof level3 === "object" && Object.keys(level3).length > 0) {
+    return level3
   }
 
-  if (Array.isArray(value)) {
-    return value.map((item) => valueToText(item)).filter(Boolean).join(", ")
+  if (level2 && typeof level2 === "object" && Object.keys(level2).length > 0) {
+    return level2
   }
 
-  if (typeof value === "object") {
-    const obj = value as LooseRecord
-
-    if (obj.value !== undefined && obj.value !== null) {
-      const nested = valueToText(obj.value)
-      if (nested) return nested
-    }
-
-    if (obj.label !== undefined && obj.label !== null) {
-      const label = valueToText(obj.label)
-      if (label) return label
-    }
-
-    if (obj.name !== undefined && obj.name !== null) {
-      const name = valueToText(obj.name)
-      if (name) return name
-    }
+  if (level1 && typeof level1 === "object" && Object.keys(level1).length > 0) {
+    return level1
   }
 
+  return {}
+}
+
+function normaliseSubmissionRows(payload: LooseRecord): WixFieldRow[] {
+  const rows = payload?.submissionData
+
+  if (!Array.isArray(rows)) return []
+
+  return rows.map((row: any) => ({
+    fieldName: safeString(row?.fieldName),
+    fieldValue: safeString(row?.fieldValue),
+  }))
+}
+
+function findRowValue(rows: WixFieldRow[], keywords: string[]) {
+  for (const row of rows) {
+    const name = safeString(row.fieldName).toLowerCase()
+    if (keywords.some((keyword) => name.includes(keyword))) {
+      const value = safeString(row.fieldValue)
+      if (value) return value
+    }
+  }
   return ""
 }
 
-function findField(source: LooseRecord, keywords: string[]) {
-  for (const [key, rawValue] of Object.entries(source || {})) {
-    const normalisedKey = key.toLowerCase()
-
-    if (keywords.some((keyword) => normalisedKey.includes(keyword))) {
-      const text = valueToText(rawValue)
-      if (text) return text
-    }
-  }
-
-  return ""
-}
-
-function buildContactName(fields: LooseRecord) {
+function buildContactName(rows: WixFieldRow[]) {
   const fullName =
-    findField(fields, ["full name", "fullname", "name"]) ||
+    findRowValue(rows, ["full name", "fullname", "name"]) ||
     [
-      findField(fields, ["first name", "firstname"]),
-      findField(fields, ["last name", "lastname"]),
+      findRowValue(rows, ["first name", "firstname"]),
+      findRowValue(rows, ["last name", "lastname"]),
     ]
       .filter(Boolean)
       .join(" ")
@@ -77,97 +84,68 @@ function buildContactName(fields: LooseRecord) {
   return fullName || "Wix form lead"
 }
 
-function buildContactEmail(fields: LooseRecord) {
-  return findField(fields, ["email", "e-mail"])
+function buildContactEmail(rows: WixFieldRow[]) {
+  return findRowValue(rows, ["email", "e-mail"])
 }
 
-function buildContactPhone(fields: LooseRecord) {
-  return findField(fields, ["phone", "mobile", "telephone", "tel"])
+function buildContactPhone(rows: WixFieldRow[]) {
+  return findRowValue(rows, ["phone", "mobile", "telephone", "tel"])
 }
 
-function buildSubject(fields: LooseRecord) {
-  return (
-    findField(fields, ["subject"]) ||
-    findField(fields, ["service"]) ||
-    findField(fields, ["project"]) ||
-    findField(fields, ["enquiry"]) ||
-    "Wix form enquiry"
-  )
-}
+function buildMessage(rows: WixFieldRow[]) {
+  const explicitMessage =
+    findRowValue(rows, ["message"]) ||
+    findRowValue(rows, ["enquiry"]) ||
+    findRowValue(rows, ["details"]) ||
+    findRowValue(rows, ["comments"])
 
-function buildBody(fields: LooseRecord) {
-  const lines = Object.entries(fields || {})
-    .map(([key, value]) => {
-      const text = valueToText(value)
-      if (!text) return ""
-      return `${key}: ${text}`
+  if (explicitMessage) return explicitMessage
+
+  const lines = rows
+    .map((row) => {
+      const fieldName = safeString(row.fieldName)
+      const fieldValue = safeString(row.fieldValue)
+      if (!fieldName || !fieldValue) return ""
+      return `${fieldName}: ${fieldValue}`
     })
     .filter(Boolean)
 
-  return lines.join("\n")
+  return lines.join("\n") || "Wix form submission received."
 }
 
-function buildContactRef(email: string, phone: string, externalId: string) {
+function buildFullBody(rows: WixFieldRow[]) {
+  const lines = rows
+    .map((row) => {
+      const fieldName = safeString(row.fieldName)
+      const fieldValue = safeString(row.fieldValue)
+      if (!fieldName || !fieldValue) return ""
+      return `${fieldName}: ${fieldValue}`
+    })
+    .filter(Boolean)
+
+  return lines.join("\n") || "Wix form submission received."
+}
+
+function buildSubject(formName: string) {
+  return formName || "Wix form enquiry"
+}
+
+function buildContactRef(email: string, phone: string, contactId: string) {
   if (email) return email.toLowerCase()
   if (phone) return phone
-  return `wix:${externalId}`
+  if (contactId) return `wix-contact:${contactId}`
+  return "wix-unknown-contact"
 }
 
-function parseEventDataObject(eventData: any): LooseRecord {
-  if (!eventData) return {}
-
-  if (typeof eventData === "string") {
-    try {
-      return JSON.parse(eventData)
-    } catch {
-      return {}
-    }
-  }
-
-  if (typeof eventData === "object") {
-    return eventData as LooseRecord
-  }
-
-  return {}
-}
-
-function flattenPossibleFields(eventData: LooseRecord): LooseRecord {
-  const flattened: LooseRecord = {}
-
-  const candidates = [
-    eventData?.submission,
-    eventData?.submissions,
-    eventData?.fields,
-    eventData?.formData,
-    eventData?.data,
-    eventData?.payload,
-    eventData?.entity?.submission,
-    eventData?.entity?.submissions,
-  ]
-
-  for (const candidate of candidates) {
-    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
-      for (const [key, value] of Object.entries(candidate)) {
-        flattened[key] = value
-      }
-    }
-  }
-
-  if (Object.keys(flattened).length === 0) {
-    for (const [key, value] of Object.entries(eventData || {})) {
-      if (
-        typeof value === "string" ||
-        typeof value === "number" ||
-        typeof value === "boolean" ||
-        Array.isArray(value) ||
-        (value && typeof value === "object")
-      ) {
-        flattened[key] = value
-      }
-    }
-  }
-
-  return flattened
+function buildExternalMessageId(
+  contactId: string,
+  submissionTime: string,
+  formName: string
+) {
+  return (
+    [contactId, submissionTime, formName].filter(Boolean).join(":") ||
+    `wix:${Date.now()}`
+  )
 }
 
 export async function POST(req: NextRequest) {
@@ -209,24 +187,15 @@ export async function POST(req: NextRequest) {
 
     const eventType = safeString(envelope?.eventType)
     const instanceId = safeString(envelope?.instanceId)
-    const eventData = parseEventDataObject(envelope?.data)
 
-    const externalId =
-      safeString(eventData?.id) ||
-      safeString(envelope?.entityId) ||
-      safeString(envelope?.id)
+    const wixData = getNestedWixData(envelope)
+    const rows = normaliseSubmissionRows(wixData)
 
-    if (!externalId) {
-      console.error("WIX WEBHOOK ERROR: Missing external id", {
-        eventType,
-        instanceId,
-        envelope,
-      })
-      return NextResponse.json(
-        { ok: false, error: "Missing submission id." },
-        { status: 400 }
-      )
-    }
+    const contactId = safeString(wixData?.contactId)
+    const formName = safeString(wixData?.formName) || "Wix form"
+    const submissionTime = safeString(wixData?.submissionTime)
+
+    const externalId = buildExternalMessageId(contactId, submissionTime, formName)
 
     const existing = await prisma.inboxMessage.findFirst({
       where: {
@@ -242,15 +211,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true })
     }
 
-    const fields = flattenPossibleFields(eventData)
-
-    const contactName = buildContactName(fields)
-    const contactEmail = buildContactEmail(fields)
-    const contactPhone = buildContactPhone(fields)
-    const subject = buildSubject(fields)
-    const body = buildBody(fields) || "Wix form submission received."
-    const preview = body.slice(0, 120)
-    const contactRef = buildContactRef(contactEmail, contactPhone, externalId)
+    const contactName = buildContactName(rows)
+    const contactEmail = buildContactEmail(rows)
+    const contactPhone = buildContactPhone(rows)
+    const subject = buildSubject(formName)
+    const body = buildFullBody(rows)
+    const preview = buildMessage(rows).slice(0, 120)
+    const contactRef = buildContactRef(contactEmail, contactPhone, contactId)
 
     let conversation = await prisma.conversation.findFirst({
       where: {
@@ -276,7 +243,10 @@ export async function POST(req: NextRequest) {
           contactName: true,
         },
       })
-    } else if (!safeString(conversation.contactName) || conversation.contactName === "Wix form lead") {
+    } else if (
+      !safeString(conversation.contactName) ||
+      conversation.contactName === "Wix form lead"
+    ) {
       await prisma.conversation.update({
         where: {
           id: conversation.id,
@@ -299,11 +269,18 @@ export async function POST(req: NextRequest) {
         body,
         externalMessageId: externalId,
         status: "unread",
-        createdAt: envelope?.eventTime ? new Date(envelope.eventTime) : new Date(),
+        createdAt: submissionTime ? new Date(submissionTime) : new Date(),
       },
     })
 
-    return NextResponse.json({ ok: true }, { status: 200 })
+    return NextResponse.json(
+      {
+        ok: true,
+        eventType,
+        instanceId,
+      },
+      { status: 200 }
+    )
   } catch (error) {
     console.error("WIX FORMS WEBHOOK ERROR:", error)
     return NextResponse.json(
