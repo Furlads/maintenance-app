@@ -74,8 +74,8 @@ function getPageConfig(pageId: string): FacebookPageConfig {
   }
 }
 
-function makeConversationRef(pageId: string, senderPsid: string) {
-  return `${pageId}:${senderPsid}`
+function makeConversationRef(pageId: string, customerPsid: string) {
+  return `${pageId}:${customerPsid}`
 }
 
 function buildDisplayName(profile: FacebookProfile | null, senderPsid: string) {
@@ -89,6 +89,18 @@ function buildDisplayName(profile: FacebookProfile | null, senderPsid: string) {
 
   const shortPsid = senderPsid.slice(-6)
   return shortPsid ? `Facebook contact ${shortPsid}` : "Facebook contact"
+}
+
+function isGenericFacebookName(value: string | null | undefined) {
+  const name = String(value || "").trim().toLowerCase()
+
+  return (
+    !name ||
+    name === "facebook" ||
+    name === "furlads facebook" ||
+    name === "three counties facebook" ||
+    name.startsWith("facebook contact ")
+  )
 }
 
 async function fetchMessengerProfile(
@@ -137,6 +149,63 @@ async function fetchMessengerProfile(
   }
 }
 
+async function findOrCreateConversation(params: {
+  pageId: string
+  customerPsid: string
+  customerName: string
+  pageLabel: string
+}) {
+  const { pageId, customerPsid, customerName, pageLabel } = params
+  const conversationRef = makeConversationRef(pageId, customerPsid)
+
+  let conversation = await prisma.conversation.findFirst({
+    where: {
+      source: "facebook",
+      contactRef: conversationRef,
+    },
+    select: {
+      id: true,
+      contactName: true,
+    },
+  })
+
+  if (!conversation) {
+    conversation = await prisma.conversation.create({
+      data: {
+        source: "facebook",
+        contactName: customerName,
+        contactRef: conversationRef,
+        archived: false,
+      },
+      select: {
+        id: true,
+        contactName: true,
+      },
+    })
+
+    return conversation
+  }
+
+  const currentName = String(conversation.contactName || "").trim()
+
+  if (
+    customerName &&
+    !isGenericFacebookName(customerName) &&
+    (isGenericFacebookName(currentName) || currentName === pageLabel)
+  ) {
+    await prisma.conversation.update({
+      where: {
+        id: conversation.id,
+      },
+      data: {
+        contactName: customerName,
+      },
+    })
+  }
+
+  return conversation
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
 
@@ -171,12 +240,14 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        const senderPsid = String(event?.sender?.id || "").trim()
         const messageId = String(event?.message?.mid || "").trim()
         const messageText = String(event?.message?.text || "").trim()
         const timestamp = Number(event?.timestamp || 0)
+        const senderPsid = String(event?.sender?.id || "").trim()
+        const recipientPsid = String(event?.recipient?.id || "").trim()
+        const isEcho = Boolean(event?.message?.is_echo)
 
-        if (!pageId || !senderPsid || !messageId) {
+        if (!pageId || !messageId) {
           continue
         }
 
@@ -193,53 +264,67 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        const conversationRef = makeConversationRef(pageId, senderPsid)
-        const profile = await fetchMessengerProfile(senderPsid, pageConfig.token)
-        const customerName = buildDisplayName(profile, senderPsid)
-
-        let conversation = await prisma.conversation.findFirst({
-          where: {
-            source: "facebook",
-            contactRef: conversationRef,
-          },
-          select: {
-            id: true,
-            contactName: true,
-          },
-        })
-
-        if (!conversation) {
-          conversation = await prisma.conversation.create({
-            data: {
-              source: "facebook",
-              contactName: customerName,
-              contactRef: conversationRef,
-              archived: false,
-            },
-            select: {
-              id: true,
-              contactName: true,
-            },
-          })
-        } else if (
-          !conversation.contactName ||
-          conversation.contactName === pageConfig.label ||
-          conversation.contactName === "Facebook"
-        ) {
-          await prisma.conversation.update({
-            where: {
-              id: conversation.id,
-            },
-            data: {
-              contactName: customerName,
-            },
-          })
-        }
-
         const body =
           messageText && messageText.length > 0
             ? messageText
             : "[Facebook message with no text]"
+
+        if (isEcho) {
+          const customerPsid = recipientPsid
+
+          if (!customerPsid) {
+            continue
+          }
+
+          const conversationRef = makeConversationRef(pageId, customerPsid)
+
+          const conversation = await prisma.conversation.findFirst({
+            where: {
+              source: "facebook",
+              contactRef: conversationRef,
+            },
+            select: {
+              id: true,
+            },
+          })
+
+          if (!conversation) {
+            continue
+          }
+
+          await prisma.inboxMessage.create({
+            data: {
+              source: "facebook",
+              status: "replied",
+              conversationId: conversation.id,
+              externalMessageId: messageId,
+              senderName: "Furlads",
+              senderPhone: pageId,
+              senderEmail: null,
+              preview: body.slice(0, 120),
+              body,
+              createdAt: timestamp ? new Date(timestamp) : new Date(),
+            },
+          })
+
+          continue
+        }
+
+        const customerPsid = senderPsid
+
+        if (!customerPsid) {
+          continue
+        }
+
+        const profile = await fetchMessengerProfile(customerPsid, pageConfig.token)
+        const customerName = buildDisplayName(profile, customerPsid)
+
+        const conversation = await findOrCreateConversation({
+          pageId,
+          customerPsid,
+          customerName,
+          pageLabel: pageConfig.label,
+        })
 
         await prisma.inboxMessage.create({
           data: {
@@ -248,7 +333,7 @@ export async function POST(req: NextRequest) {
             conversationId: conversation.id,
             externalMessageId: messageId,
             senderName: customerName,
-            senderPhone: senderPsid,
+            senderPhone: customerPsid,
             senderEmail: null,
             preview: body.slice(0, 120),
             body,
