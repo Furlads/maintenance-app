@@ -296,10 +296,16 @@ export default async function AdminPage() {
               Open inbox
             </Link>
             <Link
-              href="/admin/jobs"
+              href="/jobs"
               className="rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800"
             >
               View jobs
+            </Link>
+            <Link
+              href="/admin/schedule"
+              className="rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800"
+            >
+              Schedule board
             </Link>
             <AdminSchedulerButton />
           </div>
@@ -346,7 +352,7 @@ export default async function AdminPage() {
                   Mixed view of maintenance and landscaping work
                 </p>
               </div>
-              <Link href="/admin/jobs" className="text-sm font-semibold text-zinc-700">
+              <Link href="/jobs" className="text-sm font-semibold text-zinc-700">
                 All jobs
               </Link>
             </div>
@@ -419,7 +425,7 @@ export default async function AdminPage() {
                   Live view from jobs currently in progress
                 </p>
               </div>
-              <Link href="/admin/workers" className="text-sm font-semibold text-zinc-700">
+              <Link href="/workers" className="text-sm font-semibold text-zinc-700">
                 Workers
               </Link>
             </div>
