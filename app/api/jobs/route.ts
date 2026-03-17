@@ -3,6 +3,8 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
+const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
+
 function cleanString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -151,32 +153,39 @@ async function findTrevWorkerIds() {
   return workers.map((worker) => worker.id)
 }
 
-async function validateTrevQuoteVisitRules(params: {
+async function resolveTrevQuoteVisitSchedule(params: {
   visitDate: Date | null
   startTime: string | null
   jobType: string
   assignedWorkerIds: number[]
   allowQuoteTimeOverride: boolean
+  excludeJobId?: number
 }) {
   const {
     visitDate,
     startTime,
     jobType,
     assignedWorkerIds,
-    allowQuoteTimeOverride
+    allowQuoteTimeOverride,
+    excludeJobId
   } = params
 
   if (!isQuoteJobType(jobType)) {
-    return null
+    return {
+      visitDate,
+      startTime
+    }
   }
 
   const trevWorkerIds = await findTrevWorkerIds()
 
   if (trevWorkerIds.length === 0) {
-    return NextResponse.json(
-      { error: 'Could not find Trev in the worker database.' },
-      { status: 400 }
-    )
+    return {
+      error: NextResponse.json(
+        { error: 'Could not find Trev in the worker database.' },
+        { status: 400 }
+      )
+    }
   }
 
   const isAssignedToTrev = assignedWorkerIds.some((workerId) =>
@@ -184,33 +193,31 @@ async function validateTrevQuoteVisitRules(params: {
   )
 
   if (!isAssignedToTrev) {
-    return null
+    return {
+      visitDate,
+      startTime
+    }
   }
 
   if (!visitDate) {
-    return NextResponse.json(
-      { error: 'Quote visits for Trev must have a visitDate.' },
-      { status: 400 }
-    )
+    return {
+      error: NextResponse.json(
+        { error: 'Quote visits for Trev must have a visitDate.' },
+        { status: 400 }
+      )
+    }
   }
 
-  if (!startTime) {
-    return NextResponse.json(
-      { error: 'Quote visits for Trev must have a startTime.' },
-      { status: 400 }
-    )
-  }
-
-  const allowedDefaultSlots = ['11:00', '12:00', '13:00']
-
-  if (!allowQuoteTimeOverride && !allowedDefaultSlots.includes(startTime)) {
-    return NextResponse.json(
-      {
-        error:
-          'Trev quote visits can only be booked at 11:00, 12:00 or 13:00 unless override is enabled.'
-      },
-      { status: 400 }
-    )
+  if (allowQuoteTimeOverride && !startTime) {
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            'Override was enabled but no manual startTime was provided for this Trev quote visit.'
+        },
+        { status: 400 }
+      )
+    }
   }
 
   const dayStart = startOfLondonDayUtc(visitDate)
@@ -218,6 +225,13 @@ async function validateTrevQuoteVisitRules(params: {
 
   const existingTrevQuoteJobs = await prisma.job.findMany({
     where: {
+      ...(typeof excludeJobId === 'number'
+        ? {
+            id: {
+              not: excludeJobId
+            }
+          }
+        : {}),
       jobType: {
         equals: 'Quote',
         mode: 'insensitive'
@@ -241,30 +255,73 @@ async function validateTrevQuoteVisitRules(params: {
   })
 
   if (existingTrevQuoteJobs.length >= 3) {
-    return NextResponse.json(
-      {
-        error:
-          'Trev already has 3 quote visits booked for that day. Maximum reached.'
-      },
-      { status: 400 }
-    )
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            'Trev already has 3 quote visits booked for that day. Maximum reached.'
+        },
+        { status: 400 }
+      )
+    }
   }
 
-  const exactTimeTaken = existingTrevQuoteJobs.some(
-    (job) => cleanString(job.startTime) === startTime
+  const takenTimes = new Set(
+    existingTrevQuoteJobs
+      .map((job) => cleanString(job.startTime))
+      .filter(Boolean)
   )
 
-  if (exactTimeTaken) {
-    return NextResponse.json(
-      {
-        error:
-          'Trev already has a quote visit booked at that time on that day.'
-      },
-      { status: 400 }
+  let resolvedStartTime = startTime
+
+  if (!resolvedStartTime) {
+    const nextFreeDefaultSlot = TREV_QUOTE_DEFAULT_SLOTS.find(
+      (slot) => !takenTimes.has(slot)
     )
+
+    if (!nextFreeDefaultSlot) {
+      return {
+        error: NextResponse.json(
+          {
+            error:
+              'No Trev quote slots are left for that day. Available default slots are 11:00, 12:00 and 13:00 only.'
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    resolvedStartTime = nextFreeDefaultSlot
   }
 
-  return null
+  if (!allowQuoteTimeOverride && !TREV_QUOTE_DEFAULT_SLOTS.includes(resolvedStartTime)) {
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            'Trev quote visits can only be booked at 11:00, 12:00 or 13:00 unless override is enabled.'
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  if (takenTimes.has(resolvedStartTime)) {
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            'Trev already has a quote visit booked at that time on that day.'
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  return {
+    visitDate,
+    startTime: resolvedStartTime
+  }
 }
 
 async function ensureMorningPrepJobs() {
@@ -497,7 +554,7 @@ export async function POST(req: Request) {
       durationMinutes = Math.round(parsed)
     }
 
-    const trevQuoteRuleError = await validateTrevQuoteVisitRules({
+    const resolvedQuoteSchedule = await resolveTrevQuoteVisitSchedule({
       visitDate,
       startTime,
       jobType,
@@ -505,9 +562,12 @@ export async function POST(req: Request) {
       allowQuoteTimeOverride
     })
 
-    if (trevQuoteRuleError) {
-      return trevQuoteRuleError
+    if ('error' in resolvedQuoteSchedule) {
+      return resolvedQuoteSchedule.error
     }
+
+    visitDate = resolvedQuoteSchedule.visitDate
+    startTime = resolvedQuoteSchedule.startTime
 
     const status = normalizeJobStatus(body.status, !!visitDate)
 

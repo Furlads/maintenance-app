@@ -11,9 +11,59 @@ const BREAK_THRESHOLD_MINUTES = 6 * 60
 const BREAK_DURATION_MINUTES = 20
 const DEFAULT_JOB_DURATION_MINUTES = 60
 const FARM_POSTCODE = 'TF9 4BQ'
+const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
 
 function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function isQuoteJobType(jobType: string) {
+  const value = clean(jobType).toLowerCase()
+  return value === 'quote' || value === 'quoted'
+}
+
+function isTrue(value: unknown) {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
+function isValidHHMM(value: string) {
+  return /^\d{2}:\d{2}$/.test(value)
+}
+
+function getLondonDateParts(date: Date) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
+
+  const parts = formatter.formatToParts(date)
+
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+
+  if (!year || !month || !day) {
+    throw new Error('Failed to build London date parts')
+  }
+
+  return { year, month, day }
+}
+
+function londonDateOnlyString(date: Date) {
+  const { year, month, day } = getLondonDateParts(date)
+  return `${year}-${month}-${day}`
+}
+
+function startOfLondonDayUtc(date: Date) {
+  const iso = londonDateOnlyString(date)
+  return new Date(`${iso}T00:00:00.000Z`)
+}
+
+function nextLondonDayUtc(date: Date) {
+  const start = startOfLondonDayUtc(date)
+  return new Date(start.getTime() + 24 * 60 * 60 * 1000)
 }
 
 function parseDateValue(value: unknown): Date | null | undefined {
@@ -21,6 +71,10 @@ function parseDateValue(value: unknown): Date | null | undefined {
   if (value === null || value === '' || value === 'null') return null
 
   if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+      return new Date(`${value.trim()}T00:00:00.000Z`)
+    }
+
     const parsed = new Date(value)
     if (!Number.isNaN(parsed.getTime())) return parsed
   }
@@ -462,6 +516,202 @@ async function rebuildRemainingDay(args: {
   }
 }
 
+async function findTrevWorkerIds() {
+  const workers = await prisma.worker.findMany({
+    where: {
+      OR: [
+        {
+          AND: [
+            { firstName: { equals: 'Trevor', mode: 'insensitive' } },
+            { lastName: { contains: 'Fudger', mode: 'insensitive' } }
+          ]
+        },
+        {
+          AND: [
+            { firstName: { equals: 'Trev', mode: 'insensitive' } },
+            { lastName: { contains: 'Fudger', mode: 'insensitive' } }
+          ]
+        },
+        {
+          email: { contains: 'trevor.fudger', mode: 'insensitive' }
+        }
+      ]
+    },
+    select: {
+      id: true
+    }
+  })
+
+  return workers.map((worker) => worker.id)
+}
+
+async function resolveTrevQuoteVisitSchedule(params: {
+  jobId: number
+  visitDate: Date | null
+  startTime: string | null
+  jobType: string
+  assignedWorkerIds: number[]
+  allowQuoteTimeOverride: boolean
+}) {
+  const {
+    jobId,
+    visitDate,
+    startTime,
+    jobType,
+    assignedWorkerIds,
+    allowQuoteTimeOverride
+  } = params
+
+  if (!isQuoteJobType(jobType)) {
+    return {
+      visitDate,
+      startTime
+    }
+  }
+
+  const trevWorkerIds = await findTrevWorkerIds()
+
+  if (trevWorkerIds.length === 0) {
+    return {
+      error: NextResponse.json(
+        { error: 'Could not find Trev in the worker database.' },
+        { status: 400 }
+      )
+    }
+  }
+
+  const isAssignedToTrev = assignedWorkerIds.some((workerId) =>
+    trevWorkerIds.includes(workerId)
+  )
+
+  if (!isAssignedToTrev) {
+    return {
+      visitDate,
+      startTime
+    }
+  }
+
+  if (!visitDate) {
+    return {
+      error: NextResponse.json(
+        { error: 'Quote visits for Trev must have a visitDate.' },
+        { status: 400 }
+      )
+    }
+  }
+
+  if (allowQuoteTimeOverride && !startTime) {
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            'Override was enabled but no manual startTime was provided for this Trev quote visit.'
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  const dayStart = startOfLondonDayUtc(visitDate)
+  const dayEnd = nextLondonDayUtc(visitDate)
+
+  const existingTrevQuoteJobs = await prisma.job.findMany({
+    where: {
+      id: {
+        not: jobId
+      },
+      jobType: {
+        equals: 'Quote',
+        mode: 'insensitive'
+      },
+      visitDate: {
+        gte: dayStart,
+        lt: dayEnd
+      },
+      assignments: {
+        some: {
+          workerId: {
+            in: trevWorkerIds
+          }
+        }
+      }
+    },
+    select: {
+      id: true,
+      startTime: true
+    }
+  })
+
+  if (existingTrevQuoteJobs.length >= 3) {
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            'Trev already has 3 quote visits booked for that day. Maximum reached.'
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  const takenTimes = new Set(
+    existingTrevQuoteJobs
+      .map((job) => clean(job.startTime))
+      .filter(Boolean)
+  )
+
+  let resolvedStartTime = startTime
+
+  if (!resolvedStartTime) {
+    const nextFreeDefaultSlot = TREV_QUOTE_DEFAULT_SLOTS.find(
+      (slot) => !takenTimes.has(slot)
+    )
+
+    if (!nextFreeDefaultSlot) {
+      return {
+        error: NextResponse.json(
+          {
+            error:
+              'No Trev quote slots are left for that day. Available default slots are 11:00, 12:00 and 13:00 only.'
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    resolvedStartTime = nextFreeDefaultSlot
+  }
+
+  if (!allowQuoteTimeOverride && !TREV_QUOTE_DEFAULT_SLOTS.includes(resolvedStartTime)) {
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            'Trev quote visits can only be booked at 11:00, 12:00 or 13:00 unless override is enabled.'
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  if (takenTimes.has(resolvedStartTime)) {
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            'Trev already has a quote visit booked at that time on that day.'
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  return {
+    visitDate,
+    startTime: resolvedStartTime
+  }
+}
+
 export async function GET(_: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
@@ -544,6 +794,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const requestedStatus = clean(body.status).toLowerCase()
     const appendNote = clean(body.appendNote)
     const noteAuthor = clean(body.noteAuthor)
+    const allowQuoteTimeOverride = isTrue(body.allowQuoteTimeOverride)
 
     const now = new Date()
 
@@ -617,7 +868,16 @@ export async function PATCH(req: Request, ctx: Ctx) {
       if (body.startTime === null || clean(body.startTime) === '') {
         startTimeUpdate = null
       } else if (typeof body.startTime === 'string') {
-        startTimeUpdate = body.startTime
+        const trimmedStartTime = body.startTime.trim()
+
+        if (!isValidHHMM(trimmedStartTime)) {
+          return NextResponse.json(
+            { error: 'startTime must be HH:MM' },
+            { status: 400 }
+          )
+        }
+
+        startTimeUpdate = trimmedStartTime
       }
     }
 
@@ -633,6 +893,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
         : parsePositiveInt(body.customerId)
 
     let assignedWorkerIdsForResponse: number[] | undefined = undefined
+
+    let proposedAssignedWorkerIds =
+      existing.assignments.map((assignment) => assignment.workerId)
 
     if (body.assignedTo !== undefined) {
       const cleanedWorkerIds = parseAssignedWorkerIds(body.assignedTo)
@@ -664,14 +927,58 @@ export async function PATCH(req: Request, ctx: Ctx) {
         )
       }
 
+      proposedAssignedWorkerIds = cleanedWorkerIds
+      assignedWorkerIdsForResponse = cleanedWorkerIds
+    }
+
+    const proposedJobType =
+      typeof body.jobType === 'string' ? body.jobType : existing.jobType
+
+    const proposedVisitDate =
+      visitDateUpdate !== undefined ? visitDateUpdate : existing.visitDate
+
+    const proposedStartTime =
+      startTimeUpdate !== undefined ? startTimeUpdate : existing.startTime
+
+    const resolvedQuoteSchedule = await resolveTrevQuoteVisitSchedule({
+      jobId,
+      visitDate: proposedVisitDate,
+      startTime: proposedStartTime,
+      jobType: proposedJobType,
+      assignedWorkerIds: proposedAssignedWorkerIds,
+      allowQuoteTimeOverride
+    })
+
+    if ('error' in resolvedQuoteSchedule) {
+      return resolvedQuoteSchedule.error
+    }
+
+    const finalVisitDate = resolvedQuoteSchedule.visitDate
+    const finalStartTime = resolvedQuoteSchedule.startTime
+
+    if (visitDateUpdate !== undefined || finalVisitDate !== existing.visitDate) {
+      startTimeUpdate =
+        startTimeUpdate !== undefined || finalStartTime !== existing.startTime
+          ? finalStartTime
+          : startTimeUpdate
+    } else if (startTimeUpdate !== undefined || finalStartTime !== existing.startTime) {
+      startTimeUpdate = finalStartTime
+    }
+
+    const visitDateValueForUpdate =
+      visitDateUpdate !== undefined || finalVisitDate !== existing.visitDate
+        ? finalVisitDate
+        : undefined
+
+    if (body.assignedTo !== undefined) {
       await prisma.$transaction([
         prisma.jobAssignment.deleteMany({
           where: { jobId }
         }),
-        ...(cleanedWorkerIds.length > 0
+        ...(proposedAssignedWorkerIds.length > 0
           ? [
               prisma.jobAssignment.createMany({
-                data: cleanedWorkerIds.map((workerId) => ({
+                data: proposedAssignedWorkerIds.map((workerId) => ({
                   jobId,
                   workerId
                 })),
@@ -680,8 +987,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
             ]
           : [])
       ])
-
-      assignedWorkerIdsForResponse = cleanedWorkerIds
     }
 
     const updated = await prisma.job.update({
@@ -697,7 +1002,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
               : undefined,
         jobType: typeof body.jobType === 'string' ? body.jobType : undefined,
         customerId: customerIdUpdate,
-        visitDate: visitDateUpdate,
+        visitDate: visitDateValueForUpdate,
         startTime: startTimeUpdate,
         durationMinutes: durationMinutesUpdate,
         overrunMins: overrunMinsUpdate,
@@ -726,7 +1031,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const rebuildNeeded = shouldTriggerRebuild({
       action,
       statusUpdate,
-      visitDateUpdate,
+      visitDateUpdate: visitDateValueForUpdate,
       startTimeUpdate,
       durationMinutesUpdate,
       overrunMinsUpdate,
