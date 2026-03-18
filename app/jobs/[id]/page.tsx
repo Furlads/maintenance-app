@@ -43,6 +43,8 @@ type Job = {
   arrivedAt?: string | null
   pausedAt?: string | null
   finishedAt?: string | null
+  paymentStatus?: string | null
+  paymentNotes?: string | null
 }
 
 type JobPhoto = {
@@ -205,6 +207,14 @@ function typeBadgeClass(jobType: string) {
   return 'bg-zinc-100 text-zinc-700 ring-zinc-200'
 }
 
+function formatPaymentStatus(value?: string | null) {
+  const normalised = String(value || '').toLowerCase()
+
+  if (normalised === 'cash_paid') return 'Cash paid'
+  if (normalised === 'invoice_needed') return 'Needs invoice'
+  return 'Not recorded'
+}
+
 function Pill({
   children,
   className,
@@ -264,6 +274,14 @@ export default function JobPage() {
   const [quoteWorkSummary, setQuoteWorkSummary] = useState('')
   const [quoteEstimatedTime, setQuoteEstimatedTime] = useState('')
   const [quoteNotes, setQuoteNotes] = useState('')
+
+  const [showFinishReport, setShowFinishReport] = useState(false)
+  const [finishSummary, setFinishSummary] = useState('')
+  const [finishFollowUpRequired, setFinishFollowUpRequired] = useState<'no' | 'yes'>('no')
+  const [finishFollowUpDetails, setFinishFollowUpDetails] = useState('')
+  const [finishPaymentStatus, setFinishPaymentStatus] = useState<'not_recorded' | 'cash_paid' | 'invoice_needed'>('not_recorded')
+  const [finishPaymentNotes, setFinishPaymentNotes] = useState('')
+  const [finishKellyNotes, setFinishKellyNotes] = useState('')
 
   async function loadPhotos() {
     const res = await fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
@@ -356,6 +374,21 @@ export default function JobPage() {
     setQuoteNotes('')
     setQuoteMessage('')
   }, [showQuoteForm, job])
+
+  useEffect(() => {
+    if (!showFinishReport || !job) return
+
+    setFinishSummary('')
+    setFinishFollowUpRequired('no')
+    setFinishFollowUpDetails('')
+    setFinishPaymentStatus(
+      job.paymentStatus === 'cash_paid' || job.paymentStatus === 'invoice_needed'
+        ? job.paymentStatus
+        : 'not_recorded'
+    )
+    setFinishPaymentNotes(job.paymentNotes || '')
+    setFinishKellyNotes('')
+  }, [showFinishReport, job])
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -461,9 +494,11 @@ export default function JobPage() {
       }
 
       await loadJob()
+      return true
     } catch (err) {
       console.error(err)
       setError(`Failed to ${actionLabel}.`)
+      return false
     } finally {
       setBusyAction('')
     }
@@ -520,7 +555,50 @@ export default function JobPage() {
   }
 
   async function handleFinishJob() {
-    await patchJob({ action: 'finish' }, 'finish job')
+    setShowFinishReport(true)
+  }
+
+  async function submitFinishReport() {
+    const workerName = localStorage.getItem('workerName') || 'Unknown worker'
+    const recordedAt = new Date().toLocaleString('en-GB')
+
+    const reportLines = [
+      'End of job report:',
+      `Work summary: ${finishSummary.trim() || 'Not provided'}`,
+      `Follow-up required: ${finishFollowUpRequired === 'yes' ? 'Yes' : 'No'}`,
+      `Follow-up details: ${
+        finishFollowUpRequired === 'yes'
+          ? finishFollowUpDetails.trim() || 'Not provided'
+          : 'None'
+      }`,
+      `Payment: ${
+        finishPaymentStatus === 'cash_paid'
+          ? 'Cash paid'
+          : finishPaymentStatus === 'invoice_needed'
+            ? 'Needs invoice'
+            : 'Not recorded'
+      }`,
+      `Payment notes: ${finishPaymentNotes.trim() || 'None'}`,
+      `Notes for Kelly: ${finishKellyNotes.trim() || 'None'}`,
+      `Reported by: ${workerName}`,
+      `Recorded at: ${recordedAt}`
+    ]
+
+    const success = await patchJob(
+      {
+        action: 'finish',
+        paymentStatus:
+          finishPaymentStatus === 'not_recorded' ? '' : finishPaymentStatus,
+        paymentNotes: finishPaymentNotes.trim(),
+        appendNote: reportLines.join(' | '),
+        noteAuthor: workerName
+      },
+      'finish job'
+    )
+
+    if (success) {
+      setShowFinishReport(false)
+    }
   }
 
   async function handlePauseJob() {
@@ -753,14 +831,19 @@ Heavy rain made it unsafe`,
               />
               <InfoRow label="Start time" value={job.startTime || '—'} />
               <InfoRow label="Duration" value={formatMinutes(job.durationMinutes)} />
-              <InfoRow label="Assigned workers" value={job.assignments.length > 0
-                ? job.assignments
-                    .map(
-                      (assignment) =>
-                        `${assignment.worker.firstName} ${assignment.worker.lastName}`
-                    )
-                    .join(', ')
-                : 'Nobody assigned'} />
+              <InfoRow
+                label="Assigned workers"
+                value={
+                  job.assignments.length > 0
+                    ? job.assignments
+                        .map(
+                          (assignment) =>
+                            `${assignment.worker.firstName} ${assignment.worker.lastName}`
+                        )
+                        .join(', ')
+                    : 'Nobody assigned'
+                }
+              />
             </div>
           </section>
 
@@ -839,6 +922,16 @@ Heavy rain made it unsafe`,
                   <InfoRow label="Paused at" value={formatTime(job.pausedAt)} />
 
                   <InfoRow label="Finished at" value={formatTime(job.finishedAt)} />
+
+                  <InfoRow
+                    label="Payment"
+                    value={formatPaymentStatus(job.paymentStatus)}
+                  />
+
+                  <InfoRow
+                    label="Payment notes"
+                    value={job.paymentNotes || '—'}
+                  />
 
                   <div className="sm:col-span-2">
                     <InfoRow
@@ -1304,6 +1397,165 @@ Heavy rain made it unsafe`,
           </div>
         </div>
       </div>
+
+      {showFinishReport && (
+        <div className="fixed inset-0 z-[1001] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl">
+            <div className="border-b border-zinc-200 px-5 py-4">
+              <h2 className="text-xl font-bold text-zinc-900">Finish job report</h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Quick end-of-job report for Kelly before you finish this job.
+              </p>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                  Work summary
+                </label>
+                <textarea
+                  value={finishSummary}
+                  onChange={(e) => setFinishSummary(e.target.value)}
+                  placeholder="What was done today?"
+                  className="min-h-[100px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                  Follow-up required?
+                </label>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFinishFollowUpRequired('no')}
+                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                      finishFollowUpRequired === 'no'
+                        ? 'bg-zinc-900 text-white'
+                        : 'border border-zinc-300 bg-white text-zinc-800'
+                    }`}
+                  >
+                    No
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFinishFollowUpRequired('yes')}
+                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                      finishFollowUpRequired === 'yes'
+                        ? 'bg-zinc-900 text-white'
+                        : 'border border-zinc-300 bg-white text-zinc-800'
+                    }`}
+                  >
+                    Yes
+                  </button>
+                </div>
+              </div>
+
+              {finishFollowUpRequired === 'yes' && (
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                    Follow-up details
+                  </label>
+                  <textarea
+                    value={finishFollowUpDetails}
+                    onChange={(e) => setFinishFollowUpDetails(e.target.value)}
+                    placeholder="What still needs doing, returning for, or chasing?"
+                    className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                  Payment
+                </label>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() => setFinishPaymentStatus('not_recorded')}
+                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                      finishPaymentStatus === 'not_recorded'
+                        ? 'bg-zinc-900 text-white'
+                        : 'border border-zinc-300 bg-white text-zinc-800'
+                    }`}
+                  >
+                    Not recorded
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFinishPaymentStatus('cash_paid')}
+                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                      finishPaymentStatus === 'cash_paid'
+                        ? 'bg-zinc-900 text-white'
+                        : 'border border-zinc-300 bg-white text-zinc-800'
+                    }`}
+                  >
+                    Cash paid
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFinishPaymentStatus('invoice_needed')}
+                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                      finishPaymentStatus === 'invoice_needed'
+                        ? 'bg-zinc-900 text-white'
+                        : 'border border-zinc-300 bg-white text-zinc-800'
+                    }`}
+                  >
+                    Needs invoice
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                  Payment notes
+                </label>
+                <input
+                  value={finishPaymentNotes}
+                  onChange={(e) => setFinishPaymentNotes(e.target.value)}
+                  placeholder="Amount paid, part paid, cash details, anything useful"
+                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                  Extra notes for Kelly
+                </label>
+                <textarea
+                  value={finishKellyNotes}
+                  onChange={(e) => setFinishKellyNotes(e.target.value)}
+                  placeholder="Anything Kelly should know?"
+                  className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-3 border-t border-zinc-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setShowFinishReport(false)}
+                disabled={busyAction !== ''}
+                className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={submitFinishReport}
+                disabled={busyAction !== ''}
+                className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {busyAction === 'finish job' ? 'Saving...' : 'Save report & finish job'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activePhoto && (
         <div
