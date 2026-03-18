@@ -321,15 +321,23 @@ export async function GET(req: Request) {
 
     const where: any = {}
 
-    if (!includeArchived || !includeCancelled) {
-      where.status = {}
+    if (status) {
+      where.status = status
+    } else {
+      const excludedStatuses: string[] = []
 
       if (!includeArchived) {
-        where.status.notIn = [...(where.status.notIn || []), 'archived']
+        excludedStatuses.push('archived')
       }
 
       if (!includeCancelled) {
-        where.status.notIn = [...(where.status.notIn || []), 'cancelled']
+        excludedStatuses.push('cancelled')
+      }
+
+      if (excludedStatuses.length > 0) {
+        where.status = {
+          notIn: excludedStatuses
+        }
       }
     }
 
@@ -347,10 +355,6 @@ export async function GET(req: Request) {
 
     if (jobId) {
       where.id = jobId
-    }
-
-    if (status) {
-      where.status = status
     }
 
     if (q) {
@@ -375,6 +379,12 @@ export async function GET(req: Request) {
         },
         {
           notes: {
+            contains: q,
+            mode: 'insensitive'
+          }
+        },
+        {
+          paymentNotes: {
             contains: q,
             mode: 'insensitive'
           }
