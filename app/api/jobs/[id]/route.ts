@@ -7,7 +7,6 @@ type Ctx = { params: Promise<{ id: string }> }
 
 const DAY_START_MINUTES = 9 * 60
 const DEFAULT_JOB_DURATION_MINUTES = 60
-const FARM_POSTCODE = 'TF9 4BQ'
 const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
 
 function clean(value: unknown) {
@@ -114,31 +113,6 @@ function parseAssignedWorkerIds(input: unknown): number[] {
     .filter((value): value is number => value !== null)
 
   return [...new Set(cleaned)]
-}
-
-function parseTimeToMinutes(value: string | null | undefined): number | null {
-  if (!value) return null
-
-  const trimmed = value.trim()
-  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed)
-
-  if (!match) return null
-
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-
-  if (
-    !Number.isInteger(hours) ||
-    !Number.isInteger(minutes) ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    return null
-  }
-
-  return hours * 60 + minutes
 }
 
 function getEffectiveJobMinutes(job: {
@@ -461,6 +435,30 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const noteAuthor = clean(body.noteAuthor)
     const allowQuoteTimeOverride = isTrue(body.allowQuoteTimeOverride)
 
+    const paymentStatusRaw = clean(body.paymentStatus).toLowerCase()
+    const paymentNotesRaw =
+      body.paymentNotes === null
+        ? null
+        : typeof body.paymentNotes === 'string'
+          ? body.paymentNotes.trim()
+          : undefined
+
+    const allowedPaymentStatuses = new Set(['cash_paid', 'invoice_needed'])
+
+    const paymentStatusUpdate =
+      paymentStatusRaw === ''
+        ? undefined
+        : allowedPaymentStatuses.has(paymentStatusRaw)
+          ? paymentStatusRaw
+          : undefined
+
+    if (paymentStatusRaw && !paymentStatusUpdate) {
+      return NextResponse.json(
+        { error: 'paymentStatus must be cash_paid or invoice_needed' },
+        { status: 400 }
+      )
+    }
+
     const isCancelAction =
       action === 'cancel' || action === 'cancelled' || requestedStatus === 'cancelled'
     const isArchiveAction =
@@ -533,7 +531,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       statusUpdate = statusUpdate ?? 'done'
     }
 
-    let visitDateUpdate = parseDateValue(body.visitDate)
+    const visitDateUpdate = parseDateValue(body.visitDate)
 
     let startTimeUpdate: string | null | undefined = undefined
     if ('startTime' in body) {
@@ -771,7 +769,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
         arrivedAt: arrivedAtUpdate,
         finishedAt: finishedAtUpdate,
         pausedAt: pausedAtUpdate,
-        pausedMinutes: pausedMinutesUpdate
+        pausedMinutes: pausedMinutesUpdate,
+        paymentStatus: paymentStatusUpdate,
+        paymentNotes: paymentNotesRaw
       },
       include: {
         customer: true,

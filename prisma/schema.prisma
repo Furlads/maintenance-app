@@ -75,8 +75,10 @@ model Job {
   pausedAt      DateTime?
   pausedMinutes Int       @default(0)
 
-  status    String   @default("unscheduled")
-  createdAt DateTime @default(now())
+  status         String   @default("unscheduled")
+  paymentStatus  String?
+  paymentNotes   String?
+  createdAt      DateTime @default(now())
 
   customer      Customer        @relation(fields: [customerId], references: [id])
   jobNotes      JobNote[]
