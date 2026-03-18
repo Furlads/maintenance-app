@@ -199,6 +199,34 @@ function DashboardSourceLink({
   )
 }
 
+function StatCard({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string
+  value: number
+  tone?: 'default' | 'green' | 'blue' | 'amber'
+}) {
+  const toneClasses =
+    tone === 'green'
+      ? 'border-green-200 bg-green-50'
+      : tone === 'blue'
+        ? 'border-blue-200 bg-blue-50'
+        : tone === 'amber'
+          ? 'border-amber-200 bg-amber-50'
+          : 'border-zinc-200 bg-white'
+
+  return (
+    <div className={`rounded-2xl border p-4 shadow-sm ${toneClasses}`}>
+      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+        {label}
+      </div>
+      <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">{value}</div>
+    </div>
+  )
+}
+
 export default async function AdminPage() {
   const todayStart = startOfToday()
   const todayEnd = endOfToday()
@@ -289,83 +317,62 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-zinc-500">
+      <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-800 p-5 text-white shadow-sm">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-zinc-300">
               Daily overview
             </div>
-            <h2 className="mt-1 text-2xl font-bold tracking-tight">
+            <h2 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
               Office control for today
             </h2>
-            <p className="mt-1 max-w-2xl text-sm text-zinc-600">
-              One dashboard for maintenance visits, landscaping jobs, worker activity
-              and office follow-up.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-300">
+              One dashboard for maintenance visits, landscaping jobs, worker activity,
+              inbox pressure and office follow-up.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-2">
             <Link
               href="/admin/inbox"
-              className="rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white"
+              className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-bold text-zinc-900 transition hover:bg-zinc-100"
             >
               Open inbox
             </Link>
             <Link
               href="/jobs"
-              className="rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800"
+              className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
             >
               View jobs
             </Link>
             <Link
               href="/admin/schedule"
-              className="rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800"
+              className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
             >
               Schedule board
             </Link>
-            <AdminSchedulerButton />
+            <div className="flex">
+              <AdminSchedulerButton />
+            </div>
           </div>
         </div>
       </section>
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Jobs today
-          </div>
-          <div className="mt-2 text-3xl font-bold">{jobsToday.length}</div>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Maintenance today
-          </div>
-          <div className="mt-2 text-3xl font-bold">{maintenanceToday.length}</div>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Landscaping today
-          </div>
-          <div className="mt-2 text-3xl font-bold">{landscapingToday.length}</div>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Quotes waiting
-          </div>
-          <div className="mt-2 text-3xl font-bold">{quotesWaiting}</div>
-        </div>
+        <StatCard label="Jobs today" value={jobsToday.length} />
+        <StatCard label="Maintenance today" value={maintenanceToday.length} tone="green" />
+        <StatCard label="Landscaping today" value={landscapingToday.length} tone="blue" />
+        <StatCard label="Quotes waiting" value={quotesWaiting} tone="amber" />
       </section>
 
       <div className="grid gap-4 xl:grid-cols-12">
         <section className="xl:col-span-7">
-          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-bold">Today&apos;s jobs</h3>
+                <h3 className="text-base font-bold text-zinc-900">Today&apos;s jobs</h3>
                 <p className="text-xs text-zinc-500">
-                  First job of the day at the top, then the diary flows downward
+                  First job at the top, then the rest of the diary flows down the page
                 </p>
               </div>
               <Link href="/jobs" className="text-sm font-semibold text-zinc-700">
@@ -373,9 +380,9 @@ export default async function AdminPage() {
               </Link>
             </div>
 
-            <div className="p-3">
+            <div className="p-3 sm:p-4">
               {jobsToday.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
+                <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
                   No jobs scheduled for today.
                 </div>
               ) : (
@@ -387,67 +394,70 @@ export default async function AdminPage() {
                     )
 
                     return (
-                      <div key={job.id} className="rounded-2xl border border-zinc-200 p-4">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span
-                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${jobType.className}`}
-                              >
-                                {jobType.label}
-                              </span>
-                              <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
-                                {normaliseStatus(job.status)}
-                              </span>
+                      <div key={job.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
+                        <div className="flex flex-col gap-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${jobType.className}`}
+                                >
+                                  {jobType.label}
+                                </span>
+                                <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                                  {normaliseStatus(job.status)}
+                                </span>
+                              </div>
+
+                              <h4 className="mt-3 text-lg font-bold leading-tight text-zinc-900">
+                                {job.customer?.name || 'Unknown customer'}
+                              </h4>
+
+                              <p className="mt-1 text-sm leading-6 text-zinc-500">
+                                {job.address || 'No address'} • {formatDate(job.visitDate)}
+                              </p>
                             </div>
 
-                            <h4 className="mt-3 text-base font-bold text-zinc-900">
-                              {job.customer?.name || 'Unknown customer'}
-                            </h4>
-                            <p className="mt-1 text-sm text-zinc-500">
-                              {job.address || 'No address'} • {formatDate(job.visitDate)}
-                            </p>
-
-                            <div className="mt-3 grid gap-2 text-sm text-zinc-700 sm:grid-cols-2">
-                              <div>
-                                <span className="font-semibold">Start:</span>{' '}
-                                {job.startTime || 'Time TBC'}
-                              </div>
-                              <div>
-                                <span className="font-semibold">Job ID:</span> #{job.id}
-                              </div>
-                              <div className="sm:col-span-2">
-                                <span className="font-semibold">Assigned:</span>{' '}
-                                {assignedNames.length > 0 ? assignedNames.join(', ') : 'Unassigned'}
-                              </div>
-                            </div>
-
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              <Link
-                                href={`/jobs/${job.id}`}
-                                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-                              >
-                                Open
-                              </Link>
-
-                              <Link
-                                href={`/jobs/edit/${job.id}`}
-                                className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-black"
-                              >
-                                Edit
-                              </Link>
-
-                              <Link
-                                href={`/jobs/edit/${job.id}`}
-                                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-                              >
-                                Reschedule / push back
-                              </Link>
+                            <div className="inline-flex w-fit rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-bold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                              {job.startTime || formatTime(job.visitDate)}
                             </div>
                           </div>
 
-                          <div className="text-sm font-bold text-zinc-700">
-                            {job.startTime || formatTime(job.visitDate)}
+                          <div className="grid gap-2 rounded-2xl bg-zinc-50 p-3 text-sm text-zinc-700 sm:grid-cols-2">
+                            <div>
+                              <span className="font-semibold">Start:</span>{' '}
+                              {job.startTime || 'Time TBC'}
+                            </div>
+                            <div>
+                              <span className="font-semibold">Job ID:</span> #{job.id}
+                            </div>
+                            <div className="sm:col-span-2">
+                              <span className="font-semibold">Assigned:</span>{' '}
+                              {assignedNames.length > 0 ? assignedNames.join(', ') : 'Unassigned'}
+                            </div>
+                          </div>
+
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <Link
+                              href={`/jobs/${job.id}`}
+                              className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                            >
+                              Open
+                            </Link>
+
+                            <Link
+                              href={`/jobs/edit/${job.id}`}
+                              className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
+                            >
+                              Edit
+                            </Link>
+
+                            <Link
+                              href={`/jobs/edit/${job.id}`}
+                              className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                            >
+                              Reschedule / push back
+                            </Link>
                           </div>
                         </div>
                       </div>
@@ -459,11 +469,11 @@ export default async function AdminPage() {
           </div>
         </section>
 
-        <section className="xl:col-span-5 space-y-4">
-          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+        <section className="space-y-4 xl:col-span-5">
+          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-bold">Workers active</h3>
+                <h3 className="text-base font-bold text-zinc-900">Workers active</h3>
                 <p className="text-xs text-zinc-500">
                   Live view from jobs currently in progress
                 </p>
@@ -473,9 +483,9 @@ export default async function AdminPage() {
               </Link>
             </div>
 
-            <div className="p-3">
+            <div className="p-3 sm:p-4">
               {activeWorkers.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
+                <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
                   No workers currently marked active.
                 </div>
               ) : (
@@ -483,8 +493,8 @@ export default async function AdminPage() {
                   {activeWorkers.map((worker: any) => (
                     <div key={worker.id} className="rounded-2xl border border-zinc-200 p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-bold">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-zinc-900">
                             {fullName(worker.firstName, worker.lastName)}
                           </div>
                           <div className="mt-1 text-xs text-zinc-500">
@@ -503,10 +513,10 @@ export default async function AdminPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-bold">Inbox sources</h3>
+                <h3 className="text-base font-bold text-zinc-900">Inbox sources</h3>
                 <p className="text-xs text-zinc-500">
                   Unread thread counts with click-through to each channel
                 </p>
