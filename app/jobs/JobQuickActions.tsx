@@ -13,16 +13,15 @@ export default function JobQuickActions({
   const router = useRouter()
   const [loadingAction, setLoadingAction] = useState<'cancel' | 'archive' | null>(null)
 
-  async function runAction(action: 'cancel' | 'archive') {
-    const label = action === 'cancel' ? 'cancel' : 'archive'
+  async function runCancel() {
     const confirmed = window.confirm(
-      `Are you sure you want to ${label} ${customerName || `Job #${jobId}`}?`
+      `Are you sure you want to cancel ${customerName || `Job #${jobId}`}?`
     )
 
     if (!confirmed) return
     if (loadingAction) return
 
-    setLoadingAction(action)
+    setLoadingAction('cancel')
 
     try {
       const res = await fetch(`/api/jobs/${jobId}`, {
@@ -31,21 +30,55 @@ export default function JobQuickActions({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          action,
+          action: 'cancel',
         }),
       })
 
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        throw new Error(data?.error || `Failed to ${label} job`)
+        throw new Error(data?.error || 'Failed to cancel job')
       }
 
       router.refresh()
+      router.replace('/jobs')
     } catch (error) {
       console.error(error)
       window.alert(
-        error instanceof Error ? error.message : `Failed to ${label} job.`
+        error instanceof Error ? error.message : 'Failed to cancel job.'
+      )
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  async function runArchive() {
+    const confirmed = window.confirm(
+      `Are you sure you want to archive ${customerName || `Job #${jobId}`}?`
+    )
+
+    if (!confirmed) return
+    if (loadingAction) return
+
+    setLoadingAction('archive')
+
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/archive`, {
+        method: 'POST',
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to archive job')
+      }
+
+      router.refresh()
+      router.replace('/jobs')
+    } catch (error) {
+      console.error(error)
+      window.alert(
+        error instanceof Error ? error.message : 'Failed to archive job.'
       )
     } finally {
       setLoadingAction(null)
@@ -56,7 +89,7 @@ export default function JobQuickActions({
     <>
       <button
         type="button"
-        onClick={() => runAction('cancel')}
+        onClick={runCancel}
         disabled={loadingAction !== null}
         className="inline-flex min-w-[82px] items-center justify-center rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-70"
       >
@@ -65,7 +98,7 @@ export default function JobQuickActions({
 
       <button
         type="button"
-        onClick={() => runAction('archive')}
+        onClick={runArchive}
         disabled={loadingAction !== null}
         className="inline-flex min-w-[82px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-70"
       >
