@@ -5,10 +5,7 @@ import prisma from '@/lib/prisma'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-const DAY_START_MINUTES = 9 * 60 // 09:00
-const DAY_END_MINUTES = 16 * 60 + 30 // 16:30
-const BREAK_THRESHOLD_MINUTES = 6 * 60
-const BREAK_DURATION_MINUTES = 20
+const DAY_START_MINUTES = 9 * 60
 const DEFAULT_JOB_DURATION_MINUTES = 60
 const FARM_POSTCODE = 'TF9 4BQ'
 const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
@@ -119,10 +116,6 @@ function parseAssignedWorkerIds(input: unknown): number[] {
   return [...new Set(cleaned)]
 }
 
-function minutesBetween(from: Date, to: Date): number {
-  return Math.max(0, Math.round((to.getTime() - from.getTime()) / 60000))
-}
-
 function parseTimeToMinutes(value: string | null | undefined): number | null {
   if (!value) return null
 
@@ -146,96 +139,6 @@ function parseTimeToMinutes(value: string | null | undefined): number | null {
   }
 
   return hours * 60 + minutes
-}
-
-function formatMinutesAsTime(totalMinutes: number): string {
-  const safe = Math.max(0, totalMinutes)
-  const hours = Math.floor(safe / 60)
-  const minutes = safe % 60
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
-}
-
-function getLondonTimeParts(date: Date) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/London',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).formatToParts(date)
-
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
-
-  return {
-    year: get('year'),
-    month: get('month'),
-    day: get('day'),
-    hour: get('hour'),
-    minute: get('minute')
-  }
-}
-
-function getLondonMinutes(date: Date): number {
-  const parts = getLondonTimeParts(date)
-  const hours = Number(parts.hour)
-  const minutes = Number(parts.minute)
-
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
-    return DAY_START_MINUTES
-  }
-
-  return hours * 60 + minutes
-}
-
-function getLondonDateKey(date: Date): string {
-  const parts = getLondonTimeParts(date)
-  return `${parts.year}-${parts.month}-${parts.day}`
-}
-
-function getUtcDayRange(date: Date) {
-  const start = new Date(date)
-  start.setUTCHours(0, 0, 0, 0)
-
-  const end = new Date(date)
-  end.setUTCHours(23, 59, 59, 999)
-
-  return { start, end }
-}
-
-function getPostcodeArea(postcode: string | null | undefined): string {
-  if (!postcode) return ''
-
-  const trimmed = postcode.trim().toUpperCase()
-  if (!trimmed) return ''
-
-  return trimmed.split(/\s+/)[0] ?? ''
-}
-
-function estimateTravelMinutes(
-  fromPostcode: string | null | undefined,
-  toPostcode: string | null | undefined
-): number {
-  const fromArea = getPostcodeArea(fromPostcode)
-  const toArea = getPostcodeArea(toPostcode)
-
-  if (!fromArea || !toArea) {
-    return 20
-  }
-
-  if (fromArea === toArea) {
-    return 10
-  }
-
-  const fromPrefix = fromArea.replace(/\d.*$/, '')
-  const toPrefix = toArea.replace(/\d.*$/, '')
-
-  if (fromPrefix && toPrefix && fromPrefix === toPrefix) {
-    return 20
-  }
-
-  return 35
 }
 
 function getEffectiveJobMinutes(job: {
@@ -276,244 +179,6 @@ async function buildNotesLog(jobId: number) {
     .join('\n')
 
   return { notes, notesLog }
-}
-
-function shouldTriggerRebuild(args: {
-  action: string
-  statusUpdate: string | undefined
-  visitDateUpdate: Date | null | undefined
-  startTimeUpdate: string | null | undefined
-  durationMinutesUpdate: number | undefined
-  overrunMinsUpdate: number | undefined
-  assignedWorkersChanged: boolean
-  existingVisitDate: Date | null
-  updatedVisitDate: Date | null
-  updatedStartTime: string | null
-  updatedWorkerIds: number[]
-}) {
-  const timingActions = new Set([
-    'start',
-    'pause',
-    'resume',
-    'finish',
-    'extend',
-    'couldntcomplete',
-    'couldnt_complete',
-    'cannotcomplete',
-    'cannot_complete',
-    'weather',
-    'cancel',
-    'cancelled',
-    'postpone',
-    'postponed',
-    'move',
-    'move_later'
-  ])
-
-  const timingStatuses = new Set([
-    'in_progress',
-    'paused',
-    'done',
-    'unscheduled',
-    'cancelled',
-    'weather',
-    'weather_postponed',
-    'postponed',
-    'todo'
-  ])
-
-  if (!args.updatedVisitDate) return false
-  if (!args.updatedStartTime) return false
-  if (args.updatedWorkerIds.length === 0) return false
-
-  if (timingActions.has(args.action)) return true
-  if (args.statusUpdate && timingStatuses.has(args.statusUpdate)) return true
-  if (args.visitDateUpdate !== undefined) return true
-  if (args.startTimeUpdate !== undefined) return true
-  if (args.durationMinutesUpdate !== undefined) return true
-  if (args.overrunMinsUpdate !== undefined) return true
-  if (args.assignedWorkersChanged) return true
-  if (!args.existingVisitDate && args.updatedVisitDate) return true
-
-  return false
-}
-
-async function calculateWorkedMinutesBeforeCursor(args: {
-  visitDate: Date
-  cursorMinutes: number
-  workerIds: number[]
-  excludeJobId: number
-}) {
-  const { start, end } = getUtcDayRange(args.visitDate)
-
-  const earlierJobs = await prisma.job.findMany({
-    where: {
-      id: { not: args.excludeJobId },
-      visitDate: {
-        gte: start,
-        lte: end
-      },
-      assignments: {
-        some: {
-          workerId: {
-            in: args.workerIds
-          }
-        }
-      },
-      startTime: {
-        not: null
-      },
-      status: {
-        notIn: ['cancelled', 'unscheduled']
-      }
-    },
-    select: {
-      id: true,
-      startTime: true,
-      durationMinutes: true,
-      overrunMins: true,
-      pausedMinutes: true
-    }
-  })
-
-  let workedMinutes = 0
-
-  for (const job of earlierJobs) {
-    const startMinutes = parseTimeToMinutes(job.startTime)
-    if (startMinutes === null) continue
-    if (startMinutes >= args.cursorMinutes) continue
-
-    workedMinutes += getEffectiveJobMinutes(job)
-  }
-
-  return workedMinutes
-}
-
-async function rebuildRemainingDay(args: {
-  anchorJobId: number
-  visitDate: Date
-  anchorCursorMinutes: number
-  anchorPostcode: string | null
-  workerIds: number[]
-}) {
-  if (args.workerIds.length === 0) return
-
-  const { start, end } = getUtcDayRange(args.visitDate)
-
-  const downstreamJobs = await prisma.job.findMany({
-    where: {
-      id: { not: args.anchorJobId },
-      visitDate: {
-        gte: start,
-        lte: end
-      },
-      assignments: {
-        some: {
-          workerId: {
-            in: args.workerIds
-          }
-        }
-      },
-      arrivedAt: null,
-      finishedAt: null,
-      startTime: {
-        not: null
-      },
-      status: {
-        notIn: ['done', 'cancelled', 'unscheduled']
-      }
-    },
-    orderBy: [{ createdAt: 'asc' }],
-    include: {
-      customer: {
-        select: {
-          postcode: true
-        }
-      },
-      assignments: {
-        select: {
-          workerId: true
-        }
-      }
-    }
-  })
-
-  const laterJobs = downstreamJobs
-    .map((job) => ({
-      job,
-      startMinutes: parseTimeToMinutes(job.startTime)
-    }))
-    .filter((entry) => entry.startMinutes !== null && entry.startMinutes >= args.anchorCursorMinutes)
-    .sort((a, b) => {
-      if (a.startMinutes! !== b.startMinutes!) {
-        return a.startMinutes! - b.startMinutes!
-      }
-      return a.job.id - b.job.id
-    })
-
-  let cursorMinutes = Math.max(args.anchorCursorMinutes, DAY_START_MINUTES)
-  let previousPostcode = args.anchorPostcode || FARM_POSTCODE
-
-  let workedMinutes = await calculateWorkedMinutesBeforeCursor({
-    visitDate: args.visitDate,
-    cursorMinutes,
-    workerIds: args.workerIds,
-    excludeJobId: args.anchorJobId
-  })
-
-  let breakInserted = workedMinutes >= BREAK_THRESHOLD_MINUTES
-
-  const updates: ReturnType<typeof prisma.job.update>[] = []
-
-  for (const entry of laterJobs) {
-    const job = entry.job
-    const durationMinutes = getEffectiveJobMinutes(job)
-    const travelMinutes = estimateTravelMinutes(previousPostcode, job.customer?.postcode ?? null)
-
-    let nextStartMinutes = Math.max(cursorMinutes + travelMinutes, DAY_START_MINUTES)
-
-    if (
-      !breakInserted &&
-      workedMinutes < BREAK_THRESHOLD_MINUTES &&
-      workedMinutes + durationMinutes > BREAK_THRESHOLD_MINUTES
-    ) {
-      nextStartMinutes += BREAK_DURATION_MINUTES
-      breakInserted = true
-    }
-
-    const nextEndMinutes = nextStartMinutes + durationMinutes
-
-    if (nextEndMinutes > DAY_END_MINUTES) {
-      updates.push(
-        prisma.job.update({
-          where: { id: job.id },
-          data: {
-            visitDate: null,
-            startTime: null,
-            status: 'unscheduled'
-          }
-        })
-      )
-      continue
-    }
-
-    updates.push(
-      prisma.job.update({
-        where: { id: job.id },
-        data: {
-          startTime: formatMinutesAsTime(nextStartMinutes)
-        }
-      })
-    )
-
-    cursorMinutes = nextEndMinutes
-    workedMinutes += durationMinutes
-    previousPostcode = job.customer?.postcode ?? previousPostcode
-  }
-
-  if (updates.length > 0) {
-    await prisma.$transaction(updates)
-  }
 }
 
 async function findTrevWorkerIds() {
@@ -796,6 +461,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const noteAuthor = clean(body.noteAuthor)
     const allowQuoteTimeOverride = isTrue(body.allowQuoteTimeOverride)
 
+    const isCancelAction =
+      action === 'cancel' || action === 'cancelled' || requestedStatus === 'cancelled'
+    const isArchiveAction =
+      action === 'archive' || action === 'archived' || requestedStatus === 'archived'
+
     const now = new Date()
 
     let statusUpdate: string | undefined = undefined
@@ -822,7 +492,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
       arrivedAtUpdate = existing.arrivedAt ?? now
       finishedAtUpdate = null
       pausedAtUpdate = null
-
       statusUpdate = statusUpdate ?? 'in_progress'
     }
 
@@ -835,9 +504,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
     if (action === 'resume') {
       if (existing.pausedAt) {
-        const additionalPausedMinutes = minutesBetween(existing.pausedAt, now)
-        pausedMinutesUpdate =
-          (existing.pausedMinutes ?? 0) + additionalPausedMinutes
+        const additionalPausedMinutes =
+          Math.max(0, Math.round((now.getTime() - existing.pausedAt.getTime()) / 60000))
+        pausedMinutesUpdate = (existing.pausedMinutes ?? 0) + additionalPausedMinutes
       }
 
       if (!existing.arrivedAt) {
@@ -852,7 +521,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
       let finalPausedMinutes = existing.pausedMinutes ?? 0
 
       if (existing.pausedAt) {
-        finalPausedMinutes += minutesBetween(existing.pausedAt, now)
+        finalPausedMinutes += Math.max(
+          0,
+          Math.round((now.getTime() - existing.pausedAt.getTime()) / 60000)
+        )
         pausedAtUpdate = null
       }
 
@@ -861,7 +533,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       statusUpdate = statusUpdate ?? 'done'
     }
 
-    const visitDateUpdate = parseDateValue(body.visitDate)
+    let visitDateUpdate = parseDateValue(body.visitDate)
 
     let startTimeUpdate: string | null | undefined = undefined
     if ('startTime' in body) {
@@ -893,7 +565,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
         : parsePositiveInt(body.customerId)
 
     let assignedWorkerIdsForResponse: number[] | undefined = undefined
-
     let proposedAssignedWorkerIds =
       existing.assignments.map((assignment) => assignment.workerId)
 
@@ -929,6 +600,97 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
       proposedAssignedWorkerIds = cleanedWorkerIds
       assignedWorkerIdsForResponse = cleanedWorkerIds
+    }
+
+    if (body.assignedTo !== undefined) {
+      await prisma.$transaction([
+        prisma.jobAssignment.deleteMany({
+          where: { jobId }
+        }),
+        ...(proposedAssignedWorkerIds.length > 0
+          ? [
+              prisma.jobAssignment.createMany({
+                data: proposedAssignedWorkerIds.map((workerId) => ({
+                  jobId,
+                  workerId
+                })),
+                skipDuplicates: true
+              })
+            ]
+          : [])
+      ])
+    }
+
+    if (isCancelAction) {
+      const updated = await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'cancelled',
+          visitDate: null,
+          startTime: null,
+          arrivedAt: null,
+          finishedAt: null,
+          pausedAt: null,
+          pausedMinutes: 0
+        },
+        include: {
+          customer: true,
+          assignments: {
+            include: {
+              worker: true
+            }
+          },
+          photos: true,
+          chasMessages: true
+        }
+      })
+
+      const { notes, notesLog } = await buildNotesLog(jobId)
+
+      return NextResponse.json({
+        ...updated,
+        jobNotes: notes,
+        notesLog,
+        assignedWorkerIds:
+          assignedWorkerIdsForResponse ??
+          updated.assignments.map((assignment) => assignment.workerId)
+      })
+    }
+
+    if (isArchiveAction) {
+      const updated = await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'archived',
+          visitDate: null,
+          startTime: null,
+          arrivedAt: null,
+          finishedAt: null,
+          pausedAt: null,
+          pausedMinutes: 0
+        },
+        include: {
+          customer: true,
+          assignments: {
+            include: {
+              worker: true
+            }
+          },
+          photos: true,
+          chasMessages: true
+        }
+      })
+
+      const { notes, notesLog } = await buildNotesLog(jobId)
+
+      return NextResponse.json({
+        ...updated,
+        jobNotes: notes,
+        notesLog,
+        assignedWorkerIds:
+          assignedWorkerIdsForResponse ??
+          updated.assignments.map((assignment) => assignment.workerId)
+      })
     }
 
     const proposedJobType =
@@ -970,29 +732,28 @@ export async function PATCH(req: Request, ctx: Ctx) {
         ? finalVisitDate
         : undefined
 
-    if (body.assignedTo !== undefined) {
-      await prisma.$transaction([
-        prisma.jobAssignment.deleteMany({
-          where: { jobId }
-        }),
-        ...(proposedAssignedWorkerIds.length > 0
-          ? [
-              prisma.jobAssignment.createMany({
-                data: proposedAssignedWorkerIds.map((workerId) => ({
-                  jobId,
-                  workerId
-                })),
-                skipDuplicates: true
-              })
-            ]
-          : [])
-      ])
+    let titleUpdate: string | undefined = undefined
+
+    if (customerIdUpdate !== undefined) {
+      const targetCustomer = await prisma.customer.findUnique({
+        where: { id: customerIdUpdate },
+        select: { name: true }
+      })
+
+      if (!targetCustomer) {
+        return NextResponse.json(
+          { error: 'Customer not found' },
+          { status: 404 }
+        )
+      }
+
+      titleUpdate = clean(targetCustomer.name)
     }
 
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
-        title: typeof body.title === 'string' ? body.title : undefined,
+        title: titleUpdate,
         address: typeof body.address === 'string' ? body.address : undefined,
         notes:
           body.notes === null
@@ -1023,78 +784,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
         chasMessages: true
       }
     })
-
-    const finalAssignedWorkerIds =
-      assignedWorkerIdsForResponse ??
-      updated.assignments.map((assignment) => assignment.workerId)
-
-    const rebuildNeeded = shouldTriggerRebuild({
-      action,
-      statusUpdate,
-      visitDateUpdate: visitDateValueForUpdate,
-      startTimeUpdate,
-      durationMinutesUpdate,
-      overrunMinsUpdate,
-      assignedWorkersChanged: body.assignedTo !== undefined,
-      existingVisitDate: existing.visitDate,
-      updatedVisitDate: updated.visitDate,
-      updatedStartTime: updated.startTime,
-      updatedWorkerIds: finalAssignedWorkerIds
-    })
-
-    if (rebuildNeeded && updated.visitDate && updated.startTime && finalAssignedWorkerIds.length > 0) {
-      const plannedStartMinutes =
-        parseTimeToMinutes(updated.startTime) ?? DAY_START_MINUTES
-
-      const plannedEndMinutes =
-        plannedStartMinutes + getEffectiveJobMinutes(updated)
-
-      const liveNowMinutes = getLondonMinutes(now)
-
-      let anchorCursorMinutes = plannedEndMinutes
-
-      if (
-        action === 'start' ||
-        action === 'pause' ||
-        action === 'resume' ||
-        updated.status === 'in_progress' ||
-        updated.status === 'paused'
-      ) {
-        anchorCursorMinutes = Math.max(plannedEndMinutes, liveNowMinutes)
-      }
-
-      if (action === 'finish') {
-        anchorCursorMinutes = Math.max(plannedStartMinutes, getLondonMinutes(finishedAtUpdate ?? now))
-      }
-
-      if (
-        action === 'couldntcomplete' ||
-        action === 'couldnt_complete' ||
-        action === 'cannotcomplete' ||
-        action === 'cannot_complete' ||
-        action === 'weather' ||
-        action === 'cancel' ||
-        action === 'cancelled' ||
-        action === 'postpone' ||
-        action === 'postponed' ||
-        statusUpdate === 'cancelled' ||
-        statusUpdate === 'weather' ||
-        statusUpdate === 'weather_postponed' ||
-        statusUpdate === 'postponed'
-      ) {
-        anchorCursorMinutes = Math.max(DAY_START_MINUTES, liveNowMinutes)
-      }
-
-      anchorCursorMinutes = Math.max(anchorCursorMinutes, DAY_START_MINUTES)
-
-      await rebuildRemainingDay({
-        anchorJobId: updated.id,
-        visitDate: updated.visitDate,
-        anchorCursorMinutes,
-        anchorPostcode: updated.customer?.postcode ?? existing.customer?.postcode ?? FARM_POSTCODE,
-        workerIds: finalAssignedWorkerIds
-      })
-    }
 
     if (appendNote) {
       let createdByWorkerId: number | null = null
