@@ -532,19 +532,26 @@ function JobSection({
 }
 
 export default async function JobsPage({ searchParams }: JobsPageProps) {
-  const jobs = await prisma.job.findMany({
-    include: {
-      customer: true,
-      assignments: {
-        include: {
-          worker: true,
+  const [jobs, archivedCount] = await Promise.all([
+    prisma.job.findMany({
+      include: {
+        customer: true,
+        assignments: {
+          include: {
+            worker: true,
+          },
         },
       },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  })
+      orderBy: {
+        createdAt: "desc",
+      },
+    }),
+    prisma.job.count({
+      where: {
+        status: "archived",
+      },
+    }),
+  ])
 
   const search = String(searchParams?.q || "").trim()
   const activeFilter = String(searchParams?.filter || "all").trim().toLowerCase()
@@ -681,6 +688,13 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                     className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
                   >
                     Back to Dashboard
+                  </Link>
+
+                  <Link
+                    href="/jobs/archived"
+                    className="inline-flex items-center justify-center rounded-xl border border-zinc-600 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
+                  >
+                    Archived Jobs ({archivedCount})
                   </Link>
 
                   <Link
