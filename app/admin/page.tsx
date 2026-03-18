@@ -66,40 +66,8 @@ function formatDate(value: Date | null | undefined) {
   }).format(new Date(value))
 }
 
-function parseTimeToMinutes(value?: string | null) {
-  if (!value) return 9999
-
-  const trimmed = String(value).trim()
-  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed)
-
-  if (!match) return 9999
-
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-
-  if (
-    !Number.isInteger(hours) ||
-    !Number.isInteger(minutes) ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    return 9999
-  }
-
-  return hours * 60 + minutes
-}
-
 function normaliseJobType(value?: string | null) {
   const raw = String(value || '').toLowerCase()
-
-  if (raw.includes('prep')) {
-    return {
-      label: 'Prep',
-      className: 'bg-zinc-100 text-zinc-700 ring-zinc-200',
-    }
-  }
 
   if (raw.includes('maint')) {
     return {
@@ -133,7 +101,7 @@ function normaliseStatus(value?: string | null) {
 
   if (raw.includes('progress')) return 'In progress'
   if (raw.includes('done') || raw.includes('finish')) return 'Done'
-  if (raw.includes('sched') || raw.includes('todo')) return 'Scheduled'
+  if (raw.includes('sched')) return 'Scheduled'
   if (raw.includes('cancel')) return 'Cancelled'
   if (raw.includes('archive')) return 'Archived'
   return value || 'Unscheduled'
@@ -246,6 +214,8 @@ export default async function AdminPage() {
           notIn: ['cancelled', 'archived'],
         },
       },
+      orderBy: [{ visitDate: 'asc' }, { startTime: 'asc' }, { createdAt: 'asc' }],
+      take: 50,
       include: {
         customer: true,
         assignments: {
@@ -254,7 +224,6 @@ export default async function AdminPage() {
           },
         },
       },
-      take: 50,
     }),
     prisma.worker.findMany({
       where: {
@@ -285,11 +254,11 @@ export default async function AdminPage() {
   ])
 
   const jobsToday = [...jobsTodayRaw].sort((a: any, b: any) => {
-    const aStart = parseTimeToMinutes(a.startTime)
-    const bStart = parseTimeToMinutes(b.startTime)
+    const aTime = String(a.startTime || '99:99')
+    const bTime = String(b.startTime || '99:99')
 
-    if (aStart !== bStart) {
-      return aStart - bStart
+    if (aTime !== bTime) {
+      return aTime.localeCompare(bTime)
     }
 
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -396,7 +365,7 @@ export default async function AdminPage() {
               <div>
                 <h3 className="text-base font-bold">Today&apos;s jobs</h3>
                 <p className="text-xs text-zinc-500">
-                  Earliest job first, with Morning Prep at the top if present
+                  First job of the day at the top, then the diary flows downward
                 </p>
               </div>
               <Link href="/jobs" className="text-sm font-semibold text-zinc-700">
@@ -451,6 +420,29 @@ export default async function AdminPage() {
                                 <span className="font-semibold">Assigned:</span>{' '}
                                 {assignedNames.length > 0 ? assignedNames.join(', ') : 'Unassigned'}
                               </div>
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <Link
+                                href={`/jobs/${job.id}`}
+                                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                              >
+                                Open
+                              </Link>
+
+                              <Link
+                                href={`/jobs/edit/${job.id}`}
+                                className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-black"
+                              >
+                                Edit
+                              </Link>
+
+                              <Link
+                                href={`/jobs/edit/${job.id}`}
+                                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                              >
+                                Reschedule / push back
+                              </Link>
                             </div>
                           </div>
 
@@ -554,30 +546,6 @@ export default async function AdminPage() {
             </div>
           </div>
         </section>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-sm font-bold text-zinc-900">Admin tools</div>
-          <div className="text-sm text-zinc-500">
-            Quick access to account switching and logout.
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/switch-user"
-            className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-          >
-            Switch User
-          </Link>
-          <Link
-            href="/logout"
-            className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100"
-          >
-            Logout
-          </Link>
-        </div>
       </div>
     </div>
   )
