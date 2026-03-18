@@ -399,6 +399,47 @@ function getInitials(name: string) {
   return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase()
 }
 
+function isMorningPrepJob(job: Job) {
+  const title = String(job.title || '').trim().toLowerCase()
+  const jobType = String(job.jobType || '').trim().toLowerCase()
+
+  return title === 'morning prep' || jobType === 'prep'
+}
+
+function getJobPrimaryTitle(job: Job) {
+  const customerName = String(job.customer?.name || '').trim()
+  const title = String(job.title || '').trim()
+
+  if (customerName) return customerName
+  if (title) return title
+  return `Job #${job.id}`
+}
+
+function getJobSecondaryTitle(job: Job) {
+  const customerName = String(job.customer?.name || '').trim().toLowerCase()
+  const title = String(job.title || '').trim()
+  const cleanedTitle = title.toLowerCase()
+
+  if (!title) return ''
+
+  if (
+    cleanedTitle === customerName ||
+    cleanedTitle === 'maintenance' ||
+    cleanedTitle === 'garden maintenance' ||
+    cleanedTitle === 'landscaping' ||
+    cleanedTitle === 'quote' ||
+    cleanedTitle === 'quoted'
+  ) {
+    return ''
+  }
+
+  if (customerName) {
+    return title
+  }
+
+  return ''
+}
+
 function ChasMascot({ size = 26 }: { size?: number }) {
   const hatHeight = Math.round(size * 0.3)
   const faceSize = Math.round(size * 0.72)
@@ -863,24 +904,40 @@ export default function TodayPage() {
     return () => window.clearTimeout(timeout)
   }, [chasOpen, chasMessages, chasBusy])
 
- const workerJobs = useMemo(() => {
-  if (!workerId) return []
+  const workerJobs = useMemo(() => {
+    if (!workerId) return []
 
-  return jobs
-    .filter((job) => {
-      const status = String(job.status || '').toLowerCase()
+    const assignedJobs = jobs
+      .filter((job) => {
+        const status = String(job.status || '').toLowerCase()
 
-      // ✅ hide archived + cancelled jobs
-      if (status === 'archived' || status === 'cancelled') {
-        return false
-      }
+        if (status === 'archived' || status === 'cancelled') {
+          return false
+        }
 
-      return job.assignments.some(
-        (assignment) => assignment.workerId === workerId
-      )
+        return job.assignments.some((assignment) => assignment.workerId === workerId)
+      })
+      .sort((a, b) => {
+        const aIsPrep = isMorningPrepJob(a)
+        const bIsPrep = isMorningPrepJob(b)
+
+        if (aIsPrep && !bIsPrep) return -1
+        if (!aIsPrep && bIsPrep) return 1
+
+        return jobSortValue(a) - jobSortValue(b)
+      })
+
+    let seenMorningPrep = false
+
+    return assignedJobs.filter((job) => {
+      if (!isMorningPrepJob(job)) return true
+
+      if (seenMorningPrep) return false
+
+      seenMorningPrep = true
+      return true
     })
-    .sort((a, b) => jobSortValue(a) - jobSortValue(b))
-}, [jobs, workerId])
+  }, [jobs, workerId])
 
   const visibleJobs = useMemo<TimedJob[]>(() => {
     const currentNow = new Date()
@@ -1863,11 +1920,14 @@ Heavy rain made it unsafe`,
                 <div>
                   <div style={styles.sectionTitle}>Current job</div>
                   <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15 }}>
-                    {filteredActiveJob.title}
+                    {getJobPrimaryTitle(filteredActiveJob)}
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 15 }}>
-                    {filteredActiveJob.customer?.name || 'Unknown customer'}
-                  </div>
+
+                  {getJobSecondaryTitle(filteredActiveJob) && (
+                    <div style={{ marginTop: 6, fontSize: 15 }}>
+                      {getJobSecondaryTitle(filteredActiveJob)}
+                    </div>
+                  )}
                 </div>
 
                 <div style={getStatusPill(filteredActiveJob)}>
@@ -2061,11 +2121,15 @@ Heavy rain made it unsafe`,
                   >
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>
-                        {job.title}
+                        {getJobPrimaryTitle(job)}
                       </div>
-                      <div style={{ fontSize: 14, color: colours.inkSoft }}>
-                        {job.customer?.name || 'Unknown customer'}
-                      </div>
+
+                      {getJobSecondaryTitle(job) && (
+                        <div style={{ fontSize: 14, color: colours.inkSoft }}>
+                          {getJobSecondaryTitle(job)}
+                        </div>
+                      )}
+
                       <div style={{ fontSize: 13, color: colours.muted, marginTop: 4 }}>
                         {job.address}
                       </div>
@@ -2177,7 +2241,16 @@ Heavy rain made it unsafe`,
                         }}
                       >
                         <div>
-                          <div style={{ fontSize: 16, fontWeight: 800 }}>{job.title}</div>
+                          <div style={{ fontSize: 16, fontWeight: 800 }}>
+                            {getJobPrimaryTitle(job)}
+                          </div>
+
+                          {getJobSecondaryTitle(job) && (
+                            <div style={{ marginTop: 4, fontSize: 13, color: colours.inkSoft }}>
+                              {getJobSecondaryTitle(job)}
+                            </div>
+                          )}
+
                           <div style={{ marginTop: 4, fontSize: 13, color: colours.muted }}>
                             ETA start: {formatClockTime(job.etaStart)}
                           </div>
@@ -2221,31 +2294,21 @@ Heavy rain made it unsafe`,
                             fontWeight: 900
                           }}
                         >
-                          {job.title}
+                          {getJobPrimaryTitle(job)}
                         </h2>
                       </a>
 
-                      <div style={{ marginTop: 6, fontSize: 15 }}>
-                        {job.customer?.name || 'Unknown customer'}
-                      </div>
+                      {getJobSecondaryTitle(job) && (
+                        <div style={{ marginTop: 6, fontSize: 15 }}>
+                          {getJobSecondaryTitle(job)}
+                        </div>
+                      )}
                     </div>
 
                     <div style={getStatusPill(job)}>{getStatusText(job)}</div>
                   </div>
 
                   <div style={{ ...styles.gridTwo, marginBottom: 12 }}>
-                    <div
-                      style={{
-                        padding: 12,
-                        borderRadius: 14,
-                        background: 'rgba(255,255,255,0.65)',
-                        border: '1px solid rgba(0,0,0,0.06)'
-                      }}
-                    >
-                      <div style={styles.label}>Job type</div>
-                      <div style={styles.value}>{job.jobType}</div>
-                    </div>
-
                     <div
                       style={{
                         padding: 12,
@@ -2556,9 +2619,17 @@ Heavy rain made it unsafe`,
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                        <div style={{ fontSize: 20, fontWeight: 900 }}>{job.title}</div>
+                        <div style={{ fontSize: 20, fontWeight: 900 }}>
+                          {getJobPrimaryTitle(job)}
+                        </div>
                         <div style={getStatusPill(job)}>{getStatusText(job)}</div>
                       </div>
+
+                      {getJobSecondaryTitle(job) && (
+                        <div style={{ marginBottom: 10, fontSize: 14 }}>
+                          {getJobSecondaryTitle(job)}
+                        </div>
+                      )}
 
                       <div style={{ ...styles.gridTwo, maxWidth: 620 }}>
                         <div>
@@ -2818,6 +2889,7 @@ Heavy rain made it unsafe`,
                           animationDelay: '0.3s'
                         }}
                       />
+
                     </div>
 
                     <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
