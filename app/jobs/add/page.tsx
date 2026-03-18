@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 
 type Customer = {
@@ -15,6 +16,40 @@ type Worker = {
   firstName: string
   lastName: string
   active: boolean
+}
+
+type SavedJobResponse = {
+  id?: number
+  title?: string
+  address?: string | null
+  status?: string | null
+  jobType?: string | null
+  visitDate?: string | null
+  startTime?: string | null
+  durationMinutes?: number | null
+  customer?: {
+    id?: number
+    name?: string | null
+    postcode?: string | null
+  } | null
+  assignments?: Array<{
+    worker?: {
+      id?: number
+      firstName?: string | null
+      lastName?: string | null
+    } | null
+  }>
+}
+
+type SaveSummary = {
+  title: string
+  customerName: string
+  assignedWorkerNames: string[]
+  durationMinutes: number
+  scheduled: boolean
+  visitDate: string | null
+  startTime: string | null
+  locationLabel: string
 }
 
 function SectionCard({
@@ -64,7 +99,146 @@ function isTrevWorker(worker: Worker) {
   return firstMatches && lastMatches
 }
 
+function fullWorkerName(worker: Worker) {
+  return `${worker.firstName} ${worker.lastName}`.trim()
+}
+
+function formatDateForDisplay(value: string | null) {
+  if (!value) return 'No date'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date)
+}
+
+function formatDurationLabel(minutes: number) {
+  if (minutes === 390) return 'Full day'
+  if (minutes < 60) return `${minutes} mins`
+
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+
+  if (mins === 0) {
+    return `${hours} hour${hours === 1 ? '' : 's'}`
+  }
+
+  return `${hours}h ${mins}m`
+}
+
+function SaveConfirmationModal({
+  summary,
+  onClearForm,
+  onGoToJobs,
+}: {
+  summary: SaveSummary
+  onClearForm: () => void
+  onGoToJobs: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 px-4 py-6">
+      <div className="w-full max-w-xl rounded-3xl border border-zinc-200 bg-white shadow-2xl">
+        <div className="border-b border-zinc-200 px-6 py-5">
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-500">
+            Job Saved
+          </div>
+          <h2 className="mt-1 text-2xl font-bold text-zinc-900">
+            {summary.scheduled ? 'Job scheduled into the diary' : 'Job saved into Unscheduled'}
+          </h2>
+          <p className="mt-2 text-sm text-zinc-500">
+            Check the details below, then either clear the form for the next job or go back to Jobs.
+          </p>
+        </div>
+
+        <div className="space-y-4 px-6 py-5">
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            <div className="text-sm font-bold text-zinc-900">{summary.customerName}</div>
+            <div className="mt-1 text-sm text-zinc-700">{summary.title}</div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                Status
+              </div>
+              <div className="mt-2 text-sm font-bold text-zinc-900">
+                {summary.scheduled ? 'Scheduled' : 'Unscheduled'}
+              </div>
+              <div className="mt-1 text-sm text-zinc-600">{summary.locationLabel}</div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                Expected time
+              </div>
+              <div className="mt-2 text-sm font-bold text-zinc-900">
+                {formatDurationLabel(summary.durationMinutes)}
+              </div>
+              <div className="mt-1 text-sm text-zinc-600">{summary.durationMinutes} minutes</div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Assigned workers
+            </div>
+            <div className="mt-2 text-sm font-bold text-zinc-900">
+              {summary.assignedWorkerNames.length > 0
+                ? summary.assignedWorkerNames.join(', ')
+                : 'No workers assigned'}
+            </div>
+          </div>
+
+          {summary.scheduled ? (
+            <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+              <div className="font-bold text-green-900">Placed into the diary</div>
+              <div className="mt-1">
+                {formatDateForDisplay(summary.visitDate)}
+                {summary.startTime ? ` at ${summary.startTime}` : ''}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <div className="font-bold text-amber-900">Waiting to be scheduled</div>
+              <div className="mt-1">
+                This job has been saved into the unscheduled queue for Kelly to place later.
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-zinc-200 px-6 py-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClearForm}
+            className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+          >
+            Confirm and clear form
+          </button>
+          <button
+            type="button"
+            onClick={onGoToJobs}
+            className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black"
+          >
+            Confirm and go to Jobs
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AddJobPage() {
+  const router = useRouter()
+
   const [customers, setCustomers] = useState<Customer[]>([])
   const [workers, setWorkers] = useState<Worker[]>([])
   const [customerId, setCustomerId] = useState('')
@@ -97,6 +271,15 @@ export default function AddJobPage() {
 
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [saveSummary, setSaveSummary] = useState<SaveSummary | null>(null)
+
+  const durationOptions = useMemo(() => {
+    if (jobType === 'Maintenance') {
+      return [30, 45, 60, 90, 120, 180, 240, 300, 390]
+    }
+
+    return [30, 45, 60, 90, 120]
+  }, [jobType])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -123,7 +306,7 @@ export default function AddJobPage() {
       try {
         const [customerRes, workerRes] = await Promise.all([
           fetch('/api/customers'),
-          fetch('/api/workers')
+          fetch('/api/workers'),
         ])
 
         const customerData = await customerRes.json()
@@ -183,6 +366,86 @@ export default function AddJobPage() {
     }
   }, [isTrevQuoteJob, allowQuoteTimeOverride])
 
+  function resetForm() {
+    setTitle('')
+    setNotes('')
+    setStatus('Scheduled')
+    setJobType('Quote')
+    setUseDifferentAddress(false)
+    setJobAddress('')
+    setAssignedTo([])
+    setDurationMinutes('60')
+    setVisitDate('')
+    setStartTime('')
+    setAllowQuoteTimeOverride(false)
+    setVisitPattern('one-off')
+    setMaintenanceFrequency('2')
+    setTimePreferenceMode('best-fit')
+    setPreferredDay('')
+    setPreferredTimeBand('Anytime')
+    setMessage('')
+    setSaveSummary(null)
+  }
+
+  function buildSaveSummary(
+    responseData: SavedJobResponse | null,
+    parsedDuration: number
+  ): SaveSummary {
+    const responseAssignments = Array.isArray(responseData?.assignments)
+      ? responseData?.assignments ?? []
+      : []
+
+    const responseWorkerNames = responseAssignments
+      .map((assignment) => {
+        const first = assignment.worker?.firstName?.trim() || ''
+        const last = assignment.worker?.lastName?.trim() || ''
+        return `${first} ${last}`.trim()
+      })
+      .filter(Boolean)
+
+    const fallbackWorkerNames = selectedWorkers.map(fullWorkerName)
+
+    const assignedWorkerNames =
+      responseWorkerNames.length > 0 ? responseWorkerNames : fallbackWorkerNames
+
+    const scheduledVisitDate = responseData?.visitDate ?? (visitDate || null)
+    const scheduledStartTime =
+      responseData?.startTime ??
+      (isTrevQuoteJob && !allowQuoteTimeOverride ? null : startTime || null)
+
+    const scheduled = Boolean(scheduledVisitDate || scheduledStartTime)
+
+    const customerName =
+      responseData?.customer?.name?.trim() ||
+      selectedCustomer?.name ||
+      'Customer'
+
+    let locationLabel = 'Saved into Unscheduled'
+
+    if (scheduled) {
+      const dateLabel = scheduledVisitDate
+        ? formatDateForDisplay(scheduledVisitDate)
+        : 'Scheduled date'
+      const timeLabel = scheduledStartTime ? ` at ${scheduledStartTime}` : ''
+      locationLabel = `${dateLabel}${timeLabel}`
+    }
+
+    return {
+      title: responseData?.title?.trim() || title.trim(),
+      customerName,
+      assignedWorkerNames,
+      durationMinutes:
+        typeof responseData?.durationMinutes === 'number' &&
+        responseData.durationMinutes > 0
+          ? responseData.durationMinutes
+          : parsedDuration,
+      scheduled,
+      visitDate: scheduledVisitDate,
+      startTime: scheduledStartTime,
+      locationLabel,
+    }
+  }
+
   function toggleWorker(workerId: number) {
     setAssignedTo((prev) =>
       prev.includes(workerId)
@@ -205,14 +468,14 @@ export default function AddJobPage() {
       const res = await fetch('/api/customers', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           name,
           phone: newCustomerPhone,
           address: newCustomerAddress,
-          postcode: newCustomerPostcode
-        })
+          postcode: newCustomerPostcode,
+        }),
       })
 
       const data = await res.json().catch(() => null)
@@ -270,6 +533,10 @@ export default function AddJobPage() {
         throw new Error('Expected time must be greater than 0')
       }
 
+      if (assignedTo.length === 0) {
+        throw new Error('Please assign at least one worker')
+      }
+
       if (isTrevQuoteJob && !visitDate) {
         throw new Error('Trev quote visits must have a visit date')
       }
@@ -281,7 +548,7 @@ export default function AddJobPage() {
       const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           customerId: Number(customerId),
@@ -312,33 +579,19 @@ export default function AddJobPage() {
           preferredTimeBand:
             isRegularMaintenance && useSpecificVisitPreference
               ? preferredTimeBand
-              : null
-        })
+              : null,
+        }),
       })
 
-      const data = await res.json().catch(() => null)
+      const data: SavedJobResponse | null = await res.json().catch(() => null)
 
       if (!res.ok) {
-        throw new Error(data?.error || 'Failed to save job')
+        throw new Error(data && 'error' in data ? String((data as any).error) : 'Failed to save job')
       }
 
-      setTitle('')
-      setNotes('')
-      setStatus('Scheduled')
-      setJobType('Quote')
-      setUseDifferentAddress(false)
-      setJobAddress('')
-      setAssignedTo([])
-      setDurationMinutes('60')
-      setVisitDate('')
-      setStartTime('')
-      setAllowQuoteTimeOverride(false)
-      setVisitPattern('one-off')
-      setMaintenanceFrequency('2')
-      setTimePreferenceMode('best-fit')
-      setPreferredDay('')
-      setPreferredTimeBand('Anytime')
-      setMessage('Job saved successfully.')
+      const summary = buildSaveSummary(data, parsedDuration)
+      setSaveSummary(summary)
+      setMessage('')
     } catch (error) {
       console.error(error)
       setMessage(
@@ -540,6 +793,10 @@ export default function AddJobPage() {
                         if (nextType !== 'Quote') {
                           setAllowQuoteTimeOverride(false)
                         }
+
+                        if (nextType !== 'Maintenance' && durationMinutes === '390') {
+                          setDurationMinutes('60')
+                        }
                       }}
                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
@@ -568,7 +825,7 @@ export default function AddJobPage() {
                   <FieldLabel required>Expected Time (minutes)</FieldLabel>
 
                   <div className="mb-3 flex flex-wrap gap-2">
-                    {[30, 45, 60, 90, 120].map((minutes) => (
+                    {durationOptions.map((minutes) => (
                       <button
                         key={minutes}
                         type="button"
@@ -579,7 +836,7 @@ export default function AddJobPage() {
                             : 'border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100'
                         }`}
                       >
-                        {minutes} mins
+                        {minutes === 390 ? 'Full day' : `${minutes} mins`}
                       </button>
                     ))}
                   </div>
@@ -593,6 +850,12 @@ export default function AddJobPage() {
                     required
                     className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
+
+                  {jobType === 'Maintenance' && (
+                    <p className="mt-2 text-sm text-zinc-500">
+                      Maintenance can now be short visits or longer blocks, including full-day work.
+                    </p>
+                  )}
                 </div>
               </div>
             </SectionCard>
@@ -799,37 +1062,45 @@ export default function AddJobPage() {
 
             <SectionCard
               title="Assigned Workers"
-              description="Choose which workers should be assigned to this job."
+              description="Choose which workers should be assigned to this job. At least one worker is required."
             >
               {workers.length === 0 ? (
                 <p className="text-sm text-zinc-500">No active workers found.</p>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {workers.map((worker) => {
-                    const checked = assignedTo.includes(worker.id)
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {workers.map((worker) => {
+                      const checked = assignedTo.includes(worker.id)
 
-                    return (
-                      <label
-                        key={worker.id}
-                        className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 text-sm transition ${
-                          checked
-                            ? 'border-zinc-900 bg-zinc-900 text-white'
-                            : 'border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleWorker(worker.id)}
-                          className="h-4 w-4"
-                        />
-                        <span className="font-semibold">
-                          {worker.firstName} {worker.lastName}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
+                      return (
+                        <label
+                          key={worker.id}
+                          className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 text-sm transition ${
+                            checked
+                              ? 'border-zinc-900 bg-zinc-900 text-white'
+                              : 'border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleWorker(worker.id)}
+                            className="h-4 w-4"
+                          />
+                          <span className="font-semibold">
+                            {worker.firstName} {worker.lastName}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+
+                  {assignedTo.length === 0 && (
+                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                      Please select at least one worker before saving this job.
+                    </div>
+                  )}
+                </>
               )}
             </SectionCard>
 
@@ -850,11 +1121,7 @@ export default function AddJobPage() {
 
             {message && (
               <div
-                className={`rounded-2xl px-4 py-3 text-sm font-medium shadow-sm ${
-                  message.toLowerCase().includes('success')
-                    ? 'border border-green-200 bg-green-50 text-green-700'
-                    : 'border border-red-200 bg-red-50 text-red-700'
-                }`}
+                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-sm"
               >
                 {message}
               </div>
@@ -883,6 +1150,18 @@ export default function AddJobPage() {
           </form>
         </div>
       </div>
+
+      {saveSummary ? (
+        <SaveConfirmationModal
+          summary={saveSummary}
+          onClearForm={() => {
+            resetForm()
+          }}
+          onGoToJobs={() => {
+            router.push('/jobs')
+          }}
+        />
+      ) : null}
     </main>
   )
 }
