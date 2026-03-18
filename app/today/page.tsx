@@ -171,6 +171,74 @@ function formatMinutes(totalMinutes: number) {
   return `${mins}m`
 }
 
+function formatChasTimestamp(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatDateKeyLabel(dateKey: string) {
+  const date = parseDateKey(dateKey)
+
+  if (!date) return 'Selected date'
+
+  return date.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  })
+}
+
+function toDateKey(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function parseDateKey(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+
+  const [year, month, day] = value.split('-').map(Number)
+
+  if (!year || !month || !day) return null
+
+  const date = new Date(year, month - 1, day)
+
+  if (Number.isNaN(date.getTime())) return null
+
+  return date
+}
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const date = parseDateKey(dateKey)
+
+  if (!date) return dateKey
+
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+
+  return toDateKey(next)
+}
+
+function isSameDateKey(visitDate?: string | null, dateKey?: string) {
+  if (!visitDate || !dateKey) return false
+  return toDateKey(visitDate) === dateKey
+}
+
 function jobSortValue(job: Job) {
   const datePart = job.visitDate ? new Date(job.visitDate).getTime() : 0
 
@@ -294,17 +362,6 @@ function getLiveWorkedMinutes(job: Job, currentNow: Date) {
   const livePausedMinutes = job.pausedAt ? getPausedLiveMinutes(job, currentNow) : 0
 
   return Math.max(0, totalMinutes - pausedMinutes - livePausedMinutes)
-}
-
-function formatChasTimestamp(value: string) {
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) return ''
-
-  return date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 
 function createChasSessionId() {
@@ -760,9 +817,11 @@ function TopStatCard({
 
   if (!clickable) {
     return (
-      <div style={sharedStyle}>
+      <div style={sharedStyle} className="today-stat-card">
         <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>{label}</div>
-        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>{value}</div>
+        <div className="today-stat-value" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+          {value}
+        </div>
         <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>{subtext}</div>
       </div>
     )
@@ -777,9 +836,12 @@ function TopStatCard({
         width: '100%',
         textAlign: 'left'
       }}
+      className="today-stat-card"
     >
       <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>{value}</div>
+      <div className="today-stat-value" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
+        {value}
+      </div>
       <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>{subtext}</div>
     </button>
   )
@@ -797,6 +859,7 @@ export default function TodayPage() {
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
   const [now, setNow] = useState(new Date())
   const [topFilter, setTopFilter] = useState<'all' | 'completed' | 'left'>('all')
+  const [selectedDateKey, setSelectedDateKey] = useState<string>('')
 
   const [chasOpen, setChasOpen] = useState(false)
   const [chasSessionId, setChasSessionId] = useState<string>('')
@@ -822,6 +885,26 @@ export default function TodayPage() {
   const [quoteNotes, setQuoteNotes] = useState('')
   const chasMessagesEndRef = useRef<HTMLDivElement | null>(null)
 
+  const todayDateKey = useMemo(() => toDateKey(now), [now])
+  const selectedDateLabel = useMemo(() => formatDateKeyLabel(selectedDateKey || todayDateKey), [selectedDateKey, todayDateKey])
+  const isViewingToday = !selectedDateKey || selectedDateKey === todayDateKey
+
+  function syncSelectedDateInUrl(nextDateKey: string) {
+    setSelectedDateKey(nextDateKey)
+
+    if (typeof window === 'undefined') return
+
+    const url = new URL(window.location.href)
+
+    if (!nextDateKey || nextDateKey === todayDateKey) {
+      url.searchParams.delete('date')
+    } else {
+      url.searchParams.set('date', nextDateKey)
+    }
+
+    window.history.replaceState({}, '', url.toString())
+  }
+
   async function loadJobs() {
     try {
       setError('')
@@ -837,7 +920,7 @@ export default function TodayPage() {
     } catch (err) {
       console.error(err)
       setJobs([])
-      setError('Failed to load jobs.')
+      setError('Could not load jobs for this page.')
     } finally {
       setLoading(false)
     }
@@ -878,6 +961,14 @@ export default function TodayPage() {
     if (savedWorkerPhotoUrl) {
       setWorkerPhotoUrl(savedWorkerPhotoUrl)
     }
+
+    const defaultToday = toDateKey(new Date())
+    const urlDate =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('date') || ''
+        : ''
+
+    setSelectedDateKey(urlDate || defaultToday)
 
     loadJobs()
     loadCustomers()
@@ -939,11 +1030,20 @@ export default function TodayPage() {
     })
   }, [jobs, workerId])
 
+  const dayJobs = useMemo(() => {
+    const key = selectedDateKey || todayDateKey
+
+    return workerJobs.filter((job) => {
+      if (!job.visitDate) return false
+      return isSameDateKey(job.visitDate, key)
+    })
+  }, [workerJobs, selectedDateKey, todayDateKey])
+
   const visibleJobs = useMemo<TimedJob[]>(() => {
     const currentNow = new Date()
     let runningCursor: Date | null = null
 
-    const timedJobsBase = workerJobs.map((job) => {
+    const timedJobsBase = dayJobs.map((job) => {
       const status = String(job.status || '').toLowerCase()
       const isDone = status === 'done' || status === 'completed' || !!job.finishedAt
       const isPaused = !!job.arrivedAt && !!job.pausedAt && !job.finishedAt && !isDone
@@ -1023,7 +1123,7 @@ export default function TodayPage() {
         isWaiting
       }
     })
-  }, [workerJobs, now])
+  }, [dayJobs, now])
 
   const activeJob = useMemo(() => {
     return visibleJobs.find((job) => job.isStarted || job.isPaused) || null
@@ -1067,20 +1167,20 @@ export default function TodayPage() {
     topFilter === 'left' ? [] : completedJobs
 
   const upcomingJobs = useMemo(() => {
-    const nowTime = now.getTime()
+    const selected = selectedDateKey || todayDateKey
 
     return workerJobs
       .filter((job) => {
         if (!job.visitDate) return false
         if (job.finishedAt) return false
 
-        const dateTime = combineVisitDateAndTime(job.visitDate, job.startTime)
-        if (!dateTime) return false
+        const jobDateKey = toDateKey(job.visitDate)
 
-        return dateTime.getTime() > nowTime
+        return jobDateKey > selected
       })
+      .sort((a, b) => jobSortValue(a) - jobSortValue(b))
       .slice(0, 8)
-  }, [workerJobs, now])
+  }, [workerJobs, selectedDateKey, todayDateKey])
 
   const filteredQuoteCustomers = useMemo(() => {
     const q = quoteCustomerSearch.trim().toLowerCase()
@@ -1696,20 +1796,197 @@ Heavy rain made it unsafe`,
         a, button {
           -webkit-tap-highlight-color: transparent;
         }
+
+        .today-top-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 16px;
+          flex-wrap: wrap;
+        }
+
+        .today-top-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-left: auto;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .today-worker-badge {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 16px;
+          background: rgba(255,255,255,0.1);
+          border: 1px solid rgba(255,255,255,0.12);
+          min-width: 0;
+        }
+
+        .today-top-stats {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+          gap: 12px;
+        }
+
+        .today-date-strip {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 14px;
+          padding: 12px;
+          border-radius: 16px;
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .today-date-strip-left {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .today-date-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .today-date-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 42px;
+          padding: 10px 14px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.16);
+          background: rgba(255,255,255,0.08);
+          color: #fff;
+          cursor: pointer;
+          font-weight: 700;
+        }
+
+        .today-date-input {
+          min-height: 42px;
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.16);
+          background: rgba(255,255,255,0.08);
+          color: #fff;
+        }
+
+        .today-active-actions,
+        .today-job-actions {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+          gap: 10px;
+        }
+
+        .today-meta-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          gap: 10px;
+        }
+
+        .today-chas-shell {
+          width: 100%;
+          max-width: 820px;
+          height: 86vh;
+          overflow: hidden;
+          background: #fff;
+          border-radius: 20px;
+          border: 1px solid #ddd;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 24px 70px rgba(0,0,0,0.22);
+        }
+
+        @media (max-width: 768px) {
+          .today-top-header {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .today-top-actions {
+            width: 100%;
+            margin-left: 0;
+            justify-content: stretch;
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .today-ask-chas-button {
+            width: 100%;
+          }
+
+          .today-worker-badge {
+            width: 100%;
+          }
+
+          .today-top-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .today-stat-card {
+            min-height: 118px;
+          }
+
+          .today-stat-value {
+            font-size: 24px !important;
+          }
+
+          .today-date-strip {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .today-date-controls {
+            justify-content: stretch;
+          }
+
+          .today-date-button,
+          .today-date-input {
+            width: 100%;
+          }
+
+          .today-active-actions,
+          .today-job-actions,
+          .today-meta-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .today-chas-shell {
+            height: 100vh;
+            max-width: none;
+            border-radius: 0;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .today-top-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+          }
+
+          .today-stat-card {
+            padding: 12px !important;
+            min-height: 108px;
+          }
+
+          .today-stat-value {
+            font-size: 22px !important;
+          }
+        }
       `}</style>
 
       <div style={styles.shell}>
         <section style={styles.topCard}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              gap: 12,
-              marginBottom: 16,
-              flexWrap: 'wrap'
-            }}
-          >
+          <div className="today-top-header">
             <div>
               {!logoHidden && (
                 <div style={{ marginBottom: 10 }}>
@@ -1740,19 +2017,11 @@ Heavy rain made it unsafe`,
               </h1>
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                marginLeft: 'auto',
-                flexWrap: 'wrap',
-                justifyContent: 'flex-end'
-              }}
-            >
+            <div className="today-top-actions">
               <button
                 type="button"
                 onClick={openChas}
+                className="today-ask-chas-button"
                 style={{
                   ...styles.actionButtonDark,
                   minWidth: 150
@@ -1762,18 +2031,7 @@ Heavy rain made it unsafe`,
                 <span>Ask Chas</span>
               </button>
 
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  borderRadius: 16,
-                  background: 'rgba(255,255,255,0.1)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  minWidth: 0
-                }}
-              >
+              <div className="today-worker-badge">
                 {workerPhotoUrl ? (
                   <img
                     src={workerPhotoUrl}
@@ -1830,7 +2088,7 @@ Heavy rain made it unsafe`,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      maxWidth: 180
+                      maxWidth: 220
                     }}
                   >
                     {workerName || 'Worker'}
@@ -1840,8 +2098,7 @@ Heavy rain made it unsafe`,
                     style={{
                       fontSize: 12,
                       opacity: 0.78,
-                      marginTop: 2,
-                      whiteSpace: 'nowrap'
+                      marginTop: 2
                     }}
                   >
                     Notes and actions use this login
@@ -1853,13 +2110,67 @@ Heavy rain made it unsafe`,
             </div>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-              gap: 12
-            }}
-          >
+          <div className="today-date-strip">
+            <div className="today-date-strip-left">
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: 0.6,
+                  textTransform: 'uppercase',
+                  opacity: 0.72,
+                  marginBottom: 4
+                }}
+              >
+                Viewing jobs for
+              </div>
+
+              <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1.2 }}>
+                {selectedDateLabel}
+              </div>
+
+              {!isViewingToday && (
+                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.82 }}>
+                  Preview mode for testing another day
+                </div>
+              )}
+            </div>
+
+            <div className="today-date-controls">
+              <button
+                type="button"
+                className="today-date-button"
+                onClick={() => syncSelectedDateInUrl(addDaysToDateKey(selectedDateKey || todayDateKey, -1))}
+              >
+                ← Previous
+              </button>
+
+              <button
+                type="button"
+                className="today-date-button"
+                onClick={() => syncSelectedDateInUrl(todayDateKey)}
+              >
+                Today
+              </button>
+
+              <button
+                type="button"
+                className="today-date-button"
+                onClick={() => syncSelectedDateInUrl(addDaysToDateKey(selectedDateKey || todayDateKey, 1))}
+              >
+                Next →
+              </button>
+
+              <input
+                type="date"
+                value={selectedDateKey || todayDateKey}
+                onChange={(e) => syncSelectedDateInUrl(e.target.value || todayDateKey)}
+                className="today-date-input"
+              />
+            </div>
+          </div>
+
+          <div className="today-top-stats">
             <TopStatCard
               label="Current time"
               value={formatLiveNow(now)}
@@ -1868,9 +2179,9 @@ Heavy rain made it unsafe`,
             />
 
             <TopStatCard
-              label="Jobs today"
+              label="Jobs on date"
               value={progressCounts.todayTotal}
-              subtext="Total jobs booked"
+              subtext={isViewingToday ? 'Booked for today' : 'Booked for selected date'}
               active={topFilter === 'all'}
               onClick={() => setTopFilter('all')}
             />
@@ -1935,7 +2246,7 @@ Heavy rain made it unsafe`,
                 </div>
               </div>
 
-              <div style={{ ...styles.gridTwo, marginBottom: 14 }}>
+              <div className="today-meta-grid" style={{ marginBottom: 14 }}>
                 <div
                   style={{
                     padding: 12,
@@ -1993,13 +2304,7 @@ Heavy rain made it unsafe`,
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                  gap: 10
-                }}
-              >
+              <div className="today-active-actions">
                 {filteredActiveJob.isStarted && (
                   <>
                     <button
@@ -2089,7 +2394,7 @@ Heavy rain made it unsafe`,
 
         {!loading && !error && workerId && upcomingJobs.length > 0 && (
           <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
-            <div style={styles.sectionTitle}>Coming up</div>
+            <div style={styles.sectionTitle}>Booked after this date</div>
 
             <div
               style={{
@@ -2161,6 +2466,15 @@ Heavy rain made it unsafe`,
           </section>
         )}
 
+        {!loading && !error && !workerId && (
+          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
+            <div style={{ fontWeight: 700 }}>No worker selected.</div>
+            <div style={{ marginTop: 6, color: colours.muted }}>
+              Go back and choose a worker first.
+            </div>
+          </section>
+        )}
+
         {!loading && error && (
           <section
             style={{
@@ -2171,22 +2485,19 @@ Heavy rain made it unsafe`,
               background: colours.redSoft
             }}
           >
-            <div style={{ fontWeight: 700 }}>{error}</div>
-          </section>
-        )}
-
-        {!loading && !error && !workerId && (
-          <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
-            <div style={{ fontWeight: 700 }}>No worker selected.</div>
-            <div style={{ marginTop: 6, color: colours.muted }}>
-              Go back and choose a worker first.
-            </div>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>Couldn’t load this page properly.</div>
+            <div style={{ color: colours.inkSoft }}>{error}</div>
           </section>
         )}
 
         {!loading && !error && workerId && filteredNextJobs.length === 0 && !filteredActiveJob && filteredCompletedJobs.length === 0 && (
           <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
-            <div style={{ fontWeight: 700 }}>No open jobs assigned to you.</div>
+            <div style={{ fontWeight: 700 }}>
+              {isViewingToday ? 'No jobs booked for today.' : 'No jobs booked for this date.'}
+            </div>
+            <div style={{ marginTop: 6, color: colours.muted }}>
+              Use the date controls above to preview another day.
+            </div>
           </section>
         )}
 
@@ -2237,7 +2548,8 @@ Heavy rain made it unsafe`,
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
-                          gap: 12
+                          gap: 12,
+                          flexWrap: 'wrap'
                         }}
                       >
                         <div>
@@ -2308,7 +2620,7 @@ Heavy rain made it unsafe`,
                     <div style={getStatusPill(job)}>{getStatusText(job)}</div>
                   </div>
 
-                  <div style={{ ...styles.gridTwo, marginBottom: 12 }}>
+                  <div className="today-meta-grid" style={{ marginBottom: 12 }}>
                     <div
                       style={{
                         padding: 12,
@@ -2402,13 +2714,7 @@ Heavy rain made it unsafe`,
                     {renderPrimaryAction(job)}
                   </div>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                      gap: 10
-                    }}
-                  >
+                  <div className="today-job-actions">
                     <a href={`/jobs/${job.id}`} style={styles.actionButton}>
                       Open Job
                     </a>
@@ -2592,7 +2898,7 @@ Heavy rain made it unsafe`,
         {!loading && !error && workerId && filteredCompletedJobs.length > 0 && (
           <section style={{ marginBottom: 20 }}>
             <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>
-              {showingCompletedOnly ? 'Jobs completed' : 'Completed today'}
+              {showingCompletedOnly ? 'Jobs completed' : 'Completed on this date'}
             </div>
 
             {filteredCompletedJobs.map((job) => {
@@ -2688,18 +2994,7 @@ Heavy rain made it unsafe`,
         >
           <div
             onClick={(event) => event.stopPropagation()}
-            style={{
-              width: '100%',
-              maxWidth: 820,
-              height: '86vh',
-              overflow: 'hidden',
-              background: '#fff',
-              borderRadius: 20,
-              border: '1px solid #ddd',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 24px 70px rgba(0,0,0,0.22)'
-            }}
+            className="today-chas-shell"
           >
             <div
               style={{
@@ -2889,7 +3184,6 @@ Heavy rain made it unsafe`,
                           animationDelay: '0.3s'
                         }}
                       />
-
                     </div>
 
                     <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
