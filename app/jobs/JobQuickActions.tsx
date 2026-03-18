@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 export default function JobQuickActions({
@@ -9,6 +10,7 @@ export default function JobQuickActions({
   jobId: number
   customerName: string
 }) {
+  const router = useRouter()
   const [loadingAction, setLoadingAction] = useState<'cancel' | 'archive' | null>(null)
 
   async function runAction(action: 'cancel' | 'archive') {
@@ -39,7 +41,7 @@ export default function JobQuickActions({
         throw new Error(data?.error || `Failed to ${label} job`)
       }
 
-      window.location.reload()
+      router.refresh()
     } catch (error) {
       console.error(error)
       window.alert(
