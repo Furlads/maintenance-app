@@ -863,15 +863,24 @@ export default function TodayPage() {
     return () => window.clearTimeout(timeout)
   }, [chasOpen, chasMessages, chasBusy])
 
-  const workerJobs = useMemo(() => {
-    if (!workerId) return []
+ const workerJobs = useMemo(() => {
+  if (!workerId) return []
 
-    return jobs
-      .filter((job) =>
-        job.assignments.some((assignment) => assignment.workerId === workerId)
+  return jobs
+    .filter((job) => {
+      const status = String(job.status || '').toLowerCase()
+
+      // ✅ hide archived + cancelled jobs
+      if (status === 'archived' || status === 'cancelled') {
+        return false
+      }
+
+      return job.assignments.some(
+        (assignment) => assignment.workerId === workerId
       )
-      .sort((a, b) => jobSortValue(a) - jobSortValue(b))
-  }, [jobs, workerId])
+    })
+    .sort((a, b) => jobSortValue(a) - jobSortValue(b))
+}, [jobs, workerId])
 
   const visibleJobs = useMemo<TimedJob[]>(() => {
     const currentNow = new Date()
