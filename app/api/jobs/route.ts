@@ -3,7 +3,24 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
-const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
+const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00'] as const
+
+const MAINTENANCE_FREQUENCY_VALUES = new Set([
+  'weekly',
+  'fortnightly',
+  'every_3_weeks',
+  'monthly',
+])
+
+const TIME_PREFERENCE_MODES = new Set(['best-fit', 'specific'])
+const PREFERRED_DAYS = new Set([
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+])
+const PREFERRED_TIME_BANDS = new Set(['Morning', 'Midday', 'Afternoon', 'Anytime'])
 
 function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
@@ -27,7 +44,7 @@ function getLondonDateParts(date: Date) {
     timeZone: 'Europe/London',
     year: 'numeric',
     month: '2-digit',
-    day: '2-digit'
+    day: '2-digit',
   })
 
   const parts = formatter.formatToParts(date)
@@ -113,6 +130,117 @@ function parseAssignedWorkerIds(input: unknown): number[] {
   return [...new Set(cleaned)]
 }
 
+function parseMaintenanceFrequency(value: unknown) {
+  const cleaned = clean(value)
+  return MAINTENANCE_FREQUENCY_VALUES.has(cleaned) ? cleaned : null
+}
+
+function parseMaintenanceFrequencyUnit(value: unknown) {
+  const cleaned = clean(value).toLowerCase()
+  if (cleaned === 'weeks' || cleaned === 'monthly') return cleaned
+  return null
+}
+
+function getMaintenanceFrequencyWeeksFromFrequency(frequency: string | null) {
+  if (frequency === 'weekly') return 1
+  if (frequency === 'fortnightly') return 2
+  if (frequency === 'every_3_weeks') return 3
+  if (frequency === 'monthly') return null
+  return null
+}
+
+function normaliseMaintenanceSettings(input: {
+  jobType: string
+  visitPattern: unknown
+  isRegularMaintenance: unknown
+  maintenanceFrequency: unknown
+  maintenanceFrequencyUnit: unknown
+  maintenanceFrequencyWeeks: unknown
+  timePreferenceMode: unknown
+  preferredDay: unknown
+  preferredTimeBand: unknown
+}) {
+  const jobType = clean(input.jobType)
+  const visitPatternRaw = clean(input.visitPattern) || 'one-off'
+
+  const isMaintenanceJob = jobType.toLowerCase() === 'maintenance'
+  const isRegularMaintenance =
+    isMaintenanceJob &&
+    (visitPatternRaw === 'regular-maintenance' || isTrue(input.isRegularMaintenance))
+
+  if (!isMaintenanceJob || !isRegularMaintenance) {
+    return {
+      visitPattern: isMaintenanceJob ? visitPatternRaw : null,
+      isRegularMaintenance: false,
+      maintenanceFrequency: null,
+      maintenanceFrequencyUnit: null,
+      maintenanceFrequencyWeeks: null,
+      timePreferenceMode: null,
+      preferredDay: null,
+      preferredTimeBand: null,
+    }
+  }
+
+  const maintenanceFrequency = parseMaintenanceFrequency(input.maintenanceFrequency)
+
+  if (!maintenanceFrequency) {
+    throw new Error(
+      'Regular maintenance jobs must have a valid maintenance frequency.'
+    )
+  }
+
+  const parsedWeeks = parsePositiveInt(input.maintenanceFrequencyWeeks)
+  const derivedWeeks = getMaintenanceFrequencyWeeksFromFrequency(maintenanceFrequency)
+
+  let maintenanceFrequencyUnit = parseMaintenanceFrequencyUnit(
+    input.maintenanceFrequencyUnit
+  )
+
+  if (!maintenanceFrequencyUnit) {
+    maintenanceFrequencyUnit = maintenanceFrequency === 'monthly' ? 'monthly' : 'weeks'
+  }
+
+  if (maintenanceFrequency === 'monthly') {
+    maintenanceFrequencyUnit = 'monthly'
+  } else {
+    maintenanceFrequencyUnit = 'weeks'
+  }
+
+  const maintenanceFrequencyWeeks =
+    maintenanceFrequencyUnit === 'monthly'
+      ? null
+      : parsedWeeks ?? derivedWeeks ?? null
+
+  const timePreferenceModeRaw = clean(input.timePreferenceMode) || 'best-fit'
+  const timePreferenceMode = TIME_PREFERENCE_MODES.has(timePreferenceModeRaw)
+    ? timePreferenceModeRaw
+    : 'best-fit'
+
+  let preferredDay: string | null = null
+  let preferredTimeBand: string | null = null
+
+  if (timePreferenceMode === 'specific') {
+    const parsedPreferredDay = clean(input.preferredDay)
+    const parsedPreferredTimeBand = clean(input.preferredTimeBand) || 'Anytime'
+
+    preferredDay = PREFERRED_DAYS.has(parsedPreferredDay) ? parsedPreferredDay : null
+    preferredTimeBand = PREFERRED_TIME_BANDS.has(parsedPreferredTimeBand)
+      ? parsedPreferredTimeBand
+      : 'Anytime'
+  }
+
+  return {
+    visitPattern: 'regular-maintenance',
+    isRegularMaintenance: true,
+    maintenanceFrequency,
+    maintenanceFrequencyUnit,
+    maintenanceFrequencyWeeks,
+    timePreferenceMode,
+    preferredDay,
+    preferredTimeBand,
+  }
+}
+
 async function findTrevWorkerIds() {
   const workers = await prisma.worker.findMany({
     where: {
@@ -120,23 +248,23 @@ async function findTrevWorkerIds() {
         {
           AND: [
             { firstName: { equals: 'Trevor', mode: 'insensitive' } },
-            { lastName: { contains: 'Fudger', mode: 'insensitive' } }
-          ]
+            { lastName: { contains: 'Fudger', mode: 'insensitive' } },
+          ],
         },
         {
           AND: [
             { firstName: { equals: 'Trev', mode: 'insensitive' } },
-            { lastName: { contains: 'Fudger', mode: 'insensitive' } }
-          ]
+            { lastName: { contains: 'Fudger', mode: 'insensitive' } },
+          ],
         },
         {
-          email: { contains: 'trevor.fudger', mode: 'insensitive' }
-        }
-      ]
+          email: { contains: 'trevor.fudger', mode: 'insensitive' },
+        },
+      ],
     },
     select: {
-      id: true
-    }
+      id: true,
+    },
   })
 
   return workers.map((worker) => worker.id)
@@ -154,13 +282,13 @@ async function resolveTrevQuoteVisitSchedule(params: {
     startTime,
     jobType,
     assignedWorkerIds,
-    allowQuoteTimeOverride
+    allowQuoteTimeOverride,
   } = params
 
   if (!isQuoteJobType(jobType)) {
     return {
       visitDate,
-      startTime
+      startTime,
     }
   }
 
@@ -171,7 +299,7 @@ async function resolveTrevQuoteVisitSchedule(params: {
       error: NextResponse.json(
         { error: 'Could not find Trev in the worker database.' },
         { status: 400 }
-      )
+      ),
     }
   }
 
@@ -182,7 +310,7 @@ async function resolveTrevQuoteVisitSchedule(params: {
   if (!isAssignedToTrev) {
     return {
       visitDate,
-      startTime
+      startTime,
     }
   }
 
@@ -191,7 +319,7 @@ async function resolveTrevQuoteVisitSchedule(params: {
       error: NextResponse.json(
         { error: 'Quote visits for Trev must have a visitDate.' },
         { status: 400 }
-      )
+      ),
     }
   }
 
@@ -200,10 +328,10 @@ async function resolveTrevQuoteVisitSchedule(params: {
       error: NextResponse.json(
         {
           error:
-            'Override was enabled but no manual startTime was provided for this Trev quote visit.'
+            'Override was enabled but no manual startTime was provided for this Trev quote visit.',
         },
         { status: 400 }
-      )
+      ),
     }
   }
 
@@ -214,27 +342,27 @@ async function resolveTrevQuoteVisitSchedule(params: {
     where: {
       jobType: {
         equals: 'Quote',
-        mode: 'insensitive'
+        mode: 'insensitive',
       },
       visitDate: {
         gte: dayStart,
-        lt: dayEnd
+        lt: dayEnd,
       },
       status: {
-        notIn: ['cancelled', 'archived']
+        notIn: ['cancelled', 'archived'],
       },
       assignments: {
         some: {
           workerId: {
-            in: trevWorkerIds
-          }
-        }
-      }
+            in: trevWorkerIds,
+          },
+        },
+      },
     },
     select: {
       id: true,
-      startTime: true
-    }
+      startTime: true,
+    },
   })
 
   if (existingTrevQuoteJobs.length >= 3) {
@@ -242,17 +370,15 @@ async function resolveTrevQuoteVisitSchedule(params: {
       error: NextResponse.json(
         {
           error:
-            'Trev already has 3 quote visits booked for that day. Maximum reached.'
+            'Trev already has 3 quote visits booked for that day. Maximum reached.',
         },
         { status: 400 }
-      )
+      ),
     }
   }
 
   const takenTimes = new Set(
-    existingTrevQuoteJobs
-      .map((job) => clean(job.startTime))
-      .filter(Boolean)
+    existingTrevQuoteJobs.map((job) => clean(job.startTime)).filter(Boolean)
   )
 
   let resolvedStartTime = startTime
@@ -267,25 +393,30 @@ async function resolveTrevQuoteVisitSchedule(params: {
         error: NextResponse.json(
           {
             error:
-              'No Trev quote slots are left for that day. Available default slots are 11:00, 12:00 and 13:00 only.'
+              'No Trev quote slots are left for that day. Available default slots are 11:00, 12:00 and 13:00 only.',
           },
           { status: 400 }
-        )
+        ),
       }
     }
 
     resolvedStartTime = nextFreeDefaultSlot
   }
 
-  if (!allowQuoteTimeOverride && !TREV_QUOTE_DEFAULT_SLOTS.includes(resolvedStartTime)) {
+  if (
+    !allowQuoteTimeOverride &&
+    !TREV_QUOTE_DEFAULT_SLOTS.includes(
+      resolvedStartTime as (typeof TREV_QUOTE_DEFAULT_SLOTS)[number]
+    )
+  ) {
     return {
       error: NextResponse.json(
         {
           error:
-            'Trev quote visits can only be booked at 11:00, 12:00 or 13:00 unless override is enabled.'
+            'Trev quote visits can only be booked at 11:00, 12:00 or 13:00 unless override is enabled.',
         },
         { status: 400 }
-      )
+      ),
     }
   }
 
@@ -293,17 +424,16 @@ async function resolveTrevQuoteVisitSchedule(params: {
     return {
       error: NextResponse.json(
         {
-          error:
-            'Trev already has a quote visit booked at that time on that day.'
+          error: 'Trev already has a quote visit booked at that time on that day.',
         },
         { status: 400 }
-      )
+      ),
     }
   }
 
   return {
     visitDate,
-    startTime: resolvedStartTime
+    startTime: resolvedStartTime,
   }
 }
 
@@ -336,7 +466,7 @@ export async function GET(req: Request) {
 
       if (excludedStatuses.length > 0) {
         where.status = {
-          notIn: excludedStatuses
+          notIn: excludedStatuses,
         }
       }
     }
@@ -344,8 +474,8 @@ export async function GET(req: Request) {
     if (workerId) {
       where.assignments = {
         some: {
-          workerId
-        }
+          workerId,
+        },
       }
     }
 
@@ -362,49 +492,49 @@ export async function GET(req: Request) {
         {
           title: {
             contains: q,
-            mode: 'insensitive'
-          }
+            mode: 'insensitive',
+          },
         },
         {
           address: {
             contains: q,
-            mode: 'insensitive'
-          }
+            mode: 'insensitive',
+          },
         },
         {
           jobType: {
             contains: q,
-            mode: 'insensitive'
-          }
+            mode: 'insensitive',
+          },
         },
         {
           notes: {
             contains: q,
-            mode: 'insensitive'
-          }
+            mode: 'insensitive',
+          },
         },
         {
           paymentNotes: {
             contains: q,
-            mode: 'insensitive'
-          }
+            mode: 'insensitive',
+          },
         },
         {
           customer: {
             name: {
               contains: q,
-              mode: 'insensitive'
-            }
-          }
+              mode: 'insensitive',
+            },
+          },
         },
         {
           customer: {
             postcode: {
               contains: q,
-              mode: 'insensitive'
-            }
-          }
-        }
+              mode: 'insensitive',
+            },
+          },
+        },
       ]
     }
 
@@ -415,12 +545,12 @@ export async function GET(req: Request) {
         customer: true,
         assignments: {
           include: {
-            worker: true
-          }
+            worker: true,
+          },
         },
         photos: true,
-        chasMessages: true
-      }
+        chasMessages: true,
+      },
     })
 
     return NextResponse.json(jobs)
@@ -453,8 +583,8 @@ export async function POST(req: Request) {
         id: true,
         name: true,
         address: true,
-        postcode: true
-      }
+        postcode: true,
+      },
     })
 
     if (!customer) {
@@ -470,10 +600,10 @@ export async function POST(req: Request) {
       const existingWorkers = await prisma.worker.findMany({
         where: {
           id: {
-            in: assignedWorkerIds
-          }
+            in: assignedWorkerIds,
+          },
         },
-        select: { id: true }
+        select: { id: true },
       })
 
       const existingWorkerIds = new Set(existingWorkers.map((worker) => worker.id))
@@ -486,7 +616,7 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             error: 'Some assigned workers do not exist',
-            missingWorkerIds
+            missingWorkerIds,
           },
           { status: 400 }
         )
@@ -520,7 +650,7 @@ export async function POST(req: Request) {
       startTime,
       jobType,
       assignedWorkerIds,
-      allowQuoteTimeOverride
+      allowQuoteTimeOverride,
     })
 
     if ('error' in resolvedQuoteSchedule) {
@@ -544,6 +674,31 @@ export async function POST(req: Request) {
       )
     }
 
+    let maintenanceSettings
+    try {
+      maintenanceSettings = normaliseMaintenanceSettings({
+        jobType,
+        visitPattern: body.visitPattern,
+        isRegularMaintenance: body.isRegularMaintenance,
+        maintenanceFrequency: body.maintenanceFrequency,
+        maintenanceFrequencyUnit: body.maintenanceFrequencyUnit,
+        maintenanceFrequencyWeeks: body.maintenanceFrequencyWeeks,
+        timePreferenceMode: body.timePreferenceMode,
+        preferredDay: body.preferredDay,
+        preferredTimeBand: body.preferredTimeBand,
+      })
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Invalid maintenance settings',
+        },
+        { status: 400 }
+      )
+    }
+
     const created = await prisma.job.create({
       data: {
         title: clean(body.title) || clean(customer.name) || 'New Job',
@@ -558,7 +713,8 @@ export async function POST(req: Request) {
         jobType,
         visitDate: resolvedQuoteSchedule.visitDate,
         startTime: resolvedQuoteSchedule.startTime,
-        durationMinutes: parsePositiveInt(body.durationMinutes ?? body.durationMins) ?? null,
+        durationMinutes:
+          parsePositiveInt(body.durationMinutes ?? body.durationMins) ?? null,
         overrunMins: parseNonNegativeInt(body.overrunMins) ?? 0,
         status: clean(body.status) || 'unscheduled',
         paymentStatus,
@@ -568,25 +724,35 @@ export async function POST(req: Request) {
             : typeof body.paymentNotes === 'string'
               ? body.paymentNotes.trim()
               : null,
+
+        visitPattern: maintenanceSettings.visitPattern,
+        isRegularMaintenance: maintenanceSettings.isRegularMaintenance,
+        maintenanceFrequency: maintenanceSettings.maintenanceFrequency,
+        maintenanceFrequencyUnit: maintenanceSettings.maintenanceFrequencyUnit,
+        maintenanceFrequencyWeeks: maintenanceSettings.maintenanceFrequencyWeeks,
+        timePreferenceMode: maintenanceSettings.timePreferenceMode,
+        preferredDay: maintenanceSettings.preferredDay,
+        preferredTimeBand: maintenanceSettings.preferredTimeBand,
+
         assignments:
           assignedWorkerIds.length > 0
             ? {
                 create: assignedWorkerIds.map((workerId) => ({
-                  workerId
-                }))
+                  workerId,
+                })),
               }
-            : undefined
+            : undefined,
       },
       include: {
         customer: true,
         assignments: {
           include: {
-            worker: true
-          }
+            worker: true,
+          },
         },
         photos: true,
-        chasMessages: true
-      }
+        chasMessages: true,
+      },
     })
 
     return NextResponse.json(created, { status: 201 })

@@ -52,6 +52,12 @@ type SaveSummary = {
   locationLabel: string
 }
 
+type MaintenanceFrequencyValue =
+  | 'weekly'
+  | 'fortnightly'
+  | 'every_3_weeks'
+  | 'monthly'
+
 function SectionCard({
   title,
   description,
@@ -132,6 +138,14 @@ function formatDurationLabel(minutes: number) {
   }
 
   return `${hours}h ${mins}m`
+}
+
+function getMaintenanceFrequencyWeeks(value: MaintenanceFrequencyValue) {
+  if (value === 'weekly') return 1
+  if (value === 'fortnightly') return 2
+  if (value === 'every_3_weeks') return 3
+  if (value === 'monthly') return null
+  return null
 }
 
 function SaveConfirmationModal({
@@ -256,7 +270,8 @@ export default function AddJobPage() {
   const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
 
   const [visitPattern, setVisitPattern] = useState('one-off')
-  const [maintenanceFrequency, setMaintenanceFrequency] = useState('2')
+  const [maintenanceFrequency, setMaintenanceFrequency] =
+    useState<MaintenanceFrequencyValue>('fortnightly')
   const [timePreferenceMode, setTimePreferenceMode] = useState('best-fit')
   const [preferredDay, setPreferredDay] = useState('')
   const [preferredTimeBand, setPreferredTimeBand] = useState('Anytime')
@@ -379,7 +394,7 @@ export default function AddJobPage() {
     setStartTime('')
     setAllowQuoteTimeOverride(false)
     setVisitPattern('one-off')
-    setMaintenanceFrequency('2')
+    setMaintenanceFrequency('fortnightly')
     setTimePreferenceMode('best-fit')
     setPreferredDay('')
     setPreferredTimeBand('Anytime')
@@ -545,6 +560,10 @@ export default function AddJobPage() {
         throw new Error('Please choose a manual time override for this Trev quote visit')
       }
 
+      const maintenanceFrequencyWeeks = isRegularMaintenance
+        ? getMaintenanceFrequencyWeeks(maintenanceFrequency)
+        : null
+
       const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: {
@@ -568,9 +587,13 @@ export default function AddJobPage() {
 
           visitPattern,
           isRegularMaintenance,
-          maintenanceFrequencyWeeks: isRegularMaintenance
-            ? Number(maintenanceFrequency)
+          maintenanceFrequency: isRegularMaintenance ? maintenanceFrequency : null,
+          maintenanceFrequencyUnit: isRegularMaintenance
+            ? maintenanceFrequency === 'monthly'
+              ? 'monthly'
+              : 'weeks'
             : null,
+          maintenanceFrequencyWeeks,
           timePreferenceMode: isRegularMaintenance ? timePreferenceMode : null,
           preferredDay:
             isRegularMaintenance && useSpecificVisitPreference
@@ -959,15 +982,21 @@ export default function AddJobPage() {
                         <FieldLabel>How regular does it need to be?</FieldLabel>
                         <select
                           value={maintenanceFrequency}
-                          onChange={(e) => setMaintenanceFrequency(e.target.value)}
+                          onChange={(e) =>
+                            setMaintenanceFrequency(
+                              e.target.value as MaintenanceFrequencyValue
+                            )
+                          }
                           className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                         >
-                          <option value="1">Weekly</option>
-                          <option value="2">Fortnightly</option>
-                          <option value="4">Every 4 weeks</option>
-                          <option value="8">Every 8 weeks</option>
-                          <option value="12">Every 12 weeks</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="fortnightly">Fortnightly</option>
+                          <option value="every_3_weeks">Every 3 Weeks</option>
+                          <option value="monthly">Monthly</option>
                         </select>
+                        <p className="mt-2 text-sm text-zinc-500">
+                          Monthly is treated separately from 4 weeks so the auto-scheduler can keep visits aligned properly across long and short months.
+                        </p>
                       </div>
 
                       <div>

@@ -415,6 +415,22 @@ export default function CustomerPage() {
               + Add Job
             </a>
 
+            <a
+              href={`/customers/${customer.id}/edit`}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 12,
+                border: '1px solid #d8d8d8',
+                textDecoration: 'none',
+                color: '#111',
+                fontWeight: 800,
+                background: '#fff',
+                textAlign: 'center'
+              }}
+            >
+              Edit Customer
+            </a>
+
             <button
               type="button"
               onClick={handleArchive}

@@ -37,6 +37,80 @@ export async function GET(
   }
 }
 
+export async function PUT(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const customerId = Number(params.id)
+
+    if (!customerId) {
+      return NextResponse.json(
+        { error: 'Invalid customer id' },
+        { status: 400 }
+      )
+    }
+
+    const body = await request.json()
+
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+
+    if (!name) {
+      return NextResponse.json(
+        { error: 'Customer name is required' },
+        { status: 400 }
+      )
+    }
+
+    const existingCustomer = await prisma.customer.findUnique({
+      where: { id: customerId }
+    })
+
+    if (!existingCustomer) {
+      return NextResponse.json(
+        { error: 'Customer not found' },
+        { status: 404 }
+      )
+    }
+
+    const updatedCustomer = await prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        name,
+        phone:
+          typeof body.phone === 'string' && body.phone.trim()
+            ? body.phone.trim()
+            : null,
+        email:
+          typeof body.email === 'string' && body.email.trim()
+            ? body.email.trim()
+            : null,
+        address:
+          typeof body.address === 'string' && body.address.trim()
+            ? body.address.trim()
+            : null,
+        postcode:
+          typeof body.postcode === 'string' && body.postcode.trim()
+            ? body.postcode.trim().toUpperCase()
+            : null,
+        notes:
+          typeof body.notes === 'string' && body.notes.trim()
+            ? body.notes.trim()
+            : null
+      }
+    })
+
+    return NextResponse.json(updatedCustomer)
+  } catch (error) {
+    console.error('PUT /api/customers/[id] error:', error)
+
+    return NextResponse.json(
+      { error: 'Failed to update customer' },
+      { status: 500 }
+    )
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
