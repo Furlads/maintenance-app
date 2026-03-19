@@ -169,7 +169,7 @@ export default function CustomerPage() {
         style={{
           minHeight: '100vh',
           background: '#f5f5f5',
-          padding: 16,
+          padding: 12,
           fontFamily: 'sans-serif'
         }}
       >
@@ -179,7 +179,7 @@ export default function CustomerPage() {
               background: '#fff',
               border: '1px solid #e6e6e6',
               borderRadius: 18,
-              padding: 20,
+              padding: 18,
               boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
             }}
           >
@@ -196,7 +196,7 @@ export default function CustomerPage() {
         style={{
           minHeight: '100vh',
           background: '#f5f5f5',
-          padding: 16,
+          padding: 12,
           fontFamily: 'sans-serif'
         }}
       >
@@ -206,7 +206,7 @@ export default function CustomerPage() {
               background: '#fff',
               border: '1px solid #e6e6e6',
               borderRadius: 18,
-              padding: 20,
+              padding: 18,
               boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
             }}
           >
@@ -224,7 +224,7 @@ export default function CustomerPage() {
       style={{
         minHeight: '100vh',
         background: '#f5f5f5',
-        padding: 16,
+        padding: 12,
         fontFamily: 'sans-serif'
       }}
     >
@@ -239,8 +239,8 @@ export default function CustomerPage() {
             background: 'linear-gradient(135deg, #111 0%, #1e1e1e 100%)',
             color: '#fff',
             borderRadius: 20,
-            padding: 20,
-            marginBottom: 18,
+            padding: 18,
+            marginBottom: 16,
             boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
             border: '1px solid #222'
           }}
@@ -271,7 +271,7 @@ export default function CustomerPage() {
               flexWrap: 'wrap'
             }}
           >
-            <div>
+            <div style={{ flex: '1 1 260px', minWidth: 0 }}>
               <div
                 style={{
                   display: 'inline-flex',
@@ -294,7 +294,8 @@ export default function CustomerPage() {
                 style={{
                   fontSize: 32,
                   lineHeight: 1.1,
-                  margin: '0 0 8px 0'
+                  margin: '0 0 8px 0',
+                  wordBreak: 'break-word'
                 }}
               >
                 {customer.name}
@@ -314,7 +315,9 @@ export default function CustomerPage() {
             <div
               style={{
                 display: 'flex',
-                alignItems: 'flex-start'
+                alignItems: 'flex-start',
+                justifyContent: 'flex-end',
+                flex: '0 0 auto'
               }}
             >
               <WorkerMenu />
@@ -328,11 +331,17 @@ export default function CustomerPage() {
             border: '1px solid #e7e7e7',
             borderRadius: 18,
             padding: 16,
-            marginBottom: 18,
+            marginBottom: 16,
             boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
           }}
         >
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: 12
+            }}
+          >
             {customer.phone && (
               <a
                 href={`tel:${customer.phone}`}
@@ -343,7 +352,8 @@ export default function CustomerPage() {
                   textDecoration: 'none',
                   color: '#111',
                   fontWeight: 700,
-                  background: '#fff'
+                  background: '#fff',
+                  textAlign: 'center'
                 }}
               >
                 Call Customer
@@ -360,7 +370,8 @@ export default function CustomerPage() {
                   textDecoration: 'none',
                   color: '#111',
                   fontWeight: 700,
-                  background: '#fff'
+                  background: '#fff',
+                  textAlign: 'center'
                 }}
               >
                 Email Customer
@@ -379,7 +390,8 @@ export default function CustomerPage() {
                   textDecoration: 'none',
                   color: '#111',
                   fontWeight: 700,
-                  background: '#fff'
+                  background: '#fff',
+                  textAlign: 'center'
                 }}
               >
                 Navigate
@@ -396,7 +408,8 @@ export default function CustomerPage() {
                 color: '#111',
                 fontWeight: 800,
                 background: '#ffcc00',
-                boxShadow: '0 6px 18px rgba(255, 204, 0, 0.18)'
+                boxShadow: '0 6px 18px rgba(255, 204, 0, 0.18)',
+                textAlign: 'center'
               }}
             >
               + Add Job
@@ -413,7 +426,8 @@ export default function CustomerPage() {
                 background: '#fff4d6',
                 color: '#6b4f00',
                 fontWeight: 800,
-                cursor: actionLoading ? 'default' : 'pointer'
+                cursor: actionLoading ? 'default' : 'pointer',
+                width: '100%'
               }}
             >
               {actionLoading ? 'Working...' : 'Archive Customer'}
@@ -430,7 +444,8 @@ export default function CustomerPage() {
                 background: '#fff1f2',
                 color: '#991b1b',
                 fontWeight: 800,
-                cursor: actionLoading ? 'default' : 'pointer'
+                cursor: actionLoading ? 'default' : 'pointer',
+                width: '100%'
               }}
             >
               {actionLoading ? 'Working...' : 'Delete Customer'}
@@ -456,14 +471,14 @@ export default function CustomerPage() {
         <div
           style={{
             display: 'grid',
-            gap: 18,
-            marginBottom: 24
+            gap: 16,
+            marginBottom: 20
           }}
         >
           <section
             style={{
               border: '1px solid #e7e7e7',
-              padding: 20,
+              padding: 18,
               borderRadius: 18,
               background: '#fff',
               boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
@@ -490,7 +505,9 @@ export default function CustomerPage() {
                     border: '1px solid #ffe27a',
                     fontSize: 12,
                     fontWeight: 800,
-                    color: '#6a5600'
+                    color: '#6a5600',
+                    maxWidth: '100%',
+                    wordBreak: 'break-word'
                   }}
                 >
                   {customer.postcode}
@@ -510,7 +527,8 @@ export default function CustomerPage() {
                   background: '#fafafa',
                   border: '1px solid #efefef',
                   borderRadius: 12,
-                  padding: 12
+                  padding: 12,
+                  minWidth: 0
                 }}
               >
                 <div
@@ -525,7 +543,7 @@ export default function CustomerPage() {
                 >
                   Phone
                 </div>
-                <div style={{ fontSize: 15, color: '#222' }}>
+                <div style={{ fontSize: 15, color: '#222', wordBreak: 'break-word' }}>
                   {customer.phone || 'Not added'}
                 </div>
               </div>
@@ -535,7 +553,8 @@ export default function CustomerPage() {
                   background: '#fafafa',
                   border: '1px solid #efefef',
                   borderRadius: 12,
-                  padding: 12
+                  padding: 12,
+                  minWidth: 0
                 }}
               >
                 <div
@@ -567,7 +586,8 @@ export default function CustomerPage() {
                   border: '1px solid #efefef',
                   borderRadius: 12,
                   padding: 12,
-                  gridColumn: '1 / -1'
+                  gridColumn: '1 / -1',
+                  minWidth: 0
                 }}
               >
                 <div
@@ -586,7 +606,8 @@ export default function CustomerPage() {
                   style={{
                     fontSize: 15,
                     color: '#222',
-                    whiteSpace: 'pre-line'
+                    whiteSpace: 'pre-line',
+                    wordBreak: 'break-word'
                   }}
                 >
                   {customer.address || 'Not added'}
@@ -620,7 +641,8 @@ export default function CustomerPage() {
                   style={{
                     fontSize: 14,
                     color: '#3f3a22',
-                    whiteSpace: 'pre-line'
+                    whiteSpace: 'pre-line',
+                    wordBreak: 'break-word'
                   }}
                 >
                   {customer.notes}
@@ -643,10 +665,10 @@ export default function CustomerPage() {
             style={{
               border: '1px solid #e7e7e7',
               borderRadius: 18,
-              padding: 20,
+              padding: 18,
               background: '#fff',
               boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-              marginBottom: 24
+              marginBottom: 4
             }}
           >
             <div
@@ -672,7 +694,7 @@ export default function CustomerPage() {
                 key={job.id}
                 style={{
                   border: '1px solid #e6e6e6',
-                  padding: 16,
+                  padding: 14,
                   borderRadius: 14,
                   marginBottom: 12,
                   background: '#fafafa'
@@ -688,7 +710,17 @@ export default function CustomerPage() {
                     marginBottom: 8
                   }}
                 >
-                  <h3 style={{ margin: 0, fontSize: 18, color: '#111' }}>{job.title}</h3>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: 18,
+                      color: '#111',
+                      wordBreak: 'break-word',
+                      flex: '1 1 220px'
+                    }}
+                  >
+                    {job.title}
+                  </h3>
 
                   <div
                     style={{
@@ -727,7 +759,14 @@ export default function CustomerPage() {
                     >
                       Address
                     </div>
-                    <div style={{ whiteSpace: 'pre-line', fontSize: 14, color: '#222' }}>
+                    <div
+                      style={{
+                        whiteSpace: 'pre-line',
+                        fontSize: 14,
+                        color: '#222',
+                        wordBreak: 'break-word'
+                      }}
+                    >
                       {job.address}
                     </div>
                   </div>
@@ -759,7 +798,8 @@ export default function CustomerPage() {
                       style={{
                         whiteSpace: 'pre-line',
                         fontSize: 14,
-                        color: '#444'
+                        color: '#444',
+                        wordBreak: 'break-word'
                       }}
                     >
                       {job.notes}
@@ -779,7 +819,7 @@ export default function CustomerPage() {
           style={{
             border: '1px solid #e7e7e7',
             borderRadius: 18,
-            padding: 20,
+            padding: 18,
             background: '#fff',
             boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
           }}
