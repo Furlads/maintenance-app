@@ -81,6 +81,15 @@ model Job {
   paymentNotes   String?
   createdAt      DateTime @default(now())
 
+  visitPattern             String?
+  isRegularMaintenance     Boolean  @default(false)
+  maintenanceFrequency     String?
+  maintenanceFrequencyUnit String?
+  maintenanceFrequencyWeeks Int?
+  timePreferenceMode       String?
+  preferredDay             String?
+  preferredTimeBand        String?
+
   customer      Customer        @relation(fields: [customerId], references: [id])
   jobNotes      JobNote[]
   assignments   JobAssignment[]
