@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import CustomerHistory from './CustomerHistory'
 import WorkerMenu from '@/app/components/WorkerMenu'
 
@@ -13,6 +13,7 @@ type Customer = {
   address: string | null
   postcode: string | null
   notes: string | null
+  archived?: boolean
   createdAt: string
 }
 
@@ -48,11 +49,14 @@ function formatStatus(value: string) {
 
 export default function CustomerPage() {
   const params = useParams()
+  const router = useRouter()
   const id = params.id
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [message, setMessage] = useState('')
 
   useEffect(() => {
     async function loadPageData() {
@@ -84,6 +88,80 @@ export default function CustomerPage() {
       loadPageData()
     }
   }, [id])
+
+  async function handleArchive() {
+    if (!customer || actionLoading) return
+
+    const confirmed = window.confirm(
+      'Archive this customer? They will be hidden from the main customer list but not deleted.'
+    )
+
+    if (!confirmed) return
+
+    setActionLoading(true)
+    setMessage('')
+
+    try {
+      const res = await fetch(`/api/customers/${customer.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action: 'archive' })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to archive customer')
+      }
+
+      router.push('/customers')
+      router.refresh()
+    } catch (error) {
+      console.error(error)
+      setMessage(
+        error instanceof Error ? error.message : 'Failed to archive customer'
+      )
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!customer || actionLoading) return
+
+    const confirmed = window.confirm(
+      'Delete this customer permanently? This cannot be undone.'
+    )
+
+    if (!confirmed) return
+
+    setActionLoading(true)
+    setMessage('')
+
+    try {
+      const res = await fetch(`/api/customers/${customer.id}`, {
+        method: 'DELETE'
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to delete customer')
+      }
+
+      router.push('/customers')
+      router.refresh()
+    } catch (error) {
+      console.error(error)
+      setMessage(
+        error instanceof Error ? error.message : 'Failed to delete customer'
+      )
+    } finally {
+      setActionLoading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -323,7 +401,56 @@ export default function CustomerPage() {
             >
               + Add Job
             </a>
+
+            <button
+              type="button"
+              onClick={handleArchive}
+              disabled={actionLoading}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 12,
+                border: '1px solid #d4a017',
+                background: '#fff4d6',
+                color: '#6b4f00',
+                fontWeight: 800,
+                cursor: actionLoading ? 'default' : 'pointer'
+              }}
+            >
+              {actionLoading ? 'Working...' : 'Archive Customer'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={actionLoading}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 12,
+                border: '1px solid #dc2626',
+                background: '#fff1f2',
+                color: '#991b1b',
+                fontWeight: 800,
+                cursor: actionLoading ? 'default' : 'pointer'
+              }}
+            >
+              {actionLoading ? 'Working...' : 'Delete Customer'}
+            </button>
           </div>
+
+          {message && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: '12px 14px',
+                borderRadius: 12,
+                background: '#fff4f4',
+                border: '1px solid #f0c9c9',
+                color: '#333'
+              }}
+            >
+              {message}
+            </div>
+          )}
         </section>
 
         <div

@@ -4,6 +4,9 @@ import prisma from '@/lib/prisma'
 export async function GET() {
   try {
     const customers = await prisma.customer.findMany({
+      where: {
+        archived: false
+      },
       orderBy: { createdAt: 'desc' }
     })
 
@@ -38,6 +41,10 @@ export async function POST(request: Request) {
           typeof body.phone === 'string' && body.phone.trim()
             ? body.phone.trim()
             : null,
+        email:
+          typeof body.email === 'string' && body.email.trim()
+            ? body.email.trim()
+            : null,
         address:
           typeof body.address === 'string' && body.address.trim()
             ? body.address.trim()
@@ -45,7 +52,12 @@ export async function POST(request: Request) {
         postcode:
           typeof body.postcode === 'string' && body.postcode.trim()
             ? body.postcode.trim().toUpperCase()
-            : null
+            : null,
+        notes:
+          typeof body.notes === 'string' && body.notes.trim()
+            ? body.notes.trim()
+            : null,
+        archived: false
       }
     })
 
