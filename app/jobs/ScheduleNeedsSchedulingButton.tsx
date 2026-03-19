@@ -27,7 +27,7 @@ export default function ScheduleNeedsSchedulingButton({
         throw new Error(data?.error || 'Failed to rebuild schedule')
       }
 
-      setMessage('Scheduler updated.')
+      setMessage('Economical schedule rebuilt.')
       router.refresh()
     } catch (error) {
       console.error(error)
