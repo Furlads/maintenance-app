@@ -437,6 +437,41 @@ async function resolveTrevQuoteVisitSchedule(params: {
   }
 }
 
+function normaliseScheduleState(params: {
+  requestedStatus: string
+  visitDate: Date | null
+  startTime: string | null
+  isTrevQuoteJob: boolean
+}) {
+  const { requestedStatus, visitDate, startTime, isTrevQuoteJob } = params
+
+  if (startTime && !visitDate) {
+    throw new Error('A start time cannot be saved without a visit date.')
+  }
+
+  if (!visitDate && !startTime) {
+    return {
+      visitDate: null,
+      startTime: null,
+      status: 'unscheduled',
+    }
+  }
+
+  if (visitDate && !startTime) {
+    return {
+      visitDate,
+      startTime: null,
+      status: isTrevQuoteJob ? requestedStatus || 'todo' : 'unscheduled',
+    }
+  }
+
+  return {
+    visitDate,
+    startTime,
+    status: requestedStatus || 'todo',
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
@@ -657,6 +692,28 @@ export async function POST(req: Request) {
       return resolvedQuoteSchedule.error
     }
 
+    const requestedStatus = clean(body.status).toLowerCase()
+    const isTrevQuoteJob =
+      isQuoteJobType(jobType) && resolvedQuoteSchedule.visitDate !== null
+
+    let scheduleState
+    try {
+      scheduleState = normaliseScheduleState({
+        requestedStatus,
+        visitDate: resolvedQuoteSchedule.visitDate,
+        startTime: resolvedQuoteSchedule.startTime,
+        isTrevQuoteJob,
+      })
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error ? error.message : 'Invalid scheduling state',
+        },
+        { status: 400 }
+      )
+    }
+
     const paymentStatusRaw = clean(body.paymentStatus).toLowerCase()
     const allowedPaymentStatuses = new Set(['cash_paid', 'invoice_needed'])
 
@@ -711,12 +768,12 @@ export async function POST(req: Request) {
               ? body.notes
               : null,
         jobType,
-        visitDate: resolvedQuoteSchedule.visitDate,
-        startTime: resolvedQuoteSchedule.startTime,
+        visitDate: scheduleState.visitDate,
+        startTime: scheduleState.startTime,
         durationMinutes:
           parsePositiveInt(body.durationMinutes ?? body.durationMins) ?? null,
         overrunMins: parseNonNegativeInt(body.overrunMins) ?? 0,
-        status: clean(body.status) || 'unscheduled',
+        status: scheduleState.status,
         paymentStatus,
         paymentNotes:
           body.paymentNotes === null

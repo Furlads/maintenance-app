@@ -5,9 +5,7 @@ import prisma from '@/lib/prisma'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-const DAY_START_MINUTES = 9 * 60
 const DEFAULT_JOB_DURATION_MINUTES = 60
-const FARM_POSTCODE = 'TF9 4BQ'
 const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
 
 function clean(value: unknown) {
@@ -114,43 +112,6 @@ function parseAssignedWorkerIds(input: unknown): number[] {
     .filter((value): value is number => value !== null)
 
   return [...new Set(cleaned)]
-}
-
-function parseTimeToMinutes(value: string | null | undefined): number | null {
-  if (!value) return null
-
-  const trimmed = value.trim()
-  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed)
-
-  if (!match) return null
-
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-
-  if (
-    !Number.isInteger(hours) ||
-    !Number.isInteger(minutes) ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    return null
-  }
-
-  return hours * 60 + minutes
-}
-
-function getEffectiveJobMinutes(job: {
-  durationMinutes: number | null
-  overrunMins?: number | null
-  pausedMinutes?: number | null
-}) {
-  return (
-    (job.durationMinutes ?? DEFAULT_JOB_DURATION_MINUTES) +
-    (job.overrunMins ?? 0) +
-    (job.pausedMinutes ?? 0)
-  )
 }
 
 function isMaintenanceJob(jobType: string | null | undefined) {
@@ -571,6 +532,42 @@ async function resolveTrevQuoteVisitSchedule(params: {
   }
 }
 
+function normaliseScheduleState(params: {
+  requestedStatus: string | undefined
+  visitDate: Date | null
+  startTime: string | null
+  isTrevQuoteJob: boolean
+}) {
+  const { requestedStatus, visitDate, startTime, isTrevQuoteJob } = params
+  const cleanStatus = clean(requestedStatus).toLowerCase()
+
+  if (startTime && !visitDate) {
+    throw new Error('A start time cannot be saved without a visit date.')
+  }
+
+  if (!visitDate && !startTime) {
+    return {
+      visitDate: null,
+      startTime: null,
+      status: 'unscheduled',
+    }
+  }
+
+  if (visitDate && !startTime) {
+    return {
+      visitDate,
+      startTime: null,
+      status: isTrevQuoteJob ? cleanStatus || 'todo' : 'unscheduled',
+    }
+  }
+
+  return {
+    visitDate,
+    startTime,
+    status: cleanStatus || 'todo',
+  }
+}
+
 export async function GET(_: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
@@ -911,20 +908,26 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
     const finalVisitDate = resolvedQuoteSchedule.visitDate
     const finalStartTime = resolvedQuoteSchedule.startTime
+    const isTrevQuoteJob =
+      isQuoteJobType(proposedJobType) && finalVisitDate !== null
 
-    if (visitDateUpdate !== undefined || finalVisitDate !== existing.visitDate) {
-      startTimeUpdate =
-        startTimeUpdate !== undefined || finalStartTime !== existing.startTime
-          ? finalStartTime
-          : startTimeUpdate
-    } else if (startTimeUpdate !== undefined || finalStartTime !== existing.startTime) {
-      startTimeUpdate = finalStartTime
+    let scheduleState
+    try {
+      scheduleState = normaliseScheduleState({
+        requestedStatus: statusUpdate ?? existing.status,
+        visitDate: finalVisitDate,
+        startTime: finalStartTime,
+        isTrevQuoteJob,
+      })
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error ? error.message : 'Invalid scheduling state',
+        },
+        { status: 400 }
+      )
     }
-
-    const visitDateValueForUpdate =
-      visitDateUpdate !== undefined || finalVisitDate !== existing.visitDate
-        ? finalVisitDate
-        : undefined
 
     let titleUpdate: string | undefined = undefined
 
@@ -957,11 +960,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
               : undefined,
         jobType: typeof body.jobType === 'string' ? body.jobType : undefined,
         customerId: customerIdUpdate,
-        visitDate: visitDateValueForUpdate,
-        startTime: startTimeUpdate,
+        visitDate: scheduleState.visitDate,
+        startTime: scheduleState.startTime,
         durationMinutes: durationMinutesUpdate,
         overrunMins: overrunMinsUpdate,
-        status: statusUpdate,
+        status: scheduleState.status,
         arrivedAt: arrivedAtUpdate,
         finishedAt: finishedAtUpdate,
         pausedAt: pausedAtUpdate,
