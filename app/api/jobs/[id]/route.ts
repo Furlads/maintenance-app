@@ -7,6 +7,7 @@ type Ctx = { params: Promise<{ id: string }> }
 
 const DEFAULT_JOB_DURATION_MINUTES = 60
 const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
+const RECURRING_HORIZON_DAYS = 42
 
 function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
@@ -193,7 +194,7 @@ function calculateNextMaintenanceVisitDate(args: {
   return null
 }
 
-async function createNextRecurringMaintenanceJobIfNeeded(args: {
+async function ensureFutureRecurringMaintenanceJobs(args: {
   job: {
     id: number
     title: string
@@ -202,10 +203,7 @@ async function createNextRecurringMaintenanceJobIfNeeded(args: {
     notes: string | null
     jobType: string
     visitDate: Date | null
-    startTime: string | null
     durationMinutes: number | null
-    overrunMins: number
-    pausedMinutes: number
     visitPattern: string | null
     isRegularMaintenance: boolean | null
     maintenanceFrequency: string | null
@@ -220,24 +218,14 @@ async function createNextRecurringMaintenanceJobIfNeeded(args: {
   const job = args.job
 
   if (!isRegularMaintenanceJob(job)) {
-    return null
+    return []
   }
 
-  const baseDate = job.visitDate ?? new Date()
-  const nextVisitDate = calculateNextMaintenanceVisitDate({
-    baseDate,
-    maintenanceFrequency: job.maintenanceFrequency,
-    maintenanceFrequencyUnit: job.maintenanceFrequencyUnit,
-    maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
-  })
+  const horizonStart = new Date()
+  const horizonEnd = addDaysToDate(horizonStart, RECURRING_HORIZON_DAYS)
 
-  if (!nextVisitDate) {
-    return null
-  }
-
-  const existingFutureRecurring = await prisma.job.findFirst({
+  const existingFutureJobs = await prisma.job.findMany({
     where: {
-      id: { not: job.id },
       customerId: job.customerId,
       title: job.title,
       jobType: job.jobType,
@@ -246,65 +234,103 @@ async function createNextRecurringMaintenanceJobIfNeeded(args: {
       maintenanceFrequency: job.maintenanceFrequency,
       maintenanceFrequencyUnit: job.maintenanceFrequencyUnit,
       maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
-      visitDate: nextVisitDate,
+      visitDate: {
+        gte: horizonStart,
+        lte: horizonEnd,
+      },
       status: {
         notIn: ['cancelled', 'archived'],
       },
     },
+    orderBy: {
+      visitDate: 'asc',
+    },
     select: {
       id: true,
+      visitDate: true,
     },
   })
 
-  if (existingFutureRecurring) {
-    return null
-  }
+  const existingDates = new Set(
+    existingFutureJobs
+      .filter((existingJob) => existingJob.visitDate)
+      .map((existingJob) => londonDateOnlyString(existingJob.visitDate as Date))
+  )
 
-  const created = await prisma.job.create({
-    data: {
-      title: job.title,
-      customerId: job.customerId,
-      address: job.address,
-      notes: job.notes,
-      jobType: job.jobType,
-      visitDate: nextVisitDate,
-      startTime: null,
-      durationMinutes: job.durationMinutes ?? DEFAULT_JOB_DURATION_MINUTES,
-      overrunMins: 0,
-      pausedMinutes: 0,
-      status: 'unscheduled',
+  let seedDate = job.visitDate ?? new Date()
+  const createdJobs = []
 
-      visitPattern: job.visitPattern,
-      isRegularMaintenance: true,
+  while (true) {
+    const nextVisitDate = calculateNextMaintenanceVisitDate({
+      baseDate: seedDate,
       maintenanceFrequency: job.maintenanceFrequency,
       maintenanceFrequencyUnit: job.maintenanceFrequencyUnit,
       maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
-      timePreferenceMode: job.timePreferenceMode,
-      preferredDay: job.preferredDay,
-      preferredTimeBand: job.preferredTimeBand,
+    })
 
-      assignments:
-        job.assignments.length > 0
-          ? {
-              create: job.assignments.map((assignment) => ({
-                workerId: assignment.workerId,
-              })),
-            }
-          : undefined,
-    },
-    include: {
-      customer: true,
-      assignments: {
-        include: {
-          worker: true,
+    if (!nextVisitDate) {
+      break
+    }
+
+    if (nextVisitDate > horizonEnd) {
+      break
+    }
+
+    const nextVisitKey = londonDateOnlyString(nextVisitDate)
+
+    if (!existingDates.has(nextVisitKey)) {
+      const created = await prisma.job.create({
+        data: {
+          title: job.title,
+          customerId: job.customerId,
+          address: job.address,
+          notes: job.notes,
+          jobType: job.jobType,
+          visitDate: nextVisitDate,
+          startTime: null,
+          durationMinutes: job.durationMinutes ?? DEFAULT_JOB_DURATION_MINUTES,
+          overrunMins: 0,
+          pausedMinutes: 0,
+          status: 'unscheduled',
+
+          visitPattern: job.visitPattern,
+          isRegularMaintenance: true,
+          maintenanceFrequency: job.maintenanceFrequency,
+          maintenanceFrequencyUnit: job.maintenanceFrequencyUnit,
+          maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
+          timePreferenceMode: job.timePreferenceMode,
+          preferredDay: job.preferredDay,
+          preferredTimeBand: job.preferredTimeBand,
+
+          assignments:
+            job.assignments.length > 0
+              ? {
+                  create: job.assignments.map((assignment) => ({
+                    workerId: assignment.workerId,
+                  })),
+                }
+              : undefined,
         },
-      },
-      photos: true,
-      chasMessages: true,
-    },
-  })
+        include: {
+          customer: true,
+          assignments: {
+            include: {
+              worker: true,
+            },
+          },
+          photos: true,
+          chasMessages: true,
+        },
+      })
 
-  return created
+      createdJobs.push(created)
+      existingDates.add(nextVisitKey)
+    }
+
+    seedDate = nextVisitDate
+  }
+
+  return createdJobs
 }
 
 async function buildNotesLog(jobId: number) {
@@ -1033,10 +1059,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
       })
     }
 
-    let nextRecurringJob = null
+    let nextRecurringJobs: unknown[] = []
 
-    if (updated.status === 'done' && existing.status !== 'done') {
-      nextRecurringJob = await createNextRecurringMaintenanceJobIfNeeded({
+    if (updated.status === 'done') {
+      nextRecurringJobs = await ensureFutureRecurringMaintenanceJobs({
         job: {
           id: updated.id,
           title: updated.title,
@@ -1045,10 +1071,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
           notes: updated.notes,
           jobType: updated.jobType,
           visitDate: updated.visitDate,
-          startTime: updated.startTime,
           durationMinutes: updated.durationMinutes,
-          overrunMins: updated.overrunMins,
-          pausedMinutes: updated.pausedMinutes,
           visitPattern: updated.visitPattern,
           isRegularMaintenance: updated.isRegularMaintenance,
           maintenanceFrequency: updated.maintenanceFrequency,
@@ -1087,7 +1110,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       assignedWorkerIds:
         assignedWorkerIdsForResponse ??
         (refreshed ?? updated).assignments.map((assignment) => assignment.workerId),
-      nextRecurringJob,
+      nextRecurringJobs,
     })
   } catch (error) {
     console.error('PATCH /api/jobs/[id] failed:', error)
