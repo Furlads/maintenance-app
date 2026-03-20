@@ -48,10 +48,27 @@ type JobsApiJob = {
   }>;
 };
 
-const DAY_START_MINUTES = 9 * 60;
+type TimelinePlacedJob = ScheduleJob & {
+  startMinutes: number;
+  endMinutes: number;
+  lane: number;
+};
+
+const PREP_START_MINUTES = 8 * 60 + 30;
+const WORK_START_MINUTES = 9 * 60;
 const DAY_END_MINUTES = 16 * 60 + 30;
-const TOTAL_DAY_MINUTES = DAY_END_MINUTES - DAY_START_MINUTES;
-const TIMELINE_HOURS = [9, 10, 11, 12, 13, 14, 15, 16];
+const TOTAL_DAY_MINUTES = DAY_END_MINUTES - PREP_START_MINUTES;
+const TIMELINE_MARKERS = [
+  { label: "08:30", minutes: PREP_START_MINUTES },
+  { label: "09:00", minutes: WORK_START_MINUTES },
+  { label: "10:00", minutes: 10 * 60 },
+  { label: "11:00", minutes: 11 * 60 },
+  { label: "12:00", minutes: 12 * 60 },
+  { label: "13:00", minutes: 13 * 60 },
+  { label: "14:00", minutes: 14 * 60 },
+  { label: "15:00", minutes: 15 * 60 },
+  { label: "16:00", minutes: 16 * 60 },
+];
 
 function getTodayDateString() {
   const today = new Date();
@@ -80,6 +97,22 @@ function parseTimeToMinutes(time: string | null) {
   return hours * 60 + minutes;
 }
 
+function minutesToTime(minutes: number) {
+  const safe = Math.max(0, minutes);
+  const hours = Math.floor(safe / 60);
+  const mins = safe % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+}
+
+function formatTimeRange(startTime: string | null, durationMinutes: number | null) {
+  const start = parseTimeToMinutes(startTime);
+  const duration = durationMinutes ?? 60;
+
+  if (start === null) return "No time set";
+
+  return `${minutesToTime(start)} → ${minutesToTime(start + duration)}`;
+}
+
 function formatStatus(status: string) {
   const clean = String(status || "").trim().toLowerCase();
 
@@ -89,6 +122,7 @@ function formatStatus(status: string) {
   if (clean === "unscheduled") return "Unscheduled";
   if (clean === "todo") return "To do";
   if (clean === "quoted") return "Quoted";
+  if (clean === "scheduled") return "Scheduled";
 
   return status || "Unknown";
 }
@@ -141,6 +175,35 @@ function formatWorkers(
     .join(", ");
 }
 
+function normaliseDisplayText(value: string | null | undefined) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function titleCase(value: string | null | undefined) {
+  const clean = normaliseDisplayText(value);
+  if (!clean) return "";
+
+  return clean
+    .toLowerCase()
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function getDisplayAddress(job: Pick<ScheduleJob, "customerName" | "title" | "address">) {
+  const customer = normaliseDisplayText(job.customerName).toLowerCase();
+  const title = normaliseDisplayText(job.title).toLowerCase();
+  const address = normaliseDisplayText(job.address);
+
+  if (!address) return "";
+  if (address.toLowerCase() === customer) return "";
+  if (address.toLowerCase() === title) return "";
+
+  return titleCase(address);
+}
+
 function getStatusBadgeStyle(status: string): React.CSSProperties {
   const value = String(status || "").toLowerCase();
 
@@ -181,6 +244,14 @@ function getStatusBadgeStyle(status: string): React.CSSProperties {
       background: "#f4f4f5",
       color: "#3f3f46",
       border: "1px solid #e4e4e7",
+    };
+  }
+
+  if (value === "scheduled") {
+    return {
+      background: "#ecfeff",
+      color: "#155e75",
+      border: "1px solid #a5f3fc",
     };
   }
 
@@ -317,6 +388,278 @@ function sortUnscheduledJobs(a: JobsApiJob, b: JobsApiJob) {
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 }
 
+function sortWorkerJobs(a: ScheduleJob, b: ScheduleJob) {
+  const aStart = parseTimeToMinutes(a.startTime);
+  const bStart = parseTimeToMinutes(b.startTime);
+
+  if (aStart === null && bStart === null) return a.id - b.id;
+  if (aStart === null) return 1;
+  if (bStart === null) return -1;
+
+  if (aStart !== bStart) return aStart - bStart;
+
+  const aDuration = a.durationMinutes ?? 60;
+  const bDuration = b.durationMinutes ?? 60;
+
+  if (aDuration !== bDuration) return aDuration - bDuration;
+
+  return a.id - b.id;
+}
+
+function buildTimelineLanes(jobs: ScheduleJob[]) {
+  const scheduled = jobs
+    .map((job) => {
+      const start = parseTimeToMinutes(job.startTime);
+      if (start === null) return null;
+
+      const duration = Math.max(job.durationMinutes ?? 60, 15);
+      const end = start + duration;
+
+      return {
+        ...job,
+        startMinutes: start,
+        endMinutes: end,
+      };
+    })
+    .filter((job): job is Omit<TimelinePlacedJob, "lane"> => job !== null)
+    .sort((a, b) => {
+      if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
+      return a.endMinutes - b.endMinutes;
+    });
+
+  const laneEndTimes: number[] = [];
+  const placed: TimelinePlacedJob[] = [];
+
+  for (const job of scheduled) {
+    let placedLane = -1;
+
+    for (let laneIndex = 0; laneIndex < laneEndTimes.length; laneIndex++) {
+      if (job.startMinutes >= laneEndTimes[laneIndex]) {
+        placedLane = laneIndex;
+        break;
+      }
+    }
+
+    if (placedLane === -1) {
+      placedLane = laneEndTimes.length;
+      laneEndTimes.push(job.endMinutes);
+    } else {
+      laneEndTimes[placedLane] = job.endMinutes;
+    }
+
+    placed.push({
+      ...job,
+      lane: placedLane,
+    });
+  }
+
+  return {
+    jobs: placed,
+    laneCount: Math.max(laneEndTimes.length, 1),
+  };
+}
+
+function getTimelineLeft(minutes: number) {
+  const clamped = Math.max(PREP_START_MINUTES, Math.min(minutes, DAY_END_MINUTES));
+  return ((clamped - PREP_START_MINUTES) / TOTAL_DAY_MINUTES) * 100;
+}
+
+function getTimelineWidth(startMinutes: number, endMinutes: number) {
+  const clampedStart = Math.max(PREP_START_MINUTES, Math.min(startMinutes, DAY_END_MINUTES));
+  const clampedEnd = Math.max(PREP_START_MINUTES, Math.min(endMinutes, DAY_END_MINUTES));
+  const safeMinutes = Math.max(clampedEnd - clampedStart, 18);
+  return (safeMinutes / TOTAL_DAY_MINUTES) * 100;
+}
+
+function isOffHours(job: ScheduleJob) {
+  const start = parseTimeToMinutes(job.startTime);
+  if (start === null) return false;
+
+  const end = start + (job.durationMinutes ?? 60);
+  return start < WORK_START_MINUTES || end > DAY_END_MINUTES;
+}
+
+function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
+  const sortedJobs = [...worker.jobs].sort(sortWorkerJobs);
+  const timeline = buildTimelineLanes(sortedJobs);
+  const laneHeight = 52;
+  const timelineHeight = 38 + Math.max(timeline.laneCount, 1) * laneHeight + 14;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        border: "1px solid #d4d4d8",
+        borderRadius: 12,
+        minHeight: timelineHeight,
+        background: "#fafafa",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          left: `${getTimelineLeft(PREP_START_MINUTES)}%`,
+          width: `${getTimelineWidth(PREP_START_MINUTES, WORK_START_MINUTES)}%`,
+          top: 0,
+          bottom: 0,
+          background: "rgba(250, 204, 21, 0.10)",
+          borderRight: "1px dashed #eab308",
+          pointerEvents: "none",
+        }}
+      />
+
+      {TIMELINE_MARKERS.map((marker) => {
+        const left = getTimelineLeft(marker.minutes);
+
+        return (
+          <div
+            key={marker.label}
+            style={{
+              position: "absolute",
+              left: `${left}%`,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              background: marker.minutes === WORK_START_MINUTES ? "#d4d4d8" : "#e4e4e7",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: 8,
+                left: 6,
+                fontSize: 11,
+                color: "#71717a",
+                whiteSpace: "nowrap",
+                fontWeight: marker.minutes === PREP_START_MINUTES ? 700 : 500,
+              }}
+            >
+              {marker.label}
+            </div>
+          </div>
+        );
+      })}
+
+      <div
+        style={{
+          position: "absolute",
+          top: 8,
+          left: 10,
+          fontSize: 11,
+          fontWeight: 800,
+          color: "#a16207",
+          background: "#fef3c7",
+          border: "1px solid #fde68a",
+          borderRadius: 999,
+          padding: "3px 8px",
+          zIndex: 3,
+        }}
+      >
+        Prep 08:30–09:00
+      </div>
+
+      {timeline.jobs.map((job) => {
+        const left = getTimelineLeft(job.startMinutes);
+        const width = getTimelineWidth(job.startMinutes, job.endMinutes);
+        const top = 38 + job.lane * laneHeight;
+        const cardColor = getCardColor(job);
+        const offHours = isOffHours(job);
+
+        return (
+          <Link
+            key={job.id}
+            href={`/jobs/${job.id}`}
+            title={`${job.startTime ?? "TBD"} • ${job.title} • ${job.customerName} • ${
+              job.postcode ?? ""
+            }`}
+            style={{
+              position: "absolute",
+              left: `${left}%`,
+              width: `${width}%`,
+              top,
+              height: 42,
+              background: offHours ? "#fee2e2" : cardColor.background,
+              border: `1px solid ${offHours ? "#fca5a5" : cardColor.border}`,
+              borderRadius: 8,
+              padding: "6px 8px",
+              overflow: "hidden",
+              fontSize: 12,
+              boxSizing: "border-box",
+              textDecoration: "none",
+              color: "#18181b",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              zIndex: 2,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 800,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                marginBottom: 2,
+              }}
+            >
+              {job.startTime ?? "TBD"} • {titleCase(job.customerName) || "No customer"}
+            </div>
+
+            <div
+              style={{
+                fontSize: 11,
+                color: "#52525b",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {job.postcode ?? "No postcode"} • {job.durationMinutes ?? 60}m
+              {offHours ? " • Off-hours" : ""}
+            </div>
+          </Link>
+        );
+      })}
+
+      {sortedJobs.filter((job) => parseTimeToMinutes(job.startTime) === null).length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            left: 14,
+            bottom: 10,
+            fontSize: 12,
+            color: "#71717a",
+            background: "#fff",
+            border: "1px solid #e4e4e7",
+            borderRadius: 999,
+            padding: "6px 10px",
+            zIndex: 2,
+          }}
+        >
+          {
+            sortedJobs.filter((job) => parseTimeToMinutes(job.startTime) === null)
+              .length
+          }{" "}
+          without a time
+        </div>
+      )}
+
+      {worker.jobs.length === 0 && (
+        <div
+          style={{
+            position: "absolute",
+            left: 14,
+            top: 56,
+            fontSize: 13,
+            color: "#71717a",
+          }}
+        >
+          No jobs scheduled for this worker.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SchedulePage() {
   const [date, setDate] = useState(getTodayDateString());
   const [scheduleData, setScheduleData] = useState<ScheduleResponse | null>(null);
@@ -326,7 +669,12 @@ export default function SchedulePage() {
   const [runningScheduler, setRunningScheduler] = useState(false);
   const [error, setError] = useState("");
 
-  const workers = useMemo(() => scheduleData?.workers ?? [], [scheduleData]);
+  const workers = useMemo(() => {
+    return (scheduleData?.workers ?? []).map((worker) => ({
+      ...worker,
+      jobs: [...worker.jobs].sort(sortWorkerJobs),
+    }));
+  }, [scheduleData]);
 
   const unscheduledJobs = useMemo(() => {
     return jobsData
@@ -417,6 +765,7 @@ export default function SchedulePage() {
       }
 
       await loadPage(date, true);
+
       window.alert(
         data?.scheduled > 0
           ? `${data.scheduled} job${data.scheduled === 1 ? "" : "s"} placed into the diary.`
@@ -695,7 +1044,8 @@ export default function SchedulePage() {
                     0
                   );
 
-                  const remainingMinutes = TOTAL_DAY_MINUTES - scheduledMinutes;
+                  const remainingMinutes =
+                    DAY_END_MINUTES - WORK_START_MINUTES - scheduledMinutes;
 
                   return (
                     <div key={worker.id} style={workerCard()}>
@@ -736,145 +1086,7 @@ export default function SchedulePage() {
                         </div>
                       </div>
 
-                      <div
-                        style={{
-                          position: "relative",
-                          border: "1px solid #d4d4d8",
-                          borderRadius: 10,
-                          height: 110,
-                          background: "#fafafa",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {TIMELINE_HOURS.map((hour) => {
-                          const left =
-                            ((hour * 60 - DAY_START_MINUTES) /
-                              TOTAL_DAY_MINUTES) *
-                            100;
-
-                          return (
-                            <div
-                              key={hour}
-                              style={{
-                                position: "absolute",
-                                left: `${left}%`,
-                                top: 0,
-                                bottom: 0,
-                                width: 1,
-                                background: "#e4e4e7",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  top: 8,
-                                  left: 6,
-                                  fontSize: 11,
-                                  color: "#71717a",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {String(hour).padStart(2, "0")}:00
-                              </div>
-                            </div>
-                          );
-                        })}
-
-                        {worker.jobs.map((job) => {
-                          const start = parseTimeToMinutes(job.startTime);
-                          const duration = job.durationMinutes ?? 60;
-
-                          if (start === null) return null;
-
-                          const clampedStart = Math.max(start, DAY_START_MINUTES);
-                          const left =
-                            ((clampedStart - DAY_START_MINUTES) /
-                              TOTAL_DAY_MINUTES) *
-                            100;
-
-                          const width =
-                            (Math.max(duration, 30) / TOTAL_DAY_MINUTES) * 100;
-
-                          const cardColor = getCardColor(job);
-
-                          return (
-                            <Link
-                              key={job.id}
-                              href={`/jobs/${job.id}`}
-                              title={`${job.startTime ?? "TBD"} • ${job.title} • ${
-                                job.customerName
-                              } • ${job.postcode ?? ""}`}
-                              style={{
-                                position: "absolute",
-                                left: `${left}%`,
-                                width: `${width}%`,
-                                top: 30,
-                                height: 64,
-                                background: cardColor.background,
-                                border: `1px solid ${cardColor.border}`,
-                                borderRadius: 8,
-                                padding: "8px 10px",
-                                overflow: "hidden",
-                                fontSize: 12,
-                                boxSizing: "border-box",
-                                textDecoration: "none",
-                                color: "#18181b",
-                                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontWeight: 800,
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  marginBottom: 2,
-                                }}
-                              >
-                                {job.startTime ?? "TBD"} • {job.title}
-                              </div>
-
-                              <div
-                                style={{
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  marginBottom: 2,
-                                }}
-                              >
-                                {job.customerName || "No customer"}
-                              </div>
-
-                              <div
-                                style={{
-                                  fontSize: 11,
-                                  color: "#52525b",
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                }}
-                              >
-                                {job.postcode ?? "No postcode"} • {duration}m •{" "}
-                                {formatStatus(job.status)}
-                              </div>
-                            </Link>
-                          );
-                        })}
-
-                        {worker.jobs.length === 0 && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: 14,
-                              top: 44,
-                              fontSize: 13,
-                              color: "#71717a",
-                            }}
-                          >
-                            No jobs scheduled for this worker.
-                          </div>
-                        )}
-                      </div>
+                      <WorkerTimeline worker={worker} />
 
                       {worker.jobs.length > 0 && (
                         <div
@@ -884,84 +1096,104 @@ export default function SchedulePage() {
                             gap: 10,
                           }}
                         >
-                          {worker.jobs.map((job) => (
-                            <Link
-                              key={`list-${worker.id}-${job.id}`}
-                              href={`/jobs/${job.id}`}
-                              style={{
-                                textDecoration: "none",
-                                color: "inherit",
-                              }}
-                            >
-                              <div style={jobRowCard()}>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    gap: 10,
-                                    flexWrap: "wrap",
-                                    marginBottom: 8,
-                                  }}
-                                >
+                          {worker.jobs.map((job) => {
+                            const displayAddress = getDisplayAddress(job);
+                            const cleanCustomer = titleCase(job.customerName) || "No customer";
+                            const cleanTitle = titleCase(job.title) || "General";
+                            const postcode = normaliseDisplayText(job.postcode);
+
+                            return (
+                              <Link
+                                key={`list-${worker.id}-${job.id}`}
+                                href={`/jobs/${job.id}`}
+                                style={{
+                                  textDecoration: "none",
+                                  color: "inherit",
+                                }}
+                              >
+                                <div style={jobRowCard()}>
                                   <div
                                     style={{
                                       display: "flex",
-                                      gap: 8,
+                                      justifyContent: "space-between",
+                                      gap: 10,
                                       flexWrap: "wrap",
-                                      alignItems: "center",
+                                      marginBottom: 8,
                                     }}
                                   >
-                                    <span
+                                    <div
                                       style={{
-                                        ...pillBase(),
-                                        ...getJobTypeBadgeStyle(job.jobType),
+                                        display: "flex",
+                                        gap: 8,
+                                        flexWrap: "wrap",
+                                        alignItems: "center",
                                       }}
                                     >
-                                      {formatJobType(job.jobType)}
-                                    </span>
+                                      <span
+                                        style={{
+                                          ...pillBase(),
+                                          ...getJobTypeBadgeStyle(job.jobType),
+                                        }}
+                                      >
+                                        {formatJobType(job.jobType)}
+                                      </span>
 
-                                    <span
+                                      <span
+                                        style={{
+                                          ...pillBase(),
+                                          ...getStatusBadgeStyle(job.status),
+                                        }}
+                                      >
+                                        {formatStatus(job.status)}
+                                      </span>
+
+                                      {isOffHours(job) && (
+                                        <span
+                                          style={{
+                                            ...pillBase(),
+                                            background: "#fee2e2",
+                                            color: "#991b1b",
+                                            border: "1px solid #fecaca",
+                                          }}
+                                        >
+                                          Off-hours
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div
                                       style={{
-                                        ...pillBase(),
-                                        ...getStatusBadgeStyle(job.status),
+                                        fontWeight: 800,
+                                        color: "#18181b",
                                       }}
                                     >
-                                      {formatStatus(job.status)}
-                                    </span>
+                                      {formatTimeRange(job.startTime, job.durationMinutes)}
+                                    </div>
                                   </div>
 
                                   <div
                                     style={{
                                       fontWeight: 800,
-                                      color: "#18181b",
+                                      marginBottom: 4,
                                     }}
                                   >
-                                    {job.startTime ?? "No time"} •{" "}
-                                    {job.durationMinutes ?? 60} mins
+                                    {cleanCustomer} — {cleanTitle}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      fontSize: 13,
+                                      color: "#52525b",
+                                    }}
+                                  >
+                                    {displayAddress || "No address"}
+                                    {postcode ? ` • ${postcode}` : ""}
+                                    {` • ${job.durationMinutes ?? 60} mins`}
                                   </div>
                                 </div>
-
-                                <div
-                                  style={{
-                                    fontWeight: 800,
-                                    marginBottom: 4,
-                                  }}
-                                >
-                                  {job.customerName || "No customer"} — {job.title}
-                                </div>
-
-                                <div
-                                  style={{
-                                    fontSize: 13,
-                                    color: "#52525b",
-                                  }}
-                                >
-                                  {job.address || "No address"}{" "}
-                                  {job.postcode ? `• ${job.postcode}` : ""}
-                                </div>
-                              </div>
-                            </Link>
-                          ))}
+                              </Link>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -1074,7 +1306,8 @@ export default function SchedulePage() {
                               fontSize: 16,
                             }}
                           >
-                            {job.customer?.name || "No customer"} — {job.title}
+                            {titleCase(job.customer?.name) || "No customer"} —{" "}
+                            {titleCase(job.title) || "General"}
                           </div>
 
                           <div
@@ -1084,10 +1317,8 @@ export default function SchedulePage() {
                               marginBottom: 6,
                             }}
                           >
-                            {job.address || "No address"}{" "}
-                            {job.customer?.postcode
-                              ? `• ${job.customer.postcode}`
-                              : ""}
+                            {titleCase(job.address) || "No address"}
+                            {job.customer?.postcode ? ` • ${job.customer.postcode}` : ""}
                           </div>
 
                           <div
