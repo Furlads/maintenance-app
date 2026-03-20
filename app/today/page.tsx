@@ -464,6 +464,8 @@ function isMorningPrepJob(job: Job) {
 }
 
 function getJobPrimaryTitle(job: Job) {
+  if (isMorningPrepJob(job)) return 'Morning Prep'
+
   const customerName = String(job.customer?.name || '').trim()
   const title = String(job.title || '').trim()
 
@@ -473,6 +475,10 @@ function getJobPrimaryTitle(job: Job) {
 }
 
 function getJobSecondaryTitle(job: Job) {
+  if (isMorningPrepJob(job)) {
+    return 'Van checks, tools, materials and first setup before jobs begin'
+  }
+
   const customerName = String(job.customer?.name || '').trim().toLowerCase()
   const title = String(job.title || '').trim()
   const cleanedTitle = title.toLowerCase()
@@ -601,7 +607,9 @@ const colours = {
   greenLine: '#7bc586',
   redSoft: '#ffe5e5',
   redLine: '#efb0b0',
-  greySoft: '#f8f8f8'
+  greySoft: '#f8f8f8',
+  prepSoft: '#eef6ff',
+  prepLine: '#9fc3f3'
 }
 
 const styles = {
@@ -722,6 +730,13 @@ function getJobCardStyle(job: TimedJob): CSSProperties {
     }
   }
 
+  if (isMorningPrepJob(job)) {
+    return {
+      background: colours.prepSoft,
+      border: `1px solid ${colours.prepLine}`
+    }
+  }
+
   if (job.isStarted || job.isPaused || job.isNext) {
     return {
       background: colours.yellowSoft,
@@ -781,10 +796,11 @@ function getStatusPill(job: TimedJob): CSSProperties {
 }
 
 function getStatusText(job: TimedJob) {
-  if (job.isDone) return 'Completed'
+  if (job.isDone) return isMorningPrepJob(job) ? 'Prep completed' : 'Completed'
   if (job.isPaused) return 'Paused'
-  if (job.isStarted) return 'In progress'
-  if (job.isNext) return 'Travelling'
+  if (job.isStarted) return isMorningPrepJob(job) ? 'Prep in progress' : 'In progress'
+  if (job.isNext) return isMorningPrepJob(job) ? 'Prep next' : 'Travelling'
+  if (isMorningPrepJob(job)) return 'Ready for prep'
   return 'Waiting to start'
 }
 
@@ -1050,7 +1066,9 @@ export default function TodayPage() {
       const isStarted = !!job.arrivedAt && !job.finishedAt && !isDone && !isPaused
       const plannedMinutes = getPlannedMinutes(job)
       const scheduledStart = combineVisitDateAndTime(job.visitDate, job.startTime)
-      const earliestWorkingStart = getEarliestWorkingStart(job, scheduledStart)
+      const earliestWorkingStart = isMorningPrepJob(job)
+        ? scheduledStart
+        : getEarliestWorkingStart(job, scheduledStart)
 
       let etaStart: Date | null = null
       let etaFinish: Date | null = null
@@ -1058,7 +1076,7 @@ export default function TodayPage() {
       if (isDone) {
         etaStart = job.arrivedAt ? new Date(job.arrivedAt) : scheduledStart
         etaFinish = job.finishedAt ? new Date(job.finishedAt) : null
-        runningCursor = etaFinish || runningCursor
+        runningCursor = isMorningPrepJob(job) ? runningCursor : etaFinish || runningCursor
       } else if (isStarted) {
         etaStart = job.arrivedAt
           ? new Date(job.arrivedAt)
@@ -1070,7 +1088,7 @@ export default function TodayPage() {
           etaFinish = currentNow
         }
 
-        runningCursor = etaFinish
+        runningCursor = isMorningPrepJob(job) ? runningCursor : etaFinish
       } else if (isPaused) {
         etaStart = job.arrivedAt
           ? new Date(job.arrivedAt)
@@ -1081,11 +1099,11 @@ export default function TodayPage() {
 
         etaFinish = addMinutes(pausedAtDate, plannedMinutes + pausedLiveMinutes)
 
-        runningCursor = etaFinish
+        runningCursor = isMorningPrepJob(job) ? runningCursor : etaFinish
       } else {
         etaStart = getLaterDate(runningCursor, earliestWorkingStart)
         etaFinish = etaStart ? addMinutes(etaStart, plannedMinutes) : null
-        runningCursor = etaFinish || runningCursor
+        runningCursor = isMorningPrepJob(job) ? runningCursor : etaFinish || runningCursor
       }
 
       return {
@@ -1101,14 +1119,22 @@ export default function TodayPage() {
       }
     })
 
-    const unfinished = timedJobsBase.filter((job) => !job.isDone)
-    const activeLiveJob = unfinished.find((job) => job.isStarted || job.isPaused)
+    const unfinishedNonPrep = timedJobsBase.filter((job) => !job.isDone && !isMorningPrepJob(job))
+    const activeLiveJob = unfinishedNonPrep.find((job) => job.isStarted || job.isPaused)
     const nextWaitingJob =
       !activeLiveJob
-        ? unfinished.find((job) => !job.isStarted && !job.isPaused) || null
+        ? unfinishedNonPrep.find((job) => !job.isStarted && !job.isPaused) || null
         : null
 
     return timedJobsBase.map((job) => {
+      if (isMorningPrepJob(job)) {
+        return {
+          ...job,
+          isNext: false,
+          isWaiting: !job.isDone && !job.isStarted && !job.isPaused
+        }
+      }
+
       const isNext =
         !job.isDone &&
         !job.isStarted &&
@@ -1125,14 +1151,26 @@ export default function TodayPage() {
     })
   }, [dayJobs, now])
 
-  const activeJob = useMemo(() => {
-    return visibleJobs.find((job) => job.isStarted || job.isPaused) || null
+  const prepJob = useMemo(() => {
+    return visibleJobs.find((job) => isMorningPrepJob(job)) || null
   }, [visibleJobs])
 
+  const prepCompleted = !!prepJob?.isDone
+  const prepInProgress = !!prepJob?.isStarted || !!prepJob?.isPaused
+  const prepPending = !!prepJob && !prepJob.isDone && !prepJob.isStarted && !prepJob.isPaused
+
+  const nonPrepVisibleJobs = useMemo(() => {
+    return visibleJobs.filter((job) => !isMorningPrepJob(job))
+  }, [visibleJobs])
+
+  const activeJob = useMemo(() => {
+    return nonPrepVisibleJobs.find((job) => job.isStarted || job.isPaused) || null
+  }, [nonPrepVisibleJobs])
+
   const listJobs = useMemo(() => {
-    if (!activeJob) return visibleJobs
-    return visibleJobs.filter((job) => job.id !== activeJob.id)
-  }, [visibleJobs, activeJob])
+    if (!activeJob) return nonPrepVisibleJobs
+    return nonPrepVisibleJobs.filter((job) => job.id !== activeJob.id)
+  }, [nonPrepVisibleJobs, activeJob])
 
   const nextJobs = useMemo(() => {
     return listJobs.filter((job) => !job.isDone)
@@ -1143,9 +1181,10 @@ export default function TodayPage() {
   }, [listJobs])
 
   const progressCounts = useMemo(() => {
-    const todayTotal = visibleJobs.length
-    const completed = visibleJobs.filter((job) => job.isDone).length
-    const left = visibleJobs.filter((job) => !job.isDone).length
+    const nonPrepJobs = visibleJobs.filter((job) => !isMorningPrepJob(job))
+    const todayTotal = nonPrepJobs.length
+    const completed = nonPrepJobs.filter((job) => job.isDone).length
+    const left = nonPrepJobs.filter((job) => !job.isDone).length
 
     return {
       todayTotal,
@@ -1173,6 +1212,7 @@ export default function TodayPage() {
       .filter((job) => {
         if (!job.visitDate) return false
         if (job.finishedAt) return false
+        if (isMorningPrepJob(job)) return false
 
         const jobDateKey = toDateKey(job.visitDate)
 
@@ -1441,6 +1481,54 @@ export default function TodayPage() {
     } catch (err) {
       console.error(err)
       setError('Failed to resume job.')
+    } finally {
+      setBusyJobId(null)
+    }
+  }
+
+  async function handlePrepComplete(job: TimedJob) {
+    try {
+      setBusyJobId(job.id)
+      setError('')
+
+      if (!job.arrivedAt) {
+        const startRes = await fetch(`/api/jobs/${job.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            action: 'start'
+          })
+        })
+
+        const startData = await startRes.json().catch(() => null)
+
+        if (!startRes.ok) {
+          throw new Error(startData?.error || 'Failed to start prep')
+        }
+      }
+
+      const finishRes = await fetch(`/api/jobs/${job.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'finish'
+        })
+      })
+
+      const finishData = await finishRes.json().catch(() => null)
+
+      if (!finishRes.ok) {
+        throw new Error(finishData?.error || 'Failed to complete prep')
+      }
+
+      await loadJobs()
+    } catch (err) {
+      console.error(err)
+      setError('Failed to complete prep.')
     } finally {
       setBusyJobId(null)
     }
@@ -1726,55 +1814,116 @@ Heavy rain made it unsafe`,
     }
   }
 
-  function renderPrimaryAction(job: TimedJob) {
-    const commonStyle: CSSProperties = {
-      ...styles.actionButtonDark,
-      width: '100%',
-      minWidth: 0,
+  function renderQuickActionBar(job: TimedJob, options?: { compact?: boolean }) {
+    const compact = options?.compact ?? false
+    const isPrep = isMorningPrepJob(job)
+
+    const buttonStyle = (primary = false): CSSProperties => ({
+      ...(primary ? styles.actionButtonDark : styles.actionButton),
+      minHeight: compact ? 44 : 48,
+      padding: compact ? '10px 12px' : '12px 16px',
       opacity: busyJobId === job.id ? 0.6 : 1,
-      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-    }
+      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer',
+      width: '100%'
+    })
 
-    if (job.isStarted) {
-      return (
-        <button
-          type="button"
-          onClick={() => handleFinishJob(job.id)}
-          disabled={busyJobId === job.id}
-          style={commonStyle}
-        >
-          {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
-        </button>
-      )
-    }
+    return (
+      <div className="today-quick-actions" style={{ marginBottom: 12 }}>
+        {isPrep ? (
+          <>
+            {!job.isDone && (
+              <button
+                type="button"
+                onClick={() => handlePrepComplete(job)}
+                disabled={busyJobId === job.id}
+                style={buttonStyle(true)}
+              >
+                {busyJobId === job.id ? 'Updating...' : 'Prep Complete'}
+              </button>
+            )}
 
-    if (job.isPaused) {
-      return (
-        <button
-          type="button"
-          onClick={() => handleResumeJob(job.id)}
-          disabled={busyJobId === job.id}
-          style={commonStyle}
-        >
-          {busyJobId === job.id ? 'Updating...' : 'Resume Work'}
-        </button>
-      )
-    }
+            {job.isStarted && !job.isDone && (
+              <button
+                type="button"
+                onClick={() => handlePauseJob(job.id)}
+                disabled={busyJobId === job.id}
+                style={buttonStyle(false)}
+              >
+                {busyJobId === job.id ? 'Updating...' : 'Pause'}
+              </button>
+            )}
 
-    if (!job.isWaiting) {
-      return (
-        <button
-          type="button"
-          onClick={() => handleStartJob(job.id)}
-          disabled={busyJobId === job.id}
-          style={commonStyle}
-        >
-          {busyJobId === job.id ? 'Updating...' : 'Start Job'}
-        </button>
-      )
-    }
+            {job.isPaused && !job.isDone && (
+              <button
+                type="button"
+                onClick={() => handleResumeJob(job.id)}
+                disabled={busyJobId === job.id}
+                style={buttonStyle(false)}
+              >
+                {busyJobId === job.id ? 'Updating...' : 'Resume'}
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            {!job.isStarted && !job.isPaused && !job.isDone && (
+              <button
+                type="button"
+                onClick={() => handleStartJob(job.id)}
+                disabled={busyJobId === job.id}
+                style={buttonStyle(true)}
+              >
+                {busyJobId === job.id ? 'Updating...' : 'Start Job'}
+              </button>
+            )}
 
-    return null
+            {job.isStarted && !job.isDone && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handlePauseJob(job.id)}
+                  disabled={busyJobId === job.id}
+                  style={buttonStyle(false)}
+                >
+                  {busyJobId === job.id ? 'Updating...' : 'Pause'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleFinishJob(job.id)}
+                  disabled={busyJobId === job.id}
+                  style={buttonStyle(true)}
+                >
+                  {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
+                </button>
+              </>
+            )}
+
+            {job.isPaused && !job.isDone && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleResumeJob(job.id)}
+                  disabled={busyJobId === job.id}
+                  style={buttonStyle(false)}
+                >
+                  {busyJobId === job.id ? 'Updating...' : 'Resume'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleFinishJob(job.id)}
+                  disabled={busyJobId === job.id}
+                  style={buttonStyle(true)}
+                >
+                  {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -1887,6 +2036,12 @@ Heavy rain made it unsafe`,
           gap: 10px;
         }
 
+        .today-quick-actions {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+          gap: 10px;
+        }
+
         .today-meta-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -1956,7 +2111,8 @@ Heavy rain made it unsafe`,
 
           .today-active-actions,
           .today-job-actions,
-          .today-meta-grid {
+          .today-meta-grid,
+          .today-quick-actions {
             grid-template-columns: 1fr;
           }
 
@@ -2204,6 +2360,112 @@ Heavy rain made it unsafe`,
           </div>
         </section>
 
+        {!loading && !error && workerId && prepJob && (
+          <section
+            style={{
+              ...styles.panel,
+              ...styles.panelPadding,
+              marginBottom: 16,
+              border: `1px solid ${colours.prepLine}`,
+              background: prepCompleted
+                ? 'linear-gradient(180deg, #eef9f0 0%, #e3f4e8 100%)'
+                : 'linear-gradient(180deg, #eef6ff 0%, #e4f0ff 100%)'
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 12,
+                alignItems: 'flex-start',
+                flexWrap: 'wrap',
+                marginBottom: 12
+              }}
+            >
+              <div>
+                <div style={styles.sectionTitle}>Start of day prep</div>
+                <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15 }}>
+                  Morning Prep
+                </div>
+                <div style={{ marginTop: 6, fontSize: 15, color: colours.inkSoft }}>
+                  Complete prep first, then the rest of the day can move forward or back as needed.
+                </div>
+              </div>
+
+              <div style={getStatusPill(prepJob)}>{getStatusText(prepJob)}</div>
+            </div>
+
+            {prepJob.notes && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 14,
+                  background: 'rgba(255,255,255,0.72)',
+                  border: '1px solid rgba(0,0,0,0.06)'
+                }}
+              >
+                <div style={styles.label}>Prep notes</div>
+                <div style={{ ...styles.value, marginTop: 6, whiteSpace: 'pre-line' }}>
+                  {prepJob.notes}
+                </div>
+              </div>
+            )}
+
+            <div className="today-meta-grid" style={{ marginBottom: 12 }}>
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  background: 'rgba(255,255,255,0.6)',
+                  border: '1px solid rgba(0,0,0,0.06)'
+                }}
+              >
+                <div style={styles.label}>Planned prep time</div>
+                <div style={{ ...styles.value, fontWeight: 800 }}>
+                  {formatMinutes(prepJob.plannedMinutes)}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  background: 'rgba(255,255,255,0.6)',
+                  border: '1px solid rgba(0,0,0,0.06)'
+                }}
+              >
+                <div style={styles.label}>Started</div>
+                <div style={{ ...styles.value, fontWeight: 800 }}>
+                  {formatTime(prepJob.arrivedAt)}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  background: 'rgba(255,255,255,0.6)',
+                  border: '1px solid rgba(0,0,0,0.06)'
+                }}
+              >
+                <div style={styles.label}>Finished</div>
+                <div style={{ ...styles.value, fontWeight: 800 }}>
+                  {formatTime(prepJob.finishedAt)}
+                </div>
+              </div>
+            </div>
+
+            {!prepCompleted && renderQuickActionBar(prepJob)}
+
+            <div className="today-job-actions">
+              <a href={`/jobs/${prepJob.id}`} style={styles.actionButton}>
+                Open Prep
+              </a>
+            </div>
+          </section>
+        )}
+
         {filteredActiveJob && (
           <section
             style={{
@@ -2245,6 +2507,25 @@ Heavy rain made it unsafe`,
                   {getStatusText(filteredActiveJob)}
                 </div>
               </div>
+
+              {renderQuickActionBar(filteredActiveJob)}
+
+              {filteredActiveJob.notes && (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: 12,
+                    borderRadius: 14,
+                    background: 'rgba(255,255,255,0.7)',
+                    border: '1px solid rgba(0,0,0,0.06)'
+                  }}
+                >
+                  <div style={styles.label}>Notes</div>
+                  <div style={{ ...styles.value, marginTop: 6, whiteSpace: 'pre-line' }}>
+                    {filteredActiveJob.notes}
+                  </div>
+                </div>
+              )}
 
               <div className="today-meta-grid" style={{ marginBottom: 14 }}>
                 <div
@@ -2305,66 +2586,6 @@ Heavy rain made it unsafe`,
               </div>
 
               <div className="today-active-actions">
-                {filteredActiveJob.isStarted && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleFinishJob(filteredActiveJob.id)}
-                      disabled={busyJobId === filteredActiveJob.id}
-                      style={{
-                        ...styles.actionButtonDark,
-                        opacity: busyJobId === filteredActiveJob.id ? 0.6 : 1,
-                        cursor: busyJobId === filteredActiveJob.id ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {busyJobId === filteredActiveJob.id ? 'Updating...' : 'Finish Job'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handlePauseJob(filteredActiveJob.id)}
-                      disabled={busyJobId === filteredActiveJob.id}
-                      style={{
-                        ...styles.actionButton,
-                        opacity: busyJobId === filteredActiveJob.id ? 0.6 : 1,
-                        cursor: busyJobId === filteredActiveJob.id ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {busyJobId === filteredActiveJob.id ? 'Updating...' : 'Pause Work'}
-                    </button>
-                  </>
-                )}
-
-                {filteredActiveJob.isPaused && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleResumeJob(filteredActiveJob.id)}
-                      disabled={busyJobId === filteredActiveJob.id}
-                      style={{
-                        ...styles.actionButtonDark,
-                        opacity: busyJobId === filteredActiveJob.id ? 0.6 : 1,
-                        cursor: busyJobId === filteredActiveJob.id ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {busyJobId === filteredActiveJob.id ? 'Updating...' : 'Resume Work'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleFinishJob(filteredActiveJob.id)}
-                      disabled={busyJobId === filteredActiveJob.id}
-                      style={{
-                        ...styles.actionButton,
-                        opacity: busyJobId === filteredActiveJob.id ? 0.6 : 1,
-                        cursor: busyJobId === filteredActiveJob.id ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {busyJobId === filteredActiveJob.id ? 'Updating...' : 'Finish Job'}
-                    </button>
-                  </>
-                )}
-
                 <a href={`/jobs/${filteredActiveJob.id}`} style={styles.actionButton}>
                   Open Job
                 </a>
@@ -2490,7 +2711,7 @@ Heavy rain made it unsafe`,
           </section>
         )}
 
-        {!loading && !error && workerId && filteredNextJobs.length === 0 && !filteredActiveJob && filteredCompletedJobs.length === 0 && (
+        {!loading && !error && workerId && filteredNextJobs.length === 0 && !filteredActiveJob && filteredCompletedJobs.length === 0 && !prepPending && !prepInProgress && (
           <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
             <div style={{ fontWeight: 700 }}>
               {isViewingToday ? 'No jobs booked for today.' : 'No jobs booked for this date.'}
@@ -2563,6 +2784,12 @@ Heavy rain made it unsafe`,
                             </div>
                           )}
 
+                          {job.notes && (
+                            <div style={{ marginTop: 6, fontSize: 13, color: colours.inkSoft }}>
+                              Notes ready on card
+                            </div>
+                          )}
+
                           <div style={{ marginTop: 4, fontSize: 13, color: colours.muted }}>
                             ETA start: {formatClockTime(job.etaStart)}
                           </div>
@@ -2620,6 +2847,25 @@ Heavy rain made it unsafe`,
                     <div style={getStatusPill(job)}>{getStatusText(job)}</div>
                   </div>
 
+                  {renderQuickActionBar(job)}
+
+                  {job.notes && (
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: 12,
+                        borderRadius: 14,
+                        background: 'rgba(255,255,255,0.7)',
+                        border: '1px solid rgba(0,0,0,0.06)'
+                      }}
+                    >
+                      <div style={styles.label}>Notes</div>
+                      <div style={{ ...styles.value, marginTop: 6, whiteSpace: 'pre-line' }}>
+                        {job.notes}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="today-meta-grid" style={{ marginBottom: 12 }}>
                     <div
                       style={{
@@ -2664,7 +2910,7 @@ Heavy rain made it unsafe`,
                     </div>
                   </div>
 
-                  {(job.isStarted || job.isPaused || job.notes) && (
+                  {(job.isStarted || job.isPaused) && (
                     <div
                       style={{
                         marginBottom: 12,
@@ -2701,18 +2947,8 @@ Heavy rain made it unsafe`,
                           </div>
                         </>
                       )}
-
-                      {job.notes && (
-                        <div style={{ fontSize: 14, whiteSpace: 'pre-line' }}>
-                          <strong>Notes:</strong> {job.notes}
-                        </div>
-                      )}
                     </div>
                   )}
-
-                  <div style={{ marginBottom: 12 }}>
-                    {renderPrimaryAction(job)}
-                  </div>
 
                   <div className="today-job-actions">
                     <a href={`/jobs/${job.id}`} style={styles.actionButton}>
@@ -2738,19 +2974,6 @@ Heavy rain made it unsafe`,
 
                     {job.isStarted && (
                       <>
-                        <button
-                          type="button"
-                          onClick={() => handlePauseJob(job.id)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : 'Pause Work'}
-                        </button>
-
                         <button
                           type="button"
                           onClick={() => handleCannotComplete(job.id)}
@@ -2849,19 +3072,6 @@ Heavy rain made it unsafe`,
                       <>
                         <button
                           type="button"
-                          onClick={() => handleFinishJob(job.id)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : 'Finish Job'}
-                        </button>
-
-                        <button
-                          type="button"
                           onClick={() => handleCannotComplete(job.id)}
                           disabled={busyJobId === job.id}
                           style={{
@@ -2934,6 +3144,23 @@ Heavy rain made it unsafe`,
                       {getJobSecondaryTitle(job) && (
                         <div style={{ marginBottom: 10, fontSize: 14 }}>
                           {getJobSecondaryTitle(job)}
+                        </div>
+                      )}
+
+                      {job.notes && (
+                        <div
+                          style={{
+                            marginBottom: 10,
+                            padding: 12,
+                            borderRadius: 14,
+                            background: 'rgba(255,255,255,0.6)',
+                            border: '1px solid rgba(0,0,0,0.06)'
+                          }}
+                        >
+                          <div style={styles.label}>Notes</div>
+                          <div style={{ ...styles.value, marginTop: 6, whiteSpace: 'pre-line' }}>
+                            {job.notes}
+                          </div>
                         </div>
                       )}
 

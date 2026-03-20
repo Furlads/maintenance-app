@@ -204,6 +204,10 @@ function typeBadgeClass(jobType: string) {
     return 'bg-amber-100 text-amber-800 ring-amber-200'
   }
 
+  if (value.includes('prep')) {
+    return 'bg-indigo-100 text-indigo-800 ring-indigo-200'
+  }
+
   return 'bg-zinc-100 text-zinc-700 ring-zinc-200'
 }
 
@@ -246,6 +250,15 @@ function InfoRow({
       <div className="mt-2 text-sm font-medium text-zinc-900">{value}</div>
     </div>
   )
+}
+
+function isPrepJob(job: Job | null) {
+  if (!job) return false
+
+  const title = String(job.title || '').trim().toLowerCase()
+  const jobType = String(job.jobType || '').trim().toLowerCase()
+
+  return title === 'morning prep' || jobType === 'prep'
 }
 
 export default function JobPage() {
@@ -555,7 +568,23 @@ export default function JobPage() {
   }
 
   async function handleFinishJob() {
+    if (isPrepJob(job)) {
+      await patchJob({ action: 'finish' }, 'finish job')
+      return
+    }
+
     setShowFinishReport(true)
+  }
+
+  async function handlePrepComplete() {
+    if (!job) return
+
+    if (!job.arrivedAt) {
+      const startOk = await patchJob({ action: 'start' }, 'start job')
+      if (!startOk) return
+    }
+
+    await patchJob({ action: 'finish' }, 'finish job')
   }
 
   async function submitFinishReport() {
@@ -730,6 +759,8 @@ Heavy rain made it unsafe`,
   const isStarted =
     !!job?.arrivedAt && !job?.finishedAt && !isDone && !isPaused
 
+  const prepJob = isPrepJob(job)
+
   if (loading) {
     return (
       <main className="min-h-screen bg-zinc-50">
@@ -794,11 +825,13 @@ Heavy rain made it unsafe`,
                   </div>
 
                   <h1 className="mt-1 text-3xl font-bold tracking-tight md:text-4xl">
-                    {job.title}
+                    {prepJob ? 'Morning Prep' : job.title}
                   </h1>
 
                   <p className="mt-2 text-sm text-zinc-300 md:text-base">
-                    {job.customer?.name || 'Unknown customer'}
+                    {prepJob
+                      ? 'Prep block before the working day starts'
+                      : job.customer?.name || 'Unknown customer'}
                   </p>
 
                   <p className="mt-1 text-sm text-zinc-400">
@@ -808,17 +841,10 @@ Heavy rain made it unsafe`,
 
                 <div className="flex flex-wrap gap-2">
                   <Link
-                    href="/jobs"
+                    href="/today"
                     className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
                   >
-                    Back to Jobs
-                  </Link>
-
-                  <Link
-                    href={`/jobs/edit/${job.id}`}
-                    className="inline-flex items-center justify-center rounded-xl bg-yellow-400 px-4 py-3 text-sm font-bold text-zinc-900 transition hover:bg-yellow-300"
-                  >
-                    Edit Job
+                    Back to Today
                   </Link>
                 </div>
               </div>
@@ -888,85 +914,10 @@ Heavy rain made it unsafe`,
           <div className="grid gap-5 xl:grid-cols-3">
             <div className="space-y-5 xl:col-span-2">
               <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-zinc-900">Job details</h2>
-                </div>
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Quick actions</h2>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <InfoRow
-                    label="Customer"
-                    value={job.customer?.name || 'Unknown customer'}
-                  />
-
-                  <InfoRow label="Type" value={job.jobType || '—'} />
-
-                  <div className="sm:col-span-2">
-                    <InfoRow label="Address" value={job.address || '—'} />
-                  </div>
-
-                  <InfoRow
-                    label="Visit date"
-                    value={job.visitDate ? formatDateTime(job.visitDate) : '—'}
-                  />
-
-                  <InfoRow label="Start time" value={job.startTime || '—'} />
-
-                  <InfoRow label="Duration" value={formatMinutes(job.durationMinutes)} />
-
-                  <InfoRow label="Overrun" value={formatMinutes(job.overrunMins)} />
-
-                  <InfoRow label="Paused total" value={formatMinutes(job.pausedMinutes)} />
-
-                  <InfoRow label="Started at" value={formatTime(job.arrivedAt)} />
-
-                  <InfoRow label="Paused at" value={formatTime(job.pausedAt)} />
-
-                  <InfoRow label="Finished at" value={formatTime(job.finishedAt)} />
-
-                  <InfoRow
-                    label="Payment"
-                    value={formatPaymentStatus(job.paymentStatus)}
-                  />
-
-                  <InfoRow
-                    label="Payment notes"
-                    value={job.paymentNotes || '—'}
-                  />
-
-                  <div className="sm:col-span-2">
-                    <InfoRow
-                      label="Assigned"
-                      value={
-                        job.assignments.length > 0
-                          ? job.assignments
-                              .map(
-                                (assignment) =>
-                                  `${assignment.worker.firstName} ${assignment.worker.lastName}`
-                              )
-                              .join(', ')
-                          : 'Nobody assigned'
-                      }
-                    />
-                  </div>
-
-                  {visibleNotes && (
-                    <div className="sm:col-span-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                        Notes
-                      </div>
-                      <div className="mt-2 whitespace-pre-line text-sm text-zinc-900">
-                        {visibleNotes}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-lg font-bold text-zinc-900">Job actions</h2>
-
-                <div className="mb-4 flex flex-wrap gap-3">
-                  {!isStarted && !isPaused && !isDone && (
+                <div className="mb-5 flex flex-wrap gap-3">
+                  {!isStarted && !isPaused && !isDone && !prepJob && (
                     <button
                       type="button"
                       onClick={handleStartJob}
@@ -977,17 +928,21 @@ Heavy rain made it unsafe`,
                     </button>
                   )}
 
-                  {isStarted && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleFinishJob}
-                        disabled={busyAction !== ''}
-                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {busyAction === 'finish job' ? 'Updating...' : 'Finish Job'}
-                      </button>
+                  {prepJob && !isDone && (
+                    <button
+                      type="button"
+                      onClick={handlePrepComplete}
+                      disabled={busyAction !== ''}
+                      className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {busyAction === 'finish job' || busyAction === 'start job'
+                        ? 'Updating...'
+                        : 'Prep Complete'}
+                    </button>
+                  )}
 
+                  {isStarted && !prepJob && (
+                    <>
                       <button
                         type="button"
                         onClick={handlePauseJob}
@@ -996,16 +951,25 @@ Heavy rain made it unsafe`,
                       >
                         {busyAction === 'pause job' ? 'Updating...' : 'Pause Work'}
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={handleFinishJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'finish job' ? 'Updating...' : 'Finish Job'}
+                      </button>
                     </>
                   )}
 
-                  {isPaused && (
+                  {isPaused && !prepJob && (
                     <>
                       <button
                         type="button"
                         onClick={handleResumeJob}
                         disabled={busyAction !== ''}
-                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {busyAction === 'resume job' ? 'Updating...' : 'Resume Work'}
                       </button>
@@ -1014,14 +978,14 @@ Heavy rain made it unsafe`,
                         type="button"
                         onClick={handleFinishJob}
                         disabled={busyAction !== ''}
-                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {busyAction === 'finish job' ? 'Updating...' : 'Finish Job'}
                       </button>
                     </>
                   )}
 
-                  {(isStarted || isPaused) && (
+                  {(isStarted || isPaused) && !prepJob && (
                     <>
                       <button
                         type="button"
@@ -1045,30 +1009,45 @@ Heavy rain made it unsafe`,
                     </>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowQuoteForm((prev) => !prev)
-                      setQuoteMessage('')
-                    }}
-                    className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
-                  >
-                    {showQuoteForm ? 'Hide New Quote' : 'New Quote'}
-                  </button>
+                  {!prepJob && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowQuoteForm((prev) => !prev)
+                        setQuoteMessage('')
+                      }}
+                      className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
+                    >
+                      {showQuoteForm ? 'Hide New Quote' : 'New Quote'}
+                    </button>
+                  )}
 
-                  <a
-                    href={`/jobs/add?customerId=${job.customer?.id}&title=${encodeURIComponent(
-                      job.title
-                    )}&address=${encodeURIComponent(job.address || '')}&postcode=${encodeURIComponent(
-                      job.customer?.postcode || ''
-                    )}&jobType=${encodeURIComponent(job.jobType || '')}`}
-                    className="inline-flex rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
-                  >
-                    Book Extra Day
-                  </a>
+                  {!prepJob && (
+                    <a
+                      href={`/jobs/add?customerId=${job.customer?.id}&title=${encodeURIComponent(
+                        job.title
+                      )}&address=${encodeURIComponent(job.address || '')}&postcode=${encodeURIComponent(
+                        job.customer?.postcode || ''
+                      )}&jobType=${encodeURIComponent(job.jobType || '')}`}
+                      className="inline-flex rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
+                    >
+                      Book Extra Day
+                    </a>
+                  )}
                 </div>
 
-                {showQuoteForm && (
+                {visibleNotes && (
+                  <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                      Notes
+                    </div>
+                    <div className="mt-2 whitespace-pre-line text-sm text-zinc-900">
+                      {visibleNotes}
+                    </div>
+                  </div>
+                )}
+
+                {showQuoteForm && !prepJob && (
                   <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                     <div className="mb-3 text-lg font-extrabold text-zinc-900">
                       New Quote
@@ -1166,7 +1145,7 @@ Heavy rain made it unsafe`,
                   </div>
                 )}
 
-                {(isStarted || isPaused) && (
+                {(isStarted || isPaused) && !prepJob && (
                   <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                     <div className="mb-3 text-sm font-bold text-zinc-800">
                       Add Extra Time
@@ -1220,6 +1199,70 @@ Heavy rain made it unsafe`,
                     </div>
                   </div>
                 )}
+              </section>
+
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-zinc-900">Job details</h2>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <InfoRow
+                    label="Customer"
+                    value={prepJob ? 'Prep block' : job.customer?.name || 'Unknown customer'}
+                  />
+
+                  <InfoRow label="Type" value={job.jobType || '—'} />
+
+                  <div className="sm:col-span-2">
+                    <InfoRow label="Address" value={job.address || '—'} />
+                  </div>
+
+                  <InfoRow
+                    label="Visit date"
+                    value={job.visitDate ? formatDateTime(job.visitDate) : '—'}
+                  />
+
+                  <InfoRow label="Start time" value={job.startTime || '—'} />
+
+                  <InfoRow label="Duration" value={formatMinutes(job.durationMinutes)} />
+
+                  <InfoRow label="Overrun" value={formatMinutes(job.overrunMins)} />
+
+                  <InfoRow label="Paused total" value={formatMinutes(job.pausedMinutes)} />
+
+                  <InfoRow label="Started at" value={formatTime(job.arrivedAt)} />
+
+                  <InfoRow label="Paused at" value={formatTime(job.pausedAt)} />
+
+                  <InfoRow label="Finished at" value={formatTime(job.finishedAt)} />
+
+                  <InfoRow
+                    label="Payment"
+                    value={formatPaymentStatus(job.paymentStatus)}
+                  />
+
+                  <InfoRow
+                    label="Payment notes"
+                    value={job.paymentNotes || '—'}
+                  />
+
+                  <div className="sm:col-span-2">
+                    <InfoRow
+                      label="Assigned"
+                      value={
+                        job.assignments.length > 0
+                          ? job.assignments
+                              .map(
+                                (assignment) =>
+                                  `${assignment.worker.firstName} ${assignment.worker.lastName}`
+                              )
+                              .join(', ')
+                          : 'Nobody assigned'
+                      }
+                    />
+                  </div>
+                </div>
               </section>
 
               <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -1303,10 +1346,10 @@ Heavy rain made it unsafe`,
 
             <div className="space-y-5">
               <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-lg font-bold text-zinc-900">Quick actions</h2>
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Quick links</h2>
 
                 <div className="flex flex-col gap-3">
-                  {job.customer?.phone && (
+                  {!prepJob && job.customer?.phone && (
                     <a
                       href={`tel:${job.customer.phone}`}
                       className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
@@ -1352,47 +1395,49 @@ Heavy rain made it unsafe`,
                 </div>
               </section>
 
-              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-lg font-bold text-zinc-900">Customer</h2>
+              {!prepJob && (
+                <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                  <h2 className="mb-4 text-lg font-bold text-zinc-900">Customer</h2>
 
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                      Name
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Name
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.name || 'Unknown customer'}
+                      </div>
                     </div>
-                    <div className="mt-2 text-sm font-medium text-zinc-900">
-                      {job.customer?.name || 'Unknown customer'}
+
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Phone
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.phone || '—'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Address
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.address || '—'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Postcode
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.postcode || '—'}
+                      </div>
                     </div>
                   </div>
-
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                      Phone
-                    </div>
-                    <div className="mt-2 text-sm font-medium text-zinc-900">
-                      {job.customer?.phone || '—'}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                      Address
-                    </div>
-                    <div className="mt-2 text-sm font-medium text-zinc-900">
-                      {job.customer?.address || '—'}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                      Postcode
-                    </div>
-                    <div className="mt-2 text-sm font-medium text-zinc-900">
-                      {job.customer?.postcode || '—'}
-                    </div>
-                  </div>
-                </div>
-              </section>
+                </section>
+              )}
             </div>
           </div>
         </div>

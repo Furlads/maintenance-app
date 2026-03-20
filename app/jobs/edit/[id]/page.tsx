@@ -35,6 +35,10 @@ type Job = {
   startTime?: string | null
   durationMinutes?: number | null
   assignments: JobAssignment[]
+  isRegularMaintenance?: boolean | null
+  maintenanceFrequency?: string | null
+  preferredDay?: string | null
+  preferredTimeBand?: string | null
 }
 
 function toDateInputValue(value?: string | null) {
@@ -86,6 +90,90 @@ function normalizeEditStatus(value?: string | null) {
   }
 
   return 'todo'
+}
+
+function normalizeMaintenanceFrequency(value?: string | null) {
+  const frequency = String(value || '').trim().toLowerCase()
+
+  if (
+    frequency === 'weekly' ||
+    frequency === 'week'
+  ) {
+    return 'weekly'
+  }
+
+  if (
+    frequency === 'fortnightly' ||
+    frequency === 'biweekly' ||
+    frequency === 'every 2 weeks' ||
+    frequency === 'every two weeks'
+  ) {
+    return 'fortnightly'
+  }
+
+  if (
+    frequency === '4-weekly' ||
+    frequency === '4 weekly' ||
+    frequency === 'monthly' ||
+    frequency === 'every 4 weeks'
+  ) {
+    return '4-weekly'
+  }
+
+  if (
+    frequency === 'one-off' ||
+    frequency === 'one off' ||
+    frequency === 'once'
+  ) {
+    return 'one-off'
+  }
+
+  return 'weekly'
+}
+
+function normalizePreferredDay(value?: string | null) {
+  const day = String(value || '').trim().toLowerCase()
+
+  if (
+    day === 'monday' ||
+    day === 'tuesday' ||
+    day === 'wednesday' ||
+    day === 'thursday' ||
+    day === 'friday' ||
+    day === 'any'
+  ) {
+    return day
+  }
+
+  return 'any'
+}
+
+function normalizePreferredTimeBand(value?: string | null) {
+  const timeBand = String(value || '').trim().toLowerCase()
+
+  if (
+    timeBand === 'am' ||
+    timeBand === 'morning'
+  ) {
+    return 'am'
+  }
+
+  if (
+    timeBand === 'pm' ||
+    timeBand === 'afternoon'
+  ) {
+    return 'pm'
+  }
+
+  if (
+    timeBand === 'anytime' ||
+    timeBand === 'any time' ||
+    timeBand === 'any'
+  ) {
+    return 'anytime'
+  }
+
+  return 'anytime'
 }
 
 function SectionCard({
@@ -159,6 +247,11 @@ export default function EditJobPage() {
   const [startTime, setStartTime] = useState('')
   const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
 
+  const [isRegularMaintenance, setIsRegularMaintenance] = useState(false)
+  const [maintenanceFrequency, setMaintenanceFrequency] = useState('weekly')
+  const [preferredDay, setPreferredDay] = useState('any')
+  const [preferredTimeBand, setPreferredTimeBand] = useState('anytime')
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -203,6 +296,11 @@ export default function EditJobPage() {
         setVisitDate(toDateInputValue(jobData.visitDate))
         setStartTime(jobData.startTime || '')
         setAllowQuoteTimeOverride(false)
+
+        setIsRegularMaintenance(Boolean(jobData.isRegularMaintenance))
+        setMaintenanceFrequency(normalizeMaintenanceFrequency(jobData.maintenanceFrequency))
+        setPreferredDay(normalizePreferredDay(jobData.preferredDay))
+        setPreferredTimeBand(normalizePreferredTimeBand(jobData.preferredTimeBand))
 
         const selectedCustomer =
           safeCustomers.find(
@@ -256,6 +354,7 @@ export default function EditJobPage() {
   }, [selectedWorkers])
 
   const isTrevQuoteJob = jobType === 'Quote' && trevAssigned
+  const isMaintenanceJob = jobType === 'Maintenance'
   const finalAddress = useDifferentAddress ? jobAddress : defaultCustomerAddress
 
   useEffect(() => {
@@ -269,6 +368,15 @@ export default function EditJobPage() {
       setStartTime('')
     }
   }, [isTrevQuoteJob, allowQuoteTimeOverride])
+
+  useEffect(() => {
+    if (!isMaintenanceJob) {
+      setIsRegularMaintenance(false)
+      setMaintenanceFrequency('weekly')
+      setPreferredDay('any')
+      setPreferredTimeBand('anytime')
+    }
+  }, [isMaintenanceJob])
 
   function toggleWorker(workerId: number) {
     setAssignedTo((prev) =>
@@ -329,7 +437,20 @@ export default function EditJobPage() {
             isTrevQuoteJob && !allowQuoteTimeOverride
               ? null
               : startTime || null,
-          allowQuoteTimeOverride: isTrevQuoteJob ? allowQuoteTimeOverride : false
+          allowQuoteTimeOverride: isTrevQuoteJob ? allowQuoteTimeOverride : false,
+          isRegularMaintenance: isMaintenanceJob ? isRegularMaintenance : false,
+          maintenanceFrequency:
+            isMaintenanceJob && isRegularMaintenance
+              ? maintenanceFrequency
+              : null,
+          preferredDay:
+            isMaintenanceJob && isRegularMaintenance
+              ? preferredDay
+              : null,
+          preferredTimeBand:
+            isMaintenanceJob && isRegularMaintenance
+              ? preferredTimeBand
+              : null
         })
       })
 
@@ -577,6 +698,108 @@ export default function EditJobPage() {
                   <p className="text-sm text-zinc-500">
                     Leave date and time blank if this job should stay unscheduled for now.
                   </p>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Maintenance Settings"
+              description="Control recurring maintenance behaviour and preferred scheduling guidance."
+            >
+              <div className="space-y-4">
+                {!isMaintenanceJob && (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+                    Switch the job type to <span className="font-semibold text-zinc-900">Maintenance</span> to enable regular maintenance controls.
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <label className="flex items-start gap-3 text-sm text-zinc-800">
+                    <input
+                      type="checkbox"
+                      checked={isRegularMaintenance}
+                      onChange={(e) => setIsRegularMaintenance(e.target.checked)}
+                      disabled={!isMaintenanceJob}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block font-semibold">
+                        Regular maintenance job
+                      </span>
+                      <span className="mt-1 block text-zinc-500">
+                        Turn this on for recurring maintenance visits that should stay flexible within the rolling schedule.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <FieldLabel>Frequency</FieldLabel>
+                    <select
+                      value={maintenanceFrequency}
+                      onChange={(e) => setMaintenanceFrequency(e.target.value)}
+                      disabled={!isMaintenanceJob || !isRegularMaintenance}
+                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                        !isMaintenanceJob || !isRegularMaintenance
+                          ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
+                          : 'border-zinc-300 bg-white text-zinc-900'
+                      }`}
+                    >
+                      <option value="weekly">Weekly</option>
+                      <option value="fortnightly">Fortnightly</option>
+                      <option value="4-weekly">4-Weekly</option>
+                      <option value="one-off">One-Off</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <FieldLabel>Preferred Day</FieldLabel>
+                    <select
+                      value={preferredDay}
+                      onChange={(e) => setPreferredDay(e.target.value)}
+                      disabled={!isMaintenanceJob || !isRegularMaintenance}
+                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                        !isMaintenanceJob || !isRegularMaintenance
+                          ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
+                          : 'border-zinc-300 bg-white text-zinc-900'
+                      }`}
+                    >
+                      <option value="any">Any Day</option>
+                      <option value="monday">Monday</option>
+                      <option value="tuesday">Tuesday</option>
+                      <option value="wednesday">Wednesday</option>
+                      <option value="thursday">Thursday</option>
+                      <option value="friday">Friday</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <FieldLabel>Preferred Time Band</FieldLabel>
+                    <select
+                      value={preferredTimeBand}
+                      onChange={(e) => setPreferredTimeBand(e.target.value)}
+                      disabled={!isMaintenanceJob || !isRegularMaintenance}
+                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                        !isMaintenanceJob || !isRegularMaintenance
+                          ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
+                          : 'border-zinc-300 bg-white text-zinc-900'
+                      }`}
+                    >
+                      <option value="anytime">Any Time</option>
+                      <option value="am">AM</option>
+                      <option value="pm">PM</option>
+                    </select>
+                  </div>
+                </div>
+
+                {isMaintenanceJob && isRegularMaintenance && (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-zinc-700">
+                    <div className="font-semibold text-zinc-900">Scheduling note</div>
+                    <p className="mt-1">
+                      These settings guide the schedule, but the visit can still be moved when needed for weather, overruns, staff holidays or reshuffling across the 6-week horizon.
+                    </p>
+                  </div>
                 )}
               </div>
             </SectionCard>

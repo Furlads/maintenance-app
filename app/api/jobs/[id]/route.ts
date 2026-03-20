@@ -119,6 +119,119 @@ function isMaintenanceJob(jobType: string | null | undefined) {
   return clean(jobType).toLowerCase().includes('maint')
 }
 
+function normaliseMaintenanceFrequency(value: unknown) {
+  const raw = clean(value).toLowerCase()
+
+  if (!raw) return null
+  if (raw === 'weekly') return 'weekly'
+  if (raw === 'fortnightly') return 'fortnightly'
+  if (raw === '4-weekly' || raw === '4_weekly' || raw === '4 weekly' || raw === 'monthly') {
+    return '4-weekly'
+  }
+  if (raw === 'one-off' || raw === 'one_off' || raw === 'one off') {
+    return 'one-off'
+  }
+  if (raw === 'every_3_weeks' || raw === 'every-3-weeks' || raw === 'every 3 weeks') {
+    return 'every_3_weeks'
+  }
+
+  return raw
+}
+
+function normalisePreferredDay(value: unknown) {
+  const raw = clean(value).toLowerCase()
+
+  if (!raw) return null
+  if (raw === 'any') return 'any'
+  if (raw === 'monday') return 'monday'
+  if (raw === 'tuesday') return 'tuesday'
+  if (raw === 'wednesday') return 'wednesday'
+  if (raw === 'thursday') return 'thursday'
+  if (raw === 'friday') return 'friday'
+
+  return raw
+}
+
+function normalisePreferredTimeBand(value: unknown) {
+  const raw = clean(value).toLowerCase()
+
+  if (!raw) return null
+  if (raw === 'anytime' || raw === 'any time' || raw === 'any') return 'anytime'
+  if (raw === 'am' || raw === 'morning') return 'am'
+  if (raw === 'pm' || raw === 'afternoon') return 'pm'
+
+  return raw
+}
+
+function deriveMaintenanceMeta(params: {
+  jobType: string | null | undefined
+  isRegularMaintenance: boolean
+  maintenanceFrequency: string | null
+}) {
+  if (!isMaintenanceJob(params.jobType) || !params.isRegularMaintenance) {
+    return {
+      visitPattern: null as string | null,
+      maintenanceFrequencyUnit: null as string | null,
+      maintenanceFrequencyWeeks: null as number | null,
+      timePreferenceMode: null as string | null,
+    }
+  }
+
+  const frequency = params.maintenanceFrequency
+
+  if (!frequency || frequency === 'one-off') {
+    return {
+      visitPattern: null as string | null,
+      maintenanceFrequencyUnit: null as string | null,
+      maintenanceFrequencyWeeks: null as number | null,
+      timePreferenceMode: 'preferred-band' as string | null,
+    }
+  }
+
+  if (frequency === '4-weekly') {
+    return {
+      visitPattern: 'regular-maintenance' as string | null,
+      maintenanceFrequencyUnit: 'weekly' as string | null,
+      maintenanceFrequencyWeeks: 4 as number | null,
+      timePreferenceMode: 'preferred-band' as string | null,
+    }
+  }
+
+  if (frequency === 'fortnightly') {
+    return {
+      visitPattern: 'regular-maintenance' as string | null,
+      maintenanceFrequencyUnit: 'weekly' as string | null,
+      maintenanceFrequencyWeeks: 2 as number | null,
+      timePreferenceMode: 'preferred-band' as string | null,
+    }
+  }
+
+  if (frequency === 'weekly') {
+    return {
+      visitPattern: 'regular-maintenance' as string | null,
+      maintenanceFrequencyUnit: 'weekly' as string | null,
+      maintenanceFrequencyWeeks: 1 as number | null,
+      timePreferenceMode: 'preferred-band' as string | null,
+    }
+  }
+
+  if (frequency === 'every_3_weeks') {
+    return {
+      visitPattern: 'regular-maintenance' as string | null,
+      maintenanceFrequencyUnit: 'weekly' as string | null,
+      maintenanceFrequencyWeeks: 3 as number | null,
+      timePreferenceMode: 'preferred-band' as string | null,
+    }
+  }
+
+  return {
+    visitPattern: 'regular-maintenance' as string | null,
+    maintenanceFrequencyUnit: 'weekly' as string | null,
+    maintenanceFrequencyWeeks: null as number | null,
+    timePreferenceMode: 'preferred-band' as string | null,
+  }
+}
+
 function isRegularMaintenanceJob(job: {
   jobType?: string | null
   isRegularMaintenance?: boolean | null
@@ -185,6 +298,10 @@ function calculateNextMaintenanceVisitDate(args: {
 
   if (frequency === 'every_3_weeks') {
     return addDaysToDate(args.baseDate, 21)
+  }
+
+  if (frequency === '4-weekly') {
+    return addDaysToDate(args.baseDate, 28)
   }
 
   if (weeks) {
@@ -973,6 +1090,38 @@ export async function PATCH(req: Request, ctx: Ctx) {
       titleUpdate = clean(targetCustomer.name)
     }
 
+    const regularMaintenanceInputProvided =
+      'isRegularMaintenance' in body ||
+      'maintenanceFrequency' in body ||
+      'preferredDay' in body ||
+      'preferredTimeBand' in body
+
+    const nextIsRegularMaintenance =
+      regularMaintenanceInputProvided
+        ? isTrue(body.isRegularMaintenance)
+        : Boolean(existing.isRegularMaintenance)
+
+    const nextMaintenanceFrequency =
+      regularMaintenanceInputProvided
+        ? normaliseMaintenanceFrequency(body.maintenanceFrequency)
+        : existing.maintenanceFrequency
+
+    const nextPreferredDay =
+      regularMaintenanceInputProvided
+        ? normalisePreferredDay(body.preferredDay)
+        : existing.preferredDay
+
+    const nextPreferredTimeBand =
+      regularMaintenanceInputProvided
+        ? normalisePreferredTimeBand(body.preferredTimeBand)
+        : existing.preferredTimeBand
+
+    const maintenanceMeta = deriveMaintenanceMeta({
+      jobType: proposedJobType,
+      isRegularMaintenance: nextIsRegularMaintenance,
+      maintenanceFrequency: nextMaintenanceFrequency,
+    })
+
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
@@ -995,6 +1144,39 @@ export async function PATCH(req: Request, ctx: Ctx) {
         finishedAt: finishedAtUpdate,
         pausedAt: pausedAtUpdate,
         pausedMinutes: pausedMinutesUpdate,
+
+        isRegularMaintenance: regularMaintenanceInputProvided
+          ? isMaintenanceJob(proposedJobType)
+            ? nextIsRegularMaintenance
+            : false
+          : undefined,
+        maintenanceFrequency: regularMaintenanceInputProvided
+          ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
+            ? nextMaintenanceFrequency
+            : null
+          : undefined,
+        preferredDay: regularMaintenanceInputProvided
+          ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
+            ? nextPreferredDay
+            : null
+          : undefined,
+        preferredTimeBand: regularMaintenanceInputProvided
+          ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
+            ? nextPreferredTimeBand
+            : null
+          : undefined,
+        visitPattern: regularMaintenanceInputProvided
+          ? maintenanceMeta.visitPattern
+          : undefined,
+        maintenanceFrequencyUnit: regularMaintenanceInputProvided
+          ? maintenanceMeta.maintenanceFrequencyUnit
+          : undefined,
+        maintenanceFrequencyWeeks: regularMaintenanceInputProvided
+          ? maintenanceMeta.maintenanceFrequencyWeeks
+          : undefined,
+        timePreferenceMode: regularMaintenanceInputProvided
+          ? maintenanceMeta.timePreferenceMode
+          : undefined,
       },
       include: {
         customer: true,
