@@ -381,9 +381,7 @@ async function markJobAttention(params: {
   await prisma.job.update({
     where: { id: params.jobId },
     data: {
-      needsSchedulingAttention: true,
-      schedulingAttentionReason: params.reason,
-      schedulingLastAttemptAt: new Date(),
+      status: 'unscheduled',
     },
   })
 }
@@ -399,9 +397,6 @@ async function clearJobAttentionAndPlace(params: {
       visitDate: params.visitDate,
       startTime: params.startTime,
       status: 'todo',
-      needsSchedulingAttention: false,
-      schedulingAttentionReason: null,
-      schedulingLastAttemptAt: new Date(),
     },
   })
 }
@@ -795,9 +790,6 @@ export async function repairAssignedJobsForWorker(params: {
         visitDate: null,
         startTime: null,
         status: 'unscheduled',
-        needsSchedulingAttention: true,
-        schedulingAttentionReason: 'Could not re-fit this assigned job after a local repair attempt',
-        schedulingLastAttemptAt: new Date(),
       },
     })
   }
@@ -873,9 +865,6 @@ export async function refitSingleAssignedJob(params: {
       visitDate: null,
       startTime: null,
       status: 'unscheduled',
-      needsSchedulingAttention: false,
-      schedulingAttentionReason: null,
-      schedulingLastAttemptAt: new Date(),
     },
   })
 
@@ -977,9 +966,6 @@ export async function refitWorkerDay(params: {
       visitDate: null,
       startTime: null,
       status: 'unscheduled',
-      needsSchedulingAttention: false,
-      schedulingAttentionReason: null,
-      schedulingLastAttemptAt: new Date(),
     },
   })
 
