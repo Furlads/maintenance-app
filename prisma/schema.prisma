@@ -39,6 +39,8 @@ model Worker {
   assignedJobs         JobAssignment[]
   uploadedPhotos       JobPhoto[]
   webauthnCredentials  WebAuthnCredential[]
+  timeOffRequests      TimeOffRequest[]
+  availabilityBlocks   WorkerAvailabilityBlock[]
 }
 
 model WebAuthnCredential {
@@ -257,4 +259,55 @@ model InboxConnection {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model TimeOffRequest {
+  id               Int      @id @default(autoincrement())
+  workerId         Int
+  requestType      String
+  status           String   @default("pending")
+  startDate        DateTime
+  endDate          DateTime
+  startTime        String?
+  endTime          String?
+  isFullDay        Boolean  @default(true)
+  reason           String?
+  requestedByName  String?
+  reviewedByName   String?
+  reviewNotes      String?
+  reviewedAt       DateTime?
+  cancelledAt      DateTime?
+  cancellationNote String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  worker            Worker                  @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  availabilityBlock WorkerAvailabilityBlock?
+
+  @@index([workerId, status, startDate])
+  @@index([status, createdAt])
+  @@index([startDate, endDate])
+}
+
+model WorkerAvailabilityBlock {
+  id            Int      @id @default(autoincrement())
+  workerId      Int
+  requestId     Int?     @unique
+  source        String   @default("time_off_request")
+  title         String
+  startDate     DateTime
+  endDate       DateTime
+  startTime     String?
+  endTime       String?
+  isFullDay     Boolean  @default(true)
+  notes         String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  worker  Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  request TimeOffRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([workerId, active, startDate, endDate])
+  @@index([startDate, endDate])
 }
