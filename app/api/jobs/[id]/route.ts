@@ -2,7 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { runAutoScheduler } from '@/lib/auto-scheduler'
+import { runLocalRepairForJob } from '@/lib/auto-scheduler'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -703,7 +703,11 @@ function normaliseScheduleState(params: {
   }
 }
 
-function shouldTriggerSchedulerRepair(body: Record<string, unknown>, existingAssignedWorkerIds: number[], nextAssignedWorkerIds: number[]) {
+function shouldTriggerSchedulerRepair(
+  body: Record<string, unknown>,
+  existingAssignedWorkerIds: number[],
+  nextAssignedWorkerIds: number[]
+) {
   const changedAssignedWorkers =
     existingAssignedWorkerIds.length !== nextAssignedWorkerIds.length ||
     existingAssignedWorkerIds.some((workerId, index) => workerId !== nextAssignedWorkerIds[index])
@@ -1034,11 +1038,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
       const { notes, notesLog } = await buildNotesLog(jobId)
 
       try {
-        if (shouldTriggerSchedulerRepair(body, existing.assignments.map((assignment) => assignment.workerId), proposedAssignedWorkerIds)) {
-          await runAutoScheduler()
-        }
+        await runLocalRepairForJob({
+          jobId,
+          reason: 'cancel',
+        })
       } catch (schedulerError) {
-        console.error('Auto scheduler failed after job cancel:', schedulerError)
+        console.error('Local scheduler repair failed after job cancel:', schedulerError)
       }
 
       return NextResponse.json({
@@ -1078,11 +1083,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
       const { notes, notesLog } = await buildNotesLog(jobId)
 
       try {
-        if (shouldTriggerSchedulerRepair(body, existing.assignments.map((assignment) => assignment.workerId), proposedAssignedWorkerIds)) {
-          await runAutoScheduler()
-        }
+        await runLocalRepairForJob({
+          jobId,
+          reason: 'cancel',
+        })
       } catch (schedulerError) {
-        console.error('Auto scheduler failed after job archive:', schedulerError)
+        console.error('Local scheduler repair failed after job archive:', schedulerError)
       }
 
       return NextResponse.json({
@@ -1370,10 +1376,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
         .sort((a, b) => a - b)
 
       if (shouldTriggerSchedulerRepair(body, existingAssignedWorkerIds, nextAssignedWorkerIds)) {
-        await runAutoScheduler()
+        await runLocalRepairForJob({
+          jobId,
+          reason: 'edit',
+        })
       }
     } catch (schedulerError) {
-      console.error('Auto scheduler failed after job patch:', schedulerError)
+      console.error('Local scheduler repair failed after job patch:', schedulerError)
     }
 
     return NextResponse.json({
