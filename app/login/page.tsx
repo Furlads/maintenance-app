@@ -10,6 +10,7 @@ type LoginResponse = {
   ok?: boolean;
   error?: string;
   redirectTo?: string;
+  mustChangePassword?: boolean;
   worker?: {
     id: number;
     name: string;
@@ -70,6 +71,12 @@ export default function LoginPage() {
       }
 
       const redirectTo = data?.redirectTo || "/today";
+
+      if (data?.mustChangePassword) {
+        cleanupSelectedWorkerStorage();
+        window.location.href = "/change-password";
+        return;
+      }
 
       setPostLoginWorkerPhone(phone.trim());
       setPostLoginRedirectTo(redirectTo);

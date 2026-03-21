@@ -52,7 +52,9 @@ export async function POST(req: Request) {
     });
 
     const accessLevel = worker.accessLevel || "worker";
-    const redirectTo = getRedirectPath(accessLevel);
+    const redirectTo = worker.mustChangePassword
+      ? "/change-password"
+      : getRedirectPath(accessLevel);
 
     const res = NextResponse.json({
       ok: true,
@@ -62,6 +64,7 @@ export async function POST(req: Request) {
         accessLevel,
       },
       redirectTo,
+      mustChangePassword: worker.mustChangePassword,
     });
 
     res.cookies.set(

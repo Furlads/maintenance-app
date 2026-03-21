@@ -2,12 +2,19 @@
 
 import { useState } from "react";
 
+type ChangePasswordResponse = {
+  ok?: boolean;
+  error?: string;
+  redirectTo?: string;
+};
+
 export default function ChangePasswordPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageColor, setMessageColor] = useState("red");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -15,7 +22,15 @@ export default function ChangePasswordPage() {
     setMessage("");
 
     if (newPassword !== confirmPassword) {
+      setMessageColor("red");
       setMessage("Passwords do not match");
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setMessageColor("red");
+      setMessage("New password must be at least 8 characters");
       setLoading(false);
       return;
     }
@@ -32,19 +47,21 @@ export default function ChangePasswordPage() {
         }),
       });
 
-      const data = await res.json();
+      const data: ChangePasswordResponse = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to change password");
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Failed to change password");
       }
 
+      setMessageColor("green");
       setMessage("Password updated successfully");
 
       setTimeout(() => {
-        window.location.href = "/today";
-      }, 1200);
+        window.location.href = data.redirectTo || "/today";
+      }, 900);
     } catch (err: any) {
-      setMessage(err.message);
+      setMessageColor("red");
+      setMessage(err.message || "Failed to change password");
     } finally {
       setLoading(false);
     }
@@ -61,7 +78,11 @@ export default function ChangePasswordPage() {
       }}
     >
       <div style={{ width: "100%", maxWidth: 400 }}>
-        <h1 style={{ marginBottom: 20 }}>Change Password</h1>
+        <h1 style={{ marginBottom: 10 }}>Change Password</h1>
+
+        <p style={{ marginTop: 0, marginBottom: 20, color: "#555", lineHeight: 1.5 }}>
+          Before continuing, please change your temporary password.
+        </p>
 
         <form onSubmit={handleSubmit}>
           <input
@@ -76,6 +97,7 @@ export default function ChangePasswordPage() {
               marginBottom: 10,
               borderRadius: 6,
               border: "1px solid #ccc",
+              boxSizing: "border-box",
             }}
           />
 
@@ -91,6 +113,7 @@ export default function ChangePasswordPage() {
               marginBottom: 10,
               borderRadius: 6,
               border: "1px solid #ccc",
+              boxSizing: "border-box",
             }}
           />
 
@@ -106,6 +129,7 @@ export default function ChangePasswordPage() {
               marginBottom: 10,
               borderRadius: 6,
               border: "1px solid #ccc",
+              boxSizing: "border-box",
             }}
           />
 
@@ -126,7 +150,7 @@ export default function ChangePasswordPage() {
         </form>
 
         {message && (
-          <p style={{ marginTop: 10, color: "red" }}>{message}</p>
+          <p style={{ marginTop: 10, color: messageColor }}>{message}</p>
         )}
       </div>
     </main>
