@@ -26,7 +26,7 @@ model Worker {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  pinHash     String?
+  pinHash String?
 
   passwordHash        String?
   mustChangePassword  Boolean  @default(false)
@@ -118,7 +118,7 @@ model Job {
   schedulingAttentionReason String?
   schedulingLastAttemptAt   DateTime?
 
-  customer      Customer        @relation(fields: [customerId], references: [id])
+  customer      Customer       @relation(fields: [customerId], references: [id])
   jobNotes      JobNote[]
   assignments   JobAssignment[]
   photos        JobPhoto[]
@@ -231,7 +231,7 @@ model InboxMessage {
   externalMessageId String?
 
   assignedTo String?
-  status     String  @default("unread")
+  status     String @default("unread")
 
   customerId Int?
   jobId      Int?
@@ -285,7 +285,7 @@ model TimeOffRequest {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  worker            Worker                  @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  worker            Worker                   @relation(fields: [workerId], references: [id], onDelete: Cascade)
   availabilityBlock WorkerAvailabilityBlock?
 
   @@index([workerId, status, startDate])
