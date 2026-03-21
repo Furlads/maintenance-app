@@ -1,9 +1,17 @@
 import Link from "next/link"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import * as prismaModule from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
 const prisma = ((prismaModule as any).prisma ?? (prismaModule as any).default) as any
+
+type SessionData = {
+  workerId?: number
+  workerName?: string
+  workerAccessLevel?: string
+}
 
 type JobCard = {
   id: number
@@ -108,8 +116,7 @@ function formatDuration(minutes: number | null | undefined) {
 }
 
 function londonNow() {
-  const now = new Date()
-  return new Date(now)
+  return new Date()
 }
 
 function startOfLondonDayUtc(date: Date) {
@@ -281,35 +288,21 @@ function getThreadHref(thread: ThreadCard) {
   return "/admin/inbox"
 }
 
-async function findTrevWorkerIds() {
-  const workers = await prisma.worker.findMany({
-    where: {
-      OR: [
-        {
-          AND: [
-            { firstName: { equals: "Trevor", mode: "insensitive" } },
-            { lastName: { contains: "Fudger", mode: "insensitive" } },
-          ],
-        },
-        {
-          AND: [
-            { firstName: { equals: "Trev", mode: "insensitive" } },
-            { lastName: { contains: "Fudger", mode: "insensitive" } },
-          ],
-        },
-        {
-          email: { contains: "trevor.fudger", mode: "insensitive" },
-        },
-      ],
-    },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-    },
-  })
+function readSession(): SessionData | null {
+  const cookieStore = cookies()
+  const raw = cookieStore.get("furlads_session")?.value
 
-  return workers.map((worker: any) => worker.id)
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as SessionData
+
+    if (!parsed?.workerId) return null
+
+    return parsed
+  } catch {
+    return null
+  }
 }
 
 function JobSection({
@@ -441,43 +434,43 @@ function JobSection({
 }
 
 export default async function TrevPage() {
+  const session = readSession()
+
+  if (!session?.workerId) {
+    redirect("/login")
+  }
+
   const now = londonNow()
   const dayStart = startOfLondonDayUtc(now)
   const dayEnd = nextLondonDayUtc(now)
 
-  const trevWorkerIds = await findTrevWorkerIds()
-
-  const jobsRaw = trevWorkerIds.length
-    ? await prisma.job.findMany({
-        where: {
-          visitDate: {
-            gte: dayStart,
-            lt: dayEnd,
-          },
-          status: {
-            notIn: ["archived", "cancelled"],
-          },
-          assignments: {
-            some: {
-              workerId: {
-                in: trevWorkerIds,
-              },
-            },
-          },
+  const jobsRaw = await prisma.job.findMany({
+    where: {
+      visitDate: {
+        gte: dayStart,
+        lt: dayEnd,
+      },
+      status: {
+        notIn: ["archived", "cancelled"],
+      },
+      assignments: {
+        some: {
+          workerId: session.workerId,
         },
-        include: {
-          customer: true,
-        },
-        orderBy: [
-          {
-            startTime: "asc",
-          },
-          {
-            createdAt: "asc",
-          },
-        ],
-      })
-    : []
+      },
+    },
+    include: {
+      customer: true,
+    },
+    orderBy: [
+      {
+        startTime: "asc",
+      },
+      {
+        createdAt: "asc",
+      },
+    ],
+  })
 
   const jobs: JobCard[] = jobsRaw
   const quoteVisits = jobs.filter((job) => isQuoteJob(job))
@@ -517,8 +510,12 @@ export default async function TrevPage() {
               </div>
               <h1 className="mt-2 text-3xl font-black tracking-tight">Today + Admin</h1>
               <p className="mt-2 max-w-2xl text-sm text-zinc-300">
-                One place for Trev’s jobs, quote visits, inbox threads, and the bits that need attention.
+                One place for your jobs, quote visits, inbox threads, and the bits that need attention.
               </p>
+              <div className="mt-3 inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-zinc-200 ring-1 ring-inset ring-white/10">
+                Logged in as: {session.workerName || `Worker #${session.workerId}`}
+                {session.workerAccessLevel ? ` • ${session.workerAccessLevel}` : ""}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -570,7 +567,7 @@ export default async function TrevPage() {
                 Quotes today
               </div>
               <div className="mt-1 text-2xl font-black">{quoteVisits.length}</div>
-              <div className="mt-1 text-xs text-zinc-300">Visits for Trev</div>
+              <div className="mt-1 text-xs text-zinc-300">Visits assigned to you</div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
@@ -595,14 +592,14 @@ export default async function TrevPage() {
           <div className="space-y-6">
             <JobSection
               title="Today's jobs"
-              empty="No Trev jobs booked for today."
+              empty="No jobs assigned to your login for today."
               jobs={installJobs}
               accent="yellow"
             />
 
             <JobSection
               title="Today's quote visits"
-              empty="No Trev quote visits booked for today."
+              empty="No quote visits assigned to your login for today."
               jobs={quoteVisits}
               accent="blue"
             />
