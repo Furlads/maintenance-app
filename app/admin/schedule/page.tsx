@@ -836,6 +836,7 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [runningScheduler, setRunningScheduler] = useState(false);
+  const [refittingJobId, setRefittingJobId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const workers = useMemo(() => {
@@ -960,6 +961,45 @@ export default function SchedulePage() {
       window.alert(message);
     } finally {
       setRunningScheduler(false);
+    }
+  }
+
+  async function handleRefitJob(jobId: number) {
+    if (refittingJobId !== null) return;
+
+    setRefittingJobId(jobId);
+    setError("");
+
+    try {
+      const res = await fetch("/api/scheduler/refit-job", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ jobId }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to re-fit job");
+      }
+
+      await loadPage(date, true);
+
+      if (data?.repaired) {
+        window.alert("Job re-fitted successfully.");
+      } else {
+        window.alert("The system tried again but this job still needs attention.");
+      }
+    } catch (err) {
+      console.error(err);
+      const message =
+        err instanceof Error ? err.message : "Failed to re-fit job.";
+      setError(message);
+      window.alert(message);
+    } finally {
+      setRefittingJobId(null);
     }
   }
 
@@ -1701,13 +1741,28 @@ export default function SchedulePage() {
                             flexWrap: "wrap",
                           }}
                         >
+                          {job.needsSchedulingAttention && (
+                            <button
+                              type="button"
+                              onClick={() => handleRefitJob(job.id)}
+                              disabled={refittingJobId === job.id}
+                              style={{
+                                ...smallPrimaryButton(),
+                                cursor: refittingJobId === job.id ? "default" : "pointer",
+                                opacity: refittingJobId === job.id ? 0.7 : 1,
+                              }}
+                            >
+                              {refittingJobId === job.id ? "Re-fitting..." : "Re-fit now"}
+                            </button>
+                          )}
+
                           <Link href={`/jobs/${job.id}`} style={smallButton()}>
                             Open job
                           </Link>
 
                           <Link
                             href={`/jobs/edit/${job.id}`}
-                            style={smallPrimaryButton()}
+                            style={smallButton()}
                           >
                             Edit / place
                           </Link>

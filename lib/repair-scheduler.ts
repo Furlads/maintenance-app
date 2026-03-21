@@ -58,6 +58,26 @@ type DayJobLike = {
   customer?: { postcode?: string | null } | null
 }
 
+type RepairResult = {
+  ok: boolean
+  repaired: number
+  remaining: number
+  repairedJobIds: number[]
+  remainingJobIds: number[]
+  error?: string
+}
+
+type RefitSingleJobResult = {
+  ok: boolean
+  repaired: boolean
+  jobId: number
+  workerId?: number
+  remaining: number
+  repairedJobIds: number[]
+  remainingJobIds: number[]
+  error?: string
+}
+
 function normalisePostcode(value: unknown) {
   return cleanString(value).toUpperCase()
 }
@@ -502,7 +522,7 @@ export async function repairAssignedJobsForWorker(params: {
   jobIds: number[]
   startDate: Date
   daysToScan?: number
-}) {
+}): Promise<RepairResult> {
   const daysToScan = params.daysToScan ?? DEFAULT_REPAIR_HORIZON_DAYS
   const repairStartDate = startOfLocalDay(params.startDate)
   const repairEndDate = endOfLocalDay(addDays(repairStartDate, Math.max(daysToScan - 1, 0)))
@@ -523,7 +543,7 @@ export async function repairAssignedJobsForWorker(params: {
       ok: false,
       repaired: 0,
       remaining: params.jobIds.length,
-      repairedJobIds: [] as number[],
+      repairedJobIds: [],
       remainingJobIds: [...params.jobIds],
       error: 'Worker not found or inactive',
     }
@@ -536,8 +556,8 @@ export async function repairAssignedJobsForWorker(params: {
       ok: true,
       repaired: 0,
       remaining: 0,
-      repairedJobIds: [] as number[],
-      remainingJobIds: [] as number[],
+      repairedJobIds: [],
+      remainingJobIds: [],
     }
   }
 
@@ -777,5 +797,92 @@ export async function repairAssignedJobsForWorker(params: {
     remaining: remainingJobIds.length,
     repairedJobIds,
     remainingJobIds,
+  }
+}
+
+export async function refitSingleAssignedJob(params: {
+  jobId: number
+  startDate?: Date
+  daysToScan?: number
+}): Promise<RefitSingleJobResult> {
+  const job = await prisma.job.findUnique({
+    where: { id: params.jobId },
+    include: {
+      assignments: true,
+    },
+  })
+
+  if (!job) {
+    return {
+      ok: false,
+      repaired: false,
+      jobId: params.jobId,
+      remaining: 1,
+      repairedJobIds: [],
+      remainingJobIds: [params.jobId],
+      error: 'Job not found',
+    }
+  }
+
+  if (job.status === 'done' || job.status === 'cancelled' || job.status === 'archived') {
+    return {
+      ok: false,
+      repaired: false,
+      jobId: job.id,
+      remaining: 1,
+      repairedJobIds: [],
+      remainingJobIds: [job.id],
+      error: 'This job cannot be re-fitted in its current status',
+    }
+  }
+
+  if (job.assignments.length === 0) {
+    await markJobAttention({
+      jobId: job.id,
+      reason: 'Cannot re-fit because no worker is assigned',
+    })
+
+    return {
+      ok: false,
+      repaired: false,
+      jobId: job.id,
+      remaining: 1,
+      repairedJobIds: [],
+      remainingJobIds: [job.id],
+      error: 'No worker assigned',
+    }
+  }
+
+  const workerId = job.assignments[0].workerId
+  const repairStartDate = params.startDate ?? job.visitDate ?? new Date()
+
+  await prisma.job.update({
+    where: { id: job.id },
+    data: {
+      visitDate: null,
+      startTime: null,
+      status: 'unscheduled',
+      needsSchedulingAttention: false,
+      schedulingAttentionReason: null,
+      schedulingLastAttemptAt: new Date(),
+    },
+  })
+
+  const result = await repairAssignedJobsForWorker({
+    workerId,
+    jobIds: [job.id],
+    startDate: repairStartDate,
+    daysToScan: params.daysToScan,
+  })
+
+  return {
+    ok: result.ok,
+    repaired: result.repaired > 0,
+    jobId: job.id,
+    workerId,
+    remaining: result.remaining,
+    repairedJobIds: result.repairedJobIds,
+    remainingJobIds: result.remainingJobIds,
+    error: result.error,
   }
 }
