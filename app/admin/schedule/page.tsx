@@ -28,6 +28,8 @@ type ScheduleAvailabilityBlock = {
   isFullDay: boolean;
   notes: string | null;
   source: string;
+  status: "pending" | "approved" | "declined";
+  timeOffRequestId: number | null;
 };
 
 type ScheduleWorker = {
@@ -431,7 +433,24 @@ function getAvailabilityBlockColor(block: ScheduleAvailabilityBlock): {
   border: string;
   text: string;
 } {
+  const status = String(block.status || "").toLowerCase();
   const title = String(block.title || "").toLowerCase();
+
+  if (status === "pending") {
+    return {
+      background: "rgba(250, 204, 21, 0.18)",
+      border: "#facc15",
+      text: "#92400e",
+    };
+  }
+
+  if (status === "declined") {
+    return {
+      background: "rgba(161, 161, 170, 0.14)",
+      border: "#a1a1aa",
+      text: "#52525b",
+    };
+  }
 
   if (title.includes("holiday")) {
     return {
@@ -461,6 +480,30 @@ function getAvailabilityBlockColor(block: ScheduleAvailabilityBlock): {
     background: "rgba(107, 114, 128, 0.12)",
     border: "#d4d4d8",
     text: "#3f3f46",
+  };
+}
+
+function getBlockStatusBadgeStyle(status: ScheduleAvailabilityBlock["status"]): React.CSSProperties {
+  if (status === "pending") {
+    return {
+      background: "#fef3c7",
+      color: "#92400e",
+      border: "1px solid #fde68a",
+    };
+  }
+
+  if (status === "declined") {
+    return {
+      background: "#f4f4f5",
+      color: "#52525b",
+      border: "1px solid #d4d4d8",
+    };
+  }
+
+  return {
+    background: "#dcfce7",
+    color: "#166534",
+    border: "1px solid #bbf7d0",
   };
 }
 
@@ -602,7 +645,17 @@ function getBlockEndMinutes(block: ScheduleAvailabilityBlock) {
   return parseTimeToMinutes(block.endTime) ?? DAY_END_MINUTES;
 }
 
-function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
+function WorkerTimeline({
+  worker,
+  busyTimeOffId,
+  onApproveTimeOff,
+  onDeclineTimeOff,
+}: {
+  worker: ScheduleWorker;
+  busyTimeOffId: number | null;
+  onApproveTimeOff: (block: ScheduleAvailabilityBlock) => void;
+  onDeclineTimeOff: (block: ScheduleAvailabilityBlock) => void;
+}) {
   const sortedJobs = [...worker.jobs].sort(sortWorkerJobs);
   const sortedBlocks = [...(worker.availabilityBlocks ?? [])].sort(sortAvailabilityBlocks);
   const timeline = buildTimelineLanes(sortedJobs);
@@ -689,6 +742,11 @@ function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
         const left = getTimelineLeft(startMinutes);
         const width = getTimelineWidth(startMinutes, endMinutes);
         const blockColor = getAvailabilityBlockColor(block);
+        const isPendingRequest =
+          block.source === "time_off_request" &&
+          block.status === "pending" &&
+          typeof block.timeOffRequestId === "number";
+        const isBusy = busyTimeOffId === block.timeOffRequestId;
 
         return (
           <div
@@ -705,7 +763,6 @@ function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
               borderRadius: 10,
               boxSizing: "border-box",
               zIndex: 1,
-              pointerEvents: "none",
             }}
           >
             <div
@@ -714,16 +771,92 @@ function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
                 top: 8,
                 left: 8,
                 right: 8,
-                fontSize: 11,
-                fontWeight: 800,
-                color: blockColor.text,
-                overflow: "hidden",
-                whiteSpace: "nowrap",
-                textOverflow: "ellipsis",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 8,
+                alignItems: "start",
               }}
             >
-              {block.title} • {formatBlockTimeRange(block)}
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: blockColor.text,
+                  overflow: "hidden",
+                  whiteSpace: "nowrap",
+                  textOverflow: "ellipsis",
+                  minWidth: 0,
+                }}
+              >
+                {block.title} • {formatBlockTimeRange(block)}
+              </div>
+
+              <div
+                style={{
+                  ...pillBase(),
+                  ...getBlockStatusBadgeStyle(block.status),
+                  fontSize: 10,
+                  padding: "3px 8px",
+                  flexShrink: 0,
+                }}
+              >
+                {block.status}
+              </div>
             </div>
+
+            {isPendingRequest && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 8,
+                  right: 8,
+                  bottom: 8,
+                  display: "flex",
+                  gap: 6,
+                  zIndex: 3,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => onApproveTimeOff(block)}
+                  disabled={isBusy}
+                  style={{
+                    flex: 1,
+                    borderRadius: 8,
+                    border: "1px solid #166534",
+                    background: "#166534",
+                    color: "#fff",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: "6px 8px",
+                    cursor: isBusy ? "default" : "pointer",
+                    opacity: isBusy ? 0.7 : 1,
+                  }}
+                >
+                  {isBusy ? "Working..." : "Approve"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onDeclineTimeOff(block)}
+                  disabled={isBusy}
+                  style={{
+                    flex: 1,
+                    borderRadius: 8,
+                    border: "1px solid #b91c1c",
+                    background: "#fff",
+                    color: "#b91c1c",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: "6px 8px",
+                    cursor: isBusy ? "default" : "pointer",
+                    opacity: isBusy ? 0.7 : 1,
+                  }}
+                >
+                  {isBusy ? "Working..." : "Decline"}
+                </button>
+              </div>
+            )}
           </div>
         );
       })}
@@ -839,6 +972,7 @@ export default function SchedulePage() {
   const [runningScheduler, setRunningScheduler] = useState(false);
   const [refittingJobId, setRefittingJobId] = useState<number | null>(null);
   const [refittingWorkerId, setRefittingWorkerId] = useState<number | null>(null);
+  const [busyTimeOffId, setBusyTimeOffId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const workers = useMemo(() => {
@@ -1045,6 +1179,92 @@ export default function SchedulePage() {
       window.alert(message);
     } finally {
       setRefittingWorkerId(null);
+    }
+  }
+
+  async function handleApproveTimeOff(block: ScheduleAvailabilityBlock) {
+    if (!block.timeOffRequestId || busyTimeOffId !== null) return;
+
+    const reviewNotes =
+      window.prompt("Approval notes for the worker / diary (optional)", "") ?? "";
+
+    try {
+      setBusyTimeOffId(block.timeOffRequestId);
+      setError("");
+
+      const res = await fetch(`/api/kelly/time-off/${block.timeOffRequestId}/approve`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reviewedByName: "Kelly",
+          reviewNotes,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Failed to approve request.");
+      }
+
+      await loadPage(date, true);
+
+      const moved = Array.isArray(data?.impactedJobIds) ? data.impactedJobIds.length : 0;
+      const scheduled = Number(data?.schedulerResult?.scheduled || 0);
+
+      window.alert(
+        `Approved. ${moved} impacted job${moved === 1 ? "" : "s"} were cleared and ${scheduled} unscheduled job${scheduled === 1 ? "" : "s"} were re-placed automatically.`
+      );
+    } catch (err) {
+      console.error(err);
+      const message =
+        err instanceof Error ? err.message : "Failed to approve request.";
+      setError(message);
+      window.alert(message);
+    } finally {
+      setBusyTimeOffId(null);
+    }
+  }
+
+  async function handleDeclineTimeOff(block: ScheduleAvailabilityBlock) {
+    if (!block.timeOffRequestId || busyTimeOffId !== null) return;
+
+    const reviewNotes =
+      window.prompt("Why are you declining this request? (optional)", "") ?? "";
+
+    try {
+      setBusyTimeOffId(block.timeOffRequestId);
+      setError("");
+
+      const res = await fetch(`/api/kelly/time-off/${block.timeOffRequestId}/decline`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reviewedByName: "Kelly",
+          reviewNotes,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Failed to decline request.");
+      }
+
+      await loadPage(date, true);
+      window.alert("Request declined.");
+    } catch (err) {
+      console.error(err);
+      const message =
+        err instanceof Error ? err.message : "Failed to decline request.";
+      setError(message);
+      window.alert(message);
+    } finally {
+      setBusyTimeOffId(null);
     }
   }
 
@@ -1408,7 +1628,12 @@ export default function SchedulePage() {
                         </div>
                       </div>
 
-                      <WorkerTimeline worker={worker} />
+                      <WorkerTimeline
+                        worker={worker}
+                        busyTimeOffId={busyTimeOffId}
+                        onApproveTimeOff={handleApproveTimeOff}
+                        onDeclineTimeOff={handleDeclineTimeOff}
+                      />
 
                       {(worker.availabilityBlocks?.length ?? 0) > 0 && (
                         <div
@@ -1442,6 +1667,16 @@ export default function SchedulePage() {
                                 <span>{block.title}</span>
                                 <span style={{ opacity: 0.8 }}>
                                   {formatBlockTimeRange(block)}
+                                </span>
+                                <span
+                                  style={{
+                                    ...pillBase(),
+                                    ...getBlockStatusBadgeStyle(block.status),
+                                    fontSize: 10,
+                                    padding: "2px 7px",
+                                  }}
+                                >
+                                  {block.status}
                                 </span>
                               </div>
                             );
