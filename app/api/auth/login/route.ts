@@ -2,71 +2,104 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
+function getRedirectPath(accessLevel: string | null | undefined) {
+  return String(accessLevel || "").toLowerCase() === "admin" ? "/admin" : "/today";
+}
+
 export async function POST(req: Request) {
   try {
-    const { phone, password } = await req.json();
+    const body = await req.json();
+    const phone = String(body?.phone || "").trim();
+    const password = String(body?.password || "");
 
     if (!phone || !password) {
-      return NextResponse.json({ error: "Missing details" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Phone and password are required." },
+        { status: 400 }
+      );
     }
 
     const worker = await prisma.worker.findFirst({
-      where: { phone: phone.trim() },
+      where: {
+        phone,
+        active: true,
+      },
     });
 
     if (!worker || !worker.passwordHash) {
-      return NextResponse.json({ error: "Invalid login" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "Invalid login details." },
+        { status: 401 }
+      );
     }
 
-    // 🔒 lockout check
     if (worker.lockedUntil && worker.lockedUntil > new Date()) {
       return NextResponse.json(
-        { error: "Account locked. Try again later." },
-        { status: 403 }
+        { ok: false, error: "This account is temporarily locked." },
+        { status: 423 }
       );
     }
 
     const valid = await bcrypt.compare(password, worker.passwordHash);
 
     if (!valid) {
+      const nextAttempts = (worker.failedLoginAttempts || 0) + 1;
+      const shouldLock = nextAttempts >= 5;
+
       await prisma.worker.update({
         where: { id: worker.id },
         data: {
-          failedLoginAttempts: { increment: 1 },
+          failedLoginAttempts: nextAttempts,
+          lockedUntil: shouldLock ? new Date(Date.now() + 15 * 60 * 1000) : null,
         },
       });
 
-      return NextResponse.json({ error: "Invalid login" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "Invalid login details." },
+        { status: 401 }
+      );
     }
 
-    // ✅ reset failed attempts
     await prisma.worker.update({
       where: { id: worker.id },
       data: {
         failedLoginAttempts: 0,
+        lockedUntil: null,
         lastLoginAt: new Date(),
       },
     });
 
-    // 🔐 secure session cookie
+    const accessLevel = worker.accessLevel || "worker";
+    const redirectTo = getRedirectPath(accessLevel);
+
     const res = NextResponse.json({
-      success: true,
-      role: worker.accessLevel || "worker",
+      ok: true,
+      worker: {
+        id: worker.id,
+        name: `${worker.firstName} ${worker.lastName}`.trim(),
+        accessLevel,
+      },
+      redirectTo,
     });
 
     res.cookies.set("furlads_session", JSON.stringify({
-      userId: worker.id,
-      role: worker.accessLevel || "worker",
+      workerId: worker.id,
+      workerName: `${worker.firstName} ${worker.lastName}`.trim(),
+      workerAccessLevel: accessLevel,
     }), {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
       path: "/",
+      maxAge: 60 * 60 * 24 * 30,
     });
 
     return res;
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  } catch (error) {
+    console.error("LOGIN_ROUTE_ERROR", error);
+    return NextResponse.json(
+      { ok: false, error: "Server error." },
+      { status: 500 }
+    );
   }
 }

@@ -20,8 +20,15 @@ export default function LoginPage() {
         body: JSON.stringify({ phone, password }),
       });
 
-      if (!res.ok) {
-        throw new Error("Invalid login details");
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Invalid login details");
+      }
+
+      if (data?.redirectTo) {
+        window.location.href = data.redirectTo;
+        return;
       }
 
       window.location.href = "/today";
@@ -32,13 +39,12 @@ export default function LoginPage() {
     }
   }
 
-  // ✅ FIXED FACE ID LOGIN
   async function handleQuickLogin() {
     setLoading(true);
     setError("");
 
     try {
-      if (!phone) {
+      if (!phone.trim()) {
         throw new Error("Enter your phone number first");
       }
 
@@ -50,14 +56,14 @@ export default function LoginPage() {
         body: JSON.stringify({ phone }),
       });
 
+      const startData = await startRes.json().catch(() => null);
+
       if (!startRes.ok) {
-        throw new Error("No Face ID set up for this user");
+        throw new Error(startData?.error || "Quick login not available");
       }
 
-      const { options } = await startRes.json();
-
       const credential = await navigator.credentials.get({
-        publicKey: options,
+        publicKey: startData.options,
       });
 
       const verifyRes = await fetch("/api/auth/webauthn/login/finish", {
@@ -68,8 +74,15 @@ export default function LoginPage() {
         body: JSON.stringify(credential),
       });
 
-      if (!verifyRes.ok) {
-        throw new Error("Face ID failed");
+      const verifyData = await verifyRes.json().catch(() => null);
+
+      if (!verifyRes.ok || !verifyData?.ok) {
+        throw new Error(verifyData?.error || "Face ID failed");
+      }
+
+      if (verifyData?.redirectTo) {
+        window.location.href = verifyData.redirectTo;
+        return;
       }
 
       window.location.href = "/today";
@@ -80,38 +93,44 @@ export default function LoginPage() {
     }
   }
 
-  // ✅ TEMP: ENABLE FACE ID (setup only)
   async function handleEnableFaceId() {
     try {
-      if (!phone) {
-        alert("Enter phone number first");
+      if (!phone.trim() || !password) {
+        alert("Enter phone number and password first");
         return;
       }
 
-      // get worker by phone
-      const resUser = await fetch("/api/auth/login", {
+      const loginRes = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, password }),
       });
 
-      if (!resUser.ok) {
-        alert("Login first to enable Face ID");
+      const loginData = await loginRes.json().catch(() => null);
+
+      if (!loginRes.ok || !loginData?.ok) {
+        alert(loginData?.error || "Login first to enable Face ID");
         return;
       }
 
-      const startRes = await fetch("/api/auth/webauthn/register", {
+      const registerRes = await fetch("/api/auth/webauthn/register", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone }),
       });
 
-      const options = await startRes.json();
+      const registerData = await registerRes.json().catch(() => null);
+
+      if (!registerRes.ok) {
+        alert(registerData?.error || "Could not start Face ID setup");
+        return;
+      }
 
       await navigator.credentials.create({
-        publicKey: options,
+        publicKey: registerData.options,
       });
 
-      alert("Face ID enabled on this device ✅");
+      alert("Face ID enabled on this device");
     } catch (err) {
       console.error(err);
       alert("Failed to enable Face ID");
@@ -131,7 +150,6 @@ export default function LoginPage() {
       <div style={{ width: "100%", maxWidth: 400 }}>
         <h1 style={{ marginBottom: 20 }}>Furlads Login</h1>
 
-        {/* 🔥 Quick Login */}
         <button
           onClick={handleQuickLogin}
           disabled={loading}
@@ -154,7 +172,6 @@ export default function LoginPage() {
           <small>or use phone & password</small>
         </div>
 
-        {/* 🔐 Password Login */}
         <form onSubmit={handlePasswordLogin}>
           <input
             type="tel"
@@ -202,7 +219,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* ✅ TEMP BUTTON (REMOVE LATER) */}
         <button
           onClick={handleEnableFaceId}
           style={{
@@ -217,9 +233,7 @@ export default function LoginPage() {
           Enable Face ID (Setup)
         </button>
 
-        {error && (
-          <p style={{ color: "red", marginTop: 10 }}>{error}</p>
-        )}
+        {error && <p style={{ color: "red", marginTop: 10 }}>{error}</p>}
       </div>
     </main>
   );
