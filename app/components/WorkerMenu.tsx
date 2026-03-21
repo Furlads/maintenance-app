@@ -61,6 +61,16 @@ export default function WorkerMenu() {
     borderBottom: '1px solid #eee'
   }
 
+  const sectionLabelStyle: React.CSSProperties = {
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: '#777',
+    marginTop: 14,
+    marginBottom: 4
+  }
+
   return (
     <div
       ref={menuRef}
@@ -93,7 +103,7 @@ export default function WorkerMenu() {
             position: 'absolute',
             top: 64,
             right: 0,
-            width: 270,
+            width: 280,
             maxWidth: 'calc(100vw - 32px)',
             background: '#fff',
             border: '1px solid #ddd',
@@ -131,6 +141,8 @@ export default function WorkerMenu() {
             </div>
           </div>
 
+          <div style={sectionLabelStyle}>Work</div>
+
           <a href="/today" style={linkStyle} onClick={() => setOpen(false)}>
             Today
           </a>
@@ -141,6 +153,12 @@ export default function WorkerMenu() {
 
           <a href="/jobs" style={linkStyle} onClick={() => setOpen(false)}>
             Jobs
+          </a>
+
+          <div style={sectionLabelStyle}>Personal</div>
+
+          <a href="/worker/time-off" style={linkStyle} onClick={() => setOpen(false)}>
+            My Time Off
           </a>
 
           <a href="/menu/change-pin" style={linkStyle} onClick={() => setOpen(false)}>
