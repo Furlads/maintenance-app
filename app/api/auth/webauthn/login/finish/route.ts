@@ -6,16 +6,55 @@ import { prisma } from "@/lib/prisma";
 const rpID = process.env.WEBAUTHN_RP_ID!;
 const origin = process.env.WEBAUTHN_ORIGIN!;
 
-function getRedirectPath(accessLevel: string | null | undefined) {
-  return String(accessLevel || "").toLowerCase() === "admin"
-    ? "/admin"
-    : "/today";
+function normalise(value: string | null | undefined) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isTrevLogin(worker: {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+}) {
+  const firstName = normalise(worker.firstName);
+  const lastName = normalise(worker.lastName);
+  const email = normalise(worker.email);
+
+  if (firstName === "trevor" && lastName === "fudger") return true;
+  if (firstName === "trev" && lastName === "fudger") return true;
+  if (email.includes("trevor.fudger")) return true;
+
+  return false;
+}
+
+function getRedirectPath(worker: {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  accessLevel?: string | null | undefined;
+}) {
+  if (isTrevLogin(worker)) {
+    return "/trev";
+  }
+
+  const accessLevel = normalise(worker.accessLevel);
+
+  if (
+    accessLevel === "admin" ||
+    accessLevel === "office" ||
+    accessLevel === "manager" ||
+    accessLevel === "owner"
+  ) {
+    return "/admin";
+  }
+
+  return "/today";
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const challenge = cookies().get("furlads_webauthn_auth_challenge")?.value;
+    const cookieStore = await cookies();
+    const challenge = cookieStore.get("furlads_webauthn_auth_challenge")?.value;
     const credentialID = String(body?.id || "").trim();
 
     if (!credentialID) {
@@ -77,7 +116,7 @@ export async function POST(req: Request) {
       },
     });
 
-    cookies().set("furlads_webauthn_auth_challenge", "", {
+    cookieStore.set("furlads_webauthn_auth_challenge", "", {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
@@ -86,7 +125,7 @@ export async function POST(req: Request) {
     });
 
     const accessLevel = credential.worker.accessLevel || "worker";
-    const redirectTo = getRedirectPath(accessLevel);
+    const redirectTo = getRedirectPath(credential.worker);
 
     const res = NextResponse.json({
       ok: true,

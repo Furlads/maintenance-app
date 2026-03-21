@@ -2,8 +2,48 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
-function getRedirectPath(accessLevel: string | null | undefined) {
-  return String(accessLevel || "").toLowerCase() === "admin" ? "/admin" : "/today";
+function normalise(value: string | null | undefined) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isTrevLogin(worker: {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+}) {
+  const firstName = normalise(worker.firstName);
+  const lastName = normalise(worker.lastName);
+  const email = normalise(worker.email);
+
+  if (firstName === "trevor" && lastName === "fudger") return true;
+  if (firstName === "trev" && lastName === "fudger") return true;
+  if (email.includes("trevor.fudger")) return true;
+
+  return false;
+}
+
+function getRedirectPath(worker: {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  accessLevel?: string | null | undefined;
+}) {
+  if (isTrevLogin(worker)) {
+    return "/trev";
+  }
+
+  const accessLevel = normalise(worker.accessLevel);
+
+  if (
+    accessLevel === "admin" ||
+    accessLevel === "office" ||
+    accessLevel === "manager" ||
+    accessLevel === "owner"
+  ) {
+    return "/admin";
+  }
+
+  return "/today";
 }
 
 function normalisePhone(value: string) {
@@ -96,7 +136,7 @@ export async function POST(req: Request) {
     const accessLevel = worker.accessLevel || "worker";
     const redirectTo = worker.mustChangePassword
       ? "/change-password"
-      : getRedirectPath(accessLevel);
+      : getRedirectPath(worker);
 
     console.log("LOGIN_SUCCESS", {
       workerId: worker.id,
