@@ -620,18 +620,45 @@ export default async function TrevPage() {
         },
       },
     },
-    include: {
-      customer: true,
+    select: {
+      id: true,
+      title: true,
+      jobType: true,
+      status: true,
+      visitDate: true,
+      startTime: true,
+      durationMinutes: true,
+      address: true,
+      notes: true,
+      createdAt: true,
+      arrivedAt: true,
+      pausedAt: true,
+      finishedAt: true,
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          address: true,
+          postcode: true,
+        },
+      },
       assignments: {
-        include: {
-          worker: true,
+        select: {
+          id: true,
+          workerId: true,
+          worker: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
         },
       },
     },
-    orderBy: [
-      { startTime: "asc" },
-      { createdAt: "asc" },
-    ],
+    orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
   })
 
   const myJobs: JobCard[] = myJobsRaw
@@ -657,11 +684,41 @@ export default async function TrevPage() {
         },
         include: {
           job: {
-            include: {
-              customer: true,
+            select: {
+              id: true,
+              title: true,
+              jobType: true,
+              status: true,
+              visitDate: true,
+              startTime: true,
+              durationMinutes: true,
+              address: true,
+              notes: true,
+              createdAt: true,
+              arrivedAt: true,
+              pausedAt: true,
+              finishedAt: true,
+              customer: {
+                select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                  email: true,
+                  address: true,
+                  postcode: true,
+                },
+              },
               assignments: {
-                include: {
-                  worker: true,
+                select: {
+                  id: true,
+                  workerId: true,
+                  worker: {
+                    select: {
+                      id: true,
+                      firstName: true,
+                      lastName: true,
+                    },
+                  },
                 },
               },
             },
