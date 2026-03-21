@@ -703,6 +703,24 @@ function normaliseScheduleState(params: {
   }
 }
 
+function shouldTriggerSchedulerRepair(body: Record<string, unknown>, existingAssignedWorkerIds: number[], nextAssignedWorkerIds: number[]) {
+  const changedAssignedWorkers =
+    existingAssignedWorkerIds.length !== nextAssignedWorkerIds.length ||
+    existingAssignedWorkerIds.some((workerId, index) => workerId !== nextAssignedWorkerIds[index])
+
+  return (
+    'visitDate' in body ||
+    'startTime' in body ||
+    'durationMinutes' in body ||
+    'durationMins' in body ||
+    'assignedTo' in body ||
+    'status' in body ||
+    'action' in body ||
+    body.toggleStatus === true ||
+    changedAssignedWorkers
+  )
+}
+
 export async function GET(_: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
@@ -1015,6 +1033,14 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
       const { notes, notesLog } = await buildNotesLog(jobId)
 
+      try {
+        if (shouldTriggerSchedulerRepair(body, existing.assignments.map((assignment) => assignment.workerId), proposedAssignedWorkerIds)) {
+          await runAutoScheduler()
+        }
+      } catch (schedulerError) {
+        console.error('Auto scheduler failed after job cancel:', schedulerError)
+      }
+
       return NextResponse.json({
         ...updated,
         jobNotes: notes,
@@ -1050,6 +1076,14 @@ export async function PATCH(req: Request, ctx: Ctx) {
       })
 
       const { notes, notesLog } = await buildNotesLog(jobId)
+
+      try {
+        if (shouldTriggerSchedulerRepair(body, existing.assignments.map((assignment) => assignment.workerId), proposedAssignedWorkerIds)) {
+          await runAutoScheduler()
+        }
+      } catch (schedulerError) {
+        console.error('Auto scheduler failed after job archive:', schedulerError)
+      }
 
       return NextResponse.json({
         ...updated,
@@ -1311,28 +1345,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
       })
     }
 
-    const assignmentChanged = body.assignedTo !== undefined
-
-    const needsAutoPlacement =
-      updated.status !== 'done' &&
-      updated.status !== 'cancelled' &&
-      updated.status !== 'archived' &&
-      updated.assignments.length > 0 &&
-      (
-        assignmentChanged ||
-        updated.visitDate === null ||
-        updated.startTime === null ||
-        updated.status === 'unscheduled'
-      )
-
-    if (needsAutoPlacement) {
-      try {
-        await runAutoScheduler()
-      } catch (schedulerError) {
-        console.error('Auto scheduler trigger failed after job update:', schedulerError)
-      }
-    }
-
     const refreshed = await prisma.job.findUnique({
       where: { id: jobId },
       include: {
@@ -1348,6 +1360,21 @@ export async function PATCH(req: Request, ctx: Ctx) {
     })
 
     const { notes, notesLog } = await buildNotesLog(jobId)
+
+    try {
+      const existingAssignedWorkerIds = existing.assignments
+        .map((assignment) => assignment.workerId)
+        .sort((a, b) => a - b)
+      const nextAssignedWorkerIds = proposedAssignedWorkerIds
+        .slice()
+        .sort((a, b) => a - b)
+
+      if (shouldTriggerSchedulerRepair(body, existingAssignedWorkerIds, nextAssignedWorkerIds)) {
+        await runAutoScheduler()
+      }
+    } catch (schedulerError) {
+      console.error('Auto scheduler failed after job patch:', schedulerError)
+    }
 
     return NextResponse.json({
       ...(refreshed ?? updated),
