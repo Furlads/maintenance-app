@@ -1,6 +1,7 @@
 import { generateAuthenticationOptions } from "@simplewebauthn/server";
-import { prisma } from "@/lib/prisma";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 const rpID = process.env.WEBAUTHN_RP_ID!;
 
@@ -36,10 +37,21 @@ export async function POST(req: Request) {
     const options = await generateAuthenticationOptions({
       rpID,
       allowCredentials: worker.webauthnCredentials.map((cred) => ({
-        id: Buffer.from(cred.id, "base64url"),
+        id: cred.id,
         type: "public-key",
+        transports: cred.transports
+          ? (cred.transports.split(",").filter(Boolean) as AuthenticatorTransport[])
+          : undefined,
       })),
       userVerification: "preferred",
+    });
+
+    cookies().set("furlads_webauthn_auth_challenge", options.challenge, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 10,
     });
 
     return NextResponse.json({

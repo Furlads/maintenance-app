@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  startAuthentication,
+  startRegistration,
+} from "@simplewebauthn/browser";
 
 type LoginResponse = {
   ok?: boolean;
@@ -11,11 +15,6 @@ type LoginResponse = {
     name: string;
     accessLevel: string;
   };
-};
-
-type RegisterResponse = {
-  options?: PublicKeyCredentialCreationOptions;
-  error?: string;
 };
 
 export default function LoginPage() {
@@ -101,36 +100,32 @@ export default function LoginPage() {
 
       const startData = await startRes.json().catch(() => null);
 
-      if (!startRes.ok || !startData?.options) {
+      if (!startRes.ok || !startData?.ok || !startData?.options) {
         throw new Error(startData?.error || "Quick login not available");
       }
 
-      const credential = (await navigator.credentials.get({
-        publicKey: startData.options,
-      })) as PublicKeyCredential | null;
+      const authenticationResponse = await startAuthentication({
+        optionsJSON: startData.options,
+      });
 
-      if (!credential) {
-        throw new Error("Quick login cancelled");
-      }
-
-      const verifyRes = await fetch("/api/auth/webauthn/login/finish", {
+      const finishRes = await fetch("/api/auth/webauthn/login/finish", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(credential),
+        body: JSON.stringify(authenticationResponse),
       });
 
-      const verifyData = await verifyRes.json().catch(() => null);
+      const finishData = await finishRes.json().catch(() => null);
 
-      if (!verifyRes.ok || !verifyData?.ok) {
-        throw new Error(verifyData?.error || "Face ID failed");
+      if (!finishRes.ok || !finishData?.ok) {
+        throw new Error(finishData?.error || "Face ID failed");
       }
 
       cleanupSelectedWorkerStorage();
 
-      if (verifyData?.redirectTo) {
-        window.location.href = verifyData.redirectTo;
+      if (finishData?.redirectTo) {
+        window.location.href = finishData.redirectTo;
         return;
       }
 
@@ -147,7 +142,7 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const registerRes = await fetch("/api/auth/webauthn/register", {
+      const startRes = await fetch("/api/auth/webauthn/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -155,19 +150,15 @@ export default function LoginPage() {
         body: JSON.stringify({ phone: postLoginWorkerPhone }),
       });
 
-      const registerData: RegisterResponse | null = await registerRes.json().catch(() => null);
+      const startData = await startRes.json().catch(() => null);
 
-      if (!registerRes.ok || !registerData?.options) {
-        throw new Error(registerData?.error || "Could not start Face ID setup");
+      if (!startRes.ok || !startData?.ok || !startData?.options) {
+        throw new Error(startData?.error || "Could not start Face ID setup");
       }
 
-      const credential = await navigator.credentials.create({
-        publicKey: registerData.options,
+      const registrationResponse = await startRegistration({
+        optionsJSON: startData.options,
       });
-
-      if (!credential) {
-        throw new Error("Face ID setup cancelled");
-      }
 
       const finishRes = await fetch("/api/auth/webauthn/register", {
         method: "PUT",
@@ -176,7 +167,7 @@ export default function LoginPage() {
         },
         body: JSON.stringify({
           phone: postLoginWorkerPhone,
-          credential,
+          credential: registrationResponse,
         }),
       });
 

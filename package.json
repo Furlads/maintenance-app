@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.2",
+    "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.0",
     "@vercel/blob": "^2.3.1",
     "bcryptjs": "^3.0.3",

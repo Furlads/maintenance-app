@@ -1,6 +1,7 @@
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
-import { prisma } from "@/lib/prisma";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 const rpID = process.env.WEBAUTHN_RP_ID!;
 const origin = process.env.WEBAUTHN_ORIGIN!;
@@ -14,12 +15,19 @@ function getRedirectPath(accessLevel: string | null | undefined) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-
-    const credentialID = body?.id;
+    const challenge = cookies().get("furlads_webauthn_auth_challenge")?.value;
+    const credentialID = String(body?.id || "").trim();
 
     if (!credentialID) {
       return NextResponse.json(
         { ok: false, error: "Missing credential ID" },
+        { status: 400 }
+      );
+    }
+
+    if (!challenge) {
+      return NextResponse.json(
+        { ok: false, error: "Login session expired. Try again." },
         { status: 400 }
       );
     }
@@ -42,12 +50,16 @@ export async function POST(req: Request) {
 
     const verification = await verifyAuthenticationResponse({
       response: body,
+      expectedChallenge: challenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
-      authenticator: {
-        credentialID: Buffer.from(credential.id, "base64url"),
-        credentialPublicKey: Buffer.from(credential.publicKey, "base64"),
+      credential: {
+        id: credential.id,
+        publicKey: Uint8Array.from(Buffer.from(credential.publicKey, "base64")),
         counter: credential.counter,
+        transports: credential.transports
+          ? (credential.transports.split(",").filter(Boolean) as AuthenticatorTransport[])
+          : undefined,
       },
     });
 
@@ -63,6 +75,14 @@ export async function POST(req: Request) {
       data: {
         counter: verification.authenticationInfo.newCounter,
       },
+    });
+
+    cookies().set("furlads_webauthn_auth_challenge", "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
     });
 
     const accessLevel = credential.worker.accessLevel || "worker";

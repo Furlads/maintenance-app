@@ -2,8 +2,9 @@ import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
-import { prisma } from "@/lib/prisma";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 const rpName = "Furlads";
 const rpID = process.env.WEBAUTHN_RP_ID!;
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
     const options = await generateRegistrationOptions({
       rpName,
       rpID,
-      userID: String(worker.id),
+      userID: Uint8Array.from(Buffer.from(String(worker.id), "utf8")),
       userName: worker.phone || `${worker.firstName} ${worker.lastName}`.trim(),
       userDisplayName: `${worker.firstName} ${worker.lastName}`.trim(),
       attestationType: "none",
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
         residentKey: "preferred",
         userVerification: "preferred",
       },
+      supportedAlgorithmIDs: [-7, -257],
       excludeCredentials: worker.webauthnCredentials.map((cred) => ({
         id: cred.id,
         type: "public-key",
@@ -56,6 +58,14 @@ export async function POST(req: Request) {
           ? (cred.transports.split(",").filter(Boolean) as AuthenticatorTransport[])
           : undefined,
       })),
+    });
+
+    cookies().set("furlads_webauthn_reg_challenge", options.challenge, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 10,
     });
 
     return NextResponse.json({ ok: true, options });
@@ -73,10 +83,18 @@ export async function PUT(req: Request) {
     const body = await req.json();
     const phone = String(body?.phone || "").trim();
     const credential = body?.credential;
+    const challenge = cookies().get("furlads_webauthn_reg_challenge")?.value;
 
     if (!phone || !credential) {
       return NextResponse.json(
         { ok: false, error: "Phone and credential are required." },
+        { status: 400 }
+      );
+    }
+
+    if (!challenge) {
+      return NextResponse.json(
+        { ok: false, error: "Registration session expired. Try again." },
         { status: 400 }
       );
     }
@@ -97,6 +115,7 @@ export async function PUT(req: Request) {
 
     const verification = await verifyRegistrationResponse({
       response: credential,
+      expectedChallenge: challenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
     });
@@ -108,27 +127,44 @@ export async function PUT(req: Request) {
       );
     }
 
-    const { credentialID, credentialPublicKey, counter } = verification.registrationInfo;
+    const {
+      credential: newCredential,
+      credentialDeviceType,
+      credentialBackedUp,
+    } = verification.registrationInfo;
 
     await prisma.webAuthnCredential.upsert({
       where: {
-        id: Buffer.from(credentialID).toString("base64url"),
+        id: newCredential.id,
       },
       update: {
-        publicKey: Buffer.from(credentialPublicKey).toString("base64"),
-        counter,
-      },
-      create: {
-        id: Buffer.from(credentialID).toString("base64url"),
-        workerId: worker.id,
-        publicKey: Buffer.from(credentialPublicKey).toString("base64"),
-        counter,
-        deviceType: "singleDevice",
-        backedUp: false,
-        transports: Array.isArray(credential.response?.transports)
-          ? credential.response.transports.join(",")
+        publicKey: Buffer.from(newCredential.publicKey).toString("base64"),
+        counter: newCredential.counter,
+        deviceType: credentialDeviceType,
+        backedUp: credentialBackedUp,
+        transports: Array.isArray(newCredential.transports)
+          ? newCredential.transports.join(",")
           : null,
       },
+      create: {
+        id: newCredential.id,
+        workerId: worker.id,
+        publicKey: Buffer.from(newCredential.publicKey).toString("base64"),
+        counter: newCredential.counter,
+        deviceType: credentialDeviceType,
+        backedUp: credentialBackedUp,
+        transports: Array.isArray(newCredential.transports)
+          ? newCredential.transports.join(",")
+          : null,
+      },
+    });
+
+    cookies().set("furlads_webauthn_reg_challenge", "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
     });
 
     return NextResponse.json({ ok: true });
