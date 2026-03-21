@@ -415,9 +415,7 @@ async function markJobAttention(params: {
   await prisma.job.update({
     where: { id: params.jobId },
     data: {
-      needsSchedulingAttention: true,
-      schedulingAttentionReason: params.reason,
-      schedulingLastAttemptAt: new Date(),
+      status: 'unscheduled',
     },
   })
 }
@@ -433,9 +431,6 @@ async function clearJobAttentionAndPlace(params: {
       visitDate: params.visitDate,
       startTime: params.startTime,
       status: 'todo',
-      needsSchedulingAttention: false,
-      schedulingAttentionReason: null,
-      schedulingLastAttemptAt: new Date(),
     },
   })
 }
@@ -451,9 +446,6 @@ async function markJobUnplacedOnWorkerDay(params: {
       visitDate: params.visitDate,
       startTime: null,
       status: 'unscheduled',
-      needsSchedulingAttention: true,
-      schedulingAttentionReason: params.reason,
-      schedulingLastAttemptAt: new Date(),
     },
   })
 }
@@ -698,10 +690,6 @@ export async function runLocalWorkerDayRepair(params: {
         },
         {
           visitDate: null,
-          needsSchedulingAttention: true,
-        },
-        {
-          visitDate: null,
           status: 'unscheduled',
         },
       ],
@@ -739,7 +727,6 @@ export async function runLocalWorkerDayRepair(params: {
       data: {
         visitDate: dayStart,
         startTime: null,
-        schedulingLastAttemptAt: new Date(),
       },
     })
   }
@@ -1221,8 +1208,6 @@ export async function runAutoScheduler(
     .map((job) => job.id)
 
   if (remainingJobIds.length > 0) {
-    const now = new Date()
-
     for (const job of unscheduledJobs.filter((item) => remainingJobIds.includes(item.id))) {
       const reason =
         job.assignments.length === 0
@@ -1235,13 +1220,9 @@ export async function runAutoScheduler(
             ? 'Quote jobs can only be scheduled with Trevor'
             : 'Unscheduled after full scheduler pass'
 
-      await prisma.job.update({
-        where: { id: job.id },
-        data: {
-          needsSchedulingAttention: true,
-          schedulingAttentionReason: reason,
-          schedulingLastAttemptAt: now,
-        },
+      await markJobAttention({
+        jobId: job.id,
+        reason,
       })
     }
   }
