@@ -13,10 +13,22 @@ type ScheduleJob = {
   status: string
 }
 
+type ScheduleAvailabilityBlock = {
+  id: number
+  workerId: number
+  title: string
+  startTime: string | null
+  endTime: string | null
+  isFullDay: boolean
+  notes: string | null
+  source: string
+}
+
 type ScheduleWorker = {
   id: number
   name: string
   jobs: ScheduleJob[]
+  availabilityBlocks: ScheduleAvailabilityBlock[]
 }
 
 type ScheduleDayResponse = {
@@ -68,7 +80,7 @@ export async function GET(req: NextRequest) {
 
     const { start, end } = getDayRange(dateParam)
 
-    const [activeWorkers, jobsForDay] = await Promise.all([
+    const [activeWorkers, jobsForDay, blocksForDay] = await Promise.all([
       prisma.worker.findMany({
         where: {
           active: true,
@@ -116,6 +128,29 @@ export async function GET(req: NextRequest) {
           },
         },
       }),
+
+      prisma.workerAvailabilityBlock.findMany({
+        where: {
+          active: true,
+          startDate: {
+            lte: end,
+          },
+          endDate: {
+            gte: start,
+          },
+        },
+        orderBy: [{ workerId: "asc" }, { startDate: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          workerId: true,
+          title: true,
+          startTime: true,
+          endTime: true,
+          isFullDay: true,
+          notes: true,
+          source: true,
+        },
+      }),
     ])
 
     const workersMap = new Map<number, ScheduleWorker>()
@@ -125,6 +160,7 @@ export async function GET(req: NextRequest) {
         id: worker.id,
         name: `${worker.firstName ?? ""} ${worker.lastName ?? ""}`.trim(),
         jobs: [],
+        availabilityBlocks: [],
       })
     }
 
@@ -152,6 +188,25 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    for (const block of blocksForDay) {
+      const workerBucket = workersMap.get(block.workerId)
+
+      if (!workerBucket) {
+        continue
+      }
+
+      workerBucket.availabilityBlocks.push({
+        id: block.id,
+        workerId: block.workerId,
+        title: block.title || "Unavailable",
+        startTime: block.startTime,
+        endTime: block.endTime,
+        isFullDay: block.isFullDay,
+        notes: block.notes ?? null,
+        source: block.source || "time_off_request",
+      })
+    }
+
     const workers: ScheduleWorker[] = Array.from(workersMap.values()).map(
       (worker) => ({
         ...worker,
@@ -161,6 +216,15 @@ export async function GET(req: NextRequest) {
 
           if (timeA < timeB) return -1
           if (timeA > timeB) return 1
+
+          return a.id - b.id
+        }),
+        availabilityBlocks: [...worker.availabilityBlocks].sort((a, b) => {
+          const aStart = a.isFullDay ? "00:00" : normaliseStartTimeForSort(a.startTime)
+          const bStart = b.isFullDay ? "00:00" : normaliseStartTimeForSort(b.startTime)
+
+          if (aStart < bStart) return -1
+          if (aStart > bStart) return 1
 
           return a.id - b.id
         }),

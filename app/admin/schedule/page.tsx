@@ -15,10 +15,22 @@ type ScheduleJob = {
   status: string;
 };
 
+type ScheduleAvailabilityBlock = {
+  id: number;
+  workerId: number;
+  title: string;
+  startTime: string | null;
+  endTime: string | null;
+  isFullDay: boolean;
+  notes: string | null;
+  source: string;
+};
+
 type ScheduleWorker = {
   id: number;
   name: string;
   jobs: ScheduleJob[];
+  availabilityBlocks: ScheduleAvailabilityBlock[];
 };
 
 type ScheduleResponse = {
@@ -111,6 +123,26 @@ function formatTimeRange(startTime: string | null, durationMinutes: number | nul
   if (start === null) return "No time set";
 
   return `${minutesToTime(start)} → ${minutesToTime(start + duration)}`;
+}
+
+function formatBlockTimeRange(block: ScheduleAvailabilityBlock) {
+  if (block.isFullDay) {
+    return "Full day";
+  }
+
+  if (block.startTime && block.endTime) {
+    return `${block.startTime} → ${block.endTime}`;
+  }
+
+  if (block.startTime) {
+    return `${block.startTime} onwards`;
+  }
+
+  if (block.endTime) {
+    return `Until ${block.endTime}`;
+  }
+
+  return "Blocked time";
 }
 
 function formatStatus(status: string) {
@@ -366,6 +398,44 @@ function getCardColor(job: ScheduleJob): {
   };
 }
 
+function getAvailabilityBlockColor(block: ScheduleAvailabilityBlock): {
+  background: string;
+  border: string;
+  text: string;
+} {
+  const title = String(block.title || "").toLowerCase();
+
+  if (title.includes("holiday")) {
+    return {
+      background: "rgba(239, 68, 68, 0.12)",
+      border: "#fca5a5",
+      text: "#991b1b",
+    };
+  }
+
+  if (title.includes("sick")) {
+    return {
+      background: "rgba(249, 115, 22, 0.12)",
+      border: "#fdba74",
+      text: "#9a3412",
+    };
+  }
+
+  if (title.includes("late start") || title.includes("early finish") || title.includes("appointment")) {
+    return {
+      background: "rgba(168, 85, 247, 0.12)",
+      border: "#d8b4fe",
+      text: "#7e22ce",
+    };
+  }
+
+  return {
+    background: "rgba(107, 114, 128, 0.12)",
+    border: "#d4d4d8",
+    text: "#3f3f46",
+  };
+}
+
 function sortUnscheduledJobs(a: JobsApiJob, b: JobsApiJob) {
   const maintenanceA = String(a.jobType || "").toLowerCase().includes("maint")
     ? 0
@@ -403,6 +473,14 @@ function sortWorkerJobs(a: ScheduleJob, b: ScheduleJob) {
 
   if (aDuration !== bDuration) return aDuration - bDuration;
 
+  return a.id - b.id;
+}
+
+function sortAvailabilityBlocks(a: ScheduleAvailabilityBlock, b: ScheduleAvailabilityBlock) {
+  const aStart = a.isFullDay ? PREP_START_MINUTES : parseTimeToMinutes(a.startTime) ?? PREP_START_MINUTES;
+  const bStart = b.isFullDay ? PREP_START_MINUTES : parseTimeToMinutes(b.startTime) ?? PREP_START_MINUTES;
+
+  if (aStart !== bStart) return aStart - bStart;
   return a.id - b.id;
 }
 
@@ -479,8 +557,19 @@ function isOffHours(job: ScheduleJob) {
   return start < WORK_START_MINUTES || end > DAY_END_MINUTES;
 }
 
+function getBlockStartMinutes(block: ScheduleAvailabilityBlock) {
+  if (block.isFullDay) return PREP_START_MINUTES;
+  return parseTimeToMinutes(block.startTime) ?? PREP_START_MINUTES;
+}
+
+function getBlockEndMinutes(block: ScheduleAvailabilityBlock) {
+  if (block.isFullDay) return DAY_END_MINUTES;
+  return parseTimeToMinutes(block.endTime) ?? DAY_END_MINUTES;
+}
+
 function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
   const sortedJobs = [...worker.jobs].sort(sortWorkerJobs);
+  const sortedBlocks = [...(worker.availabilityBlocks ?? [])].sort(sortAvailabilityBlocks);
   const timeline = buildTimelineLanes(sortedJobs);
   const laneHeight = 52;
   const timelineHeight = 38 + Math.max(timeline.laneCount, 1) * laneHeight + 14;
@@ -558,6 +647,51 @@ function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
       >
         Prep 08:30–09:00
       </div>
+
+      {sortedBlocks.map((block) => {
+        const startMinutes = getBlockStartMinutes(block);
+        const endMinutes = getBlockEndMinutes(block);
+        const left = getTimelineLeft(startMinutes);
+        const width = getTimelineWidth(startMinutes, endMinutes);
+        const blockColor = getAvailabilityBlockColor(block);
+
+        return (
+          <div
+            key={`block-${block.id}`}
+            title={`${block.title} • ${formatBlockTimeRange(block)}${block.notes ? ` • ${block.notes}` : ""}`}
+            style={{
+              position: "absolute",
+              left: `${left}%`,
+              width: `${width}%`,
+              top: 38,
+              bottom: 12,
+              background: blockColor.background,
+              border: `1px dashed ${blockColor.border}`,
+              borderRadius: 10,
+              boxSizing: "border-box",
+              zIndex: 1,
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: 8,
+                left: 8,
+                right: 8,
+                fontSize: 11,
+                fontWeight: 800,
+                color: blockColor.text,
+                overflow: "hidden",
+                whiteSpace: "nowrap",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {block.title} • {formatBlockTimeRange(block)}
+            </div>
+          </div>
+        );
+      })}
 
       {timeline.jobs.map((job) => {
         const left = getTimelineLeft(job.startMinutes);
@@ -643,7 +777,7 @@ function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
         </div>
       )}
 
-      {worker.jobs.length === 0 && (
+      {worker.jobs.length === 0 && worker.availabilityBlocks.length === 0 && (
         <div
           style={{
             position: "absolute",
@@ -673,6 +807,7 @@ export default function SchedulePage() {
     return (scheduleData?.workers ?? []).map((worker) => ({
       ...worker,
       jobs: [...worker.jobs].sort(sortWorkerJobs),
+      availabilityBlocks: [...(worker.availabilityBlocks ?? [])].sort(sortAvailabilityBlocks),
     }));
   }, [scheduleData]);
 
@@ -700,6 +835,13 @@ export default function SchedulePage() {
           (jobTotal, job) => jobTotal + (job.durationMinutes ?? 60),
           0
         ),
+      0
+    );
+  }, [workers]);
+
+  const totalAvailabilityBlocks = useMemo(() => {
+    return workers.reduce(
+      (total, worker) => total + (worker.availabilityBlocks?.length ?? 0),
       0
     );
   }, [workers]);
@@ -984,6 +1126,11 @@ export default function SchedulePage() {
             value={`${(totalScheduledMinutes / 60).toFixed(1)}h`}
           />
           <StatCard
+            label="Blocked periods"
+            value={totalAvailabilityBlocks}
+            accent="#7c3aed"
+          />
+          <StatCard
             label="Needs scheduling"
             value={unscheduledJobs.length}
             accent="#b45309"
@@ -1068,10 +1215,22 @@ export default function SchedulePage() {
                               marginTop: 4,
                               fontSize: 13,
                               color: "#71717a",
+                              display: "flex",
+                              gap: 12,
+                              flexWrap: "wrap",
                             }}
                           >
-                            {worker.jobs.length} job
-                            {worker.jobs.length === 1 ? "" : "s"} scheduled
+                            <span>
+                              {worker.jobs.length} job
+                              {worker.jobs.length === 1 ? "" : "s"} scheduled
+                            </span>
+
+                            {(worker.availabilityBlocks?.length ?? 0) > 0 && (
+                              <span style={{ color: "#7c3aed", fontWeight: 700 }}>
+                                {worker.availabilityBlocks.length} blocked period
+                                {worker.availabilityBlocks.length === 1 ? "" : "s"}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -1087,6 +1246,45 @@ export default function SchedulePage() {
                       </div>
 
                       <WorkerTimeline worker={worker} />
+
+                      {(worker.availabilityBlocks?.length ?? 0) > 0 && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {worker.availabilityBlocks.map((block) => {
+                            const blockColor = getAvailabilityBlockColor(block);
+
+                            return (
+                              <div
+                                key={`summary-block-${worker.id}-${block.id}`}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  borderRadius: 999,
+                                  padding: "6px 10px",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  background: blockColor.background,
+                                  color: blockColor.text,
+                                  border: `1px solid ${blockColor.border}`,
+                                }}
+                                title={block.notes || undefined}
+                              >
+                                <span>{block.title}</span>
+                                <span style={{ opacity: 0.8 }}>
+                                  {formatBlockTimeRange(block)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {worker.jobs.length > 0 && (
                         <div
