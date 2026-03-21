@@ -5,84 +5,130 @@ import { useState } from "react";
 export default function ChangePasswordPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  async function submit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(null);
-    setSaving(true);
+    setLoading(true);
+    setMessage("");
+
+    if (newPassword !== confirmPassword) {
+      setMessage("Passwords do not match");
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "Failed to update password");
 
-      setMsg("✅ Password updated. Redirecting…");
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to change password");
+      }
+
+      setMessage("Password updated successfully");
+
       setTimeout(() => {
-        window.location.href = "/admin";
-      }, 500);
-    } catch (e: any) {
-      setMsg(e?.message || "Failed");
+        window.location.href = "/today";
+      }, 1200);
+    } catch (err: any) {
+      setMessage(err.message);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 520 }}>
-      <h1 style={{ marginBottom: 6 }}>Change password</h1>
-      <p style={{ marginTop: 0, opacity: 0.8 }}>
-        First login requires you to change your password.
-      </p>
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 400 }}>
+        <h1 style={{ marginBottom: 20 }}>Change Password</h1>
 
-      <form onSubmit={submit} style={{ display: "grid", gap: 10 }}>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, opacity: 0.75 }}>Current password</span>
+        <form onSubmit={handleSubmit}>
           <input
+            type="password"
+            placeholder="Current password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
-            type="password"
             required
-            style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd" }}
+            style={{
+              width: "100%",
+              padding: 12,
+              marginBottom: 10,
+              borderRadius: 6,
+              border: "1px solid #ccc",
+            }}
           />
-        </label>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, opacity: 0.75 }}>New password</span>
           <input
+            type="password"
+            placeholder="New password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            type="password"
             required
-            style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd" }}
+            style={{
+              width: "100%",
+              padding: 12,
+              marginBottom: 10,
+              borderRadius: 6,
+              border: "1px solid #ccc",
+            }}
           />
-          <span style={{ fontSize: 12, opacity: 0.65 }}>Minimum 6 characters.</span>
-        </label>
 
-        <button
-          disabled={saving}
-          type="submit"
-          style={{
-            padding: "12px 14px",
-            borderRadius: 10,
-            fontWeight: 800,
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
-          {saving ? "Saving…" : "Update password"}
-        </button>
+          <input
+            type="password"
+            placeholder="Confirm new password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            style={{
+              width: "100%",
+              padding: 12,
+              marginBottom: 10,
+              borderRadius: 6,
+              border: "1px solid #ccc",
+            }}
+          />
 
-        {msg ? (
-          <div style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}>
-            {msg}
-          </div>
-        ) : null}
-      </form>
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: 12,
+              background: "black",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+            }}
+          >
+            {loading ? "Updating..." : "Update Password"}
+          </button>
+        </form>
+
+        {message && (
+          <p style={{ marginTop: 10, color: "red" }}>{message}</p>
+        )}
+      </div>
     </main>
   );
 }
