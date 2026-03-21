@@ -21,6 +21,7 @@ type LoginResponse = {
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
@@ -247,23 +248,49 @@ export default function LoginPage() {
               marginBottom: 10,
               borderRadius: 6,
               border: "1px solid #ccc",
+              boxSizing: "border-box",
             }}
           />
 
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
+          <div
             style={{
-              width: "100%",
-              padding: 12,
+              display: "flex",
+              alignItems: "stretch",
               marginBottom: 10,
-              borderRadius: 6,
-              border: "1px solid #ccc",
+              gap: 8,
             }}
-          />
+          >
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{
+                flex: 1,
+                padding: 12,
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                boxSizing: "border-box",
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              style={{
+                padding: "0 14px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: "#f3f3f3",
+                color: "#111",
+                fontWeight: 700,
+                minWidth: 72,
+              }}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
 
           <button
             type="submit"

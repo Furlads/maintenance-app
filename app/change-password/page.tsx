@@ -12,6 +12,9 @@ export default function ChangePasswordPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [messageColor, setMessageColor] = useState("red");
@@ -85,53 +88,122 @@ export default function ChangePasswordPage() {
         </p>
 
         <form onSubmit={handleSubmit}>
-          <input
-            type="password"
-            placeholder="Current password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            required
+          <div
             style={{
-              width: "100%",
-              padding: 12,
+              display: "flex",
+              alignItems: "stretch",
               marginBottom: 10,
-              borderRadius: 6,
-              border: "1px solid #ccc",
-              boxSizing: "border-box",
+              gap: 8,
             }}
-          />
+          >
+            <input
+              type={showCurrentPassword ? "text" : "password"}
+              placeholder="Current password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+              style={{
+                flex: 1,
+                padding: 12,
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowCurrentPassword((prev) => !prev)}
+              style={{
+                padding: "0 14px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: "#f3f3f3",
+                color: "#111",
+                fontWeight: 700,
+                minWidth: 72,
+              }}
+            >
+              {showCurrentPassword ? "Hide" : "Show"}
+            </button>
+          </div>
 
-          <input
-            type="password"
-            placeholder="New password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            required
+          <div
             style={{
-              width: "100%",
-              padding: 12,
+              display: "flex",
+              alignItems: "stretch",
               marginBottom: 10,
-              borderRadius: 6,
-              border: "1px solid #ccc",
-              boxSizing: "border-box",
+              gap: 8,
             }}
-          />
+          >
+            <input
+              type={showNewPassword ? "text" : "password"}
+              placeholder="New password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              style={{
+                flex: 1,
+                padding: 12,
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowNewPassword((prev) => !prev)}
+              style={{
+                padding: "0 14px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: "#f3f3f3",
+                color: "#111",
+                fontWeight: 700,
+                minWidth: 72,
+              }}
+            >
+              {showNewPassword ? "Hide" : "Show"}
+            </button>
+          </div>
 
-          <input
-            type="password"
-            placeholder="Confirm new password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
+          <div
             style={{
-              width: "100%",
-              padding: 12,
+              display: "flex",
+              alignItems: "stretch",
               marginBottom: 10,
-              borderRadius: 6,
-              border: "1px solid #ccc",
-              boxSizing: "border-box",
+              gap: 8,
             }}
-          />
+          >
+            <input
+              type={showConfirmPassword ? "text" : "password"}
+              placeholder="Confirm new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              style={{
+                flex: 1,
+                padding: 12,
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((prev) => !prev)}
+              style={{
+                padding: "0 14px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: "#f3f3f3",
+                color: "#111",
+                fontWeight: 700,
+                minWidth: 72,
+              }}
+            >
+              {showConfirmPassword ? "Hide" : "Show"}
+            </button>
+          </div>
 
           <button
             type="submit"
