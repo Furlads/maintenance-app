@@ -25,6 +25,16 @@ export default function Page() {
     const savedWorkerName = localStorage.getItem('workerName')
     const savedWorkerAccessLevel = localStorage.getItem('workerAccessLevel')
 
+    const quickLoginEnabled = localStorage.getItem('quickLoginEnabled') === 'true'
+    const quickLoginPhone = localStorage.getItem('quickLoginPhone') || ''
+
+    if (quickLoginEnabled && quickLoginPhone.trim()) {
+      window.location.href = `/login?phone=${encodeURIComponent(
+        quickLoginPhone.trim()
+      )}&autostart=1`
+      return
+    }
+
     if (savedWorkerId && savedWorkerName && savedWorkerAccessLevel) {
       window.location.href = getRedirectPath(savedWorkerAccessLevel)
       return

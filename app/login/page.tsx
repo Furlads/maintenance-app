@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   startAuthentication,
   startRegistration,
@@ -18,6 +18,26 @@ type LoginResponse = {
   };
 };
 
+function saveWorkerSession(worker: {
+  id: number;
+  name: string;
+  accessLevel: string;
+}) {
+  localStorage.setItem("workerId", String(worker.id));
+  localStorage.setItem("workerName", worker.name);
+  localStorage.setItem("workerAccessLevel", worker.accessLevel);
+}
+
+function saveQuickLoginSettings(phone: string) {
+  localStorage.setItem("quickLoginEnabled", "true");
+  localStorage.setItem("quickLoginPhone", phone.trim());
+}
+
+function clearQuickLoginSettings() {
+  localStorage.removeItem("quickLoginEnabled");
+  localStorage.removeItem("quickLoginPhone");
+}
+
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -27,12 +47,20 @@ export default function LoginPage() {
   const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
   const [postLoginWorkerPhone, setPostLoginWorkerPhone] = useState("");
   const [postLoginRedirectTo, setPostLoginRedirectTo] = useState("/today");
+  const [postLoginWorker, setPostLoginWorker] = useState<{
+    id: number;
+    name: string;
+    accessLevel: string;
+  } | null>(null);
+
+  const autoStartedRef = useRef(false);
 
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const phoneFromQuery = params.get("phone");
       const phoneFromStorage = localStorage.getItem("selectedLoginWorkerPhone");
+      const quickLoginPhone = localStorage.getItem("quickLoginPhone");
 
       if (phoneFromQuery && phoneFromQuery.trim()) {
         setPhone(phoneFromQuery.trim());
@@ -41,11 +69,34 @@ export default function LoginPage() {
 
       if (phoneFromStorage && phoneFromStorage.trim()) {
         setPhone(phoneFromStorage.trim());
+        return;
+      }
+
+      if (quickLoginPhone && quickLoginPhone.trim()) {
+        setPhone(quickLoginPhone.trim());
       }
     } catch (err) {
       console.error(err);
     }
   }, []);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const shouldAutostart = params.get("autostart") === "1";
+
+      if (!shouldAutostart) return;
+      if (!phone.trim()) return;
+      if (autoStartedRef.current) return;
+
+      autoStartedRef.current = true;
+
+      void handleQuickLogin();
+    } catch (err) {
+      console.error(err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone]);
 
   function cleanupSelectedWorkerStorage() {
     localStorage.removeItem("selectedLoginWorkerId");
@@ -73,6 +124,10 @@ export default function LoginPage() {
 
       const redirectTo = data?.redirectTo || "/today";
 
+      if (data?.worker) {
+        saveWorkerSession(data.worker);
+      }
+
       if (data?.mustChangePassword) {
         cleanupSelectedWorkerStorage();
         window.location.href = "/change-password";
@@ -81,6 +136,7 @@ export default function LoginPage() {
 
       setPostLoginWorkerPhone(phone.trim());
       setPostLoginRedirectTo(redirectTo);
+      setPostLoginWorker(data?.worker || null);
       setShowPasskeyPrompt(true);
     } catch (err: any) {
       setError(err.message || "Login failed");
@@ -130,6 +186,21 @@ export default function LoginPage() {
         throw new Error(finishData?.error || "Face ID failed");
       }
 
+      const selectedWorkerId = localStorage.getItem("selectedLoginWorkerId");
+      const selectedWorkerName = localStorage.getItem("selectedLoginWorkerName");
+
+      if (selectedWorkerId && selectedWorkerName) {
+        localStorage.setItem("workerId", selectedWorkerId);
+        localStorage.setItem("workerName", selectedWorkerName);
+      }
+
+      if (finishData?.redirectTo) {
+        const accessLevel =
+          finishData.redirectTo === "/admin" ? "admin" : "worker";
+        localStorage.setItem("workerAccessLevel", accessLevel);
+      }
+
+      saveQuickLoginSettings(phone.trim());
       cleanupSelectedWorkerStorage();
 
       if (finishData?.redirectTo) {
@@ -185,6 +256,11 @@ export default function LoginPage() {
         throw new Error(finishData?.error || "Could not save Face ID");
       }
 
+      if (postLoginWorker) {
+        saveWorkerSession(postLoginWorker);
+      }
+
+      saveQuickLoginSettings(postLoginWorkerPhone);
       cleanupSelectedWorkerStorage();
       window.location.href = postLoginRedirectTo;
     } catch (err: any) {
@@ -196,6 +272,11 @@ export default function LoginPage() {
   }
 
   function handleSkipQuickLogin() {
+    if (postLoginWorker) {
+      saveWorkerSession(postLoginWorker);
+    }
+
+    clearQuickLoginSettings();
     cleanupSelectedWorkerStorage();
     window.location.href = postLoginRedirectTo;
   }
