@@ -2,11 +2,30 @@
 
 import { useEffect, useState } from "react";
 
+type LoginResponse = {
+  ok?: boolean;
+  error?: string;
+  redirectTo?: string;
+  worker?: {
+    id: number;
+    name: string;
+    accessLevel: string;
+  };
+};
+
+type RegisterResponse = {
+  options?: PublicKeyCredentialCreationOptions;
+  error?: string;
+};
+
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
+  const [postLoginWorkerPhone, setPostLoginWorkerPhone] = useState("");
+  const [postLoginRedirectTo, setPostLoginRedirectTo] = useState("/today");
 
   useEffect(() => {
     try {
@@ -27,6 +46,12 @@ export default function LoginPage() {
     }
   }, []);
 
+  function cleanupSelectedWorkerStorage() {
+    localStorage.removeItem("selectedLoginWorkerId");
+    localStorage.removeItem("selectedLoginWorkerName");
+    localStorage.removeItem("selectedLoginWorkerPhone");
+  }
+
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -39,18 +64,17 @@ export default function LoginPage() {
         body: JSON.stringify({ phone, password }),
       });
 
-      const data = await res.json().catch(() => null);
+      const data: LoginResponse | null = await res.json().catch(() => null);
 
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error || "Invalid login details");
       }
 
-      if (data?.redirectTo) {
-        window.location.href = data.redirectTo;
-        return;
-      }
+      const redirectTo = data?.redirectTo || "/today";
 
-      window.location.href = "/today";
+      setPostLoginWorkerPhone(phone.trim());
+      setPostLoginRedirectTo(redirectTo);
+      setShowPasskeyPrompt(true);
     } catch (err: any) {
       setError(err.message || "Login failed");
     } finally {
@@ -72,18 +96,22 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone: phone.trim() }),
       });
 
       const startData = await startRes.json().catch(() => null);
 
-      if (!startRes.ok) {
+      if (!startRes.ok || !startData?.options) {
         throw new Error(startData?.error || "Quick login not available");
       }
 
-      const credential = await navigator.credentials.get({
+      const credential = (await navigator.credentials.get({
         publicKey: startData.options,
-      });
+      })) as PublicKeyCredential | null;
+
+      if (!credential) {
+        throw new Error("Quick login cancelled");
+      }
 
       const verifyRes = await fetch("/api/auth/webauthn/login/finish", {
         method: "POST",
@@ -99,6 +127,8 @@ export default function LoginPage() {
         throw new Error(verifyData?.error || "Face ID failed");
       }
 
+      cleanupSelectedWorkerStorage();
+
       if (verifyData?.redirectTo) {
         window.location.href = verifyData.redirectTo;
         return;
@@ -112,48 +142,63 @@ export default function LoginPage() {
     }
   }
 
-  async function handleEnableFaceId() {
+  async function handleEnableQuickLogin() {
+    setLoading(true);
+    setError("");
+
     try {
-      if (!phone.trim() || !password) {
-        alert("Enter phone number and password first");
-        return;
-      }
-
-      const loginRes = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, password }),
-      });
-
-      const loginData = await loginRes.json().catch(() => null);
-
-      if (!loginRes.ok || !loginData?.ok) {
-        alert(loginData?.error || "Login first to enable Face ID");
-        return;
-      }
-
       const registerRes = await fetch("/api/auth/webauthn/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: postLoginWorkerPhone }),
       });
 
-      const registerData = await registerRes.json().catch(() => null);
+      const registerData: RegisterResponse | null = await registerRes.json().catch(() => null);
 
-      if (!registerRes.ok) {
-        alert(registerData?.error || "Could not start Face ID setup");
-        return;
+      if (!registerRes.ok || !registerData?.options) {
+        throw new Error(registerData?.error || "Could not start Face ID setup");
       }
 
-      await navigator.credentials.create({
+      const credential = await navigator.credentials.create({
         publicKey: registerData.options,
       });
 
-      alert("Face ID enabled on this device");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to enable Face ID");
+      if (!credential) {
+        throw new Error("Face ID setup cancelled");
+      }
+
+      const finishRes = await fetch("/api/auth/webauthn/register", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          phone: postLoginWorkerPhone,
+          credential,
+        }),
+      });
+
+      const finishData = await finishRes.json().catch(() => null);
+
+      if (!finishRes.ok || !finishData?.ok) {
+        throw new Error(finishData?.error || "Could not save Face ID");
+      }
+
+      cleanupSelectedWorkerStorage();
+      window.location.href = postLoginRedirectTo;
+    } catch (err: any) {
+      setError(err.message || "Failed to enable quick login");
+      setShowPasskeyPrompt(false);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  function handleSkipQuickLogin() {
+    cleanupSelectedWorkerStorage();
+    window.location.href = postLoginRedirectTo;
   }
 
   return (
@@ -188,7 +233,7 @@ export default function LoginPage() {
         </button>
 
         <div style={{ textAlign: "center", margin: "10px 0" }}>
-          <small>or use phone & password</small>
+          <small>or use phone &amp; password</small>
         </div>
 
         <form onSubmit={handlePasswordLogin}>
@@ -238,22 +283,88 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <button
-          onClick={handleEnableFaceId}
-          style={{
-            marginTop: 12,
-            width: "100%",
-            padding: 10,
-            background: "#eee",
-            border: "1px solid #ccc",
-            borderRadius: 6,
-          }}
-        >
-          Enable Face ID (Setup)
-        </button>
-
         {error && <p style={{ color: "red", marginTop: 10 }}>{error}</p>}
       </div>
+
+      {showPasskeyPrompt && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "#fff",
+              borderRadius: 16,
+              padding: 20,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+            }}
+          >
+            <h2
+              style={{
+                margin: "0 0 10px 0",
+                fontSize: 22,
+                lineHeight: 1.2,
+              }}
+            >
+              Use Face ID / fingerprint on this phone next time?
+            </h2>
+
+            <p
+              style={{
+                margin: "0 0 18px 0",
+                color: "#555",
+                lineHeight: 1.5,
+              }}
+            >
+              This makes login much faster when you&apos;re out in the field.
+            </p>
+
+            <div style={{ display: "grid", gap: 10 }}>
+              <button
+                onClick={handleEnableQuickLogin}
+                disabled={loading}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  background: "black",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                }}
+              >
+                {loading ? "Setting up..." : "Yes, enable quick login"}
+              </button>
+
+              <button
+                onClick={handleSkipQuickLogin}
+                disabled={loading}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  background: "#f3f3f3",
+                  color: "#111",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                }}
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
