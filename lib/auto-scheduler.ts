@@ -23,6 +23,14 @@ const END_OF_DAY_MINUTES = 16 * 60 + 30
 const BREAK_THRESHOLD_MINUTES = 6 * 60
 const BREAK_DURATION_MINUTES = 20
 
+type AutoSchedulerResult = {
+  ok: boolean
+  error?: string
+  scheduled: number
+  recurringCreated: number
+  message?: string
+}
+
 type WorkerLite = {
   id: number
   firstName: string | null
@@ -505,7 +513,9 @@ async function tryScheduleTrevQuoteJob(params: {
   return false
 }
 
-export async function runAutoScheduler(options?: { skipRecurringTopUp?: boolean }) {
+export async function runAutoScheduler(
+  options?: { skipRecurringTopUp?: boolean }
+): Promise<AutoSchedulerResult> {
   const workers = await prisma.worker.findMany({
     where: { active: true },
     orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
