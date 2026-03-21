@@ -32,16 +32,29 @@ export default function LoginPage() {
     }
   }
 
+  // ✅ FIXED FACE ID LOGIN
   async function handleQuickLogin() {
     setLoading(true);
     setError("");
 
     try {
-      const res = await fetch("/api/auth/webauthn/login/start", {
+      if (!phone) {
+        throw new Error("Enter your phone number first");
+      }
+
+      const startRes = await fetch("/api/auth/webauthn/login/start", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone }),
       });
 
-      const options = await res.json();
+      if (!startRes.ok) {
+        throw new Error("No Face ID set up for this user");
+      }
+
+      const { options } = await startRes.json();
 
       const credential = await navigator.credentials.get({
         publicKey: options,
@@ -56,14 +69,52 @@ export default function LoginPage() {
       });
 
       if (!verifyRes.ok) {
-        throw new Error("Quick login failed");
+        throw new Error("Face ID failed");
       }
 
       window.location.href = "/today";
     } catch (err: any) {
-      setError("Quick login not available on this device");
+      setError(err.message || "Quick login failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // ✅ TEMP: ENABLE FACE ID (setup only)
+  async function handleEnableFaceId() {
+    try {
+      if (!phone) {
+        alert("Enter phone number first");
+        return;
+      }
+
+      // get worker by phone
+      const resUser = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, password }),
+      });
+
+      if (!resUser.ok) {
+        alert("Login first to enable Face ID");
+        return;
+      }
+
+      const startRes = await fetch("/api/auth/webauthn/register", {
+        method: "POST",
+        body: JSON.stringify({ phone }),
+      });
+
+      const options = await startRes.json();
+
+      await navigator.credentials.create({
+        publicKey: options,
+      });
+
+      alert("Face ID enabled on this device ✅");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to enable Face ID");
     }
   }
 
@@ -150,6 +201,21 @@ export default function LoginPage() {
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
+
+        {/* ✅ TEMP BUTTON (REMOVE LATER) */}
+        <button
+          onClick={handleEnableFaceId}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            padding: 10,
+            background: "#eee",
+            border: "1px solid #ccc",
+            borderRadius: 6,
+          }}
+        >
+          Enable Face ID (Setup)
+        </button>
 
         {error && (
           <p style={{ color: "red", marginTop: 10 }}>{error}</p>

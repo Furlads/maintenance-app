@@ -26,19 +26,36 @@ model Worker {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  // 🔐 EXISTING
   pinHash     String?
 
-  // 🔐 NEW AUTH FIELDS
-  passwordHash String?
-  failedLoginAttempts Int @default(0)
-  lockedUntil DateTime?
-  lastLoginAt DateTime?
+  // 🔐 Auth fields
+  passwordHash        String?
+  failedLoginAttempts Int      @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
 
   companies      WorkerCompany[]
   notes          JobNote[]
   assignedJobs   JobAssignment[]
   uploadedPhotos JobPhoto[]
+
+  // ✅ FIXED RELATION (THIS WAS MISSING)
+  webauthnCredentials WebAuthnCredential[]
+}
+
+model WebAuthnCredential {
+  id         String @id
+  workerId   Int
+  publicKey  String
+  counter    Int
+  deviceType String
+  backedUp   Boolean
+  transports String?
+
+  // ✅ Proper relation
+  worker Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([workerId])
 }
 
 model WorkerCompany {
