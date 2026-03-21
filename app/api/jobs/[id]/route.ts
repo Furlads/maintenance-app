@@ -2,6 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { runAutoScheduler } from '@/lib/auto-scheduler'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -1308,6 +1309,28 @@ export async function PATCH(req: Request, ctx: Ctx) {
           })),
         },
       })
+    }
+
+    const assignmentChanged = body.assignedTo !== undefined
+
+    const needsAutoPlacement =
+      updated.status !== 'done' &&
+      updated.status !== 'cancelled' &&
+      updated.status !== 'archived' &&
+      updated.assignments.length > 0 &&
+      (
+        assignmentChanged ||
+        updated.visitDate === null ||
+        updated.startTime === null ||
+        updated.status === 'unscheduled'
+      )
+
+    if (needsAutoPlacement) {
+      try {
+        await runAutoScheduler()
+      } catch (schedulerError) {
+        console.error('Auto scheduler trigger failed after job update:', schedulerError)
+      }
     }
 
     const refreshed = await prisma.job.findUnique({
