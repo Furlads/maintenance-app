@@ -1,3 +1,5 @@
+import "./globals.css";
+
 export const metadata = {
   title: "Furlads Maintenance App",
   description: "Furlads internal system",
