@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import TimeOffAlert from "@/app/components/kelly/TimeOffAlert";
 
 type ScheduleJob = {
   id: number;
@@ -1060,6 +1061,8 @@ export default function SchedulePage() {
           padding: 24,
         }}
       >
+        <TimeOffAlert />
+
         <section
           style={{
             overflow: "hidden",
