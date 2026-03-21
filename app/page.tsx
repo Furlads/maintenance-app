@@ -8,6 +8,7 @@ type Worker = {
   lastName: string
   active?: boolean
   photoUrl?: string | null
+  phone?: string | null
 }
 
 function getRedirectPath(accessLevel: string) {
@@ -18,11 +19,6 @@ export default function Page() {
   const [workers, setWorkers] = useState<Worker[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-
-  const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
-  const [pin, setPin] = useState('')
-  const [pinBusy, setPinBusy] = useState(false)
-  const [pinError, setPinError] = useState('')
 
   useEffect(() => {
     const savedWorkerId = localStorage.getItem('workerId')
@@ -67,71 +63,20 @@ export default function Page() {
     })
   }, [workers])
 
-  function openPinForWorker(worker: Worker) {
-    setSelectedWorker(worker)
-    setPin('')
-    setPinError('')
-  }
+  function openLoginForWorker(worker: Worker) {
+    const workerName = `${worker.firstName || ''} ${worker.lastName || ''}`.trim()
 
-  function closePin() {
-    setSelectedWorker(null)
-    setPin('')
-    setPinError('')
-    setPinBusy(false)
-  }
+    localStorage.setItem('selectedLoginWorkerId', String(worker.id))
+    localStorage.setItem('selectedLoginWorkerName', workerName)
 
-  async function handlePinLogin() {
-    if (!selectedWorker) return
-
-    const cleanPin = pin.trim()
-
-    if (!cleanPin) {
-      setPinError('Enter your PIN.')
+    if (worker.phone && worker.phone.trim()) {
+      localStorage.setItem('selectedLoginWorkerPhone', worker.phone.trim())
+      window.location.href = `/login?phone=${encodeURIComponent(worker.phone.trim())}`
       return
     }
 
-    setPinBusy(true)
-    setPinError('')
-
-    try {
-      const res = await fetch('/api/auth/pin-login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          workerId: selectedWorker.id,
-          pin: cleanPin
-        })
-      })
-
-      const data = await res.json().catch(() => null)
-
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || 'PIN not accepted.')
-      }
-
-      const workerName =
-        typeof data?.worker?.name === 'string' && data.worker.name.trim()
-          ? data.worker.name.trim()
-          : `${selectedWorker.firstName} ${selectedWorker.lastName}`.trim()
-
-      const accessLevel =
-        typeof data?.worker?.accessLevel === 'string' && data.worker.accessLevel.trim()
-          ? data.worker.accessLevel.trim()
-          : 'worker'
-
-      localStorage.setItem('workerId', String(selectedWorker.id))
-      localStorage.setItem('workerName', workerName)
-      localStorage.setItem('workerAccessLevel', accessLevel)
-
-      window.location.href = getRedirectPath(accessLevel)
-    } catch (err: any) {
-      console.error(err)
-      setPinError(String(err?.message || 'PIN not accepted.'))
-    } finally {
-      setPinBusy(false)
-    }
+    localStorage.removeItem('selectedLoginWorkerPhone')
+    window.location.href = '/login'
   }
 
   return (
@@ -145,85 +90,257 @@ export default function Page() {
         color: '#111'
       }}
     >
-      <div style={{ width: '100%', maxWidth: 560, margin: '0 auto' }}>
-        
-        {/* 🔐 NEW: Secure login button */}
-        <div style={{ marginBottom: 16 }}>
-          <button
-            onClick={() => (window.location.href = '/login')}
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 560,
+          margin: '0 auto'
+        }}
+      >
+        <div
+          style={{
+            textAlign: 'center',
+            marginBottom: 18,
+            paddingTop: 8
+          }}
+        >
+          <div
             style={{
-              width: '100%',
-              padding: '14px',
-              borderRadius: 14,
-              border: 'none',
-              background: '#111',
-              color: '#fff',
-              fontWeight: 800,
-              cursor: 'pointer'
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+              marginBottom: 10
             }}
           >
-            Use Secure Login (Face ID / Password)
-          </button>
-        </div>
+            <span
+              style={{
+                fontSize: 36,
+                fontWeight: 900,
+                letterSpacing: '-0.03em',
+                color: '#c69214'
+              }}
+            >
+              Furlads
+            </span>
 
-        {/* Existing UI untouched below */}
+            <span
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                color: '#7a7a7a'
+              }}
+            >
+              ×
+            </span>
 
-        <div style={{ textAlign: 'center', marginBottom: 18, paddingTop: 8 }}>
-          <div style={{ display: 'inline-flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-            <span style={{ fontSize: 36, fontWeight: 900, color: '#c69214' }}>Furlads</span>
-            <span style={{ fontSize: 20, fontWeight: 800, color: '#7a7a7a' }}>×</span>
-            <span style={{ fontSize: 32, fontWeight: 900, color: '#245c3b' }}>
+            <span
+              style={{
+                fontSize: 32,
+                fontWeight: 900,
+                letterSpacing: '-0.03em',
+                color: '#245c3b'
+              }}
+            >
               Three Counties
             </span>
           </div>
 
-          <h1 style={{ margin: '0 0 8px 0', fontSize: 30, fontWeight: 900 }}>
-            Who's using the app?
+          <h1
+            style={{
+              margin: '0 0 8px 0',
+              fontSize: 30,
+              lineHeight: 1.08,
+              fontWeight: 900,
+              letterSpacing: '-0.02em'
+            }}
+          >
+            Who&apos;s using the app?
           </h1>
 
-          <p style={{ margin: 0, fontSize: 15, color: '#575757' }}>
-            Tap your name to continue.
+          <p
+            style={{
+              margin: 0,
+              fontSize: 15,
+              lineHeight: 1.5,
+              color: '#575757',
+              maxWidth: 360,
+              marginInline: 'auto'
+            }}
+          >
+            Tap your name to go straight to secure login.
           </p>
         </div>
 
-        {/* 🔥 TESTING BOX REMOVED COMPLETELY */}
+        {loading && (
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 20,
+              border: '1px solid rgba(0,0,0,0.08)',
+              background: '#fff',
+              boxShadow: '0 12px 30px rgba(0,0,0,0.05)',
+              textAlign: 'center',
+              fontSize: 15,
+              fontWeight: 600,
+              color: '#555'
+            }}
+          >
+            Loading workers...
+          </div>
+        )}
 
-        {/* EVERYTHING BELOW UNCHANGED */}
+        {!loading && error && (
+          <div
+            style={{
+              padding: 16,
+              borderRadius: 18,
+              border: '1px solid #e2b7b7',
+              background: '#fff5f5',
+              color: '#8d1f1f',
+              lineHeight: 1.45
+            }}
+          >
+            {error}
+          </div>
+        )}
 
-        {loading && <div>Loading workers...</div>}
-
-        {!loading && error && <div>{error}</div>}
+        {!loading && !error && sortedWorkers.length === 0 && (
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 20,
+              border: '1px solid rgba(0,0,0,0.08)',
+              background: '#fff',
+              boxShadow: '0 12px 30px rgba(0,0,0,0.05)',
+              textAlign: 'center',
+              fontSize: 15,
+              color: '#555'
+            }}
+          >
+            No workers found.
+          </div>
+        )}
 
         {!loading && !error && sortedWorkers.length > 0 && (
-          <div style={{ display: 'grid', gap: 14 }}>
+          <div
+            style={{
+              display: 'grid',
+              gap: 14
+            }}
+          >
             {sortedWorkers.map((worker, index) => {
               const initials =
                 `${worker.firstName?.[0] || ''}${worker.lastName?.[0] || ''}` || 'W'
+              const useGold = index % 2 === 0
+              const hasPhoto =
+                typeof worker.photoUrl === 'string' && worker.photoUrl.trim().length > 0
 
               return (
                 <button
                   key={worker.id}
-                  onClick={() => openPinForWorker(worker)}
-                  style={{ padding: 16, borderRadius: 12 }}
+                  type="button"
+                  onClick={() => openLoginForWorker(worker)}
+                  style={{
+                    width: '100%',
+                    padding: 0,
+                    border: 'none',
+                    background: 'transparent',
+                    textAlign: 'left',
+                    cursor: 'pointer'
+                  }}
                 >
-                  {worker.firstName} {worker.lastName}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 14,
+                      padding: '17px 16px',
+                      borderRadius: 22,
+                      border: '1px solid rgba(0,0,0,0.10)',
+                      background: '#fff',
+                      boxShadow: '0 14px 30px rgba(0,0,0,0.06)'
+                    }}
+                  >
+                    {hasPhoto ? (
+                      <img
+                        src={worker.photoUrl as string}
+                        alt={`${worker.firstName} ${worker.lastName}`}
+                        style={{
+                          width: 58,
+                          height: 58,
+                          borderRadius: 18,
+                          objectFit: 'cover',
+                          flexShrink: 0,
+                          border: useGold
+                            ? '1px solid rgba(198,146,20,0.22)'
+                            : '1px solid rgba(36,92,59,0.18)',
+                          background: '#f3f3f3'
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 58,
+                          height: 58,
+                          borderRadius: 18,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          fontSize: 19,
+                          fontWeight: 900,
+                          background: useGold ? '#f5deb0' : '#d9e9de',
+                          color: useGold ? '#8a5a00' : '#245c3b',
+                          border: useGold
+                            ? '1px solid rgba(198,146,20,0.22)'
+                            : '1px solid rgba(36,92,59,0.18)'
+                        }}
+                      >
+                        {initials}
+                      </div>
+                    )}
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 20,
+                          fontWeight: 900,
+                          color: '#171717',
+                          marginBottom: 4,
+                          letterSpacing: '-0.01em'
+                        }}
+                      >
+                        {worker.firstName} {worker.lastName}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 14,
+                          color: '#666'
+                        }}
+                      >
+                        Tap to log in
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 800,
+                        color: useGold ? '#b17e07' : '#245c3b'
+                      }}
+                    >
+                      Open
+                    </div>
+                  </div>
                 </button>
               )
             })}
           </div>
         )}
       </div>
-
-      {selectedWorker && (
-        <div>
-          <input
-            type="password"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-          />
-          <button onClick={handlePinLogin}>Continue</button>
-        </div>
-      )}
     </main>
   )
 }

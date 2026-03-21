@@ -1,12 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const phoneFromQuery = params.get("phone");
+      const phoneFromStorage = localStorage.getItem("selectedLoginWorkerPhone");
+
+      if (phoneFromQuery && phoneFromQuery.trim()) {
+        setPhone(phoneFromQuery.trim());
+        return;
+      }
+
+      if (phoneFromStorage && phoneFromStorage.trim()) {
+        setPhone(phoneFromStorage.trim());
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
 
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
