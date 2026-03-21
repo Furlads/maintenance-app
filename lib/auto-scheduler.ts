@@ -31,6 +31,28 @@ type AutoSchedulerResult = {
   message?: string
 }
 
+type LocalRepairReason = 'cancel' | 'edit' | 'manual'
+
+type LocalRepairResult = {
+  ok: boolean
+  error?: string
+  workerId: number
+  date: string
+  reason: LocalRepairReason
+  repaired: number
+  remaining: number
+  unplacedJobIds: number[]
+  message?: string
+}
+
+type LocalRepairForJobResult = {
+  ok: boolean
+  error?: string
+  jobId: number
+  repairs: LocalRepairResult[]
+  message?: string
+}
+
 type WorkerLite = {
   id: number
   firstName: string | null
@@ -247,6 +269,24 @@ function isWorkerBlockedForSlot(params: {
   return false
 }
 
+function isWorkerUnavailableForWholeDay(params: {
+  blocks: Array<{
+    startDate: Date
+    endDate: Date
+    startTime: string | null
+    endTime: string | null
+    isFullDay: boolean
+  }>
+  date: Date
+}) {
+  return isWorkerBlockedForSlot({
+    blocks: params.blocks,
+    date: params.date,
+    startMinutes: JOBS_START_MINUTES,
+    endMinutes: END_OF_DAY_MINUTES,
+  })
+}
+
 function scoreCandidateJob(params: {
   currentPostcode: string
   worker: WorkerLite
@@ -400,6 +440,70 @@ async function clearJobAttentionAndPlace(params: {
   })
 }
 
+async function markJobUnplacedOnWorkerDay(params: {
+  jobId: number
+  visitDate: Date
+  reason: string
+}) {
+  await prisma.job.update({
+    where: { id: params.jobId },
+    data: {
+      visitDate: params.visitDate,
+      startTime: null,
+      status: 'unscheduled',
+      needsSchedulingAttention: true,
+      schedulingAttentionReason: params.reason,
+      schedulingLastAttemptAt: new Date(),
+    },
+  })
+}
+
+function getLocalRepairFailureReason(params: {
+  job: JobWithRelations
+  worker: WorkerLite
+  scheduledDate: Date
+  blocks: Array<{
+    startDate: Date
+    endDate: Date
+    startTime: string | null
+    endTime: string | null
+    isFullDay: boolean
+  }>
+  dayJobs: DayJobLike[]
+}) {
+  const { job, worker, scheduledDate, blocks, dayJobs } = params
+
+  if (job.assignments.length === 0) {
+    return 'No worker assigned'
+  }
+
+  if (isQuoteJobType(job.jobType) && !isTrevWorker(worker)) {
+    return 'Quote jobs can only be scheduled with Trevor'
+  }
+
+  if (
+    isWorkerUnavailableForWholeDay({
+      blocks,
+      date: scheduledDate,
+    })
+  ) {
+    return 'Worker unavailable for this day'
+  }
+
+  const slot = findBestSlotForJob({
+    dayJobs,
+    candidateJob: job,
+    blocks,
+    scheduledDate,
+  })
+
+  if (!slot) {
+    return 'No slot available on assigned worker/day'
+  }
+
+  return 'Could not be placed during local repair'
+}
+
 async function tryScheduleTrevQuoteJob(params: {
   jobId: number
   duration: number
@@ -511,6 +615,322 @@ async function tryScheduleTrevQuoteJob(params: {
   })
 
   return false
+}
+
+export async function runLocalWorkerDayRepair(params: {
+  workerId: number
+  date: Date
+  reason?: LocalRepairReason
+  excludeJobId?: number | null
+}): Promise<LocalRepairResult> {
+  const repairReason = params.reason ?? 'manual'
+  const scheduledDate = startOfLocalDay(params.date)
+  const dayStart = startOfLocalDay(scheduledDate)
+  const dayEnd = endOfLocalDay(scheduledDate)
+
+  const worker = await prisma.worker.findUnique({
+    where: { id: params.workerId },
+  })
+
+  if (!worker || !worker.active) {
+    return {
+      ok: false,
+      error: 'Worker not found or inactive',
+      workerId: params.workerId,
+      date: dayStart.toISOString(),
+      reason: repairReason,
+      repaired: 0,
+      remaining: 0,
+      unplacedJobIds: [],
+    }
+  }
+
+  const blocks = await getActiveBlocksForWorkersRange({
+    workerIds: [worker.id],
+    startDate: dayStart,
+    endDate: dayEnd,
+  })
+
+  const assignedJobs = await prisma.job.findMany({
+    where: {
+      id: params.excludeJobId ? { not: params.excludeJobId } : undefined,
+      assignments: {
+        some: {
+          workerId: worker.id,
+        },
+      },
+      status: {
+        notIn: ['done', 'cancelled', 'archived'],
+      },
+      OR: [
+        {
+          visitDate: {
+            gte: dayStart,
+            lte: dayEnd,
+          },
+        },
+        {
+          visitDate: null,
+          needsSchedulingAttention: true,
+        },
+        {
+          visitDate: null,
+          status: 'unscheduled',
+        },
+      ],
+    },
+    orderBy: [
+      { startTime: 'asc' },
+      { createdAt: 'asc' },
+    ],
+    include: {
+      assignments: true,
+      customer: {
+        select: {
+          postcode: true,
+        },
+      },
+    },
+  })
+
+  if (assignedJobs.length === 0) {
+    return {
+      ok: true,
+      workerId: worker.id,
+      date: dayStart.toISOString(),
+      reason: repairReason,
+      repaired: 0,
+      remaining: 0,
+      unplacedJobIds: [],
+      message: 'No assigned jobs found to repair for this worker/day',
+    }
+  }
+
+  for (const job of assignedJobs) {
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        visitDate: dayStart,
+        startTime: null,
+        schedulingLastAttemptAt: new Date(),
+      },
+    })
+  }
+
+  let repaired = 0
+  const unplacedJobIds: number[] = []
+  let mutableDayJobs: Array<{
+    id: number
+    startTime: string | null
+    durationMinutes: number | null
+    postcode?: string | null
+    address?: string | null
+    customer?: { postcode?: string | null } | null
+  }> = []
+
+  const rankedRepairJobs = [...assignedJobs].sort((a, b) => {
+    const aStart = a.startTime ?? '99:99'
+    const bStart = b.startTime ?? '99:99'
+    if (aStart !== bStart) return aStart.localeCompare(bStart)
+    return a.createdAt.getTime() - b.createdAt.getTime()
+  })
+
+  for (const job of rankedRepairJobs) {
+    const existingAssignedWorkerIds = job.assignments.map((assignment) => assignment.workerId)
+    const duration = getJobDurationMinutes(job)
+
+    if (isQuoteJobType(job.jobType) && isTrevWorker(worker)) {
+      const placed = await tryScheduleTrevQuoteJob({
+        jobId: job.id,
+        duration,
+        worker,
+        existingAssignedWorkerIds,
+        today: dayStart,
+        preferredDate: dayStart,
+        blocks,
+      })
+
+      if (placed) {
+        const refreshedJob = await prisma.job.findUnique({
+          where: { id: job.id },
+          include: {
+            customer: {
+              select: {
+                postcode: true,
+              },
+            },
+          },
+        })
+
+        if (refreshedJob && refreshedJob.startTime) {
+          mutableDayJobs = sortDayJobs([...mutableDayJobs, refreshedJob])
+        }
+
+        repaired += 1
+        continue
+      }
+
+      unplacedJobIds.push(job.id)
+      await markJobUnplacedOnWorkerDay({
+        jobId: job.id,
+        visitDate: dayStart,
+        reason: 'No Trev quote slot available on assigned worker/day',
+      })
+      continue
+    }
+
+    if (isQuoteJobType(job.jobType) && !isTrevWorker(worker)) {
+      unplacedJobIds.push(job.id)
+      await markJobUnplacedOnWorkerDay({
+        jobId: job.id,
+        visitDate: dayStart,
+        reason: 'Quote jobs can only be scheduled with Trevor',
+      })
+      continue
+    }
+
+    const slot = findBestSlotForJob({
+      dayJobs: mutableDayJobs,
+      candidateJob: job,
+      blocks,
+      scheduledDate: dayStart,
+    })
+
+    if (!slot) {
+      const reason = getLocalRepairFailureReason({
+        job,
+        worker,
+        scheduledDate: dayStart,
+        blocks,
+        dayJobs: mutableDayJobs,
+      })
+
+      unplacedJobIds.push(job.id)
+
+      await markJobUnplacedOnWorkerDay({
+        jobId: job.id,
+        visitDate: dayStart,
+        reason,
+      })
+
+      continue
+    }
+
+    await clearJobAttentionAndPlace({
+      jobId: job.id,
+      visitDate: dayStart,
+      startTime: minutesToTime(slot.startMinutes),
+    })
+
+    if (!existingAssignedWorkerIds.includes(worker.id)) {
+      await assignJobToWorkerIfNeeded(job.id, worker.id)
+    }
+
+    const refreshedJob = await prisma.job.findUnique({
+      where: { id: job.id },
+      include: {
+        customer: {
+          select: {
+            postcode: true,
+          },
+        },
+      },
+    })
+
+    if (refreshedJob) {
+      mutableDayJobs = sortDayJobs([...mutableDayJobs, refreshedJob])
+    }
+
+    repaired += 1
+  }
+
+  return {
+    ok: true,
+    workerId: worker.id,
+    date: dayStart.toISOString(),
+    reason: repairReason,
+    repaired,
+    remaining: unplacedJobIds.length,
+    unplacedJobIds,
+    message:
+      unplacedJobIds.length > 0
+        ? 'Local worker/day repair completed with some jobs still needing attention'
+        : 'Local worker/day repair completed successfully',
+  }
+}
+
+export async function runLocalRepairForJob(params: {
+  jobId: number
+  reason?: LocalRepairReason
+}): Promise<LocalRepairForJobResult> {
+  const repairReason = params.reason ?? 'manual'
+
+  const job = await prisma.job.findUnique({
+    where: { id: params.jobId },
+    include: {
+      assignments: true,
+      customer: {
+        select: {
+          postcode: true,
+        },
+      },
+    },
+  })
+
+  if (!job) {
+    return {
+      ok: false,
+      error: 'Job not found',
+      jobId: params.jobId,
+      repairs: [],
+    }
+  }
+
+  if (!job.visitDate) {
+    return {
+      ok: false,
+      error: 'Job has no visit date for local repair',
+      jobId: params.jobId,
+      repairs: [],
+    }
+  }
+
+  if (job.assignments.length === 0) {
+    await markJobAttention({
+      jobId: job.id,
+      reason: 'No worker assigned',
+    })
+
+    return {
+      ok: false,
+      error: 'Job has no assigned worker for local repair',
+      jobId: params.jobId,
+      repairs: [],
+    }
+  }
+
+  const repairs: LocalRepairResult[] = []
+
+  for (const assignment of job.assignments) {
+    const repair = await runLocalWorkerDayRepair({
+      workerId: assignment.workerId,
+      date: job.visitDate,
+      reason: repairReason,
+      excludeJobId: repairReason === 'cancel' ? job.id : null,
+    })
+
+    repairs.push(repair)
+  }
+
+  return {
+    ok: repairs.every((item) => item.ok),
+    jobId: params.jobId,
+    repairs,
+    message:
+      repairs.length > 0
+        ? 'Triggered local repair for assigned worker/day'
+        : 'No repairs were triggered',
+  }
 }
 
 export async function runAutoScheduler(
@@ -780,7 +1200,13 @@ export async function runAutoScheduler(
       const reason =
         job.assignments.length === 0
           ? 'No worker assigned'
-          : 'Unscheduled after full scheduler pass'
+          : isQuoteJobType(job.jobType) &&
+              !job.assignments.some((assignment) => {
+                const worker = workers.find((item) => item.id === assignment.workerId)
+                return worker ? isTrevWorker(worker) : false
+              })
+            ? 'Quote jobs can only be scheduled with Trevor'
+            : 'Unscheduled after full scheduler pass'
 
       await prisma.job.update({
         where: { id: job.id },
