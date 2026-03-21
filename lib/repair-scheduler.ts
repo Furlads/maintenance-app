@@ -343,6 +343,38 @@ function findBestSlotForJob(params: {
   return bestSlot
 }
 
+async function markJobAttention(params: {
+  jobId: number
+  reason: string
+}) {
+  await prisma.job.update({
+    where: { id: params.jobId },
+    data: {
+      needsSchedulingAttention: true,
+      schedulingAttentionReason: params.reason,
+      schedulingLastAttemptAt: new Date(),
+    },
+  })
+}
+
+async function clearJobAttentionAndPlace(params: {
+  jobId: number
+  visitDate: Date
+  startTime: string
+}) {
+  await prisma.job.update({
+    where: { id: params.jobId },
+    data: {
+      visitDate: params.visitDate,
+      startTime: params.startTime,
+      status: 'todo',
+      needsSchedulingAttention: false,
+      schedulingAttentionReason: null,
+      schedulingLastAttemptAt: new Date(),
+    },
+  })
+}
+
 async function tryScheduleTrevQuoteJob(params: {
   jobId: number
   duration: number
@@ -439,13 +471,10 @@ async function tryScheduleTrevQuoteJob(params: {
 
     if (!nextFreeSlot) continue
 
-    await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        visitDate: dayStart,
-        startTime: nextFreeSlot,
-        status: 'todo',
-      },
+    await clearJobAttentionAndPlace({
+      jobId,
+      visitDate: dayStart,
+      startTime: nextFreeSlot,
     })
 
     if (!existingAssignedWorkerIds.includes(worker.id)) {
@@ -459,6 +488,11 @@ async function tryScheduleTrevQuoteJob(params: {
 
     return true
   }
+
+  await markJobAttention({
+    jobId,
+    reason: 'No Trev quote slot available in the repair window',
+  })
 
   return false
 }
@@ -683,13 +717,10 @@ export async function repairAssignedJobsForWorker(params: {
           continue
         }
 
-        await prisma.job.update({
-          where: { id: job.id },
-          data: {
-            visitDate: scheduledDate,
-            startTime: minutesToTime(slot.startMinutes),
-            status: 'todo',
-          },
+        await clearJobAttentionAndPlace({
+          jobId: job.id,
+          visitDate: scheduledDate,
+          startTime: minutesToTime(slot.startMinutes),
         })
 
         scheduledJobIds.add(job.id)
@@ -733,6 +764,9 @@ export async function repairAssignedJobsForWorker(params: {
         visitDate: null,
         startTime: null,
         status: 'unscheduled',
+        needsSchedulingAttention: true,
+        schedulingAttentionReason: 'Could not re-fit this assigned job after a local repair attempt',
+        schedulingLastAttemptAt: new Date(),
       },
     })
   }

@@ -34,13 +34,13 @@ model Worker {
   lockedUntil         DateTime?
   lastLoginAt         DateTime?
 
-  companies            WorkerCompany[]
-  notes                JobNote[]
-  assignedJobs         JobAssignment[]
-  uploadedPhotos       JobPhoto[]
-  webauthnCredentials  WebAuthnCredential[]
-  timeOffRequests      TimeOffRequest[]
-  availabilityBlocks   WorkerAvailabilityBlock[]
+  companies           WorkerCompany[]
+  notes               JobNote[]
+  assignedJobs        JobAssignment[]
+  uploadedPhotos      JobPhoto[]
+  webauthnCredentials WebAuthnCredential[]
+  timeOffRequests     TimeOffRequest[]
+  availabilityBlocks  WorkerAvailabilityBlock[]
 }
 
 model WebAuthnCredential {
@@ -83,36 +83,40 @@ model Customer {
 }
 
 model Job {
-  id               Int       @id @default(autoincrement())
-  title            String
-  customerId       Int
-  address          String
-  notes            String?
-  jobType          String    @default("Quote")
-  visitDate        DateTime?
-  startTime        String?
-  durationMinutes  Int?
-  overrunMins      Int       @default(0)
+  id                        Int       @id @default(autoincrement())
+  title                     String
+  customerId                Int
+  address                   String
+  notes                     String?
+  jobType                   String    @default("Quote")
+  visitDate                 DateTime?
+  startTime                 String?
+  durationMinutes           Int?
+  overrunMins               Int       @default(0)
 
-  arrivedAt        DateTime?
-  finishedAt       DateTime?
+  arrivedAt                 DateTime?
+  finishedAt                DateTime?
 
-  pausedAt         DateTime?
-  pausedMinutes    Int       @default(0)
+  pausedAt                  DateTime?
+  pausedMinutes             Int       @default(0)
 
-  status           String    @default("unscheduled")
-  paymentStatus    String?
-  paymentNotes     String?
-  createdAt        DateTime  @default(now())
+  status                    String    @default("unscheduled")
+  paymentStatus             String?
+  paymentNotes              String?
+  createdAt                 DateTime  @default(now())
 
   visitPattern              String?
-  isRegularMaintenance      Boolean  @default(false)
+  isRegularMaintenance      Boolean   @default(false)
   maintenanceFrequency      String?
   maintenanceFrequencyUnit  String?
   maintenanceFrequencyWeeks Int?
   timePreferenceMode        String?
   preferredDay              String?
   preferredTimeBand         String?
+
+  needsSchedulingAttention  Boolean   @default(false)
+  schedulingAttentionReason String?
+  schedulingLastAttemptAt   DateTime?
 
   customer      Customer        @relation(fields: [customerId], references: [id])
   jobNotes      JobNote[]
@@ -290,20 +294,20 @@ model TimeOffRequest {
 }
 
 model WorkerAvailabilityBlock {
-  id            Int      @id @default(autoincrement())
-  workerId      Int
-  requestId     Int?     @unique
-  source        String   @default("time_off_request")
-  title         String
-  startDate     DateTime
-  endDate       DateTime
-  startTime     String?
-  endTime       String?
-  isFullDay     Boolean  @default(true)
-  notes         String?
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  workerId  Int
+  requestId Int?     @unique
+  source    String   @default("time_off_request")
+  title     String
+  startDate DateTime
+  endDate   DateTime
+  startTime String?
+  endTime   String?
+  isFullDay Boolean  @default(true)
+  notes     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   worker  Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
   request TimeOffRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)

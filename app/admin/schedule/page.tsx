@@ -13,6 +13,9 @@ type ScheduleJob = {
   startTime: string | null;
   durationMinutes: number | null;
   status: string;
+  needsSchedulingAttention: boolean;
+  schedulingAttentionReason: string | null;
+  schedulingLastAttemptAt: string | null;
 };
 
 type ScheduleAvailabilityBlock = {
@@ -48,6 +51,9 @@ type JobsApiJob = {
   visitDate: string | null;
   durationMinutes: number | null;
   createdAt: string;
+  needsSchedulingAttention?: boolean;
+  schedulingAttentionReason?: string | null;
+  schedulingLastAttemptAt?: string | null;
   customer: {
     name: string | null;
     postcode?: string | null;
@@ -187,6 +193,20 @@ function formatDate(date: string | null) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  }).format(parsed);
+}
+
+function formatDateTime(date: string | null | undefined) {
+  if (!date) return "Unknown";
+
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(parsed);
 }
 
@@ -343,6 +363,13 @@ function getCardColor(job: ScheduleJob): {
   const jobType = String(job.jobType || "").toLowerCase();
   const status = String(job.status || "").toLowerCase();
 
+  if (job.needsSchedulingAttention) {
+    return {
+      background: "#fff1f2",
+      border: "#fda4af",
+    };
+  }
+
   if (status === "done") {
     return {
       background: "#dcfce7",
@@ -437,6 +464,13 @@ function getAvailabilityBlockColor(block: ScheduleAvailabilityBlock): {
 }
 
 function sortUnscheduledJobs(a: JobsApiJob, b: JobsApiJob) {
+  const attentionA = a.needsSchedulingAttention ? 0 : 1;
+  const attentionB = b.needsSchedulingAttention ? 0 : 1;
+
+  if (attentionA !== attentionB) {
+    return attentionA - attentionB;
+  }
+
   const maintenanceA = String(a.jobType || "").toLowerCase().includes("maint")
     ? 0
     : 1;
@@ -706,7 +740,7 @@ function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
             href={`/jobs/${job.id}`}
             title={`${job.startTime ?? "TBD"} • ${job.title} • ${job.customerName} • ${
               job.postcode ?? ""
-            }`}
+            }${job.needsSchedulingAttention && job.schedulingAttentionReason ? ` • ${job.schedulingAttentionReason}` : ""}`}
             style={{
               position: "absolute",
               left: `${left}%`,
@@ -749,6 +783,7 @@ function WorkerTimeline({ worker }: { worker: ScheduleWorker }) {
             >
               {job.postcode ?? "No postcode"} • {job.durationMinutes ?? 60}m
               {offHours ? " • Off-hours" : ""}
+              {job.needsSchedulingAttention ? " • Attention" : ""}
             </div>
           </Link>
         );
@@ -822,6 +857,10 @@ export default function SchedulePage() {
       })
       .sort(sortUnscheduledJobs);
   }, [jobsData]);
+
+  const attentionJobs = useMemo(() => {
+    return unscheduledJobs.filter((job) => job.needsSchedulingAttention);
+  }, [unscheduledJobs]);
 
   const scheduledJobCount = useMemo(() => {
     return workers.reduce((total, worker) => total + worker.jobs.length, 0);
@@ -1131,6 +1170,11 @@ export default function SchedulePage() {
             accent="#7c3aed"
           />
           <StatCard
+            label="Needs attention"
+            value={attentionJobs.length}
+            accent={attentionJobs.length > 0 ? "#b91c1c" : "#166534"}
+          />
+          <StatCard
             label="Needs scheduling"
             value={unscheduledJobs.length}
             accent="#b45309"
@@ -1194,6 +1238,10 @@ export default function SchedulePage() {
                   const remainingMinutes =
                     DAY_END_MINUTES - WORK_START_MINUTES - scheduledMinutes;
 
+                  const workerAttentionJobs = worker.jobs.filter(
+                    (job) => job.needsSchedulingAttention
+                  );
+
                   return (
                     <div key={worker.id} style={workerCard()}>
                       <div
@@ -1229,6 +1277,12 @@ export default function SchedulePage() {
                               <span style={{ color: "#7c3aed", fontWeight: 700 }}>
                                 {worker.availabilityBlocks.length} blocked period
                                 {worker.availabilityBlocks.length === 1 ? "" : "s"}
+                              </span>
+                            )}
+
+                            {workerAttentionJobs.length > 0 && (
+                              <span style={{ color: "#b91c1c", fontWeight: 700 }}>
+                                {workerAttentionJobs.length} need attention
                               </span>
                             )}
                           </div>
@@ -1283,6 +1337,50 @@ export default function SchedulePage() {
                               </div>
                             );
                           })}
+                        </div>
+                      )}
+
+                      {workerAttentionJobs.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          {workerAttentionJobs.map((job) => (
+                            <div
+                              key={`attention-${worker.id}-${job.id}`}
+                              style={{
+                                borderRadius: 12,
+                                border: "1px solid #fecaca",
+                                background: "#fff1f2",
+                                padding: 10,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 800,
+                                  color: "#9f1239",
+                                  marginBottom: 4,
+                                }}
+                              >
+                                ⚠️ {titleCase(job.customerName) || "No customer"} — {titleCase(job.title) || "General"}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  color: "#7f1d1d",
+                                }}
+                              >
+                                {job.schedulingAttentionReason || "Needs scheduling attention"}
+                                {job.schedulingLastAttemptAt
+                                  ? ` • Last tried ${formatDateTime(job.schedulingLastAttemptAt)}`
+                                  : ""}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
 
@@ -1345,6 +1443,19 @@ export default function SchedulePage() {
                                         {formatStatus(job.status)}
                                       </span>
 
+                                      {job.needsSchedulingAttention && (
+                                        <span
+                                          style={{
+                                            ...pillBase(),
+                                            background: "#fff1f2",
+                                            color: "#9f1239",
+                                            border: "1px solid #fecaca",
+                                          }}
+                                        >
+                                          Needs attention
+                                        </span>
+                                      )}
+
                                       {isOffHours(job) && (
                                         <span
                                           style={{
@@ -1388,6 +1499,19 @@ export default function SchedulePage() {
                                     {postcode ? ` • ${postcode}` : ""}
                                     {` • ${job.durationMinutes ?? 60} mins`}
                                   </div>
+
+                                  {job.needsSchedulingAttention && (
+                                    <div
+                                      style={{
+                                        marginTop: 8,
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        color: "#9f1239",
+                                      }}
+                                    >
+                                      ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
+                                    </div>
+                                  )}
                                 </div>
                               </Link>
                             );
@@ -1420,7 +1544,9 @@ export default function SchedulePage() {
                 }}
               >
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 22 }}>Needs scheduling</h2>
+                  <h2 style={{ margin: 0, fontSize: 22 }}>
+                    Needs scheduling {attentionJobs.length > 0 && `⚠️ (${attentionJobs.length})`}
+                  </h2>
                   <div
                     style={{
                       marginTop: 4,
@@ -1436,7 +1562,7 @@ export default function SchedulePage() {
                   style={{
                     fontSize: 14,
                     fontWeight: 700,
-                    color: "#92400e",
+                    color: attentionJobs.length > 0 ? "#b91c1c" : "#92400e",
                   }}
                 >
                   {unscheduledJobs.length} waiting
@@ -1458,7 +1584,16 @@ export default function SchedulePage() {
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
                   {unscheduledJobs.map((job) => (
-                    <div key={job.id} style={unscheduledCard()}>
+                    <div
+                      key={job.id}
+                      style={{
+                        ...unscheduledCard(),
+                        border: job.needsSchedulingAttention
+                          ? "1px solid #fecaca"
+                          : "1px solid #e5e7eb",
+                        background: job.needsSchedulingAttention ? "#fff7f7" : "#fafafa",
+                      }}
+                    >
                       <div
                         style={{
                           display: "flex",
@@ -1495,6 +1630,19 @@ export default function SchedulePage() {
                             >
                               {formatStatus(job.status)}
                             </span>
+
+                            {job.needsSchedulingAttention && (
+                              <span
+                                style={{
+                                  ...pillBase(),
+                                  background: "#fff1f2",
+                                  color: "#9f1239",
+                                  border: "1px solid #fecaca",
+                                }}
+                              >
+                                Needs attention
+                              </span>
+                            )}
                           </div>
 
                           <div
@@ -1528,6 +1676,22 @@ export default function SchedulePage() {
                             Expected: {job.durationMinutes ?? 60} mins • Assigned:{" "}
                             {formatWorkers(job.assignments)}
                           </div>
+
+                          {job.needsSchedulingAttention && (
+                            <div
+                              style={{
+                                marginTop: 8,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: "#9f1239",
+                              }}
+                            >
+                              ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
+                              {job.schedulingLastAttemptAt
+                                ? ` • Last tried ${formatDateTime(job.schedulingLastAttemptAt)}`
+                                : ""}
+                            </div>
+                          )}
                         </div>
 
                         <div

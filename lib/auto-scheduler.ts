@@ -360,6 +360,38 @@ function findBestSlotForJob(params: {
   return bestSlot
 }
 
+async function markJobAttention(params: {
+  jobId: number
+  reason: string
+}) {
+  await prisma.job.update({
+    where: { id: params.jobId },
+    data: {
+      needsSchedulingAttention: true,
+      schedulingAttentionReason: params.reason,
+      schedulingLastAttemptAt: new Date(),
+    },
+  })
+}
+
+async function clearJobAttentionAndPlace(params: {
+  jobId: number
+  visitDate: Date
+  startTime: string
+}) {
+  await prisma.job.update({
+    where: { id: params.jobId },
+    data: {
+      visitDate: params.visitDate,
+      startTime: params.startTime,
+      status: 'todo',
+      needsSchedulingAttention: false,
+      schedulingAttentionReason: null,
+      schedulingLastAttemptAt: new Date(),
+    },
+  })
+}
+
 async function tryScheduleTrevQuoteJob(params: {
   jobId: number
   duration: number
@@ -452,13 +484,10 @@ async function tryScheduleTrevQuoteJob(params: {
 
     if (!nextFreeSlot) continue
 
-    await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        visitDate: dayStart,
-        startTime: nextFreeSlot,
-        status: 'todo',
-      },
+    await clearJobAttentionAndPlace({
+      jobId,
+      visitDate: dayStart,
+      startTime: nextFreeSlot,
     })
 
     if (!existingAssignedWorkerIds.includes(worker.id)) {
@@ -467,6 +496,11 @@ async function tryScheduleTrevQuoteJob(params: {
 
     return true
   }
+
+  await markJobAttention({
+    jobId,
+    reason: 'No Trev quote slot available in the current scheduling window',
+  })
 
   return false
 }
@@ -686,13 +720,10 @@ export async function runAutoScheduler(options?: { skipRecurringTopUp?: boolean 
 
           const storedDate = startOfLocalDay(job.visitDate ? job.visitDate : scheduledDate)
 
-          await prisma.job.update({
-            where: { id: job.id },
-            data: {
-              visitDate: storedDate,
-              startTime: minutesToTime(slot.startMinutes),
-              status: 'todo',
-            },
+          await clearJobAttentionAndPlace({
+            jobId: job.id,
+            visitDate: storedDate,
+            startTime: minutesToTime(slot.startMinutes),
           })
 
           if (!existingAssignedWorkerIds.includes(worker.id)) {
@@ -725,6 +756,30 @@ export async function runAutoScheduler(options?: { skipRecurringTopUp?: boolean 
           break
         }
       }
+    }
+  }
+
+  const remainingJobIds = unscheduledJobs
+    .filter((job) => !scheduledJobIds.has(job.id))
+    .map((job) => job.id)
+
+  if (remainingJobIds.length > 0) {
+    const now = new Date()
+
+    for (const job of unscheduledJobs.filter((item) => remainingJobIds.includes(item.id))) {
+      const reason =
+        job.assignments.length === 0
+          ? 'No worker assigned'
+          : 'Unscheduled after full scheduler pass'
+
+      await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          needsSchedulingAttention: true,
+          schedulingAttentionReason: reason,
+          schedulingLastAttemptAt: now,
+        },
+      })
     }
   }
 
