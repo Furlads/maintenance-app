@@ -1185,6 +1185,9 @@ export default function SchedulePage() {
   async function handleApproveTimeOff(block: ScheduleAvailabilityBlock) {
     if (!block.timeOffRequestId || busyTimeOffId !== null) return;
 
+    const confirmed = window.confirm("Approve this time off request?");
+    if (!confirmed) return;
+
     const reviewNotes =
       window.prompt("Approval notes for the worker / diary (optional)", "") ?? "";
 
@@ -1230,6 +1233,9 @@ export default function SchedulePage() {
 
   async function handleDeclineTimeOff(block: ScheduleAvailabilityBlock) {
     if (!block.timeOffRequestId || busyTimeOffId !== null) return;
+
+    const confirmed = window.confirm("Decline this time off request?");
+    if (!confirmed) return;
 
     const reviewNotes =
       window.prompt("Why are you declining this request? (optional)", "") ?? "";
