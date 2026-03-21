@@ -33,27 +33,9 @@ export async function POST(req: Request) {
       );
     }
 
-    if (worker.lockedUntil && worker.lockedUntil > new Date()) {
-      return NextResponse.json(
-        { ok: false, error: "This account is temporarily locked." },
-        { status: 423 }
-      );
-    }
-
     const valid = await bcrypt.compare(password, worker.passwordHash);
 
     if (!valid) {
-      const nextAttempts = (worker.failedLoginAttempts || 0) + 1;
-      const shouldLock = nextAttempts >= 5;
-
-      await prisma.worker.update({
-        where: { id: worker.id },
-        data: {
-          failedLoginAttempts: nextAttempts,
-          lockedUntil: shouldLock ? new Date(Date.now() + 15 * 60 * 1000) : null,
-        },
-      });
-
       return NextResponse.json(
         { ok: false, error: "Invalid login details." },
         { status: 401 }
@@ -82,17 +64,21 @@ export async function POST(req: Request) {
       redirectTo,
     });
 
-    res.cookies.set("furlads_session", JSON.stringify({
-      workerId: worker.id,
-      workerName: `${worker.firstName} ${worker.lastName}`.trim(),
-      workerAccessLevel: accessLevel,
-    }), {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    });
+    res.cookies.set(
+      "furlads_session",
+      JSON.stringify({
+        workerId: worker.id,
+        workerName: `${worker.firstName} ${worker.lastName}`.trim(),
+        workerAccessLevel: accessLevel,
+      }),
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30,
+      }
+    );
 
     return res;
   } catch (error) {
