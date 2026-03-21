@@ -25,7 +25,15 @@ model Worker {
   email       String?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
+
+  // 🔐 EXISTING
   pinHash     String?
+
+  // 🔐 NEW AUTH FIELDS
+  passwordHash String?
+  failedLoginAttempts Int @default(0)
+  lockedUntil DateTime?
+  lastLoginAt DateTime?
 
   companies      WorkerCompany[]
   notes          JobNote[]
@@ -81,14 +89,14 @@ model Job {
   paymentNotes   String?
   createdAt      DateTime @default(now())
 
-  visitPattern             String?
-  isRegularMaintenance     Boolean  @default(false)
-  maintenanceFrequency     String?
-  maintenanceFrequencyUnit String?
+  visitPattern              String?
+  isRegularMaintenance      Boolean  @default(false)
+  maintenanceFrequency      String?
+  maintenanceFrequencyUnit  String?
   maintenanceFrequencyWeeks Int?
-  timePreferenceMode       String?
-  preferredDay             String?
-  preferredTimeBand        String?
+  timePreferenceMode        String?
+  preferredDay              String?
+  preferredTimeBand         String?
 
   customer      Customer        @relation(fields: [customerId], references: [id])
   jobNotes      JobNote[]
