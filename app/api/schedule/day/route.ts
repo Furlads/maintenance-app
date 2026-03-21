@@ -11,9 +11,6 @@ type ScheduleJob = {
   startTime: string | null
   durationMinutes: number | null
   status: string
-  needsSchedulingAttention: boolean
-  schedulingAttentionReason: string | null
-  schedulingLastAttemptAt: string | null
 }
 
 type ScheduleAvailabilityBlock = {
@@ -137,9 +134,6 @@ export async function GET(req: NextRequest) {
           startTime: true,
           durationMinutes: true,
           status: true,
-          needsSchedulingAttention: true,
-          schedulingAttentionReason: true,
-          schedulingLastAttemptAt: true,
           customer: {
             select: {
               name: true,
@@ -207,11 +201,6 @@ export async function GET(req: NextRequest) {
         startTime: job.startTime,
         durationMinutes: job.durationMinutes,
         status: job.status || "todo",
-        needsSchedulingAttention: Boolean(job.needsSchedulingAttention),
-        schedulingAttentionReason: job.schedulingAttentionReason ?? null,
-        schedulingLastAttemptAt: job.schedulingLastAttemptAt
-          ? job.schedulingLastAttemptAt.toISOString()
-          : null,
       }
 
       for (const assignment of job.assignments) {
