@@ -78,6 +78,17 @@ type RefitSingleJobResult = {
   error?: string
 }
 
+type RefitWorkerDayResult = {
+  ok: boolean
+  workerId: number
+  date: string
+  repaired: number
+  remaining: number
+  repairedJobIds: number[]
+  remainingJobIds: number[]
+  error?: string
+}
+
 function normalisePostcode(value: unknown) {
   return cleanString(value).toUpperCase()
 }
@@ -880,6 +891,110 @@ export async function refitSingleAssignedJob(params: {
     repaired: result.repaired > 0,
     jobId: job.id,
     workerId,
+    remaining: result.remaining,
+    repairedJobIds: result.repairedJobIds,
+    remainingJobIds: result.remainingJobIds,
+    error: result.error,
+  }
+}
+
+export async function refitWorkerDay(params: {
+  workerId: number
+  date: Date
+  daysToScan?: number
+}): Promise<RefitWorkerDayResult> {
+  const dayStart = startOfLocalDay(params.date)
+  const dayEnd = endOfLocalDay(params.date)
+
+  const worker = await prisma.worker.findUnique({
+    where: { id: params.workerId },
+    select: {
+      id: true,
+      active: true,
+    },
+  })
+
+  const dateLabel = dayStart.toISOString().split('T')[0]
+
+  if (!worker || !worker.active) {
+    return {
+      ok: false,
+      workerId: params.workerId,
+      date: dateLabel,
+      repaired: 0,
+      remaining: 0,
+      repairedJobIds: [],
+      remainingJobIds: [],
+      error: 'Worker not found or inactive',
+    }
+  }
+
+  const dayJobs = await prisma.job.findMany({
+    where: {
+      assignments: {
+        some: {
+          workerId: params.workerId,
+        },
+      },
+      visitDate: {
+        gte: dayStart,
+        lte: dayEnd,
+      },
+      status: {
+        notIn: ['done', 'cancelled', 'archived'],
+      },
+    },
+    orderBy: [
+      { startTime: 'asc' },
+      { createdAt: 'asc' },
+    ],
+    select: {
+      id: true,
+    },
+  })
+
+  const targetJobIds = dayJobs.map((job) => job.id)
+
+  if (targetJobIds.length === 0) {
+    return {
+      ok: true,
+      workerId: params.workerId,
+      date: dateLabel,
+      repaired: 0,
+      remaining: 0,
+      repairedJobIds: [],
+      remainingJobIds: [],
+    }
+  }
+
+  await prisma.job.updateMany({
+    where: {
+      id: {
+        in: targetJobIds,
+      },
+    },
+    data: {
+      visitDate: null,
+      startTime: null,
+      status: 'unscheduled',
+      needsSchedulingAttention: false,
+      schedulingAttentionReason: null,
+      schedulingLastAttemptAt: new Date(),
+    },
+  })
+
+  const result = await repairAssignedJobsForWorker({
+    workerId: params.workerId,
+    jobIds: targetJobIds,
+    startDate: dayStart,
+    daysToScan: params.daysToScan,
+  })
+
+  return {
+    ok: result.ok,
+    workerId: params.workerId,
+    date: dateLabel,
+    repaired: result.repaired,
     remaining: result.remaining,
     repairedJobIds: result.repairedJobIds,
     remainingJobIds: result.remainingJobIds,

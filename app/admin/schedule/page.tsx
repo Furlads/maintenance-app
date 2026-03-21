@@ -837,6 +837,7 @@ export default function SchedulePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [runningScheduler, setRunningScheduler] = useState(false);
   const [refittingJobId, setRefittingJobId] = useState<number | null>(null);
+  const [refittingWorkerId, setRefittingWorkerId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const workers = useMemo(() => {
@@ -1000,6 +1001,49 @@ export default function SchedulePage() {
       window.alert(message);
     } finally {
       setRefittingJobId(null);
+    }
+  }
+
+  async function handleRefitWorkerDay(workerId: number) {
+    if (refittingWorkerId !== null) return;
+
+    setRefittingWorkerId(workerId);
+    setError("");
+
+    try {
+      const res = await fetch("/api/scheduler/refit-worker-day", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ workerId, date }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to re-fit worker day");
+      }
+
+      await loadPage(date, true);
+
+      if (data?.remaining > 0) {
+        window.alert(
+          `${data.repaired} job${data.repaired === 1 ? "" : "s"} re-fitted. ${data.remaining} still need attention.`
+        );
+      } else {
+        window.alert(
+          `${data.repaired} job${data.repaired === 1 ? "" : "s"} re-fitted for this worker/day.`
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      const message =
+        err instanceof Error ? err.message : "Failed to re-fit worker day.";
+      setError(message);
+      window.alert(message);
+    } finally {
+      setRefittingWorkerId(null);
     }
   }
 
@@ -1330,12 +1374,34 @@ export default function SchedulePage() {
 
                         <div
                           style={{
-                            fontSize: 14,
-                            fontWeight: 700,
-                            color: "#3f3f46",
+                            display: "flex",
+                            gap: 10,
+                            alignItems: "center",
+                            flexWrap: "wrap",
                           }}
                         >
-                          {formatRemaining(remainingMinutes)}
+                          <div
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 700,
+                              color: "#3f3f46",
+                            }}
+                          >
+                            {formatRemaining(remainingMinutes)}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRefitWorkerDay(worker.id)}
+                            disabled={refittingWorkerId === worker.id}
+                            style={{
+                              ...smallPrimaryButton(),
+                              cursor: refittingWorkerId === worker.id ? "default" : "pointer",
+                              opacity: refittingWorkerId === worker.id ? 0.7 : 1,
+                            }}
+                          >
+                            {refittingWorkerId === worker.id ? "Re-fitting day..." : "Re-fit this day"}
+                          </button>
                         </div>
                       </div>
 
