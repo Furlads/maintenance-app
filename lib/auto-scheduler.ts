@@ -12,6 +12,7 @@ import {
   minutesToTime,
   windowsOverlap,
 } from '@/lib/time-off'
+import { ensureRollingRecurringMaintenanceJobs } from '@/lib/recurring-maintenance'
 
 const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
 const FARM_POSTCODE = 'TF9 4BQ'
@@ -470,7 +471,7 @@ async function tryScheduleTrevQuoteJob(params: {
   return false
 }
 
-export async function runAutoScheduler() {
+export async function runAutoScheduler(options?: { skipRecurringTopUp?: boolean }) {
   const workers = await prisma.worker.findMany({
     where: { active: true },
     orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
@@ -499,11 +500,32 @@ export async function runAutoScheduler() {
   })
 
   if (workers.length === 0) {
-    return { ok: false, error: 'No workers found', scheduled: 0 }
+    return { ok: false, error: 'No workers found', scheduled: 0, recurringCreated: 0 }
   }
 
   if (unscheduledJobs.length === 0) {
-    return { ok: true, scheduled: 0, message: 'No unscheduled jobs found' }
+    if (!options?.skipRecurringTopUp) {
+      const recurringTopUp = await ensureRollingRecurringMaintenanceJobs()
+
+      if (recurringTopUp.createdCount > 0) {
+        const secondPass = await runAutoScheduler({ skipRecurringTopUp: true })
+
+        return {
+          ok: secondPass.ok,
+          error: secondPass.ok ? undefined : secondPass.error,
+          scheduled: secondPass.scheduled,
+          recurringCreated: recurringTopUp.createdCount,
+          message: secondPass.message,
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      scheduled: 0,
+      recurringCreated: 0,
+      message: 'No unscheduled jobs found',
+    }
   }
 
   const today = startOfLocalDay(new Date())
@@ -706,8 +728,28 @@ export async function runAutoScheduler() {
     }
   }
 
+  let recurringCreated = 0
+
+  if (!options?.skipRecurringTopUp) {
+    const recurringTopUp = await ensureRollingRecurringMaintenanceJobs()
+    recurringCreated = recurringTopUp.createdCount
+
+    if (recurringTopUp.createdCount > 0) {
+      const secondPass = await runAutoScheduler({ skipRecurringTopUp: true })
+
+      return {
+        ok: secondPass.ok,
+        error: secondPass.ok ? undefined : secondPass.error,
+        scheduled: scheduledCount + secondPass.scheduled,
+        recurringCreated: recurringTopUp.createdCount,
+        message: secondPass.message,
+      }
+    }
+  }
+
   return {
     ok: true,
     scheduled: scheduledCount,
+    recurringCreated,
   }
 }
