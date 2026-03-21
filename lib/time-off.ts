@@ -46,7 +46,10 @@ export function addDays(date: Date, days: number) {
   return next
 }
 
-export function clampJobWindow(startTime: string | null | undefined, durationMinutes: number | null | undefined) {
+export function clampJobWindow(
+  startTime: string | null | undefined,
+  durationMinutes: number | null | undefined
+) {
   if (!startTime) return null
 
   const start = timeToMinutes(startTime)
@@ -60,13 +63,16 @@ export function clampJobWindow(startTime: string | null | undefined, durationMin
   }
 }
 
-export function getBlockWindowForDate(block: {
-  startDate: Date
-  endDate: Date
-  startTime: string | null
-  endTime: string | null
-  isFullDay: boolean
-}, date: Date) {
+export function getBlockWindowForDate(
+  block: {
+    startDate: Date
+    endDate: Date
+    startTime: string | null
+    endTime: string | null
+    isFullDay: boolean
+  },
+  date: Date
+) {
   const blockStartDay = startOfLocalDay(block.startDate)
   const blockEndDay = startOfLocalDay(block.endDate)
   const currentDay = startOfLocalDay(date)
@@ -131,10 +137,7 @@ export async function getActiveBlocksForWorkerRange(params: {
         gte: startOfLocalDay(params.startDate),
       },
     },
-    orderBy: [
-      { startDate: 'asc' },
-      { createdAt: 'asc' },
-    ],
+    orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
   })
 }
 
@@ -158,11 +161,7 @@ export async function getActiveBlocksForWorkersRange(params: {
         gte: startOfLocalDay(params.startDate),
       },
     },
-    orderBy: [
-      { workerId: 'asc' },
-      { startDate: 'asc' },
-      { createdAt: 'asc' },
-    ],
+    orderBy: [{ workerId: 'asc' }, { startDate: 'asc' }, { createdAt: 'asc' }],
   })
 }
 
@@ -194,23 +193,21 @@ export async function unscheduleImpactedJobsForApprovedBlock(params: {
     include: {
       assignments: true,
     },
-    orderBy: [
-      { visitDate: 'asc' },
-      { startTime: 'asc' },
-      { createdAt: 'asc' },
-    ],
+    orderBy: [{ visitDate: 'asc' }, { startTime: 'asc' }, { createdAt: 'asc' }],
   })
 
   const impactedJobIds: number[] = []
 
   for (const job of jobs) {
-    if (!job.visitDate || !job.startTime) {
+    const jobVisitDate = job.visitDate
+
+    if (!jobVisitDate || !job.startTime) {
       impactedJobIds.push(job.id)
       continue
     }
 
     const jobWindow = clampJobWindow(job.startTime, job.durationMinutes)
-    const blockWindow = getBlockWindowForDate(params.block, job.visitDate)
+    const blockWindow = getBlockWindowForDate(params.block, jobVisitDate)
 
     if (!jobWindow || !blockWindow) {
       continue
@@ -221,13 +218,13 @@ export async function unscheduleImpactedJobsForApprovedBlock(params: {
       continue
     }
 
-    const sameDayJobsForWorker = jobs.filter(
-      (other) =>
-        other.id !== job.id &&
-        other.visitDate &&
-        sameLocalDay(other.visitDate, job.visitDate) &&
-        !!other.startTime
-    )
+    const sameDayJobsForWorker = jobs.filter((other) => {
+      if (other.id === job.id) return false
+      if (!other.visitDate) return false
+      if (!other.startTime) return false
+
+      return sameLocalDay(other.visitDate, jobVisitDate)
+    })
 
     const hasDirectOverlap = windowsOverlap(
       jobWindow.start,
