@@ -490,6 +490,12 @@ function getLocalRepairFailureReason(params: {
     return 'Worker unavailable for this day'
   }
 
+  const duration = getJobDurationMinutes(job)
+
+  if (duration > END_OF_DAY_MINUTES - JOBS_START_MINUTES) {
+    return 'Job duration exceeds working day'
+  }
+
   const slot = findBestSlotForJob({
     dayJobs,
     candidateJob: job,
@@ -498,6 +504,27 @@ function getLocalRepairFailureReason(params: {
   })
 
   if (!slot) {
+    const totalWorkMinutes = getTotalWorkMinutes(dayJobs)
+
+    if (
+      totalWorkMinutes < BREAK_THRESHOLD_MINUTES &&
+      totalWorkMinutes + duration >= BREAK_THRESHOLD_MINUTES
+    ) {
+      return 'Break requirement prevents fit'
+    }
+
+    const currentPostcode =
+      dayJobs.length > 0
+        ? getJobPostcode(dayJobs[dayJobs.length - 1])
+        : FARM_POSTCODE
+
+    const jobPostcode = getJobPostcode(job)
+    const travelMinutes = getTravelMinutes(currentPostcode, jobPostcode)
+
+    if (travelMinutes >= 45) {
+      return 'Travel constraints prevent fit'
+    }
+
     return 'No slot available on assigned worker/day'
   }
 
