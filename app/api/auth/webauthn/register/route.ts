@@ -7,11 +7,21 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 const rpName = "Furlads";
-const rpID = process.env.WEBAUTHN_RP_ID!;
-const origin = process.env.WEBAUTHN_ORIGIN!;
+const rpID = process.env.WEBAUTHN_RP_ID || "";
+const origin = process.env.WEBAUTHN_ORIGIN || "";
 
 export async function POST(req: Request) {
   try {
+    if (!rpID || !origin) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "WebAuthn environment variables are missing.",
+        },
+        { status: 500 }
+      );
+    }
+
     const body = await req.json();
     const phone = String(body?.phone || "").trim();
 
@@ -69,10 +79,13 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ ok: true, options });
-  } catch (error) {
+  } catch (error: any) {
     console.error("WEBAUTHN_REGISTER_START_ERROR", error);
     return NextResponse.json(
-      { ok: false, error: "Could not start Face ID setup." },
+      {
+        ok: false,
+        error: error?.message || "Could not start Face ID setup.",
+      },
       { status: 500 }
     );
   }
@@ -80,6 +93,16 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    if (!rpID || !origin) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "WebAuthn environment variables are missing.",
+        },
+        { status: 500 }
+      );
+    }
+
     const body = await req.json();
     const phone = String(body?.phone || "").trim();
     const credential = body?.credential;
@@ -168,10 +191,13 @@ export async function PUT(req: Request) {
     });
 
     return NextResponse.json({ ok: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error("WEBAUTHN_REGISTER_FINISH_ERROR", error);
     return NextResponse.json(
-      { ok: false, error: "Could not save Face ID setup." },
+      {
+        ok: false,
+        error: error?.message || "Could not save Face ID setup.",
+      },
       { status: 500 }
     );
   }
