@@ -25,6 +25,8 @@ type ScheduleAvailabilityBlock = {
   isFullDay: boolean
   notes: string | null
   source: string
+  status: "pending" | "approved" | "declined"
+  timeOffRequestId: number | null
 }
 
 type ScheduleWorker = {
@@ -60,6 +62,23 @@ function normaliseStartTimeForSort(value: string | null): string {
   const minutes = parts[1].padStart(2, "0")
 
   return `${hours}:${minutes}`
+}
+
+function normaliseBlockStatus(
+  source: string | null | undefined,
+  status: string | null | undefined
+): "pending" | "approved" | "declined" {
+  const cleanSource = String(source || "").trim().toLowerCase()
+  const cleanStatus = String(status || "").trim().toLowerCase()
+
+  if (cleanSource !== "time_off_request") {
+    return "approved"
+  }
+
+  if (cleanStatus === "pending") return "pending"
+  if (cleanStatus === "declined") return "declined"
+
+  return "approved"
 }
 
 export async function GET(req: NextRequest) {
@@ -149,12 +168,19 @@ export async function GET(req: NextRequest) {
         select: {
           id: true,
           workerId: true,
+          requestId: true,
           title: true,
           startTime: true,
           endTime: true,
           isFullDay: true,
           notes: true,
           source: true,
+          request: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
         },
       }),
     ])
@@ -215,6 +241,8 @@ export async function GET(req: NextRequest) {
         isFullDay: block.isFullDay,
         notes: block.notes ?? null,
         source: block.source || "time_off_request",
+        status: normaliseBlockStatus(block.source, block.request?.status),
+        timeOffRequestId: block.requestId ?? block.request?.id ?? null,
       })
     }
 
