@@ -1,1346 +1,1675 @@
-export const runtime = 'nodejs'
+'use client'
 
-import { NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
+import { useParams } from 'next/navigation'
 
-type Ctx = { params: Promise<{ id: string }> }
-
-const DEFAULT_JOB_DURATION_MINUTES = 60
-const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
-const RECURRING_HORIZON_DAYS = 42
-
-function clean(value: unknown) {
-  return typeof value === 'string' ? value.trim() : ''
+type Worker = {
+  id: number
+  firstName: string
+  lastName: string
+  phone: string | null
 }
 
-function isQuoteJobType(jobType: string) {
-  const value = clean(jobType).toLowerCase()
-  return value === 'quote' || value === 'quoted'
+type JobAssignment = {
+  id: number
+  workerId: number
+  worker: Worker
 }
 
-function isTrue(value: unknown) {
-  return value === true || value === 'true' || value === 1 || value === '1'
+type Customer = {
+  id: number
+  name: string
+  phone: string | null
+  address: string | null
+  postcode: string | null
 }
 
-function isValidHHMM(value: string) {
-  return /^\d{2}:\d{2}$/.test(value)
+type Job = {
+  id: number
+  title: string
+  address: string
+  notes: string | null
+  status: string
+  jobType: string
+  createdAt: string
+  customer: Customer
+  assignments: JobAssignment[]
+  visitDate?: string | null
+  startTime?: string | null
+  durationMinutes?: number | null
+  overrunMins?: number | null
+  pausedMinutes?: number | null
+  arrivedAt?: string | null
+  pausedAt?: string | null
+  finishedAt?: string | null
+  paymentStatus?: string | null
+  paymentNotes?: string | null
 }
 
-function getLondonDateParts(date: Date) {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/London',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-
-  const parts = formatter.formatToParts(date)
-
-  const year = parts.find((part) => part.type === 'year')?.value
-  const month = parts.find((part) => part.type === 'month')?.value
-  const day = parts.find((part) => part.type === 'day')?.value
-
-  if (!year || !month || !day) {
-    throw new Error('Failed to build London date parts')
-  }
-
-  return { year, month, day }
+type JobPhoto = {
+  id: number
+  jobId: number
+  uploadedByWorkerId: number | null
+  label: string | null
+  imageUrl: string
+  createdAt: string
 }
 
-function londonDateOnlyString(date: Date) {
-  const { year, month, day } = getLondonDateParts(date)
-  return `${year}-${month}-${day}`
+type CannotCompleteInfo = {
+  reason: string
+  details: string
+  reportedBy: string
+  recordedAt: string
+  rawLine: string
 }
 
-function startOfLondonDayUtc(date: Date) {
-  const iso = londonDateOnlyString(date)
-  return new Date(`${iso}T00:00:00.000Z`)
-}
+function extractCannotCompleteInfo(notes: string | null): CannotCompleteInfo | null {
+  if (!notes) return null
 
-function nextLondonDayUtc(date: Date) {
-  const start = startOfLondonDayUtc(date)
-  return new Date(start.getTime() + 24 * 60 * 60 * 1000)
-}
+  const lines = notes
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
 
-function parseDateValue(value: unknown): Date | null | undefined {
-  if (value === undefined) return undefined
-  if (value === null || value === '' || value === 'null') return null
+  const matchingLine = [...lines]
+    .reverse()
+    .find((line) => line.toLowerCase().startsWith('job could not be completed:'))
 
-  if (typeof value === 'string') {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-      return new Date(`${value.trim()}T00:00:00.000Z`)
-    }
+  if (!matchingLine) return null
 
-    const parsed = new Date(value)
-    if (!Number.isNaN(parsed.getTime())) return parsed
-  }
+  const parts = matchingLine.split(' | ').map((part) => part.trim())
 
-  return undefined
-}
+  const reasonPart =
+    parts.find((part) =>
+      part.toLowerCase().startsWith('job could not be completed:')
+    ) || ''
 
-function parsePositiveInt(value: unknown): number | undefined {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return undefined
-  const rounded = Math.round(parsed)
-  return rounded > 0 ? rounded : undefined
-}
+  const detailsPart =
+    parts.find((part) => part.toLowerCase().startsWith('details:')) || ''
 
-function parseNonNegativeInt(value: unknown): number | undefined {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return undefined
-  const rounded = Math.round(parsed)
-  return rounded >= 0 ? rounded : undefined
-}
+  const reportedByPart =
+    parts.find((part) => part.toLowerCase().startsWith('reported by:')) || ''
 
-function parseAssignedWorkerIds(input: unknown): number[] {
-  if (!Array.isArray(input)) return []
-
-  const cleaned: number[] = input
-    .map((value): number | null => {
-      if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
-        return value
-      }
-
-      if (typeof value === 'string') {
-        const parsed = Number(value.trim())
-        if (Number.isInteger(parsed) && parsed > 0) {
-          return parsed
-        }
-      }
-
-      return null
-    })
-    .filter((value): value is number => value !== null)
-
-  return [...new Set(cleaned)]
-}
-
-function isMaintenanceJob(jobType: string | null | undefined) {
-  return clean(jobType).toLowerCase().includes('maint')
-}
-
-function normaliseMaintenanceFrequency(value: unknown) {
-  const raw = clean(value).toLowerCase()
-
-  if (!raw) return null
-  if (raw === 'weekly') return 'weekly'
-  if (raw === 'fortnightly') return 'fortnightly'
-  if (raw === '4-weekly' || raw === '4 weekly' || raw === 'monthly') return '4-weekly'
-  if (raw === 'one-off' || raw === 'one off') return 'one-off'
-  if (raw === 'every_3_weeks' || raw === 'every 3 weeks') return 'every_3_weeks'
-
-  return raw
-}
-
-function normalisePreferredDay(value: unknown) {
-  const raw = clean(value).toLowerCase()
-
-  if (!raw) return null
-  if (raw === 'any') return 'any'
-  if (raw === 'monday') return 'monday'
-  if (raw === 'tuesday') return 'tuesday'
-  if (raw === 'wednesday') return 'wednesday'
-  if (raw === 'thursday') return 'thursday'
-  if (raw === 'friday') return 'friday'
-
-  return raw
-}
-
-function normalisePreferredTimeBand(value: unknown) {
-  const raw = clean(value).toLowerCase()
-
-  if (!raw) return null
-  if (raw === 'anytime' || raw === 'any time' || raw === 'any') return 'anytime'
-  if (raw === 'am' || raw === 'morning') return 'am'
-  if (raw === 'pm' || raw === 'afternoon') return 'pm'
-
-  return raw
-}
-
-function deriveMaintenanceMeta(params: {
-  jobType: string | null | undefined
-  isRegularMaintenance: boolean
-  maintenanceFrequency: string | null
-}) {
-  if (!isMaintenanceJob(params.jobType) || !params.isRegularMaintenance) {
-    return {
-      visitPattern: null as string | null,
-      maintenanceFrequencyUnit: null as string | null,
-      maintenanceFrequencyWeeks: null as number | null,
-      timePreferenceMode: null as string | null,
-    }
-  }
-
-  const frequency = params.maintenanceFrequency
-
-  if (!frequency || frequency === 'one-off') {
-    return {
-      visitPattern: null as string | null,
-      maintenanceFrequencyUnit: null as string | null,
-      maintenanceFrequencyWeeks: null as number | null,
-      timePreferenceMode: 'preferred-band' as string | null,
-    }
-  }
-
-  if (frequency === '4-weekly') {
-    return {
-      visitPattern: 'regular-maintenance' as string | null,
-      maintenanceFrequencyUnit: 'weekly' as string | null,
-      maintenanceFrequencyWeeks: 4 as number | null,
-      timePreferenceMode: 'preferred-band' as string | null,
-    }
-  }
-
-  if (frequency === 'fortnightly') {
-    return {
-      visitPattern: 'regular-maintenance' as string | null,
-      maintenanceFrequencyUnit: 'weekly' as string | null,
-      maintenanceFrequencyWeeks: 2 as number | null,
-      timePreferenceMode: 'preferred-band' as string | null,
-    }
-  }
-
-  if (frequency === 'weekly') {
-    return {
-      visitPattern: 'regular-maintenance' as string | null,
-      maintenanceFrequencyUnit: 'weekly' as string | null,
-      maintenanceFrequencyWeeks: 1 as number | null,
-      timePreferenceMode: 'preferred-band' as string | null,
-    }
-  }
-
-  if (frequency === 'every_3_weeks') {
-    return {
-      visitPattern: 'regular-maintenance' as string | null,
-      maintenanceFrequencyUnit: 'weekly' as string | null,
-      maintenanceFrequencyWeeks: 3 as number | null,
-      timePreferenceMode: 'preferred-band' as string | null,
-    }
-  }
+  const recordedAtPart =
+    parts.find((part) => part.toLowerCase().startsWith('recorded at:')) || ''
 
   return {
-    visitPattern: 'regular-maintenance' as string | null,
-    maintenanceFrequencyUnit: 'weekly' as string | null,
-    maintenanceFrequencyWeeks: null as number | null,
-    timePreferenceMode: 'preferred-band' as string | null,
+    reason: reasonPart.replace(/^job could not be completed:\s*/i, '').trim(),
+    details: detailsPart.replace(/^details:\s*/i, '').trim(),
+    reportedBy: reportedByPart.replace(/^reported by:\s*/i, '').trim(),
+    recordedAt: recordedAtPart.replace(/^recorded at:\s*/i, '').trim(),
+    rawLine: matchingLine
   }
 }
 
-function isRegularMaintenanceJob(job: {
-  jobType?: string | null
-  isRegularMaintenance?: boolean | null
-  visitPattern?: string | null
-  maintenanceFrequency?: string | null
+function stripCannotCompleteLines(notes: string | null) {
+  if (!notes) return ''
+
+  return notes
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        !line.toLowerCase().startsWith('job could not be completed:')
+    )
+    .join('\n')
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  return date.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatMinutes(totalMinutes?: number | null) {
+  if (!totalMinutes || totalMinutes <= 0) return '0m'
+
+  const hours = Math.floor(totalMinutes / 60)
+  const mins = totalMinutes % 60
+
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m`
+  }
+
+  if (hours > 0) {
+    return `${hours}h`
+  }
+
+  return `${mins}m`
+}
+
+function statusBadgeClass(status: string) {
+  const value = String(status || '').toLowerCase()
+
+  if (value === 'done' || value === 'completed') {
+    return 'bg-green-100 text-green-800 ring-green-200'
+  }
+
+  if (value === 'inprogress' || value === 'in_progress') {
+    return 'bg-blue-100 text-blue-800 ring-blue-200'
+  }
+
+  if (value === 'scheduled' || value === 'todo') {
+    return 'bg-amber-100 text-amber-800 ring-amber-200'
+  }
+
+  if (value === 'paused') {
+    return 'bg-orange-100 text-orange-800 ring-orange-200'
+  }
+
+  return 'bg-zinc-100 text-zinc-700 ring-zinc-200'
+}
+
+function typeBadgeClass(jobType: string) {
+  const value = String(jobType || '').toLowerCase()
+
+  if (value.includes('maint')) {
+    return 'bg-emerald-100 text-emerald-800 ring-emerald-200'
+  }
+
+  if (value.includes('land')) {
+    return 'bg-sky-100 text-sky-800 ring-sky-200'
+  }
+
+  if (value.includes('quote')) {
+    return 'bg-amber-100 text-amber-800 ring-amber-200'
+  }
+
+  if (value.includes('prep')) {
+    return 'bg-indigo-100 text-indigo-800 ring-indigo-200'
+  }
+
+  return 'bg-zinc-100 text-zinc-700 ring-zinc-200'
+}
+
+function formatPaymentStatus(value?: string | null) {
+  const normalised = String(value || '').toLowerCase()
+
+  if (normalised === 'cash_paid') return 'Cash paid'
+  if (normalised === 'invoice_needed') return 'Needs invoice'
+  return 'Not recorded'
+}
+
+function Pill({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className: string
 }) {
   return (
-    isMaintenanceJob(job.jobType) &&
-    Boolean(job.isRegularMaintenance) &&
-    clean(job.visitPattern) === 'regular-maintenance' &&
-    clean(job.maintenanceFrequency) !== ''
+    <span
+      className={`inline-flex rounded-full px-3 py-1.5 text-xs font-bold ring-1 ring-inset ${className}`}
+    >
+      {children}
+    </span>
   )
 }
 
-function addDaysToDate(date: Date, days: number) {
-  return new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate() + days,
-    0,
-    0,
-    0,
-    0
-  )
-}
-
-function addMonthsToDate(date: Date, months: number) {
-  return new Date(
-    date.getFullYear(),
-    date.getMonth() + months,
-    date.getDate(),
-    0,
-    0,
-    0,
-    0
-  )
-}
-
-function calculateNextMaintenanceVisitDate(args: {
-  baseDate: Date
-  maintenanceFrequency: string | null
-  maintenanceFrequencyUnit?: string | null
-  maintenanceFrequencyWeeks?: number | null
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string
+  value: React.ReactNode
 }) {
-  const frequency = clean(args.maintenanceFrequency)
-  const unit = clean(args.maintenanceFrequencyUnit).toLowerCase()
-  const weeks =
-    typeof args.maintenanceFrequencyWeeks === 'number' &&
-    args.maintenanceFrequencyWeeks > 0
-      ? args.maintenanceFrequencyWeeks
-      : null
-
-  if (frequency === 'monthly' || unit === 'monthly') {
-    return addMonthsToDate(args.baseDate, 1)
-  }
-
-  if (frequency === 'weekly') {
-    return addDaysToDate(args.baseDate, 7)
-  }
-
-  if (frequency === 'fortnightly') {
-    return addDaysToDate(args.baseDate, 14)
-  }
-
-  if (frequency === 'every_3_weeks') {
-    return addDaysToDate(args.baseDate, 21)
-  }
-
-  if (frequency === '4-weekly') {
-    return addDaysToDate(args.baseDate, 28)
-  }
-
-  if (weeks) {
-    return addDaysToDate(args.baseDate, weeks * 7)
-  }
-
-  return null
-}
-
-async function ensureFutureRecurringMaintenanceJobs(args: {
-  job: {
-    id: number
-    title: string
-    customerId: number
-    address: string
-    notes: string | null
-    jobType: string
-    visitDate: Date | null
-    durationMinutes: number | null
-    visitPattern: string | null
-    isRegularMaintenance: boolean | null
-    maintenanceFrequency: string | null
-    maintenanceFrequencyUnit: string | null
-    maintenanceFrequencyWeeks: number | null
-    timePreferenceMode: string | null
-    preferredDay: string | null
-    preferredTimeBand: string | null
-    assignments: Array<{ workerId: number }>
-  }
-}) {
-  const job = args.job
-
-  if (!isRegularMaintenanceJob(job)) {
-    return []
-  }
-
-  const horizonStart = new Date()
-  const horizonEnd = addDaysToDate(horizonStart, RECURRING_HORIZON_DAYS)
-
-  const existingFutureJobs = await prisma.job.findMany({
-    where: {
-      customerId: job.customerId,
-      title: job.title,
-      jobType: job.jobType,
-      visitPattern: job.visitPattern,
-      isRegularMaintenance: true,
-      maintenanceFrequency: job.maintenanceFrequency,
-      maintenanceFrequencyUnit: job.maintenanceFrequencyUnit,
-      maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
-      visitDate: {
-        gte: horizonStart,
-        lte: horizonEnd,
-      },
-      status: {
-        notIn: ['cancelled', 'archived'],
-      },
-    },
-    orderBy: {
-      visitDate: 'asc',
-    },
-    select: {
-      id: true,
-      visitDate: true,
-    },
-  })
-
-  const existingDates = new Set(
-    existingFutureJobs
-      .filter((existingJob) => existingJob.visitDate)
-      .map((existingJob) => londonDateOnlyString(existingJob.visitDate as Date))
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+        {label}
+      </div>
+      <div className="mt-2 text-sm font-medium text-zinc-900">{value}</div>
+    </div>
   )
-
-  let seedDate = job.visitDate ?? new Date()
-  const createdJobs = []
-
-  while (true) {
-    const nextVisitDate = calculateNextMaintenanceVisitDate({
-      baseDate: seedDate,
-      maintenanceFrequency: job.maintenanceFrequency,
-      maintenanceFrequencyUnit: job.maintenanceFrequencyUnit,
-      maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
-    })
-
-    if (!nextVisitDate) {
-      break
-    }
-
-    if (nextVisitDate > horizonEnd) {
-      break
-    }
-
-    const nextVisitKey = londonDateOnlyString(nextVisitDate)
-
-    if (!existingDates.has(nextVisitKey)) {
-      const created = await prisma.job.create({
-        data: {
-          title: job.title,
-          customerId: job.customerId,
-          address: job.address,
-          notes: job.notes,
-          jobType: job.jobType,
-          visitDate: nextVisitDate,
-          startTime: null,
-          durationMinutes: job.durationMinutes ?? DEFAULT_JOB_DURATION_MINUTES,
-          overrunMins: 0,
-          pausedMinutes: 0,
-          status: 'unscheduled',
-
-          visitPattern: job.visitPattern,
-          isRegularMaintenance: true,
-          maintenanceFrequency: job.maintenanceFrequency,
-          maintenanceFrequencyUnit: job.maintenanceFrequencyUnit,
-          maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
-          timePreferenceMode: job.timePreferenceMode,
-          preferredDay: job.preferredDay,
-          preferredTimeBand: job.preferredTimeBand,
-
-          assignments:
-            job.assignments.length > 0
-              ? {
-                  create: job.assignments.map((assignment) => ({
-                    workerId: assignment.workerId,
-                  })),
-                }
-              : undefined,
-        },
-        include: {
-          customer: true,
-          assignments: {
-            include: {
-              worker: true,
-            },
-          },
-          photos: true,
-          chasMessages: true,
-        },
-      })
-
-      createdJobs.push(created)
-      existingDates.add(nextVisitKey)
-    }
-
-    seedDate = nextVisitDate
-  }
-
-  return createdJobs
 }
 
-async function buildNotesLog(jobId: number) {
-  const notes = await prisma.jobNote.findMany({
-    where: { jobId },
-    orderBy: { createdAt: 'asc' },
-    include: {
-      worker: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-        },
-      },
-    },
-  })
+function isPrepJob(job: Job | null) {
+  if (!job) return false
 
-  const notesLog = notes
-    .map((note) => {
-      const author = note.worker
-        ? `${note.worker.firstName} ${note.worker.lastName}`.trim()
-        : 'Unknown'
+  const title = String(job.title || '').trim().toLowerCase()
+  const jobType = String(job.jobType || '').trim().toLowerCase()
 
-      return `[${note.createdAt.toLocaleString('en-GB')}] ${author}: ${note.note}`
-    })
-    .join('\n')
-
-  return { notes, notesLog }
+  return title === 'morning prep' || jobType === 'prep'
 }
 
-async function findTrevWorkerIds() {
-  const workers = await prisma.worker.findMany({
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-    },
-  })
+export default function JobPage() {
+  const params = useParams()
+  const id = Number(params.id)
 
-  return workers
-    .filter((worker) => {
-      const firstName = clean(worker.firstName).toLowerCase()
-      const lastName = clean(worker.lastName).toLowerCase()
-      const email = clean(worker.email).toLowerCase()
+  const [job, setJob] = useState<Job | null>(null)
+  const [photos, setPhotos] = useState<JobPhoto[]>([])
+  const [label, setLabel] = useState('Before')
+  const [uploading, setUploading] = useState(false)
+  const [deletingPhotoId, setDeletingPhotoId] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [photoMessage, setPhotoMessage] = useState('')
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+  const [busyAction, setBusyAction] = useState('')
 
-      const firstMatches = firstName === 'trevor' || firstName === 'trev'
-      const lastMatches = lastName.includes('fudger')
-      const emailMatches = email.includes('trevor.fudger')
+  const [showQuoteForm, setShowQuoteForm] = useState(false)
+  const [quoteBusy, setQuoteBusy] = useState(false)
+  const [quoteMessage, setQuoteMessage] = useState('')
+  const [quoteCustomerName, setQuoteCustomerName] = useState('')
+  const [quoteCustomerPhone, setQuoteCustomerPhone] = useState('')
+  const [quoteCustomerEmail, setQuoteCustomerEmail] = useState('')
+  const [quoteCustomerAddress, setQuoteCustomerAddress] = useState('')
+  const [quoteCustomerPostcode, setQuoteCustomerPostcode] = useState('')
+  const [quoteWorkSummary, setQuoteWorkSummary] = useState('')
+  const [quoteEstimatedTime, setQuoteEstimatedTime] = useState('')
+  const [quoteNotes, setQuoteNotes] = useState('')
 
-      return (firstMatches && lastMatches) || emailMatches
-    })
-    .map((worker) => worker.id)
-}
+  const [showFinishReport, setShowFinishReport] = useState(false)
+  const [finishSummary, setFinishSummary] = useState('')
+  const [finishFollowUpRequired, setFinishFollowUpRequired] = useState<'no' | 'yes'>('no')
+  const [finishFollowUpDetails, setFinishFollowUpDetails] = useState('')
+  const [finishPaymentStatus, setFinishPaymentStatus] = useState<'not_recorded' | 'cash_paid' | 'invoice_needed'>('not_recorded')
+  const [finishPaymentNotes, setFinishPaymentNotes] = useState('')
+  const [finishKellyNotes, setFinishKellyNotes] = useState('')
 
-async function resolveTrevQuoteVisitSchedule(params: {
-  jobId: number
-  visitDate: Date | null
-  startTime: string | null
-  jobType: string
-  assignedWorkerIds: number[]
-  allowQuoteTimeOverride: boolean
-}) {
-  const {
-    jobId,
-    visitDate,
-    startTime,
-    jobType,
-    assignedWorkerIds,
-    allowQuoteTimeOverride,
-  } = params
+  async function loadPhotos() {
+    const res = await fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
 
-  if (!isQuoteJobType(jobType)) {
-    return {
-      visitDate,
-      startTime,
+    if (!res.ok) {
+      throw new Error('Failed to load photos')
     }
+
+    const data = await res.json()
+    setPhotos(Array.isArray(data) ? data : [])
   }
 
-  const trevWorkerIds = await findTrevWorkerIds()
-
-  if (trevWorkerIds.length === 0) {
-    return {
-      error: NextResponse.json(
-        { error: 'Could not find Trev in the worker database.' },
-        { status: 400 }
-      ),
-    }
-  }
-
-  const isAssignedToTrev = assignedWorkerIds.some((workerId) =>
-    trevWorkerIds.includes(workerId)
-  )
-
-  if (!isAssignedToTrev) {
-    return {
-      visitDate,
-      startTime,
-    }
-  }
-
-  if (!visitDate) {
-    return {
-      error: NextResponse.json(
-        { error: 'Quote visits for Trev must have a visitDate.' },
-        { status: 400 }
-      ),
-    }
-  }
-
-  if (allowQuoteTimeOverride && !startTime) {
-    return {
-      error: NextResponse.json(
-        {
-          error:
-            'Override was enabled but no manual startTime was provided for this Trev quote visit.',
-        },
-        { status: 400 }
-      ),
-    }
-  }
-
-  const dayStart = startOfLondonDayUtc(visitDate)
-  const dayEnd = nextLondonDayUtc(visitDate)
-
-  const existingJobsForTrevThatDay = await prisma.job.findMany({
-    where: {
-      id: {
-        not: jobId,
-      },
-      visitDate: {
-        gte: dayStart,
-        lt: dayEnd,
-      },
-      assignments: {
-        some: {
-          workerId: {
-            in: trevWorkerIds,
-          },
-        },
-      },
-    },
-    select: {
-      id: true,
-      jobType: true,
-      startTime: true,
-    },
-  })
-
-  const existingTrevQuoteJobs = existingJobsForTrevThatDay.filter(
-    (job) => clean(job.jobType).toLowerCase() === 'quote'
-  )
-
-  if (existingTrevQuoteJobs.length >= 3) {
-    return {
-      error: NextResponse.json(
-        {
-          error:
-            'Trev already has 3 quote visits booked for that day. Maximum reached.',
-        },
-        { status: 400 }
-      ),
-    }
-  }
-
-  const takenTimes = new Set(
-    existingTrevQuoteJobs.map((job) => clean(job.startTime)).filter(Boolean)
-  )
-
-  let resolvedStartTime = startTime
-
-  if (!resolvedStartTime) {
-    const nextFreeDefaultSlot = TREV_QUOTE_DEFAULT_SLOTS.find(
-      (slot) => !takenTimes.has(slot)
-    )
-
-    if (!nextFreeDefaultSlot) {
-      return {
-        error: NextResponse.json(
-          {
-            error:
-              'No Trev quote slots are left for that day. Available default slots are 11:00, 12:00 and 13:00 only.',
-          },
-          { status: 400 }
-        ),
-      }
-    }
-
-    resolvedStartTime = nextFreeDefaultSlot
-  }
-
-  if (
-    !allowQuoteTimeOverride &&
-    !TREV_QUOTE_DEFAULT_SLOTS.includes(resolvedStartTime)
-  ) {
-    return {
-      error: NextResponse.json(
-        {
-          error:
-            'Trev quote visits can only be booked at 11:00, 12:00 or 13:00 unless override is enabled.',
-        },
-        { status: 400 }
-      ),
-    }
-  }
-
-  if (takenTimes.has(resolvedStartTime)) {
-    return {
-      error: NextResponse.json(
-        {
-          error:
-            'Trev already has a quote visit booked at that time on that day.',
-        },
-        { status: 400 }
-      ),
-    }
-  }
-
-  return {
-    visitDate,
-    startTime: resolvedStartTime,
-  }
-}
-
-function normaliseScheduleState(params: {
-  requestedStatus: string | undefined
-  visitDate: Date | null
-  startTime: string | null
-  isTrevQuoteJob: boolean
-}) {
-  const { requestedStatus, visitDate, startTime, isTrevQuoteJob } = params
-  const cleanStatus = clean(requestedStatus).toLowerCase()
-
-  if (startTime && !visitDate) {
-    throw new Error('A start time cannot be saved without a visit date.')
-  }
-
-  if (!visitDate && !startTime) {
-    return {
-      visitDate: null,
-      startTime: null,
-      status: 'unscheduled',
-    }
-  }
-
-  if (visitDate && !startTime) {
-    return {
-      visitDate,
-      startTime: null,
-      status: isTrevQuoteJob ? cleanStatus || 'todo' : 'unscheduled',
-    }
-  }
-
-  return {
-    visitDate,
-    startTime,
-    status: cleanStatus || 'todo',
-  }
-}
-
-export async function GET(_: Request, ctx: Ctx) {
-  try {
-    const { id } = await ctx.params
-    const jobId = parseInt(id, 10)
-
-    if (!jobId || Number.isNaN(jobId)) {
-      return NextResponse.json(
-        { error: 'Invalid job id', received: id },
-        { status: 400 }
-      )
-    }
-
-    const job = await prisma.job.findUnique({
-      where: { id: jobId },
-      include: {
-        customer: true,
-        assignments: {
-          include: {
-            worker: true,
-          },
-        },
-        photos: true,
-        chasMessages: true,
-      },
-    })
-
-    if (!job) {
-      return NextResponse.json({ error: 'Job not found' }, { status: 404 })
-    }
-
-    const { notes, notesLog } = await buildNotesLog(jobId)
-
-    return NextResponse.json({
-      ...job,
-      jobNotes: notes,
-      notesLog,
-      assignedWorkerIds: job.assignments.map((assignment) => assignment.workerId),
-    })
-  } catch (error) {
-    console.error('GET /api/jobs/[id] failed:', error)
-
-    return NextResponse.json(
-      { error: 'Failed to load job' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function PATCH(req: Request, ctx: Ctx) {
-  try {
-    const { id } = await ctx.params
-    const jobId = parseInt(id, 10)
-
-    if (!jobId || Number.isNaN(jobId)) {
-      return NextResponse.json(
-        { error: 'Invalid job id', received: id },
-        { status: 400 }
-      )
-    }
-
-    const body = await req.json().catch(() => ({} as Record<string, unknown>))
-
-    const existing = await prisma.job.findUnique({
-      where: { id: jobId },
-      include: {
-        assignments: true,
-        customer: {
-          select: {
-            postcode: true,
-          },
-        },
-      },
-    })
-
-    if (!existing) {
-      return NextResponse.json({ error: 'Job not found' }, { status: 404 })
-    }
-
-    const action = clean(body.action).toLowerCase()
-    const requestedStatus = clean(body.status).toLowerCase()
-    const appendNote = clean(body.appendNote)
-    const noteAuthor = clean(body.noteAuthor)
-    const allowQuoteTimeOverride = isTrue(body.allowQuoteTimeOverride)
-
-    const isCancelAction =
-      action === 'cancel' || action === 'cancelled' || requestedStatus === 'cancelled'
-    const isArchiveAction =
-      action === 'archive' || action === 'archived' || requestedStatus === 'archived'
-
-    const now = new Date()
-
-    let statusUpdate: string | undefined = undefined
-    let arrivedAtUpdate: Date | null | undefined = undefined
-    let finishedAtUpdate: Date | null | undefined = undefined
-    let pausedAtUpdate: Date | null | undefined = undefined
-    let pausedMinutesUpdate: number | undefined = undefined
-
-    if (requestedStatus) {
-      statusUpdate = requestedStatus
-    }
-
-    if (body.toggleStatus === true) {
-      statusUpdate = existing.status === 'done' ? 'unscheduled' : 'done'
-
-      if (statusUpdate === 'done') {
-        finishedAtUpdate = now
-      } else {
-        finishedAtUpdate = null
-      }
-    }
-
-    if (action === 'start') {
-      arrivedAtUpdate = existing.arrivedAt ?? now
-      finishedAtUpdate = null
-      pausedAtUpdate = null
-      statusUpdate = statusUpdate ?? 'in_progress'
-    }
-
-    if (action === 'pause') {
-      if (existing.arrivedAt && !existing.finishedAt && !existing.pausedAt) {
-        pausedAtUpdate = now
-        statusUpdate = statusUpdate ?? 'paused'
-      }
-    }
-
-    if (action === 'resume') {
-      if (existing.pausedAt) {
-        const additionalPausedMinutes =
-          Math.max(0, Math.round((now.getTime() - existing.pausedAt.getTime()) / 60000))
-        pausedMinutesUpdate = (existing.pausedMinutes ?? 0) + additionalPausedMinutes
-      }
-
-      if (!existing.arrivedAt) {
-        arrivedAtUpdate = now
-      }
-
-      pausedAtUpdate = null
-      statusUpdate = statusUpdate ?? 'in_progress'
-    }
-
-    if (action === 'finish') {
-      let finalPausedMinutes = existing.pausedMinutes ?? 0
-
-      if (existing.pausedAt) {
-        finalPausedMinutes += Math.max(
-          0,
-          Math.round((now.getTime() - existing.pausedAt.getTime()) / 60000)
-        )
-        pausedAtUpdate = null
-      }
-
-      pausedMinutesUpdate = finalPausedMinutes
-      finishedAtUpdate = now
-      statusUpdate = statusUpdate ?? 'done'
-    }
-
-    if ('arrivedAt' in body) {
-      if (body.arrivedAt === null || body.arrivedAt === '') {
-        arrivedAtUpdate = null
-      } else {
-        const parsedArrivedAt = parseDateValue(body.arrivedAt)
-        if (parsedArrivedAt !== undefined) {
-          arrivedAtUpdate = parsedArrivedAt
-        }
-      }
-    }
-
-    if ('finishedAt' in body) {
-      if (body.finishedAt === null || body.finishedAt === '') {
-        finishedAtUpdate = null
-      } else {
-        const parsedFinishedAt = parseDateValue(body.finishedAt)
-        if (parsedFinishedAt !== undefined) {
-          finishedAtUpdate = parsedFinishedAt
-        }
-      }
-    }
-
-    if ('pausedAt' in body) {
-      if (body.pausedAt === null || body.pausedAt === '') {
-        pausedAtUpdate = null
-      } else {
-        const parsedPausedAt = parseDateValue(body.pausedAt)
-        if (parsedPausedAt !== undefined) {
-          pausedAtUpdate = parsedPausedAt
-        }
-      }
-    }
-
-    if ('pausedMinutes' in body) {
-      const parsedPausedMinutes = parseNonNegativeInt(body.pausedMinutes)
-      if (parsedPausedMinutes !== undefined) {
-        pausedMinutesUpdate = parsedPausedMinutes
-      } else if (body.pausedMinutes === 0) {
-        pausedMinutesUpdate = 0
-      }
-    }
-
-    let visitDateUpdate = parseDateValue(body.visitDate)
-
-    let startTimeUpdate: string | null | undefined = undefined
-    if ('startTime' in body) {
-      if (body.startTime === null || clean(body.startTime) === '') {
-        startTimeUpdate = null
-      } else if (typeof body.startTime === 'string') {
-        const trimmedStartTime = body.startTime.trim()
-
-        if (!isValidHHMM(trimmedStartTime)) {
-          return NextResponse.json(
-            { error: 'startTime must be HH:MM' },
-            { status: 400 }
-          )
-        }
-
-        startTimeUpdate = trimmedStartTime
-      }
-    }
-
-    const durationMinutesUpdate = parsePositiveInt(
-      body.durationMinutes ?? body.durationMins
-    )
-
-    const overrunMinsUpdate = parseNonNegativeInt(body.overrunMins)
-
-    const customerIdUpdate =
-      body.customerId === null
-        ? undefined
-        : parsePositiveInt(body.customerId)
-
-    let assignedWorkerIdsForResponse: number[] | undefined = undefined
-    let proposedAssignedWorkerIds =
-      existing.assignments.map((assignment) => assignment.workerId)
-
-    if (body.assignedTo !== undefined) {
-      const cleanedWorkerIds = parseAssignedWorkerIds(body.assignedTo)
-
-      const existingWorkers = cleanedWorkerIds.length
-        ? await prisma.worker.findMany({
-            where: {
-              id: {
-                in: cleanedWorkerIds,
-              },
-            },
-            select: { id: true },
-          })
-        : []
-
-      const existingWorkerIds = new Set(existingWorkers.map((worker) => worker.id))
-
-      const missingWorkerIds = cleanedWorkerIds.filter(
-        (workerId) => !existingWorkerIds.has(workerId)
-      )
-
-      if (missingWorkerIds.length > 0) {
-        return NextResponse.json(
-          {
-            error: 'Some assigned workers do not exist',
-            missingWorkerIds,
-          },
-          { status: 400 }
-        )
-      }
-
-      proposedAssignedWorkerIds = cleanedWorkerIds
-      assignedWorkerIdsForResponse = cleanedWorkerIds
-    }
-
-    if (body.assignedTo !== undefined) {
-      await prisma.$transaction([
-        prisma.jobAssignment.deleteMany({
-          where: { jobId },
-        }),
-        ...(proposedAssignedWorkerIds.length > 0
-          ? [
-              prisma.jobAssignment.createMany({
-                data: proposedAssignedWorkerIds.map((workerId) => ({
-                  jobId,
-                  workerId,
-                })),
-                skipDuplicates: true,
-              }),
-            ]
-          : []),
-      ])
-    }
-
-    if (isCancelAction) {
-      const updated = await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'cancelled',
-          visitDate: null,
-          startTime: null,
-          arrivedAt: null,
-          finishedAt: null,
-          pausedAt: null,
-          pausedMinutes: 0,
-        },
-        include: {
-          customer: true,
-          assignments: {
-            include: {
-              worker: true,
-            },
-          },
-          photos: true,
-          chasMessages: true,
-        },
-      })
-
-      const { notes, notesLog } = await buildNotesLog(jobId)
-
-      return NextResponse.json({
-        ...updated,
-        jobNotes: notes,
-        notesLog,
-        assignedWorkerIds:
-          assignedWorkerIdsForResponse ??
-          updated.assignments.map((assignment) => assignment.workerId),
-      })
-    }
-
-    if (isArchiveAction) {
-      const updated = await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'archived',
-          visitDate: null,
-          startTime: null,
-          arrivedAt: null,
-          finishedAt: null,
-          pausedAt: null,
-          pausedMinutes: 0,
-        },
-        include: {
-          customer: true,
-          assignments: {
-            include: {
-              worker: true,
-            },
-          },
-          photos: true,
-          chasMessages: true,
-        },
-      })
-
-      const { notes, notesLog } = await buildNotesLog(jobId)
-
-      return NextResponse.json({
-        ...updated,
-        jobNotes: notes,
-        notesLog,
-        assignedWorkerIds:
-          assignedWorkerIdsForResponse ??
-          updated.assignments.map((assignment) => assignment.workerId),
-      })
-    }
-
-    const proposedJobType =
-      typeof body.jobType === 'string' ? body.jobType : existing.jobType
-
-    const proposedVisitDate =
-      visitDateUpdate !== undefined ? visitDateUpdate : existing.visitDate
-
-    const proposedStartTime =
-      startTimeUpdate !== undefined ? startTimeUpdate : existing.startTime
-
-    const resolvedQuoteSchedule = await resolveTrevQuoteVisitSchedule({
-      jobId,
-      visitDate: proposedVisitDate,
-      startTime: proposedStartTime,
-      jobType: proposedJobType,
-      assignedWorkerIds: proposedAssignedWorkerIds,
-      allowQuoteTimeOverride,
-    })
-
-    if ('error' in resolvedQuoteSchedule) {
-      return resolvedQuoteSchedule.error
-    }
-
-    const finalVisitDate = resolvedQuoteSchedule.visitDate
-    const finalStartTime = resolvedQuoteSchedule.startTime
-    const isTrevQuoteJob =
-      isQuoteJobType(proposedJobType) && finalVisitDate !== null
-
-    let scheduleState
+  async function loadJob() {
     try {
-      scheduleState = normaliseScheduleState({
-        requestedStatus: statusUpdate ?? existing.status,
-        visitDate: finalVisitDate,
-        startTime: finalStartTime,
-        isTrevQuoteJob,
+      setError('')
+
+      const [jobRes, photoRes] = await Promise.all([
+        fetch('/api/jobs', { cache: 'no-store' }),
+        fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
+      ])
+
+      if (!jobRes.ok) {
+        throw new Error('Failed to load jobs')
+      }
+
+      if (!photoRes.ok) {
+        throw new Error('Failed to load photos')
+      }
+
+      const jobData = await jobRes.json()
+      const jobs = Array.isArray(jobData) ? jobData : []
+      const foundJob = jobs.find((item: Job) => item.id === id) || null
+      setJob(foundJob)
+
+      const photoData = await photoRes.json()
+      setPhotos(Array.isArray(photoData) ? photoData : [])
+    } catch (err) {
+      console.error(err)
+      setError('Failed to load job.')
+      setJob(null)
+      setPhotos([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (id) {
+      loadJob()
+    }
+  }, [id])
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (viewerIndex === null) return
+
+      if (event.key === 'Escape') {
+        setViewerIndex(null)
+      }
+
+      if (event.key === 'ArrowLeft') {
+        setViewerIndex((current) => {
+          if (current === null) return current
+          return current > 0 ? current - 1 : current
+        })
+      }
+
+      if (event.key === 'ArrowRight') {
+        setViewerIndex((current) => {
+          if (current === null) return current
+          return current < photos.length - 1 ? current + 1 : current
+        })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [viewerIndex, photos.length])
+
+  useEffect(() => {
+    if (!showQuoteForm || !job) return
+
+    setQuoteCustomerName(job.customer?.name || '')
+    setQuoteCustomerPhone(job.customer?.phone || '')
+    setQuoteCustomerEmail('')
+    setQuoteCustomerAddress(job.customer?.address || job.address || '')
+    setQuoteCustomerPostcode(job.customer?.postcode || '')
+    setQuoteWorkSummary(job.title || '')
+    setQuoteEstimatedTime('')
+    setQuoteNotes('')
+    setQuoteMessage('')
+  }, [showQuoteForm, job])
+
+  useEffect(() => {
+    if (!showFinishReport || !job) return
+
+    setFinishSummary('')
+    setFinishFollowUpRequired('no')
+    setFinishFollowUpDetails('')
+    setFinishPaymentStatus(
+      job.paymentStatus === 'cash_paid' || job.paymentStatus === 'invoice_needed'
+        ? job.paymentStatus
+        : 'not_recorded'
+    )
+    setFinishPaymentNotes(job.paymentNotes || '')
+    setFinishKellyNotes('')
+  }, [showFinishReport, job])
+
+  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    const workerId = localStorage.getItem('workerId')
+
+    if (!file || !id) return
+
+    setUploading(true)
+    setPhotoMessage('')
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('label', label)
+
+      if (workerId) {
+        formData.append('workerId', workerId)
+      }
+
+      const res = await fetch(`/api/jobs/${id}/photos`, {
+        method: 'POST',
+        body: formData
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to upload photo')
+      }
+
+      if (data && typeof data === 'object' && typeof data.id === 'number') {
+        setPhotos((current) => [data as JobPhoto, ...current])
+      } else {
+        await loadPhotos()
+      }
+
+      setPhotoMessage('Photo uploaded successfully.')
+      event.target.value = ''
+    } catch (error) {
+      console.error(error)
+      setPhotoMessage('Failed to upload photo.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleDeletePhoto(photoId: number) {
+    const confirmed = window.confirm('Delete this photo?')
+
+    if (!confirmed) return
+
+    setDeletingPhotoId(photoId)
+    setPhotoMessage('')
+
+    try {
+      const res = await fetch(`/api/job-photos/${photoId}`, {
+        method: 'DELETE'
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Failed to delete photo')
+      }
+
+      setPhotos((current) => current.filter((photo) => photo.id !== photoId))
+      setPhotoMessage('Photo deleted successfully.')
+      setViewerIndex((current) => {
+        if (current === null) return current
+
+        const deletedIndex = photos.findIndex((photo) => photo.id === photoId)
+
+        if (deletedIndex === -1) return current
+        if (current === deletedIndex) return null
+        if (current > deletedIndex) return current - 1
+
+        return current
       })
     } catch (error) {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error ? error.message : 'Invalid scheduling state',
-        },
-        { status: 400 }
-      )
+      console.error(error)
+      setPhotoMessage('Failed to delete photo.')
+    } finally {
+      setDeletingPhotoId(null)
     }
+  }
 
-    let titleUpdate: string | undefined = undefined
+  async function patchJob(payload: Record<string, unknown>, actionLabel: string) {
+    try {
+      setBusyAction(actionLabel)
+      setError('')
 
-    if (customerIdUpdate !== undefined) {
-      const targetCustomer = await prisma.customer.findUnique({
-        where: { id: customerIdUpdate },
-        select: { name: true },
+      const res = await fetch(`/api/jobs/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
       })
 
-      if (!targetCustomer) {
-        return NextResponse.json(
-          { error: 'Customer not found' },
-          { status: 404 }
-        )
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || `Failed to ${actionLabel}`)
       }
 
-      titleUpdate = clean(targetCustomer.name)
+      await loadJob()
+      return true
+    } catch (err) {
+      console.error(err)
+      setError(`Failed to ${actionLabel}.`)
+      return false
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function handleSendQuoteRequest() {
+    const workerName = localStorage.getItem('workerName') || ''
+    const company = localStorage.getItem('company') || 'furlads'
+
+    setQuoteBusy(true)
+    setQuoteMessage('')
+
+    try {
+      const res = await fetch('/api/chas/quote-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          company,
+          worker: workerName,
+          sessionId: `job-${id}-${Date.now()}`,
+          customerName: quoteCustomerName,
+          customerPhone: quoteCustomerPhone,
+          customerEmail: quoteCustomerEmail,
+          customerAddress: quoteCustomerAddress,
+          customerPostcode: quoteCustomerPostcode,
+          workSummary: quoteWorkSummary,
+          estimatedTimeText: quoteEstimatedTime,
+          notes: quoteNotes,
+          imageDataUrl: '',
+          chatTranscript: `New Quote created from job page for job ${job?.id ?? id}: ${job?.title || ''}`
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Failed to save quote enquiry.')
+      }
+
+      setQuoteMessage('Quote enquiry saved successfully.')
+      setShowQuoteForm(false)
+    } catch (err: any) {
+      console.error(err)
+      setQuoteMessage(String(err?.message || 'Failed to save quote enquiry.'))
+    } finally {
+      setQuoteBusy(false)
+    }
+  }
+
+  async function handleStartJob() {
+    await patchJob({ action: 'start' }, 'start job')
+  }
+
+  async function handleFinishJob() {
+    if (isPrepJob(job)) {
+      await patchJob({ action: 'finish' }, 'finish job')
+      return
     }
 
-    const regularMaintenanceInputProvided =
-      'isRegularMaintenance' in body ||
-      'maintenanceFrequency' in body ||
-      'preferredDay' in body ||
-      'preferredTimeBand' in body
+    setShowFinishReport(true)
+  }
 
-    const nextIsRegularMaintenance =
-      regularMaintenanceInputProvided
-        ? isTrue(body.isRegularMaintenance)
-        : Boolean(existing.isRegularMaintenance)
+  async function handlePrepComplete() {
+    if (!job) return
 
-    const nextMaintenanceFrequency =
-      regularMaintenanceInputProvided
-        ? normaliseMaintenanceFrequency(body.maintenanceFrequency)
-        : existing.maintenanceFrequency
+    if (!job.arrivedAt) {
+      const startOk = await patchJob({ action: 'start' }, 'start job')
+      if (!startOk) return
+    }
 
-    const nextPreferredDay =
-      regularMaintenanceInputProvided
-        ? normalisePreferredDay(body.preferredDay)
-        : existing.preferredDay
+    await patchJob({ action: 'finish' }, 'finish job')
+  }
 
-    const nextPreferredTimeBand =
-      regularMaintenanceInputProvided
-        ? normalisePreferredTimeBand(body.preferredTimeBand)
-        : existing.preferredTimeBand
+  async function submitFinishReport() {
+    const workerName = localStorage.getItem('workerName') || 'Unknown worker'
+    const recordedAt = new Date().toLocaleString('en-GB')
 
-    const maintenanceMeta = deriveMaintenanceMeta({
-      jobType: proposedJobType,
-      isRegularMaintenance: nextIsRegularMaintenance,
-      maintenanceFrequency: nextMaintenanceFrequency,
-    })
+    const reportLines = [
+      'End of job report:',
+      `Work summary: ${finishSummary.trim() || 'Not provided'}`,
+      `Follow-up required: ${finishFollowUpRequired === 'yes' ? 'Yes' : 'No'}`,
+      `Follow-up details: ${
+        finishFollowUpRequired === 'yes'
+          ? finishFollowUpDetails.trim() || 'Not provided'
+          : 'None'
+      }`,
+      `Payment: ${
+        finishPaymentStatus === 'cash_paid'
+          ? 'Cash paid'
+          : finishPaymentStatus === 'invoice_needed'
+            ? 'Needs invoice'
+            : 'Not recorded'
+      }`,
+      `Payment notes: ${finishPaymentNotes.trim() || 'None'}`,
+      `Notes for Kelly: ${finishKellyNotes.trim() || 'None'}`,
+      `Reported by: ${workerName}`,
+      `Recorded at: ${recordedAt}`
+    ]
 
-    const updated = await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        title: titleUpdate,
-        address: typeof body.address === 'string' ? body.address : undefined,
-        notes:
-          body.notes === null
-            ? null
-            : typeof body.notes === 'string'
-              ? body.notes
-              : undefined,
-        jobType: typeof body.jobType === 'string' ? body.jobType : undefined,
-        customerId: customerIdUpdate,
-        visitDate: scheduleState.visitDate,
-        startTime: scheduleState.startTime,
-        durationMinutes: durationMinutesUpdate,
-        overrunMins: overrunMinsUpdate,
-        status: scheduleState.status,
-        arrivedAt: arrivedAtUpdate,
-        finishedAt: finishedAtUpdate,
-        pausedAt: pausedAtUpdate,
-        pausedMinutes: pausedMinutesUpdate,
+    const success = await patchJob(
+      {
+        action: 'finish',
         paymentStatus:
-          body.paymentStatus === null
-            ? null
-            : typeof body.paymentStatus === 'string'
-              ? clean(body.paymentStatus) || null
-              : undefined,
-        paymentNotes:
-          body.paymentNotes === null
-            ? null
-            : typeof body.paymentNotes === 'string'
-              ? body.paymentNotes
-              : undefined,
-
-        isRegularMaintenance: regularMaintenanceInputProvided
-          ? isMaintenanceJob(proposedJobType)
-            ? nextIsRegularMaintenance
-            : false
-          : undefined,
-        maintenanceFrequency: regularMaintenanceInputProvided
-          ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
-            ? nextMaintenanceFrequency
-            : null
-          : undefined,
-        preferredDay: regularMaintenanceInputProvided
-          ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
-            ? nextPreferredDay
-            : null
-          : undefined,
-        preferredTimeBand: regularMaintenanceInputProvided
-          ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
-            ? nextPreferredTimeBand
-            : null
-          : undefined,
-        visitPattern: regularMaintenanceInputProvided
-          ? maintenanceMeta.visitPattern
-          : undefined,
-        maintenanceFrequencyUnit: regularMaintenanceInputProvided
-          ? maintenanceMeta.maintenanceFrequencyUnit
-          : undefined,
-        maintenanceFrequencyWeeks: regularMaintenanceInputProvided
-          ? maintenanceMeta.maintenanceFrequencyWeeks
-          : undefined,
-        timePreferenceMode: regularMaintenanceInputProvided
-          ? maintenanceMeta.timePreferenceMode
-          : undefined,
+          finishPaymentStatus === 'not_recorded' ? '' : finishPaymentStatus,
+        paymentNotes: finishPaymentNotes.trim(),
+        appendNote: reportLines.join(' | '),
+        noteAuthor: workerName
       },
-      include: {
-        customer: true,
-        assignments: {
-          include: {
-            worker: true,
-          },
-        },
-        photos: true,
-        chasMessages: true,
-      },
-    })
+      'finish job'
+    )
 
-    if (appendNote) {
-      let createdByWorkerId: number | null = null
-
-      if (noteAuthor) {
-        const authorParts = noteAuthor.trim().split(/\s+/).filter(Boolean)
-
-        if (authorParts.length > 0) {
-          const possibleWorkers = await prisma.worker.findMany({
-            select: { id: true, firstName: true, lastName: true },
-          })
-
-          const authorLower = noteAuthor.trim().toLowerCase()
-
-          const match = possibleWorkers.find((worker) => {
-            const fullName = `${worker.firstName} ${worker.lastName}`.trim().toLowerCase()
-            const firstName = worker.firstName.trim().toLowerCase()
-            const lastName = worker.lastName.trim().toLowerCase()
-
-            if (fullName === authorLower) return true
-            if (firstName === authorLower) return true
-            if (lastName === authorLower) return true
-
-            if (authorParts.length >= 2) {
-              return (
-                firstName === authorParts[0].toLowerCase() &&
-                lastName === authorParts.slice(1).join(' ').toLowerCase()
-              )
-            }
-
-            return false
-          })
-
-          if (match) {
-            createdByWorkerId = match.id
-          }
-        }
-      }
-
-      await prisma.jobNote.create({
-        data: {
-          jobId,
-          note: appendNote,
-          createdByWorkerId,
-        },
-      })
+    if (success) {
+      setShowFinishReport(false)
     }
+  }
 
-    let nextRecurringJobs: unknown[] = []
+  async function handlePauseJob() {
+    await patchJob({ action: 'pause' }, 'pause job')
+  }
 
-    if (updated.status === 'done') {
-      nextRecurringJobs = await ensureFutureRecurringMaintenanceJobs({
-        job: {
-          id: updated.id,
-          title: updated.title,
-          customerId: updated.customerId,
-          address: updated.address,
-          notes: updated.notes,
-          jobType: updated.jobType,
-          visitDate: updated.visitDate,
-          durationMinutes: updated.durationMinutes,
-          visitPattern: updated.visitPattern,
-          isRegularMaintenance: updated.isRegularMaintenance,
-          maintenanceFrequency: updated.maintenanceFrequency,
-          maintenanceFrequencyUnit: updated.maintenanceFrequencyUnit,
-          maintenanceFrequencyWeeks: updated.maintenanceFrequencyWeeks,
-          timePreferenceMode: updated.timePreferenceMode,
-          preferredDay: updated.preferredDay,
-          preferredTimeBand: updated.preferredTimeBand,
-          assignments: updated.assignments.map((assignment) => ({
-            workerId: assignment.workerId,
-          })),
-        },
-      })
-    }
+  async function handleResumeJob() {
+    await patchJob({ action: 'resume' }, 'resume job')
+  }
 
-    const refreshed = await prisma.job.findUnique({
-      where: { id: jobId },
-      include: {
-        customer: true,
-        assignments: {
-          include: {
-            worker: true,
-          },
-        },
-        photos: true,
-        chasMessages: true,
+  async function handleUndoStart() {
+    await patchJob(
+      {
+        arrivedAt: null,
+        finishedAt: null,
+        pausedAt: null,
+        pausedMinutes: 0,
+        status: 'todo'
       },
-    })
-
-    const { notes, notesLog } = await buildNotesLog(jobId)
-
-    return NextResponse.json({
-      ...(refreshed ?? updated),
-      jobNotes: notes,
-      notesLog,
-      assignedWorkerIds:
-        assignedWorkerIdsForResponse ??
-        (refreshed ?? updated).assignments.map((assignment) => assignment.workerId),
-      nextRecurringJobs,
-    })
-  } catch (error) {
-    console.error('PATCH /api/jobs/[id] failed:', error)
-
-    return NextResponse.json(
-      { error: 'Failed to update job' },
-      { status: 500 }
+      'undo start'
     )
   }
+
+  async function handleExtendJob(minutes: number) {
+    await patchJob({ extendMins: minutes }, 'extend job')
+  }
+
+  async function handleOtherExtendJob() {
+    const value = window.prompt('How many extra minutes?', '90')
+
+    if (value === null) return
+
+    const minutes = Number(value)
+
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      window.alert('Please enter a valid number of minutes.')
+      return
+    }
+
+    await handleExtendJob(Math.round(minutes))
+  }
+
+  async function handleCannotComplete() {
+    const workerName = localStorage.getItem('workerName') || ''
+
+    const reasonInput = window.prompt(
+      `Why couldn't the job be completed?
+
+Examples:
+No access
+Customer cancelled
+Need materials
+Ran out of time
+Weather stopped work`,
+      ''
+    )
+
+    if (reasonInput === null) return
+
+    const reason = reasonInput.trim()
+
+    if (!reason) {
+      window.alert('Please enter a reason.')
+      return
+    }
+
+    const detailsInput = window.prompt(
+      `Add any extra details if needed (optional)
+
+Examples:
+Gate locked
+Customer asked us to return next week
+Heavy rain made it unsafe`,
+      ''
+    )
+
+    if (detailsInput === null) return
+
+    const details = detailsInput.trim()
+
+    await patchJob(
+      {
+        action: 'cannot_complete',
+        reason,
+        details,
+        workerName
+      },
+      "mark job as couldn't complete"
+    )
+  }
+
+  function openViewer(index: number) {
+    setViewerIndex(index)
+  }
+
+  function closeViewer() {
+    setViewerIndex(null)
+  }
+
+  function showPreviousPhoto() {
+    setViewerIndex((current) => {
+      if (current === null) return current
+      return current > 0 ? current - 1 : current
+    })
+  }
+
+  function showNextPhoto() {
+    setViewerIndex((current) => {
+      if (current === null) return current
+      return current < photos.length - 1 ? current + 1 : current
+    })
+  }
+
+  const cannotCompleteInfo = useMemo(
+    () => extractCannotCompleteInfo(job?.notes ?? null),
+    [job?.notes]
+  )
+
+  const visibleNotes = useMemo(
+    () => stripCannotCompleteLines(job?.notes ?? null),
+    [job?.notes]
+  )
+
+  const isDone =
+    job ? String(job.status || '').toLowerCase() === 'done' || !!job.finishedAt : false
+
+  const isPaused =
+    !!job?.arrivedAt && !!job?.pausedAt && !job?.finishedAt && !isDone
+
+  const isStarted =
+    !!job?.arrivedAt && !job?.finishedAt && !isDone && !isPaused
+
+  const prepJob = isPrepJob(job)
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-zinc-50">
+        <div className="mx-auto max-w-6xl px-4 py-5 md:px-6">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <p className="text-sm text-zinc-600">Loading job...</p>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  if (error && !job) {
+    return (
+      <main className="min-h-screen bg-zinc-50">
+        <div className="mx-auto max-w-6xl px-4 py-5 md:px-6">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  if (!job) {
+    return (
+      <main className="min-h-screen bg-zinc-50">
+        <div className="mx-auto max-w-6xl px-4 py-5 md:px-6">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <p className="text-sm text-zinc-600">Job not found.</p>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  const navigationQuery =
+    job.customer?.postcode || job.address || job.customer?.address || ''
+
+  const activePhoto =
+    viewerIndex !== null && photos[viewerIndex] ? photos[viewerIndex] : null
+
+  return (
+    <main className="min-h-screen bg-zinc-50">
+      <div className="mx-auto max-w-6xl px-4 py-5 md:px-6">
+        <div className="space-y-5">
+          <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+            <div className="bg-zinc-900 px-5 py-5 text-white md:px-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Pill className={typeBadgeClass(job.jobType || '')}>
+                      {job.jobType || 'General'}
+                    </Pill>
+                    <Pill className={statusBadgeClass(job.status || '')}>
+                      {job.status || 'Unknown'}
+                    </Pill>
+                  </div>
+
+                  <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-400">
+                    Job Details
+                  </div>
+
+                  <h1 className="mt-1 text-3xl font-bold tracking-tight md:text-4xl">
+                    {prepJob ? 'Morning Prep' : job.title}
+                  </h1>
+
+                  <p className="mt-2 text-sm text-zinc-300 md:text-base">
+                    {prepJob
+                      ? 'Prep block before the working day starts'
+                      : job.customer?.name || 'Unknown customer'}
+                  </p>
+
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Job #{job.id}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href="/today"
+                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
+                  >
+                    Back to Today
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 border-t border-zinc-200 bg-zinc-50 p-4 md:grid-cols-2 xl:grid-cols-4 md:p-5">
+              <InfoRow
+                label="Visit date"
+                value={job.visitDate ? formatDateTime(job.visitDate) : '—'}
+              />
+              <InfoRow label="Start time" value={job.startTime || '—'} />
+              <InfoRow label="Duration" value={formatMinutes(job.durationMinutes)} />
+              <InfoRow
+                label="Assigned workers"
+                value={
+                  job.assignments.length > 0
+                    ? job.assignments
+                        .map(
+                          (assignment) =>
+                            `${assignment.worker.firstName} ${assignment.worker.lastName}`
+                        )
+                        .join(', ')
+                    : 'Nobody assigned'
+                }
+              />
+            </div>
+          </section>
+
+          {error && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
+              {error}
+            </div>
+          )}
+
+          {cannotCompleteInfo && (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
+              <h2 className="mb-3 text-lg font-bold text-amber-900">
+                Job could not be completed
+              </h2>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="text-sm text-amber-900">
+                  <strong>Reason:</strong> {cannotCompleteInfo.reason || 'Not provided'}
+                </div>
+
+                {cannotCompleteInfo.reportedBy && (
+                  <div className="text-sm text-amber-900">
+                    <strong>Reported by:</strong> {cannotCompleteInfo.reportedBy}
+                  </div>
+                )}
+
+                {cannotCompleteInfo.details && (
+                  <div className="text-sm text-amber-900 md:col-span-2">
+                    <strong>Details:</strong> {cannotCompleteInfo.details}
+                  </div>
+                )}
+
+                {cannotCompleteInfo.recordedAt && (
+                  <div className="text-sm text-amber-900 md:col-span-2">
+                    <strong>Recorded at:</strong> {cannotCompleteInfo.recordedAt}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-5 xl:grid-cols-3">
+            <div className="space-y-5 xl:col-span-2">
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Quick actions</h2>
+
+                <div className="mb-5 flex flex-wrap gap-3">
+                  {!isStarted && !isPaused && !isDone && !prepJob && (
+                    <button
+                      type="button"
+                      onClick={handleStartJob}
+                      disabled={busyAction !== ''}
+                      className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {busyAction === 'start job' ? 'Updating...' : 'Start Job'}
+                    </button>
+                  )}
+
+                  {prepJob && !isDone && (
+                    <button
+                      type="button"
+                      onClick={handlePrepComplete}
+                      disabled={busyAction !== ''}
+                      className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {busyAction === 'finish job' || busyAction === 'start job'
+                        ? 'Updating...'
+                        : 'Prep Complete'}
+                    </button>
+                  )}
+
+                  {isStarted && !prepJob && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handlePauseJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'pause job' ? 'Updating...' : 'Pause Work'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleFinishJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'finish job' ? 'Updating...' : 'Finish Job'}
+                      </button>
+                    </>
+                  )}
+
+                  {isPaused && !prepJob && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleResumeJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'resume job' ? 'Updating...' : 'Resume Work'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleFinishJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'finish job' ? 'Updating...' : 'Finish Job'}
+                      </button>
+                    </>
+                  )}
+
+                  {(isStarted || isPaused) && !prepJob && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleUndoStart}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'undo start' ? 'Updating...' : 'Undo Start'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleCannotComplete}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === "mark job as couldn't complete"
+                          ? 'Updating...'
+                          : "Couldn't Complete"}
+                      </button>
+                    </>
+                  )}
+
+                  {!prepJob && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowQuoteForm((prev) => !prev)
+                        setQuoteMessage('')
+                      }}
+                      className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
+                    >
+                      {showQuoteForm ? 'Hide New Quote' : 'New Quote'}
+                    </button>
+                  )}
+
+                  {!prepJob && (
+                    <a
+                      href={`/jobs/add?customerId=${job.customer?.id}&title=${encodeURIComponent(
+                        job.title
+                      )}&address=${encodeURIComponent(job.address || '')}&postcode=${encodeURIComponent(
+                        job.customer?.postcode || ''
+                      )}&jobType=${encodeURIComponent(job.jobType || '')}`}
+                      className="inline-flex rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
+                    >
+                      Book Extra Day
+                    </a>
+                  )}
+                </div>
+
+                {visibleNotes && (
+                  <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                      Notes
+                    </div>
+                    <div className="mt-2 whitespace-pre-line text-sm text-zinc-900">
+                      {visibleNotes}
+                    </div>
+                  </div>
+                )}
+
+                {showQuoteForm && !prepJob && (
+                  <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="mb-3 text-lg font-extrabold text-zinc-900">
+                      New Quote
+                    </div>
+
+                    <div className="grid gap-3">
+                      <input
+                        value={quoteCustomerName}
+                        onChange={(e) => setQuoteCustomerName(e.target.value)}
+                        placeholder="Customer name"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteCustomerPhone}
+                        onChange={(e) => setQuoteCustomerPhone(e.target.value)}
+                        placeholder="Customer phone"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteCustomerEmail}
+                        onChange={(e) => setQuoteCustomerEmail(e.target.value)}
+                        placeholder="Customer email (optional)"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteCustomerAddress}
+                        onChange={(e) => setQuoteCustomerAddress(e.target.value)}
+                        placeholder="Customer address"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteCustomerPostcode}
+                        onChange={(e) => setQuoteCustomerPostcode(e.target.value)}
+                        placeholder="Customer postcode"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <textarea
+                        value={quoteWorkSummary}
+                        onChange={(e) => setQuoteWorkSummary(e.target.value)}
+                        placeholder="What work is needed?"
+                        className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteEstimatedTime}
+                        onChange={(e) => setQuoteEstimatedTime(e.target.value)}
+                        placeholder="How long do you think it will take conservatively?"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <textarea
+                        value={quoteNotes}
+                        onChange={(e) => setQuoteNotes(e.target.value)}
+                        placeholder="Extra notes for the office (optional)"
+                        className="min-h-[80px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+                    </div>
+
+                    {quoteMessage && (
+                      <div
+                        className={`mt-3 text-sm font-medium ${
+                          quoteMessage.includes('successfully')
+                            ? 'text-green-700'
+                            : 'text-red-700'
+                        }`}
+                      >
+                        {quoteMessage}
+                      </div>
+                    )}
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={handleSendQuoteRequest}
+                        disabled={quoteBusy}
+                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {quoteBusy ? 'Saving...' : 'Save New Quote'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowQuoteForm(false)}
+                        disabled={quoteBusy}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(isStarted || isPaused) && !prepJob && (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="mb-3 text-sm font-bold text-zinc-800">
+                      Add Extra Time
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleExtendJob(15)}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : '+15'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExtendJob(30)}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : '+30'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExtendJob(45)}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : '+45'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExtendJob(60)}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : '+60'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleOtherExtendJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : 'Other'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-zinc-900">Job details</h2>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <InfoRow
+                    label="Customer"
+                    value={prepJob ? 'Prep block' : job.customer?.name || 'Unknown customer'}
+                  />
+
+                  <InfoRow label="Type" value={job.jobType || '—'} />
+
+                  <div className="sm:col-span-2">
+                    <InfoRow label="Address" value={job.address || '—'} />
+                  </div>
+
+                  <InfoRow
+                    label="Visit date"
+                    value={job.visitDate ? formatDateTime(job.visitDate) : '—'}
+                  />
+
+                  <InfoRow label="Start time" value={job.startTime || '—'} />
+
+                  <InfoRow label="Duration" value={formatMinutes(job.durationMinutes)} />
+
+                  <InfoRow label="Overrun" value={formatMinutes(job.overrunMins)} />
+
+                  <InfoRow label="Paused total" value={formatMinutes(job.pausedMinutes)} />
+
+                  <InfoRow label="Started at" value={formatTime(job.arrivedAt)} />
+
+                  <InfoRow label="Paused at" value={formatTime(job.pausedAt)} />
+
+                  <InfoRow label="Finished at" value={formatTime(job.finishedAt)} />
+
+                  <InfoRow
+                    label="Payment"
+                    value={formatPaymentStatus(job.paymentStatus)}
+                  />
+
+                  <InfoRow
+                    label="Payment notes"
+                    value={job.paymentNotes || '—'}
+                  />
+
+                  <div className="sm:col-span-2">
+                    <InfoRow
+                      label="Assigned"
+                      value={
+                        job.assignments.length > 0
+                          ? job.assignments
+                              .map(
+                                (assignment) =>
+                                  `${assignment.worker.firstName} ${assignment.worker.lastName}`
+                              )
+                              .join(', ')
+                          : 'Nobody assigned'
+                      }
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Photos</h2>
+
+                <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="mb-3">
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Photo Label
+                    </label>
+                    <select
+                      value={label}
+                      onChange={(e) => setLabel(e.target.value)}
+                      className="w-full max-w-[240px] rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    >
+                      <option value="Before">Before</option>
+                      <option value="During">During</option>
+                      <option value="After">After</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleFileChange}
+                    disabled={uploading}
+                    className="block w-full text-sm"
+                  />
+
+                  {photoMessage && (
+                    <p className="mt-3 text-sm text-zinc-600">{photoMessage}</p>
+                  )}
+                </div>
+
+                {photos.length === 0 && (
+                  <p className="text-sm text-zinc-500">No photos uploaded yet.</p>
+                )}
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {photos.map((photo, index) => (
+                    <div
+                      key={photo.id}
+                      className="overflow-hidden rounded-2xl border border-zinc-200 bg-white"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openViewer(index)}
+                        className="block w-full text-left"
+                      >
+                        <img
+                          src={photo.imageUrl}
+                          alt={photo.label || 'Job photo'}
+                          className="h-[220px] w-full object-cover"
+                        />
+
+                        <div className="p-3">
+                          <p className="mb-1 text-sm text-zinc-700">
+                            <strong>Label:</strong> {photo.label || 'None'}
+                          </p>
+
+                          <p className="text-sm text-zinc-500">Tap to open full size</p>
+                        </div>
+                      </button>
+
+                      <div className="p-3 pt-0">
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePhoto(photo.id)}
+                          disabled={deletingPhotoId === photo.id}
+                          className="w-full rounded-xl border border-red-300 bg-white px-3 py-2.5 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingPhotoId === photo.id ? 'Deleting...' : 'Delete Photo'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-5">
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Quick links</h2>
+
+                <div className="flex flex-col gap-3">
+                  {!prepJob && job.customer?.phone && (
+                    <a
+                      href={`tel:${job.customer.phone}`}
+                      className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    >
+                      Call Customer
+                    </a>
+                  )}
+
+                  {navigationQuery && (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationQuery)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    >
+                      Navigate
+                    </a>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Assigned workers</h2>
+
+                <div className="space-y-3">
+                  {job.assignments.length === 0 && (
+                    <p className="text-sm text-zinc-500">No workers assigned</p>
+                  )}
+
+                  {job.assignments.map((a) => (
+                    <div
+                      key={a.id}
+                      className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700"
+                    >
+                      <div className="font-semibold text-zinc-900">
+                        {a.worker.firstName} {a.worker.lastName}
+                      </div>
+                      {a.worker.phone ? (
+                        <div className="mt-1 text-zinc-500">{a.worker.phone}</div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {!prepJob && (
+                <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                  <h2 className="mb-4 text-lg font-bold text-zinc-900">Customer</h2>
+
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Name
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.name || 'Unknown customer'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Phone
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.phone || '—'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Address
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.address || '—'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Postcode
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.postcode || '—'}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showFinishReport && (
+        <div className="fixed inset-0 z-[1001] flex items-center justify-center bg-black/50 p-3 sm:p-4">
+          <div className="flex h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="shrink-0 border-b border-zinc-200 px-5 py-4">
+              <h2 className="text-xl font-bold text-zinc-900">Finish job report</h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Quick end-of-job report for Kelly before you finish this job.
+              </p>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="space-y-4 pb-2">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                    Work summary
+                  </label>
+                  <textarea
+                    value={finishSummary}
+                    onChange={(e) => setFinishSummary(e.target.value)}
+                    placeholder="What was done today?"
+                    className="min-h-[110px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                    Follow-up required?
+                  </label>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFinishFollowUpRequired('no')}
+                      className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                        finishFollowUpRequired === 'no'
+                          ? 'bg-zinc-900 text-white'
+                          : 'border border-zinc-300 bg-white text-zinc-800'
+                      }`}
+                    >
+                      No
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFinishFollowUpRequired('yes')}
+                      className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                        finishFollowUpRequired === 'yes'
+                          ? 'bg-zinc-900 text-white'
+                          : 'border border-zinc-300 bg-white text-zinc-800'
+                      }`}
+                    >
+                      Yes
+                    </button>
+                  </div>
+                </div>
+
+                {finishFollowUpRequired === 'yes' && (
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Follow-up details
+                    </label>
+                    <textarea
+                      value={finishFollowUpDetails}
+                      onChange={(e) => setFinishFollowUpDetails(e.target.value)}
+                      placeholder="What still needs doing, returning for, or chasing?"
+                      className="min-h-[100px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                    Payment
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => setFinishPaymentStatus('not_recorded')}
+                      className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                        finishPaymentStatus === 'not_recorded'
+                          ? 'bg-zinc-900 text-white'
+                          : 'border border-zinc-300 bg-white text-zinc-800'
+                      }`}
+                    >
+                      Not recorded
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFinishPaymentStatus('cash_paid')}
+                      className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                        finishPaymentStatus === 'cash_paid'
+                          ? 'bg-zinc-900 text-white'
+                          : 'border border-zinc-300 bg-white text-zinc-800'
+                      }`}
+                    >
+                      Cash paid
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFinishPaymentStatus('invoice_needed')}
+                      className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                        finishPaymentStatus === 'invoice_needed'
+                          ? 'bg-zinc-900 text-white'
+                          : 'border border-zinc-300 bg-white text-zinc-800'
+                      }`}
+                    >
+                      Needs invoice
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                    Payment notes
+                  </label>
+                  <input
+                    value={finishPaymentNotes}
+                    onChange={(e) => setFinishPaymentNotes(e.target.value)}
+                    placeholder="Amount paid, part paid, cash details, anything useful"
+                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                    Extra notes for Kelly
+                  </label>
+                  <textarea
+                    value={finishKellyNotes}
+                    onChange={(e) => setFinishKellyNotes(e.target.value)}
+                    placeholder="Anything Kelly should know?"
+                    className="min-h-[140px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-zinc-200 bg-white px-5 py-4">
+              <div className="flex flex-wrap justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowFinishReport(false)}
+                  disabled={busyAction !== ''}
+                  className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={submitFinishReport}
+                  disabled={busyAction !== ''}
+                  className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {busyAction === 'finish job' ? 'Saving...' : 'Save report & finish job'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activePhoto && (
+        <div
+          onClick={closeViewer}
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-5"
+        >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              closeViewer()
+            }}
+            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl text-white"
+          >
+            ×
+          </button>
+
+          {viewerIndex !== null && viewerIndex > 0 && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                showPreviousPhoto()
+              }}
+              className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl text-white"
+            >
+              ‹
+            </button>
+          )}
+
+          <div
+            onClick={(event) => event.stopPropagation()}
+            className="flex w-full max-w-[1100px] flex-col items-center gap-3"
+          >
+            <img
+              src={activePhoto.imageUrl}
+              alt={activePhoto.label || 'Job photo'}
+              className="max-h-[80vh] max-w-full rounded-xl object-contain"
+            />
+
+            <div className="text-center text-white">
+              <p className="mb-1">
+                <strong>{activePhoto.label || 'Job photo'}</strong>
+              </p>
+              <p className="opacity-80">
+                Photo {viewerIndex !== null ? viewerIndex + 1 : 1} of {photos.length}
+              </p>
+            </div>
+          </div>
+
+          {viewerIndex !== null && viewerIndex < photos.length - 1 && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                showNextPhoto()
+              }}
+              className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl text-white"
+            >
+              ›
+            </button>
+          )}
+        </div>
+      )}
+    </main>
+  )
 }
