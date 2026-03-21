@@ -94,7 +94,7 @@ function buildDisplayName(profile: FacebookProfile | null, senderPsid: string) {
   if (joined) return joined
 
   const shortPsid = senderPsid.slice(-6)
-  return shortPsid ? `Facebook contact ${shortPsid}` : "Facebook contact"
+  return shortPsid ? `Facebook User ${shortPsid}` : "Facebook User"
 }
 
 function isGenericFacebookName(value: string | null | undefined) {
@@ -105,6 +105,8 @@ function isGenericFacebookName(value: string | null | undefined) {
     name === "facebook" ||
     name === "furlads facebook" ||
     name === "three counties facebook" ||
+    name === "facebook user" ||
+    name.startsWith("facebook user ") ||
     name.startsWith("facebook contact ")
   )
 }
@@ -248,10 +250,11 @@ async function findOrCreateConversation(params: {
   }
 
   const currentName = String(conversation.contactName || "").trim()
+
   const shouldUpdateName =
-    customerName &&
-    !isGenericFacebookName(customerName) &&
-    (isGenericFacebookName(currentName) || currentName === pageLabel)
+    !!customerName &&
+    (isGenericFacebookName(currentName) || currentName === pageLabel) &&
+    currentName !== customerName
 
   console.log("[FB NAME SAVE DECISION]", {
     conversationId: conversation.id,
@@ -260,6 +263,8 @@ async function findOrCreateConversation(params: {
     currentName,
     customerName,
     pageLabel,
+    currentNameIsGeneric: isGenericFacebookName(currentName),
+    newNameIsGeneric: isGenericFacebookName(customerName),
     shouldUpdateName,
   })
 

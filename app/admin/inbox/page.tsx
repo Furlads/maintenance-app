@@ -405,7 +405,7 @@ function ThreadAvatar({
 
   return (
     <div
-      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ring-inset ${className}`}
+      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ring-inset sm:h-11 sm:w-11 ${className}`}
     >
       {initial}
     </div>
@@ -535,7 +535,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
               Compact thread list with cleaner source icons, quick filters, and keyword search.
             </p>
 
-            {(sourceFilter || viewFilter !== "all" || searchQuery) ? (
+            {sourceFilter || viewFilter !== "all" || searchQuery ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                   Filters
@@ -561,7 +561,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {(sourceFilter || viewFilter !== "all" || searchQuery) ? (
+            {sourceFilter || viewFilter !== "all" || searchQuery ? (
               <Link
                 href="/admin/inbox"
                 className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800"
@@ -679,18 +679,18 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
                   key={thread.threadKey}
                   className="group relative transition-colors hover:bg-zinc-50"
                 >
-                  <div className="flex items-start gap-3 px-3 py-3 sm:px-4">
+                  <div className="flex items-start gap-3 px-3 py-3 sm:px-4 sm:py-4">
                     <ThreadAvatar
                       displayName={thread.displayName}
                       businessLabel={thread.businessLabel}
                     />
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                      <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <h4
-                              className={`truncate text-sm ${
+                              className={`truncate text-sm sm:text-[15px] ${
                                 isUnread ? "font-bold text-zinc-950" : "font-semibold text-zinc-900"
                               }`}
                             >
@@ -707,9 +707,9 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
                           </div>
                         </div>
 
-                        <div className="shrink-0 text-left sm:text-right">
+                        <div className="shrink-0 pl-2 text-right">
                           <div
-                            className={`text-[11px] ${
+                            className={`text-[11px] whitespace-nowrap ${
                               isUnread ? "font-semibold text-zinc-800" : "text-zinc-500"
                             }`}
                           >
@@ -742,7 +742,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
 
                       <div className="mt-2">
                         <p
-                          className={`truncate text-sm ${
+                          className={`line-clamp-2 text-sm ${
                             isUnread ? "font-medium text-zinc-900" : "text-zinc-600"
                           }`}
                         >
@@ -757,7 +757,7 @@ export default async function AdminInboxPage({ searchParams }: PageProps) {
 
                         <Link
                           href={href}
-                          className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800"
+                          className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-800"
                         >
                           Open
                         </Link>
