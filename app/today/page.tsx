@@ -218,7 +218,6 @@ function toDateKey(value: Date | string) {
 
   return `${year}-${month}-${day}`
 }
-
 function parseDateKey(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
 
@@ -483,7 +482,6 @@ function getJobPrimaryTitle(job: Job) {
   if (title) return title
   return `Job #${job.id}`
 }
-
 function getJobSecondaryTitle(job: Job) {
   if (isMorningPrepJob(job)) {
     return 'Van checks, tools, materials and first setup before jobs begin'
@@ -629,12 +627,14 @@ const styles = {
     fontFamily: 'sans-serif',
     color: colours.ink
   } satisfies CSSProperties,
+
   shell: {
     width: '100%',
     maxWidth: 920,
     margin: '0 auto',
     padding: '16px 14px 36px'
   } satisfies CSSProperties,
+
   topCard: {
     borderRadius: 22,
     background: `linear-gradient(135deg, ${colours.ink} 0%, #2a2a2a 100%)`,
@@ -644,15 +644,18 @@ const styles = {
     padding: 16,
     marginBottom: 16
   } satisfies CSSProperties,
+
   panel: {
     background: colours.panel,
     border: `1px solid ${colours.line}`,
     borderRadius: 18,
     boxShadow: '0 10px 30px rgba(0,0,0,0.06)'
   } satisfies CSSProperties,
+
   panelPadding: {
     padding: 16
   } satisfies CSSProperties,
+
   sectionTitle: {
     fontSize: 12,
     fontWeight: 800,
@@ -661,6 +664,7 @@ const styles = {
     color: colours.muted,
     marginBottom: 10
   } satisfies CSSProperties,
+
   actionButton: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -677,6 +681,7 @@ const styles = {
     fontSize: 15,
     cursor: 'pointer'
   } satisfies CSSProperties,
+
   actionButtonDark: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -693,6 +698,7 @@ const styles = {
     fontSize: 16,
     cursor: 'pointer'
   } satisfies CSSProperties,
+
   smallBadge: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -701,19 +707,22 @@ const styles = {
     borderRadius: 999,
     fontSize: 12,
     fontWeight: 800
-  } satisfies CSSProperties,
+  } satisfies CSSProperties
+}
   metaCard: {
     borderRadius: 16,
     padding: 14,
     background: 'rgba(255,255,255,0.08)',
     border: '1px solid rgba(255,255,255,0.1)'
   } satisfies CSSProperties,
+
   jobCard: {
     borderRadius: 18,
     padding: 16,
     marginBottom: 12,
     boxShadow: '0 10px 24px rgba(0,0,0,0.05)'
   } satisfies CSSProperties,
+
   label: {
     fontSize: 12,
     fontWeight: 800,
@@ -721,16 +730,19 @@ const styles = {
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5
   } satisfies CSSProperties,
+
   value: {
     fontSize: 15,
     lineHeight: 1.45
   } satisfies CSSProperties,
+
   gridTwo: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
     gap: 10
   } satisfies CSSProperties
 }
+
 function getJobCardStyle(job: TimedJob): CSSProperties {
   if (job.isDone) {
     return {
@@ -1188,8 +1200,7 @@ export default function TodayPage() {
       }
     })
   }, [dayJobs, now])
-
-  const prepJob = useMemo(() => {
+    const prepJob = useMemo(() => {
     return visibleJobs.find((job) => isMorningPrepJob(job)) || null
   }, [visibleJobs])
 
@@ -1365,7 +1376,8 @@ export default function TodayPage() {
       .map((message) => `${message.role === 'user' ? 'Worker' : 'CHAS'}: ${message.text}`)
       .join(' | ')
   }
-    async function handleSendQuoteRequest() {
+
+  async function handleSendQuoteRequest() {
     const company = localStorage.getItem('company') || 'furlads'
     setQuoteBusy(true)
     setQuoteMessage('')
@@ -1742,8 +1754,7 @@ export default function TodayPage() {
       setBusyJobId(null)
     }
   }
-
-  async function handleUndoDone(jobId: number) {
+    async function handleUndoDone(jobId: number) {
     try {
       setBusyJobId(jobId)
       setError('')
@@ -2247,7 +2258,7 @@ export default function TodayPage() {
           }
         }
       `}</style>
-            <div style={styles.shell}>
+      <div style={styles.shell}>
         <section style={styles.topCard}>
           <div className="today-top-header">
             <div>
@@ -3240,7 +3251,8 @@ export default function TodayPage() {
             })}
           </section>
         )}
-                {!loading && !error && workerId && filteredCompletedJobs.length > 0 && (
+
+        {!loading && !error && workerId && filteredCompletedJobs.length > 0 && (
           <section style={{ marginBottom: 20 }}>
             <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>
               {showingCompletedOnly ? 'Jobs completed' : 'Completed on this date'}
@@ -3590,7 +3602,8 @@ export default function TodayPage() {
           </div>
         </div>
       )}
-            {chasOpen && (
+
+      {chasOpen && (
         <div
           onClick={closeChas}
           style={{

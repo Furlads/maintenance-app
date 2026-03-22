@@ -1,19 +1,6 @@
-import { NextResponse } from 'next/server'
 import * as prismaModule from '@/lib/prisma'
 
 const prisma = ((prismaModule as any).prisma ?? (prismaModule as any).default) as any
-
-type TimeOffBody = {
-  workerId?: number
-  requestType?: string
-  isFullDay?: boolean
-  startDate?: string
-  endDate?: string
-  startTime?: string | null
-  endTime?: string | null
-  reason?: string
-  requestedByName?: string
-}
 
 type SimpleJob = {
   id: number
@@ -362,245 +349,189 @@ async function addJobAuditNote(jobId: number, note: string) {
   })
 }
 
-export async function POST(req: Request) {
-  try {
-    const body = (await req.json()) as TimeOffBody
+export async function handleTimeOffApproval(params: {
+  workerId: number
+  requestType: string
+  requestedByName: string
+  startDate: Date
+  endDate: Date
+  startTime: string | null
+  endTime: string | null
+  isFullDay: boolean
+}) {
+  const blockWindow = getBlockWindow({
+    startDate: params.startDate,
+    endDate: params.endDate,
+    startTime: params.startTime,
+    endTime: params.endTime,
+    isFullDay: params.isFullDay
+  })
 
-    const workerId = Number(body.workerId)
-    const requestType = safeString(body.requestType) || 'Unavailable'
-    const isFullDay = Boolean(body.isFullDay)
-    const startDateText = safeString(body.startDate)
-    const endDateText = safeString(body.endDate)
-    const startTime = safeString(body.startTime)
-    const endTime = safeString(body.endTime)
-    const reason = safeString(body.reason)
-    const requestedByName = safeString(body.requestedByName) || 'Trev'
-
-    if (!workerId) {
-      return NextResponse.json({ error: 'Missing workerId' }, { status: 400 })
+  if (!blockWindow) {
+    return {
+      conflictsFound: 0,
+      results: [],
+      error: 'Could not calculate blocked time window'
     }
+  }
 
-    if (!startDateText || !endDateText) {
-      return NextResponse.json({ error: 'Missing start or end date' }, { status: 400 })
-    }
+  const workerJobs = await listWorkerJobs(params.workerId)
 
-    const startDate = new Date(`${startDateText}T00:00:00.000Z`)
-    const endDate = new Date(`${endDateText}T00:00:00.000Z`)
+  const conflictingJobs = workerJobs.filter((job) => {
+    const jobWindow = getJobWindow(job)
+    if (!jobWindow) return false
 
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-      return NextResponse.json({ error: 'Invalid dates' }, { status: 400 })
-    }
+    return intervalsOverlap(
+      blockWindow.start,
+      blockWindow.end,
+      jobWindow.start,
+      jobWindow.end
+    )
+  })
 
-    if (endDate.getTime() < startDate.getTime()) {
-      return NextResponse.json({ error: 'End date cannot be before start date' }, { status: 400 })
-    }
+  const results: Array<{
+    jobId: number
+    outcome: 'moved' | 'reassigned' | 'manual_review'
+    details: string
+  }> = []
 
-    if (!isFullDay) {
-      if (!startTime || !endTime) {
-        return NextResponse.json({ error: 'Start and end times are required for timed blocks' }, { status: 400 })
-      }
+  for (const job of conflictingJobs) {
+    const jobWindow = getJobWindow(job)
+    if (!jobWindow) continue
 
-      if (endTime <= startTime) {
-        return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 })
-      }
-    }
-
-    const blockWindow = getBlockWindow({
-      startDate,
-      endDate,
-      startTime: isFullDay ? null : startTime,
-      endTime: isFullDay ? null : endTime,
-      isFullDay
+    const customer = await prisma.customer.findUnique({
+      where: { id: job.customerId },
+      select: { name: true }
     })
 
-    if (!blockWindow) {
-      return NextResponse.json({ error: 'Could not calculate blocked time window' }, { status: 400 })
-    }
+    const customerName = customer?.name || `Job #${job.id}`
 
-    const request = await prisma.timeOffRequest.create({
-      data: {
-        workerId,
-        requestType,
-        status: 'approved',
-        startDate,
-        endDate,
-        startTime: isFullDay ? null : startTime,
-        endTime: isFullDay ? null : endTime,
-        isFullDay,
-        reason: reason || null,
-        requestedByName,
-        reviewedByName: requestedByName,
-        reviewedAt: new Date()
-      }
-    })
-
-    const availabilityBlock = await prisma.workerAvailabilityBlock.create({
-      data: {
-        workerId,
-        requestId: request.id,
-        source: 'time_off_request',
-        title: requestType,
-        startDate,
-        endDate,
-        startTime: isFullDay ? null : startTime,
-        endTime: isFullDay ? null : endTime,
-        isFullDay,
-        notes: reason || null,
-        active: true
-      }
-    })
-
-    const workerJobs = await listWorkerJobs(workerId)
-    const conflictingJobs = workerJobs.filter((job) => {
-      const jobWindow = getJobWindow(job)
-      if (!jobWindow) return false
-      return intervalsOverlap(
-        blockWindow.start,
+    if (isQuoteJob(job)) {
+      const nextSlot = await findNextAvailableDateForWorker(
+        params.workerId,
+        job,
         blockWindow.end,
-        jobWindow.start,
-        jobWindow.end
-      )
-    })
-
-    const results: Array<{
-      jobId: number
-      outcome: 'moved' | 'reassigned' | 'manual_review'
-      details: string
-    }> = []
-
-    for (const job of conflictingJobs) {
-      const jobWindow = getJobWindow(job)
-      if (!jobWindow) continue
-
-      const customer = await prisma.customer.findUnique({
-        where: { id: job.customerId },
-        select: { name: true }
-      })
-
-      const customerName = customer?.name || `Job #${job.id}`
-
-      if (isQuoteJob(job)) {
-        const nextSlot = await findNextAvailableDateForWorker(workerId, job, blockWindow.end, 14)
-
-        if (nextSlot) {
-          await prisma.job.update({
-            where: { id: job.id },
-            data: {
-              visitDate: nextSlot.visitDate,
-              startTime: nextSlot.startTime
-            }
-          })
-
-          const detail = `Quote auto-moved to ${nextSlot.visitDate.toISOString().slice(0, 10)} at ${nextSlot.startTime}.`
-
-          await addJobAuditNote(
-            job.id,
-            `System auto-moved quote after Trev added time off. ${detail}`
-          )
-
-          await createKellyAlert({
-            subject: `Auto-rescheduled quote: ${customerName}`,
-            preview: detail,
-            body: [
-              `Trev added time off: ${requestType}.`,
-              `Blocked window: ${formatDateTimeForAlert(blockWindow.start)} to ${formatDateTimeForAlert(blockWindow.end)}.`,
-              `Affected job: ${customerName}.`,
-              detail
-            ].join('\n'),
-            jobId: job.id
-          })
-
-          results.push({
-            jobId: job.id,
-            outcome: 'moved',
-            details: detail
-          })
-
-          continue
-        }
-      }
-
-      const isSoloTrevJob = job.assignments.length === 1 && job.assignments[0]?.workerId === workerId
-
-      if (isSoloTrevJob) {
-        const replacementWorker = await findReplacementWorker(workerId, job)
-
-        if (replacementWorker) {
-          await prisma.jobAssignment.update({
-            where: {
-              id: job.assignments[0].id
-            },
-            data: {
-              workerId: replacementWorker.id
-            }
-          })
-
-          const replacementName = `${replacementWorker.firstName} ${replacementWorker.lastName}`.trim()
-          const detail = `Job reassigned automatically to ${replacementName}.`
-
-          await addJobAuditNote(
-            job.id,
-            `System reassigned job after Trev added time off. ${detail}`
-          )
-
-          await createKellyAlert({
-            subject: `Auto-reassigned job: ${customerName}`,
-            preview: detail,
-            body: [
-              `Trev added time off: ${requestType}.`,
-              `Blocked window: ${formatDateTimeForAlert(blockWindow.start)} to ${formatDateTimeForAlert(blockWindow.end)}.`,
-              `Affected job: ${customerName}.`,
-              detail
-            ].join('\n'),
-            jobId: job.id
-          })
-
-          results.push({
-            jobId: job.id,
-            outcome: 'reassigned',
-            details: detail
-          })
-
-          continue
-        }
-      }
-
-      const detail = 'No safe automatic reschedule was found. Kelly review needed.'
-
-      await addJobAuditNote(
-        job.id,
-        `Time off clash detected after Trev added time off. ${detail}`
+        14
       )
 
-      await createKellyAlert({
-        subject: `Manual review needed: ${customerName}`,
-        preview: detail,
-        body: [
-          `Trev added time off: ${requestType}.`,
-          `Blocked window: ${formatDateTimeForAlert(blockWindow.start)} to ${formatDateTimeForAlert(blockWindow.end)}.`,
-          `Affected job: ${customerName}.`,
-          `Booked job window: ${formatDateTimeForAlert(jobWindow.start)} to ${formatDateTimeForAlert(jobWindow.end)}.`,
-          detail
-        ].join('\n'),
-        jobId: job.id
-      })
+      if (nextSlot) {
+        await prisma.job.update({
+          where: { id: job.id },
+          data: {
+            visitDate: nextSlot.visitDate,
+            startTime: nextSlot.startTime
+          }
+        })
 
-      results.push({
-        jobId: job.id,
-        outcome: 'manual_review',
-        details: detail
-      })
+        const detail = `Quote auto-moved to ${nextSlot.visitDate.toISOString().slice(0, 10)} at ${nextSlot.startTime}.`
+
+        await addJobAuditNote(
+          job.id,
+          `System auto-moved quote after approved time off. ${detail}`
+        )
+
+        await createKellyAlert({
+          subject: `Auto-rescheduled quote: ${customerName}`,
+          preview: detail,
+          body: [
+            `${params.requestedByName} approved time off for worker ${params.workerId}.`,
+            `Type: ${params.requestType}.`,
+            `Blocked window: ${formatDateTimeForAlert(blockWindow.start)} to ${formatDateTimeForAlert(blockWindow.end)}.`,
+            `Affected job: ${customerName}.`,
+            detail
+          ].join('\n'),
+          jobId: job.id
+        })
+
+        results.push({
+          jobId: job.id,
+          outcome: 'moved',
+          details: detail
+        })
+
+        continue
+      }
     }
 
-    return NextResponse.json({
-      ok: true,
-      requestId: request.id,
-      availabilityBlockId: availabilityBlock.id,
-      conflictsFound: conflictingJobs.length,
-      results
+    const isSoloWorkerJob =
+      job.assignments.length === 1 &&
+      job.assignments[0]?.workerId === params.workerId
+
+    if (isSoloWorkerJob) {
+      const replacementWorker = await findReplacementWorker(params.workerId, job)
+
+      if (replacementWorker) {
+        await prisma.jobAssignment.update({
+          where: {
+            id: job.assignments[0].id
+          },
+          data: {
+            workerId: replacementWorker.id
+          }
+        })
+
+        const replacementName = `${replacementWorker.firstName} ${replacementWorker.lastName}`.trim()
+        const detail = `Job reassigned automatically to ${replacementName}.`
+
+        await addJobAuditNote(
+          job.id,
+          `System reassigned job after approved time off. ${detail}`
+        )
+
+        await createKellyAlert({
+          subject: `Auto-reassigned job: ${customerName}`,
+          preview: detail,
+          body: [
+            `${params.requestedByName} approved time off for worker ${params.workerId}.`,
+            `Type: ${params.requestType}.`,
+            `Blocked window: ${formatDateTimeForAlert(blockWindow.start)} to ${formatDateTimeForAlert(blockWindow.end)}.`,
+            `Affected job: ${customerName}.`,
+            detail
+          ].join('\n'),
+          jobId: job.id
+        })
+
+        results.push({
+          jobId: job.id,
+          outcome: 'reassigned',
+          details: detail
+        })
+
+        continue
+      }
+    }
+
+    const detail = 'No safe automatic reschedule was found. Kelly review needed.'
+
+    await addJobAuditNote(
+      job.id,
+      `Approved time off clash detected. ${detail}`
+    )
+
+    await createKellyAlert({
+      subject: `Manual review needed: ${customerName}`,
+      preview: detail,
+      body: [
+        `${params.requestedByName} approved time off for worker ${params.workerId}.`,
+        `Type: ${params.requestType}.`,
+        `Blocked window: ${formatDateTimeForAlert(blockWindow.start)} to ${formatDateTimeForAlert(blockWindow.end)}.`,
+        `Affected job: ${customerName}.`,
+        `Booked job window: ${formatDateTimeForAlert(jobWindow.start)} to ${formatDateTimeForAlert(jobWindow.end)}.`,
+        detail
+      ].join('\n'),
+      jobId: job.id
     })
-  } catch (error) {
-    console.error('POST /api/time-off/self failed', error)
-    return NextResponse.json({ error: 'Failed to save blocked time' }, { status: 500 })
+
+    results.push({
+      jobId: job.id,
+      outcome: 'manual_review',
+      details: detail
+    })
+  }
+
+  return {
+    conflictsFound: conflictingJobs.length,
+    results,
+    error: null
   }
 }
