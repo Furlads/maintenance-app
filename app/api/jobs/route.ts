@@ -472,6 +472,20 @@ function normaliseScheduleState(params: {
   }
 }
 
+function getRequestedDate(searchParams: URLSearchParams) {
+  const raw =
+    searchParams.get('date') ??
+    searchParams.get('visitDate') ??
+    searchParams.get('selectedDate')
+
+  if (!raw) return null
+
+  const parsed = parseDateValue(raw)
+  if (!parsed) return null
+
+  return parsed
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
@@ -483,6 +497,7 @@ export async function GET(req: Request) {
     const jobId = parsePositiveInt(searchParams.get('jobId'))
     const status = clean(searchParams.get('status'))
     const q = clean(searchParams.get('q'))
+    const requestedDate = getRequestedDate(searchParams)
 
     const where: any = {}
 
@@ -520,6 +535,13 @@ export async function GET(req: Request) {
 
     if (jobId) {
       where.id = jobId
+    }
+
+    if (requestedDate) {
+      where.visitDate = {
+        gte: startOfLondonDayUtc(requestedDate),
+        lt: nextLondonDayUtc(requestedDate),
+      }
     }
 
     if (q) {
@@ -575,7 +597,11 @@ export async function GET(req: Request) {
 
     const jobs = await prisma.job.findMany({
       where,
-      orderBy: [{ createdAt: 'desc' }],
+      orderBy: [
+        { visitDate: 'asc' },
+        { startTime: 'asc' },
+        { createdAt: 'desc' },
+      ],
       include: {
         customer: true,
         assignments: {
