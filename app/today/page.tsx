@@ -64,6 +64,16 @@ type ChasUiMessage = {
   jobId?: number | null
 }
 
+type TimeOffForm = {
+  requestType: string
+  isFullDay: boolean
+  startDate: string
+  endDate: string
+  startTime: string
+  endTime: string
+  reason: string
+}
+
 function formatTime(value?: string | null) {
   if (!value) return '—'
 
@@ -721,7 +731,6 @@ const styles = {
     gap: 10
   } satisfies CSSProperties
 }
-
 function getJobCardStyle(job: TimedJob): CSSProperties {
   if (job.isDone) {
     return {
@@ -863,6 +872,16 @@ function TopStatCard({
   )
 }
 
+const DEFAULT_TIME_OFF_FORM = (dateKey: string): TimeOffForm => ({
+  requestType: 'Holiday',
+  isFullDay: false,
+  startDate: dateKey,
+  endDate: dateKey,
+  startTime: '08:30',
+  endTime: '09:30',
+  reason: ''
+})
+
 export default function TodayPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -899,6 +918,10 @@ export default function TodayPage() {
   const [quoteWorkSummary, setQuoteWorkSummary] = useState('')
   const [quoteEstimatedTime, setQuoteEstimatedTime] = useState('')
   const [quoteNotes, setQuoteNotes] = useState('')
+  const [timeOffOpen, setTimeOffOpen] = useState(false)
+  const [timeOffBusy, setTimeOffBusy] = useState(false)
+  const [timeOffMessage, setTimeOffMessage] = useState('')
+  const [timeOffForm, setTimeOffForm] = useState<TimeOffForm>(DEFAULT_TIME_OFF_FORM(toDateKey(new Date())))
   const chasMessagesEndRef = useRef<HTMLDivElement | null>(null)
 
   const todayDateKey = useMemo(() => toDateKey(now), [now])
@@ -984,7 +1007,10 @@ export default function TodayPage() {
         ? new URLSearchParams(window.location.search).get('date') || ''
         : ''
 
-    setSelectedDateKey(urlDate || defaultToday)
+    const initialDate = urlDate || defaultToday
+
+    setSelectedDateKey(initialDate)
+    setTimeOffForm(DEFAULT_TIME_OFF_FORM(initialDate))
 
     loadJobs()
     loadCustomers()
@@ -1010,6 +1036,18 @@ export default function TodayPage() {
 
     return () => window.clearTimeout(timeout)
   }, [chasOpen, chasMessages, chasBusy])
+
+  useEffect(() => {
+    if (!timeOffOpen) return
+
+    const baseDate = selectedDateKey || todayDateKey
+
+    setTimeOffForm((prev) => ({
+      ...prev,
+      startDate: prev.startDate || baseDate,
+      endDate: prev.endDate || baseDate
+    }))
+  }, [timeOffOpen, selectedDateKey, todayDateKey])
 
   const workerJobs = useMemo(() => {
     if (!workerId) return []
@@ -1305,13 +1343,29 @@ export default function TodayPage() {
     resetChasState()
   }
 
+  function openTimeOff() {
+    const baseDate = selectedDateKey || todayDateKey
+    setTimeOffMessage('')
+    setTimeOffForm(DEFAULT_TIME_OFF_FORM(baseDate))
+    setTimeOffOpen(true)
+  }
+
+  function closeTimeOff() {
+    setTimeOffOpen(false)
+    setTimeOffMessage('')
+    setTimeOffBusy(false)
+  }
+
+  function updateTimeOff<K extends keyof TimeOffForm>(key: K, value: TimeOffForm[K]) {
+    setTimeOffForm((prev) => ({ ...prev, [key]: value }))
+  }
+
   function buildChatTranscript() {
     return chasMessages
       .map((message) => `${message.role === 'user' ? 'Worker' : 'CHAS'}: ${message.text}`)
       .join(' | ')
   }
-
-  async function handleSendQuoteRequest() {
+    async function handleSendQuoteRequest() {
     const company = localStorage.getItem('company') || 'furlads'
     setQuoteBusy(true)
     setQuoteMessage('')
@@ -1363,6 +1417,72 @@ export default function TodayPage() {
       setQuoteMessage(String(err?.message || 'Failed to save quote enquiry.'))
     } finally {
       setQuoteBusy(false)
+    }
+  }
+
+  async function handleSaveTimeOff() {
+    if (!workerId) {
+      setTimeOffMessage('No worker selected.')
+      return
+    }
+
+    if (!timeOffForm.startDate || !timeOffForm.endDate) {
+      setTimeOffMessage('Please choose start and end dates.')
+      return
+    }
+
+    if (timeOffForm.endDate < timeOffForm.startDate) {
+      setTimeOffMessage('End date cannot be before start date.')
+      return
+    }
+
+    if (!timeOffForm.isFullDay) {
+      if (!timeOffForm.startTime || !timeOffForm.endTime) {
+        setTimeOffMessage('Please enter start and end times.')
+        return
+      }
+
+      if (timeOffForm.endTime <= timeOffForm.startTime) {
+        setTimeOffMessage('End time must be after start time.')
+        return
+      }
+    }
+
+    try {
+      setTimeOffBusy(true)
+      setTimeOffMessage('')
+
+      const res = await fetch('/api/time-off/self', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          workerId,
+          requestType: timeOffForm.requestType,
+          isFullDay: timeOffForm.isFullDay,
+          startDate: timeOffForm.startDate,
+          endDate: timeOffForm.endDate,
+          startTime: timeOffForm.isFullDay ? null : timeOffForm.startTime,
+          endTime: timeOffForm.isFullDay ? null : timeOffForm.endTime,
+          reason: timeOffForm.reason,
+          requestedByName: workerName || 'Trev'
+        })
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to save blocked time.')
+      }
+
+      setTimeOffMessage('Blocked time saved.')
+      setTimeOffOpen(false)
+    } catch (err: any) {
+      console.error(err)
+      setTimeOffMessage(String(err?.message || 'Failed to save blocked time.'))
+    } finally {
+      setTimeOffBusy(false)
     }
   }
 
@@ -1536,14 +1656,7 @@ export default function TodayPage() {
 
   async function handleCannotComplete(jobId: number) {
     const reasonInput = window.prompt(
-      `Why couldn't the job be completed?
-
-Examples:
-No access
-Customer cancelled
-Need materials
-Ran out of time
-Weather stopped work`,
+      `Why couldn't the job be completed?\n\nExamples:\nNo access\nCustomer cancelled\nNeed materials\nRan out of time\nWeather stopped work`,
       ''
     )
 
@@ -1557,12 +1670,7 @@ Weather stopped work`,
     }
 
     const detailsInput = window.prompt(
-      `Add any extra details if needed (optional)
-
-Examples:
-Gate locked
-Customer asked us to return next week
-Heavy rain made it unsafe`,
+      `Add any extra details if needed (optional)\n\nExamples:\nGate locked\nCustomer asked us to return next week\nHeavy rain made it unsafe`,
       ''
     )
 
@@ -2139,8 +2247,7 @@ Heavy rain made it unsafe`,
           }
         }
       `}</style>
-
-      <div style={styles.shell}>
+            <div style={styles.shell}>
         <section style={styles.topCard}>
           <div className="today-top-header">
             <div>
@@ -2185,6 +2292,18 @@ Heavy rain made it unsafe`,
               >
                 <ChasMascot size={24} />
                 <span>Ask Chas</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={openTimeOff}
+                style={{
+                  ...styles.actionButton,
+                  minWidth: 150,
+                  fontWeight: 800
+                }}
+              >
+                Add Time Off
               </button>
 
               <div className="today-worker-badge">
@@ -2359,6 +2478,24 @@ Heavy rain made it unsafe`,
             />
           </div>
         </section>
+
+        {timeOffMessage && !timeOffOpen && (
+          <section
+            style={{
+              ...styles.panel,
+              ...styles.panelPadding,
+              marginBottom: 16,
+              border: timeOffMessage.toLowerCase().includes('saved')
+                ? '1px solid #7bc586'
+                : `1px solid ${colours.redLine}`,
+              background: timeOffMessage.toLowerCase().includes('saved')
+                ? colours.greenSoft
+                : colours.redSoft
+            }}
+          >
+            <div style={{ fontWeight: 800 }}>{timeOffMessage}</div>
+          </section>
+        )}
 
         {!loading && !error && workerId && prepJob && (
           <section
@@ -2612,8 +2749,7 @@ Heavy rain made it unsafe`,
             </div>
           </section>
         )}
-
-        {!loading && !error && workerId && upcomingJobs.length > 0 && (
+                {!loading && !error && workerId && upcomingJobs.length > 0 && (
           <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
             <div style={styles.sectionTitle}>Booked after this date</div>
 
@@ -3104,8 +3240,7 @@ Heavy rain made it unsafe`,
             })}
           </section>
         )}
-
-        {!loading && !error && workerId && filteredCompletedJobs.length > 0 && (
+                {!loading && !error && workerId && filteredCompletedJobs.length > 0 && (
           <section style={{ marginBottom: 20 }}>
             <div style={{ ...styles.sectionTitle, marginBottom: 12 }}>
               {showingCompletedOnly ? 'Jobs completed' : 'Completed on this date'}
@@ -3205,7 +3340,257 @@ Heavy rain made it unsafe`,
         )}
       </div>
 
-      {chasOpen && (
+      {timeOffOpen && (
+        <div
+          onClick={closeTimeOff}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.58)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 12,
+            zIndex: 1100
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 560,
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              background: '#fff',
+              borderRadius: 20,
+              border: '1px solid #ddd',
+              boxShadow: '0 24px 70px rgba(0,0,0,0.22)',
+              padding: 18
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 12,
+                marginBottom: 14
+              }}
+            >
+              <div>
+                <div style={styles.sectionTitle}>Your blocked time</div>
+                <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15 }}>
+                  Add time off
+                </div>
+                <div style={{ marginTop: 6, fontSize: 14, color: colours.inkSoft }}>
+                  Use this for holidays, appointments, school runs, late starts or early finishes.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeTimeOff}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 999,
+                  border: '1px solid #ddd',
+                  background: '#fff',
+                  cursor: 'pointer',
+                  fontSize: 20
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div>
+                <div style={{ ...styles.label, marginBottom: 6 }}>Type</div>
+                <select
+                  value={timeOffForm.requestType}
+                  onChange={(e) => updateTimeOff('requestType', e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: 12,
+                    borderRadius: 12,
+                    border: '1px solid #ccc',
+                    background: '#fff'
+                  }}
+                >
+                  <option value="Holiday">Holiday</option>
+                  <option value="Appointment">Appointment</option>
+                  <option value="Sick">Sick</option>
+                  <option value="Late Start">Late Start</option>
+                  <option value="Early Finish">Early Finish</option>
+                  <option value="Unavailable">Unavailable</option>
+                </select>
+              </div>
+
+              <div>
+                <div style={{ ...styles.label, marginBottom: 6 }}>All day?</div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => updateTimeOff('isFullDay', false)}
+                    style={{
+                      ...styles.actionButton,
+                      background: !timeOffForm.isFullDay ? colours.ink : '#fff',
+                      color: !timeOffForm.isFullDay ? '#fff' : colours.ink
+                    }}
+                  >
+                    Timed block
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateTimeOff('isFullDay', true)}
+                    style={{
+                      ...styles.actionButton,
+                      background: timeOffForm.isFullDay ? colours.ink : '#fff',
+                      color: timeOffForm.isFullDay ? '#fff' : colours.ink
+                    }}
+                  >
+                    All day
+                  </button>
+                </div>
+              </div>
+
+              <div className="today-meta-grid">
+                <div>
+                  <div style={{ ...styles.label, marginBottom: 6 }}>Start date</div>
+                  <input
+                    type="date"
+                    value={timeOffForm.startDate}
+                    onChange={(e) => updateTimeOff('startDate', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: 12,
+                      borderRadius: 12,
+                      border: '1px solid #ccc',
+                      background: '#fff'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ ...styles.label, marginBottom: 6 }}>End date</div>
+                  <input
+                    type="date"
+                    value={timeOffForm.endDate}
+                    onChange={(e) => updateTimeOff('endDate', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: 12,
+                      borderRadius: 12,
+                      border: '1px solid #ccc',
+                      background: '#fff'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {!timeOffForm.isFullDay && (
+                <div className="today-meta-grid">
+                  <div>
+                    <div style={{ ...styles.label, marginBottom: 6 }}>Start time</div>
+                    <input
+                      type="time"
+                      value={timeOffForm.startTime}
+                      onChange={(e) => updateTimeOff('startTime', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: 12,
+                        borderRadius: 12,
+                        border: '1px solid #ccc',
+                        background: '#fff'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ ...styles.label, marginBottom: 6 }}>End time</div>
+                    <input
+                      type="time"
+                      value={timeOffForm.endTime}
+                      onChange={(e) => updateTimeOff('endTime', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: 12,
+                        borderRadius: 12,
+                        border: '1px solid #ccc',
+                        background: '#fff'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div style={{ ...styles.label, marginBottom: 6 }}>Notes</div>
+                <textarea
+                  value={timeOffForm.reason}
+                  onChange={(e) => updateTimeOff('reason', e.target.value)}
+                  placeholder="Optional note for Kelly / the office"
+                  style={{
+                    width: '100%',
+                    minHeight: 90,
+                    padding: 12,
+                    borderRadius: 12,
+                    border: '1px solid #ccc',
+                    resize: 'vertical',
+                    fontFamily: 'inherit'
+                  }}
+                />
+              </div>
+
+              {timeOffMessage && (
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 12,
+                    background: timeOffMessage.toLowerCase().includes('saved') ? colours.greenSoft : colours.redSoft,
+                    border: timeOffMessage.toLowerCase().includes('saved') ? '1px solid #7bc586' : `1px solid ${colours.redLine}`,
+                    fontSize: 14,
+                    fontWeight: 700
+                  }}
+                >
+                  {timeOffMessage}
+                </div>
+              )}
+
+              <div className="today-job-actions">
+                <button
+                  type="button"
+                  onClick={handleSaveTimeOff}
+                  disabled={timeOffBusy}
+                  style={{
+                    ...styles.actionButtonDark,
+                    opacity: timeOffBusy ? 0.7 : 1,
+                    cursor: timeOffBusy ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {timeOffBusy ? 'Saving...' : 'Save blocked time'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={closeTimeOff}
+                  disabled={timeOffBusy}
+                  style={{
+                    ...styles.actionButton,
+                    opacity: timeOffBusy ? 0.7 : 1,
+                    cursor: timeOffBusy ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+            {chasOpen && (
         <div
           onClick={closeChas}
           style={{
