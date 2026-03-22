@@ -1,44 +1,76 @@
-self.addEventListener("push", function (event) {
-  let data = {};
+self.addEventListener('push', (event) => {
+  if (!event.data) return
+
+  let payload = {}
   try {
-    data = event.data ? event.data.json() : {};
+    payload = event.data.json()
   } catch {
-    data = { title: "Furlads", body: "Reminder" };
+    payload = {
+      title: 'Furlads',
+      body: event.data.text(),
+    }
   }
 
-  const title = data.title || "Furlads";
-  const options = {
-    body: data.body || "Just checking you're all good 👍",
-    icon: data.icon || "/icon-192.png",
-    badge: data.badge || "/badge-72.png",
-    data: data.data || {},
-    requireInteraction: false,
-    silent: false,
-  };
-
-  event.waitUntil(self.registration.showNotification(title, options));
-});
-
-self.addEventListener("notificationclick", function (event) {
-  event.notification.close();
-
-  const targetUrl = (event.notification.data && event.notification.data.url) || "/today";
+  const title = payload.title || 'Furlads'
+  const body = payload.body || ''
+  const url = payload.url || '/today'
+  const notificationId = payload.notificationId
+  const actions = Array.isArray(payload.actions) ? payload.actions : []
 
   event.waitUntil(
-    (async () => {
-      const allClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    self.registration.showNotification(title, {
+      body,
+      data: {
+        url,
+        notificationId,
+      },
+      actions,
+      badge: '/icon-192.png',
+      icon: '/icon-192.png',
+    })
+  )
+})
 
-      for (const client of allClients) {
-        if ("focus" in client) {
-          client.focus();
-          client.navigate(targetUrl);
-          return;
-        }
-      }
+self.addEventListener('notificationclick', (event) => {
+  const action = event.action
+  const data = event.notification.data || {}
+  const url = data.url || '/today'
+  const notificationId = data.notificationId
 
-      if (clients.openWindow) {
-        await clients.openWindow(targetUrl);
+  event.notification.close()
+
+  const work = (async () => {
+    if (notificationId && action) {
+      try {
+        await fetch('/api/notifications/respond', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            notificationId,
+            response: action,
+          }),
+        })
+      } catch (error) {
+        console.error('Failed to send notification response', error)
       }
-    })()
-  );
-});
+    }
+
+    const windowClients = await clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true,
+    })
+
+    for (const client of windowClients) {
+      if ('focus' in client) {
+        client.navigate(url)
+        return client.focus()
+      }
+    }
+
+    return clients.openWindow(url)
+  })()
+
+  event.waitUntil(work)
+})

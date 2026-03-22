@@ -37,6 +37,8 @@ model Worker {
   webauthnCredentials WebAuthnCredential[]
   availabilityBlocks  WorkerAvailabilityBlock[]
   companies           WorkerCompany[]
+  pushSubscriptions   PushSubscription[]
+  notifications       Notification[]
 }
 
 model WebAuthnCredential {
@@ -101,12 +103,14 @@ model Job {
   preferredTimeBand         String?
   timePreferenceMode        String?
   visitPattern              String?
+  quoteFollowUpAt           DateTime?
   chasMessages              ChasMessage[]
   inboxMessages             InboxMessage[]
   customer                  Customer        @relation(fields: [customerId], references: [id])
   assignments               JobAssignment[]
   jobNotes                  JobNote[]
   photos                    JobPhoto[]
+  notifications             Notification[]
 }
 
 model JobAssignment {
@@ -277,4 +281,51 @@ model WorkerAvailabilityBlock {
 
   @@index([workerId, active, startDate, endDate])
   @@index([startDate, endDate])
+}
+
+model PushSubscription {
+  id         Int      @id @default(autoincrement())
+  workerId    Int
+  endpoint    String
+  p256dh      String
+  auth        String
+  userAgent   String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  worker      Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([workerId, endpoint])
+  @@index([workerId, active])
+}
+
+model Notification {
+  id                  Int       @id @default(autoincrement())
+  type                String
+  channel             String
+  status              String    @default("pending")
+  title               String
+  message             String
+  scheduledFor        DateTime
+  sentAt              DateTime?
+  failedAt            DateTime?
+  failureReason       String?
+  dedupeKey           String    @unique
+  relatedJobId        Int?
+  recipientWorkerId   Int?
+  recipientPhone      String?
+  metadataJson        String?
+  responseRequired    Boolean   @default(false)
+  responseOptionsJson String?
+  responseValue       String?
+  responseAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  relatedJob          Job?      @relation(fields: [relatedJobId], references: [id], onDelete: Cascade)
+  recipientWorker     Worker?   @relation(fields: [recipientWorkerId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledFor])
+  @@index([relatedJobId, type])
+  @@index([recipientWorkerId, status])
+  @@index([recipientPhone, status])
 }
