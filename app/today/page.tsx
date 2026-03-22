@@ -707,6 +707,39 @@ const styles = {
     borderRadius: 999,
     fontSize: 12,
     fontWeight: 800
+  } satisfies CSSProperties,
+
+  metaCard: {
+    borderRadius: 16,
+    padding: 14,
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.1)'
+  } satisfies CSSProperties,
+
+  jobCard: {
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    boxShadow: '0 10px 24px rgba(0,0,0,0.05)'
+  } satisfies CSSProperties,
+
+  label: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: colours.muted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5
+  } satisfies CSSProperties,
+
+  value: {
+    fontSize: 15,
+    lineHeight: 1.45
+  } satisfies CSSProperties,
+
+  gridTwo: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: 10
   } satisfies CSSProperties
 }
   metaCard: {
