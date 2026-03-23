@@ -1088,28 +1088,29 @@ async function loadJobs() {
     const data = await res.json()
     const nextJobs = Array.isArray(data) ? data : []
 
+    setJobs(nextJobs)
     setShowingOfflineSnapshot(false)
 
     const snapshot = getTodaySnapshot()
 
     saveTodaySnapshot({
-  jobs: nextJobs as OfflineJob[],
-  customers: (snapshot?.customers || []) as OfflineCustomer[]
-})
+      jobs: nextJobs as OfflineJob[],
+      customers: (snapshot?.customers || []) as OfflineCustomer[]
+    })
   } catch (err) {
     console.error(err)
 
     const snapshot = getTodaySnapshot()
 
     if (snapshot?.jobs?.length) {
-  setJobs(snapshot.jobs as unknown as Job[])
-  setShowingOfflineSnapshot(true)
-  setError('')
-} else {
-  setJobs([])
-  setShowingOfflineSnapshot(false)
-  setError('Could not load jobs for this page.')
-}
+      setJobs(snapshot.jobs as unknown as Job[])
+      setShowingOfflineSnapshot(true)
+      setError('')
+    } else {
+      setJobs([])
+      setShowingOfflineSnapshot(false)
+      setError('Could not load jobs for this page.')
+    }
   } finally {
     setLoading(false)
   }
@@ -1686,8 +1687,8 @@ async function loadCustomers() {
     await runJobAction(jobId, 'start', 'Failed to start job.')
   }
 
-  function handleFinishJob(jobId: number) {
-  window.location.href = `/jobs/${jobId}?finish=1`
+  async function handleFinishJob(jobId: number) {
+  await runJobAction(jobId, 'finish', 'Failed to finish job.')
 }
 
   async function handlePauseJob(jobId: number) {
