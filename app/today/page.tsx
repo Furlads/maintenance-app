@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
 import WorkerMenu from '@/app/components/WorkerMenu'
+import { getTodaySnapshot, saveTodaySnapshot } from '@/lib/offline/store'
 
 type Worker = {
   id: number
@@ -954,77 +955,120 @@ export default function TodayPage() {
     window.history.replaceState({}, '', url.toString())
   }
 
-  async function loadJobs() {
-    try {
-      setError('')
+async function loadJobs() {
+  try {
+    setError('')
 
-      const res = await fetch('/api/jobs', { cache: 'no-store' })
+    const res = await fetch('/api/jobs', { cache: 'no-store' })
 
-      if (!res.ok) {
-        throw new Error('Failed to load jobs')
-      }
+    if (!res.ok) {
+      throw new Error('Failed to load jobs')
+    }
 
-      const data = await res.json()
-      setJobs(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error(err)
+    const data = await res.json()
+    const nextJobs = Array.isArray(data) ? data : []
+
+    setJobs(nextJobs)
+
+    const snapshot = getTodaySnapshot()
+
+    saveTodaySnapshot({
+      jobs: nextJobs,
+      customers: snapshot?.customers || []
+    })
+  } catch (err) {
+    console.error(err)
+
+    const snapshot = getTodaySnapshot()
+
+    if (snapshot?.jobs?.length) {
+      setJobs(snapshot.jobs)
+      setError('Live signal was poor, so showing the last saved jobs.')
+    } else {
       setJobs([])
       setError('Could not load jobs for this page.')
-    } finally {
-      setLoading(false)
     }
+  } finally {
+    setLoading(false)
   }
+}
 
-  async function loadCustomers() {
-    try {
-      const res = await fetch('/api/customers', { cache: 'no-store' })
+async function loadCustomers() {
+  try {
+    const res = await fetch('/api/customers', { cache: 'no-store' })
 
-      if (!res.ok) {
-        throw new Error('Failed to load customers')
-      }
+    if (!res.ok) {
+      throw new Error('Failed to load customers')
+    }
 
-      const data = await res.json()
-      setCustomers(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error(err)
+    const data = await res.json()
+    const nextCustomers = Array.isArray(data) ? data : []
+
+    setCustomers(nextCustomers)
+
+    const snapshot = getTodaySnapshot()
+
+    saveTodaySnapshot({
+      jobs: snapshot?.jobs || [],
+      customers: nextCustomers
+    })
+  } catch (err) {
+    console.error(err)
+
+    const snapshot = getTodaySnapshot()
+
+    if (snapshot?.customers?.length) {
+      setCustomers(snapshot.customers)
+    } else {
       setCustomers([])
     }
   }
+}
 
-  useEffect(() => {
-    const savedWorkerId = localStorage.getItem('workerId')
-    const savedWorkerName = localStorage.getItem('workerName')
-    const savedWorkerPhotoUrl =
-      localStorage.getItem('workerPhotoUrl') ||
-      localStorage.getItem('photoUrl') ||
-      ''
+useEffect(() => {
+  const savedWorkerId = localStorage.getItem('workerId')
+  const savedWorkerName = localStorage.getItem('workerName')
+  const savedWorkerPhotoUrl =
+    localStorage.getItem('workerPhotoUrl') ||
+    localStorage.getItem('photoUrl') ||
+    ''
 
-    if (savedWorkerId) {
-      setWorkerId(Number(savedWorkerId))
-    }
+  if (savedWorkerId) {
+    setWorkerId(Number(savedWorkerId))
+  }
 
-    if (savedWorkerName) {
-      setWorkerName(savedWorkerName)
-    }
+  if (savedWorkerName) {
+    setWorkerName(savedWorkerName)
+  }
 
-    if (savedWorkerPhotoUrl) {
-      setWorkerPhotoUrl(savedWorkerPhotoUrl)
-    }
+  if (savedWorkerPhotoUrl) {
+    setWorkerPhotoUrl(savedWorkerPhotoUrl)
+  }
 
-    const defaultToday = toDateKey(new Date())
-    const urlDate =
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('date') || ''
-        : ''
+  const snapshot = getTodaySnapshot()
 
-    const initialDate = urlDate || defaultToday
+  if (snapshot?.jobs?.length) {
+    setJobs(snapshot.jobs)
+  }
 
-    setSelectedDateKey(initialDate)
-    setTimeOffForm(DEFAULT_TIME_OFF_FORM(initialDate))
+  if (snapshot?.customers?.length) {
+    setCustomers(snapshot.customers)
+  }
 
-    loadJobs()
-    loadCustomers()
-  }, [])
+  const defaultToday = toDateKey(new Date())
+  const urlDate =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('date') || ''
+      : ''
+
+  const initialDate = urlDate || defaultToday
+
+  setSelectedDateKey(initialDate)
+  setTimeOffForm(DEFAULT_TIME_OFF_FORM(initialDate))
+
+  loadJobs()
+  loadCustomers()
+}, [])
 
   useEffect(() => {
     const timer = window.setInterval(() => {

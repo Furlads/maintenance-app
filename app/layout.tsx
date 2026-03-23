@@ -1,4 +1,5 @@
 import "./globals.css";
+import ServiceWorkerRegister from "@/app/components/ServiceWorkerRegister";
 
 export const metadata = {
   title: "Furlads Maintenance App",
@@ -17,7 +18,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ServiceWorkerRegister />
+        {children}
+      </body>
     </html>
   );
 }
