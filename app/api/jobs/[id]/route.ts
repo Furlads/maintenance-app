@@ -689,12 +689,12 @@ function normaliseScheduleState(params: {
   }
 
   if (visitDate && !startTime) {
-    return {
-      visitDate,
-      startTime: null,
-      status: isTrevQuoteJob ? cleanStatus || 'todo' : 'unscheduled',
-    }
+  return {
+    visitDate,
+    startTime: null,
+    status: cleanStatus || 'todo',
   }
+}
 
   return {
     visitDate,
@@ -1375,12 +1375,24 @@ export async function PATCH(req: Request, ctx: Ctx) {
         .slice()
         .sort((a, b) => a - b)
 
-      if (shouldTriggerSchedulerRepair(body, existingAssignedWorkerIds, nextAssignedWorkerIds)) {
-        await runLocalRepairForJob({
-          jobId,
-          reason: 'edit',
-        })
-      }
+      function shouldTriggerSchedulerRepair(
+  body: Record<string, unknown>,
+  existingAssignedWorkerIds: number[],
+  nextAssignedWorkerIds: number[]
+) {
+  const changedAssignedWorkers =
+    existingAssignedWorkerIds.length !== nextAssignedWorkerIds.length ||
+    existingAssignedWorkerIds.some((workerId, index) => workerId !== nextAssignedWorkerIds[index])
+
+  return (
+    'visitDate' in body ||
+    'startTime' in body ||
+    'durationMinutes' in body ||
+    'durationMins' in body ||
+    'assignedTo' in body ||
+    changedAssignedWorkers
+  )
+}
     } catch (schedulerError) {
       console.error('Local scheduler repair failed after job patch:', schedulerError)
     }
