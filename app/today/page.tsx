@@ -1682,7 +1682,7 @@ async function loadCustomers() {
     }
   }
 
-    async function handleStartJob(jobId: number) {
+      async function handleStartJob(jobId: number) {
     await runJobAction(jobId, 'start', 'Failed to start job.')
   }
 
@@ -1697,11 +1697,6 @@ async function loadCustomers() {
   async function handleResumeJob(jobId: number) {
     await runJobAction(jobId, 'resume', 'Failed to resume job.')
   }
-
-  async function handlePrepComplete(job: TimedJob) {
-    try {
-      setBusyJobId(job.id)
-      setError('')
 
   async function handlePrepComplete(job: TimedJob) {
     try {
