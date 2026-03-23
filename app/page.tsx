@@ -11,14 +11,43 @@ type Worker = {
   phone?: string | null
 }
 
+const WORKERS_SNAPSHOT_KEY = 'furlads:workers-snapshot'
+
 function getRedirectPath(accessLevel: string) {
   return accessLevel.toLowerCase() === 'admin' ? '/admin' : '/today'
+}
+
+function getWorkersSnapshot(): Worker[] {
+  if (typeof window === 'undefined') return []
+
+  const raw = window.localStorage.getItem(WORKERS_SNAPSHOT_KEY)
+
+  if (!raw) return []
+
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (error) {
+    console.error('Failed to parse workers snapshot:', error)
+    return []
+  }
+}
+
+function saveWorkersSnapshot(workers: Worker[]) {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(WORKERS_SNAPSHOT_KEY, JSON.stringify(workers))
+  } catch (error) {
+    console.error('Failed to save workers snapshot:', error)
+  }
 }
 
 export default function Page() {
   const [workers, setWorkers] = useState<Worker[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [showingOfflineWorkers, setShowingOfflineWorkers] = useState(false)
 
   useEffect(() => {
     const savedWorkerId = localStorage.getItem('workerId')
@@ -28,16 +57,30 @@ export default function Page() {
     const quickLoginEnabled = localStorage.getItem('quickLoginEnabled') === 'true'
     const quickLoginPhone = localStorage.getItem('quickLoginPhone') || ''
 
-    if (quickLoginEnabled && quickLoginPhone.trim()) {
-      window.location.href = `/login?phone=${encodeURIComponent(
-        quickLoginPhone.trim()
-      )}&autostart=1`
-      return
-    }
-
+    // Always prefer a saved logged-in session first.
+    // This lets the worker get back into the app even with weak/no signal.
     if (savedWorkerId && savedWorkerName && savedWorkerAccessLevel) {
       window.location.href = getRedirectPath(savedWorkerAccessLevel)
       return
+    }
+
+    // Only try quick login if there is no saved session.
+    // If there is no signal, stay on this page and use cached workers if possible.
+    if (quickLoginEnabled && quickLoginPhone.trim()) {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        window.location.href = `/login?phone=${encodeURIComponent(
+          quickLoginPhone.trim()
+        )}&autostart=1`
+        return
+      }
+    }
+
+    const cachedWorkers = getWorkersSnapshot()
+
+    if (cachedWorkers.length > 0) {
+      setWorkers(cachedWorkers)
+      setShowingOfflineWorkers(true)
+      setLoading(false)
     }
 
     async function loadWorkers() {
@@ -52,11 +95,25 @@ export default function Page() {
         }
 
         const data = await res.json()
-        setWorkers(Array.isArray(data) ? data : [])
+        const nextWorkers = Array.isArray(data) ? data : []
+
+        setWorkers(nextWorkers)
+        saveWorkersSnapshot(nextWorkers)
+        setShowingOfflineWorkers(false)
       } catch (err) {
         console.error(err)
-        setWorkers([])
-        setError('Failed to load workers.')
+
+        const fallbackWorkers = getWorkersSnapshot()
+
+        if (fallbackWorkers.length > 0) {
+          setWorkers(fallbackWorkers)
+          setShowingOfflineWorkers(true)
+          setError('')
+        } else {
+          setWorkers([])
+          setShowingOfflineWorkers(false)
+          setError('Failed to load workers.')
+        }
       } finally {
         setLoading(false)
       }
@@ -78,6 +135,12 @@ export default function Page() {
 
     localStorage.setItem('selectedLoginWorkerId', String(worker.id))
     localStorage.setItem('selectedLoginWorkerName', workerName)
+
+    if (worker.photoUrl && worker.photoUrl.trim()) {
+      localStorage.setItem('selectedLoginWorkerPhotoUrl', worker.photoUrl.trim())
+    } else {
+      localStorage.removeItem('selectedLoginWorkerPhotoUrl')
+    }
 
     if (worker.phone && worker.phone.trim()) {
       localStorage.setItem('selectedLoginWorkerPhone', worker.phone.trim())
@@ -182,6 +245,22 @@ export default function Page() {
             Tap your name to go straight to secure login.
           </p>
         </div>
+
+        {!loading && showingOfflineWorkers && (
+          <div
+            style={{
+              padding: 16,
+              borderRadius: 18,
+              border: '1px solid #efcf72',
+              background: '#fff7d6',
+              color: '#5f4a00',
+              lineHeight: 1.45,
+              marginBottom: 14
+            }}
+          >
+            Showing the last saved worker list from this phone because signal looks weak.
+          </div>
+        )}
 
         {loading && (
           <div
