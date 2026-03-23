@@ -902,6 +902,7 @@ export default function TodayPage() {
   const [workerPhotoUrl, setWorkerPhotoUrl] = useState<string>('')
   const [logoHidden, setLogoHidden] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [showingOfflineSnapshot, setShowingOfflineSnapshot] = useState(false)
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
   const [now, setNow] = useState(new Date())
