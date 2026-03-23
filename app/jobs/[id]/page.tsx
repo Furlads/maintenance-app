@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 
 type Worker = {
   id: number
@@ -264,6 +264,7 @@ function isPrepJob(job: Job | null) {
 export default function JobPage() {
   const params = useParams()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const id = Number(params.id)
 
   const [job, setJob] = useState<Job | null>(null)
@@ -309,7 +310,7 @@ export default function JobPage() {
     setPhotos(Array.isArray(data) ? data : [])
   }
 
-    async function loadJob() {
+  async function loadJob() {
     try {
       setError('')
 
@@ -495,7 +496,7 @@ export default function JobPage() {
     }
   }
 
-    async function patchJob(payload: Record<string, unknown>, actionLabel: string) {
+  async function patchJob(payload: Record<string, unknown>, actionLabel: string) {
     try {
       setBusyAction(actionLabel)
       setError('')
@@ -519,6 +520,9 @@ export default function JobPage() {
       }
 
       await loadPhotos()
+      router.refresh()
+      window.location.reload()
+
       return true
     } catch (err) {
       console.error(err)
@@ -650,7 +654,7 @@ export default function JobPage() {
     await patchJob({ action: 'resume' }, 'resume job')
   }
 
-    async function handleUndoStart() {
+  async function handleUndoStart() {
     await patchJob(
       {
         arrivedAt: null,
