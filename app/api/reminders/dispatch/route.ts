@@ -20,18 +20,37 @@ function buildSms(job: any) {
   ].join("\n")
 }
 
+function formatTime(date: Date) {
+  const hours = String(date.getHours()).padStart(2, "0")
+  const minutes = String(date.getMinutes()).padStart(2, "0")
+  return `${hours}:${minutes}`
+}
+
 export async function GET() {
   try {
     const now = new Date()
     const in60 = new Date(now.getTime() + 60 * 60 * 1000)
     const in65 = new Date(now.getTime() + 65 * 60 * 1000)
 
-    // Find jobs starting in the next 60–65 minutes window
+    const startOfDay = new Date(in60)
+    startOfDay.setHours(0, 0, 0, 0)
+
+    const endOfDay = new Date(in60)
+    endOfDay.setHours(23, 59, 59, 999)
+
+    const startTimeFrom = formatTime(in60)
+    const startTimeTo = formatTime(in65)
+
     const jobs = await prisma.job.findMany({
       where: {
+        visitDate: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
         startTime: {
-          gte: in60,
-          lte: in65,
+          not: null,
+          gte: startTimeFrom,
+          lte: startTimeTo,
         },
       },
       include: {
