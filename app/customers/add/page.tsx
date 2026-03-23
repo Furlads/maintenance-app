@@ -2,6 +2,16 @@
 
 import { FormEvent, useState } from 'react'
 
+type DuplicateCustomer = {
+  id: number
+  name: string
+  phone: string | null
+  email: string | null
+  address: string | null
+  postcode: string | null
+  createdAt: string
+}
+
 export default function AddCustomerPage() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -11,11 +21,12 @@ export default function AddCustomerPage() {
   const [notes, setNotes] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [duplicates, setDuplicates] = useState<DuplicateCustomer[]>([])
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
+  async function saveCustomer(forceCreate = false) {
     setLoading(true)
     setMessage('')
+    setDuplicates([])
 
     try {
       const res = await fetch('/api/customers', {
@@ -29,12 +40,33 @@ export default function AddCustomerPage() {
           email,
           address,
           postcode,
-          notes
+          notes,
+          forceCreate
         })
       })
 
+      const data = await res.json()
+
+      if (res.status === 409 && data?.requiresConfirmation) {
+        const duplicateList = Array.isArray(data.duplicates) ? data.duplicates : []
+        setDuplicates(duplicateList)
+
+        const shouldCreateAnyway = window.confirm(
+          `This customer may already exist (${duplicateList.length} possible match${
+            duplicateList.length === 1 ? '' : 'es'
+          }). Are you sure you want to create another one?`
+        )
+
+        if (shouldCreateAnyway) {
+          return await saveCustomer(true)
+        }
+
+        setMessage('Customer was not created because a possible duplicate was found.')
+        return
+      }
+
       if (!res.ok) {
-        throw new Error('Failed to save customer')
+        throw new Error(data?.error || 'Failed to save customer')
       }
 
       setName('')
@@ -43,6 +75,7 @@ export default function AddCustomerPage() {
       setAddress('')
       setPostcode('')
       setNotes('')
+      setDuplicates([])
       setMessage('Customer saved successfully.')
     } catch (error) {
       console.error(error)
@@ -50,6 +83,11 @@ export default function AddCustomerPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    await saveCustomer(false)
   }
 
   return (
@@ -393,6 +431,49 @@ export default function AddCustomerPage() {
               Cancel
             </a>
           </div>
+
+          {duplicates.length > 0 && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: '12px 14px',
+                borderRadius: 12,
+                background: '#fff8e7',
+                border: '1px solid #f0d48a',
+                color: '#333'
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                Possible duplicate customer found
+              </div>
+
+              <div style={{ fontSize: 14, marginBottom: 10 }}>
+                Matching records:
+              </div>
+
+              <div style={{ display: 'grid', gap: 10 }}>
+                {duplicates.map((customer) => (
+                  <div
+                    key={customer.id}
+                    style={{
+                      background: '#fff',
+                      border: '1px solid #ead79a',
+                      borderRadius: 10,
+                      padding: 10
+                    }}
+                  >
+                    <div style={{ fontWeight: 700 }}>{customer.name}</div>
+                    <div style={{ fontSize: 14, color: '#555' }}>
+                      {customer.phone || 'No phone'} • {customer.email || 'No email'}
+                    </div>
+                    <div style={{ fontSize: 14, color: '#555' }}>
+                      {customer.address || 'No address'} {customer.postcode ? `• ${customer.postcode}` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {message && (
             <div
