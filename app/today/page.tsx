@@ -902,7 +902,7 @@ export default function TodayPage() {
   const [workerPhotoUrl, setWorkerPhotoUrl] = useState<string>('')
   const [logoHidden, setLogoHidden] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [showingOfflineSnapshot, setShowingOfflineSnapshot] = useState(false)
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
   const [now, setNow] = useState(new Date())
   const [topFilter, setTopFilter] = useState<'all' | 'completed' | 'left'>('all')
@@ -969,7 +969,7 @@ async function loadJobs() {
     const data = await res.json()
     const nextJobs = Array.isArray(data) ? data : []
 
-    setJobs(nextJobs)
+    setShowingOfflineSnapshot(false)
 
     const snapshot = getTodaySnapshot()
 
@@ -983,12 +983,14 @@ async function loadJobs() {
     const snapshot = getTodaySnapshot()
 
     if (snapshot?.jobs?.length) {
-      setJobs(snapshot.jobs as unknown as Job[])
-      setError('Live signal was poor, so showing the last saved jobs.')
-    } else {
-      setJobs([])
-      setError('Could not load jobs for this page.')
-    }
+  setJobs(snapshot.jobs as unknown as Job[])
+  setShowingOfflineSnapshot(true)
+  setError('')
+} else {
+  setJobs([])
+  setShowingOfflineSnapshot(false)
+  setError('Could not load jobs for this page.')
+}
   } finally {
     setLoading(false)
   }
@@ -1050,6 +1052,7 @@ useEffect(() => {
 
   if (snapshot?.jobs?.length) {
   setJobs(snapshot.jobs as unknown as Job[])
+  setShowingOfflineSnapshot(true)
 }
 
 if (snapshot?.customers?.length) {
@@ -2885,7 +2888,24 @@ if (snapshot?.customers?.length) {
             </div>
           </section>
         )}
-
+        {!loading && showingOfflineSnapshot && (
+          <section
+            style={{
+              ...styles.panel,
+              ...styles.panelPadding,
+              marginBottom: 16,
+              border: '1px solid #efcf72',
+              background: colours.yellowSoft
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>
+              Showing saved offline data
+            </div>
+            <div style={{ color: colours.inkSoft }}>
+              Signal looks weak, so this page is using the last saved version from this phone.
+            </div>
+          </section>
+        )}
         {!loading && error && (
           <section
             style={{
