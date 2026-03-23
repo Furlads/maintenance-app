@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
 import WorkerMenu from '@/app/components/WorkerMenu'
 import { getTodaySnapshot, saveTodaySnapshot } from '@/lib/offline/store'
+import type { OfflineCustomer, OfflineJob } from '@/lib/offline/types'
 
 type Worker = {
   id: number
@@ -973,16 +974,16 @@ async function loadJobs() {
     const snapshot = getTodaySnapshot()
 
     saveTodaySnapshot({
-      jobs: nextJobs,
-      customers: snapshot?.customers || []
-    })
+  jobs: nextJobs as OfflineJob[],
+  customers: (snapshot?.customers || []) as OfflineCustomer[]
+})
   } catch (err) {
     console.error(err)
 
     const snapshot = getTodaySnapshot()
 
     if (snapshot?.jobs?.length) {
-      setJobs(snapshot.jobs)
+      setJobs(snapshot.jobs as Job[])
       setError('Live signal was poor, so showing the last saved jobs.')
     } else {
       setJobs([])
@@ -1009,16 +1010,16 @@ async function loadCustomers() {
     const snapshot = getTodaySnapshot()
 
     saveTodaySnapshot({
-      jobs: snapshot?.jobs || [],
-      customers: nextCustomers
-    })
+  jobs: (snapshot?.jobs || []) as OfflineJob[],
+  customers: nextCustomers as OfflineCustomer[]
+})
   } catch (err) {
     console.error(err)
 
     const snapshot = getTodaySnapshot()
 
     if (snapshot?.customers?.length) {
-      setCustomers(snapshot.customers)
+      setCustomers(snapshot.customers as Customer[])
     } else {
       setCustomers([])
     }
@@ -1048,12 +1049,12 @@ useEffect(() => {
   const snapshot = getTodaySnapshot()
 
   if (snapshot?.jobs?.length) {
-    setJobs(snapshot.jobs)
-  }
+  setJobs(snapshot.jobs as Job[])
+}
 
-  if (snapshot?.customers?.length) {
-    setCustomers(snapshot.customers)
-  }
+if (snapshot?.customers?.length) {
+  setCustomers(snapshot.customers as Customer[])
+}
 
   const defaultToday = toDateKey(new Date())
   const urlDate =
