@@ -1692,7 +1692,10 @@ async function loadCustomers() {
       setTimeOffBusy(false)
     }
   }
-
+function hardRefreshTodayPage() {
+  if (typeof window === 'undefined') return
+  window.location.reload()
+}
       async function handleStartJob(jobId: number) {
     await runJobAction(jobId, 'start', 'Failed to start job.')
   }
