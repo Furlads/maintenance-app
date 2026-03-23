@@ -689,12 +689,12 @@ function normaliseScheduleState(params: {
   }
 
   if (visitDate && !startTime) {
-  return {
-    visitDate,
-    startTime: null,
-    status: cleanStatus || 'todo',
+    return {
+      visitDate,
+      startTime: null,
+      status: cleanStatus || 'todo',
+    }
   }
-}
 
   return {
     visitDate,
@@ -710,7 +710,9 @@ function shouldTriggerSchedulerRepair(
 ) {
   const changedAssignedWorkers =
     existingAssignedWorkerIds.length !== nextAssignedWorkerIds.length ||
-    existingAssignedWorkerIds.some((workerId, index) => workerId !== nextAssignedWorkerIds[index])
+    existingAssignedWorkerIds.some(
+      (workerId, index) => workerId !== nextAssignedWorkerIds[index]
+    )
 
   return (
     'visitDate' in body ||
@@ -718,9 +720,6 @@ function shouldTriggerSchedulerRepair(
     'durationMinutes' in body ||
     'durationMins' in body ||
     'assignedTo' in body ||
-    'status' in body ||
-    'action' in body ||
-    body.toggleStatus === true ||
     changedAssignedWorkers
   )
 }
@@ -1375,24 +1374,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
         .slice()
         .sort((a, b) => a - b)
 
-      function shouldTriggerSchedulerRepair(
-  body: Record<string, unknown>,
-  existingAssignedWorkerIds: number[],
-  nextAssignedWorkerIds: number[]
-) {
-  const changedAssignedWorkers =
-    existingAssignedWorkerIds.length !== nextAssignedWorkerIds.length ||
-    existingAssignedWorkerIds.some((workerId, index) => workerId !== nextAssignedWorkerIds[index])
-
-  return (
-    'visitDate' in body ||
-    'startTime' in body ||
-    'durationMinutes' in body ||
-    'durationMins' in body ||
-    'assignedTo' in body ||
-    changedAssignedWorkers
-  )
-}
+      if (shouldTriggerSchedulerRepair(body, existingAssignedWorkerIds, nextAssignedWorkerIds)) {
+        await runLocalRepairForJob({
+          jobId,
+          reason: 'edit',
+        })
+      }
     } catch (schedulerError) {
       console.error('Local scheduler repair failed after job patch:', schedulerError)
     }
