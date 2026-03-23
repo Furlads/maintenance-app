@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 
 type Worker = {
   id: number
@@ -263,6 +263,7 @@ function isPrepJob(job: Job | null) {
 
 export default function JobPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const id = Number(params.id)
 
   const [job, setJob] = useState<Job | null>(null)
@@ -289,6 +290,7 @@ export default function JobPage() {
   const [quoteNotes, setQuoteNotes] = useState('')
 
   const [showFinishReport, setShowFinishReport] = useState(false)
+  const [hasAutoOpenedFinishReport, setHasAutoOpenedFinishReport] = useState(false)
   const [finishSummary, setFinishSummary] = useState('')
   const [finishFollowUpRequired, setFinishFollowUpRequired] = useState<'no' | 'yes'>('no')
   const [finishFollowUpDetails, setFinishFollowUpDetails] = useState('')
@@ -402,6 +404,17 @@ export default function JobPage() {
     setFinishPaymentNotes(job.paymentNotes || '')
     setFinishKellyNotes('')
   }, [showFinishReport, job])
+
+  useEffect(() => {
+    if (!job) return
+    if (isPrepJob(job)) return
+    if (hasAutoOpenedFinishReport) return
+
+    if (searchParams.get('finish') === '1') {
+      setShowFinishReport(true)
+      setHasAutoOpenedFinishReport(true)
+    }
+  }, [job, hasAutoOpenedFinishReport, searchParams])
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
