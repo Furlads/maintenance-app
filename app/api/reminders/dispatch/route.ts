@@ -3,7 +3,31 @@ import twilio from "twilio"
 
 export const runtime = "nodejs"
 
-function buildSms(job: any) {
+const ORIGIN = "TF9 3FT"
+
+async function getTravelTime(address: string) {
+  try {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY
+
+    if (!apiKey || !address) return "Not available"
+
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(
+      ORIGIN
+    )}&destination=${encodeURIComponent(address)}&key=${apiKey}`
+
+    const res = await fetch(url)
+    const data = await res.json()
+
+    const duration =
+      data?.routes?.[0]?.legs?.[0]?.duration?.text
+
+    return duration || "Not available"
+  } catch {
+    return "Not available"
+  }
+}
+
+function buildSms(job: any, travelTime: string) {
   const address = [job.address, job.customer?.postcode]
     .filter(Boolean)
     .join(", ")
@@ -17,6 +41,7 @@ function buildSms(job: any) {
     `Job: ${job.title || "No title"}`,
     `Address: ${address || "Not provided"}`,
     `Notes: ${job.notes || "None"}`,
+    `Estimated travel time: ${travelTime}`,
   ].join("\n")
 }
 
@@ -70,8 +95,14 @@ export async function GET() {
     const results = []
 
     for (const job of jobs) {
+      const address = [job.address, job.customer?.postcode]
+        .filter(Boolean)
+        .join(", ")
+
+      const travelTime = await getTravelTime(address)
+
       const message = await client.messages.create({
-        body: buildSms(job),
+        body: buildSms(job, travelTime),
         from: process.env.TWILIO_FROM_NUMBER!,
         to: process.env.TREV_ALERT_PHONE!,
       })
@@ -79,6 +110,7 @@ export async function GET() {
       results.push({
         jobId: job.id,
         sid: message.sid,
+        travelTime,
       })
     }
 
