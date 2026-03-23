@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
 import WorkerMenu from '@/app/components/WorkerMenu'
 import { getTodaySnapshot, saveTodaySnapshot } from '@/lib/offline/store'
+import { flushQueuedJobActions, getQueuedJobActionCount, queueJobAction, type OfflineJobActionType } from '@/lib/offline/queue'
 import type { OfflineCustomer, OfflineJob } from '@/lib/offline/types'
 
 type Worker = {
@@ -905,7 +906,8 @@ export default function TodayPage() {
   const [error, setError] = useState('')
   const [showingOfflineSnapshot, setShowingOfflineSnapshot] = useState(false)
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
-  const [now, setNow] = useState(new Date())
+const [queuedActionCount, setQueuedActionCount] = useState(0)
+const [now, setNow] = useState(new Date())
   const [topFilter, setTopFilter] = useState<'all' | 'completed' | 'left'>('all')
   const [selectedDateKey, setSelectedDateKey] = useState<string>('')
 
@@ -942,20 +944,136 @@ export default function TodayPage() {
   const isViewingToday = !selectedDateKey || selectedDateKey === todayDateKey
 
   function syncSelectedDateInUrl(nextDateKey: string) {
-    setSelectedDateKey(nextDateKey)
+  setSelectedDateKey(nextDateKey)
 
-    if (typeof window === 'undefined') return
+  if (typeof window === 'undefined') return
 
-    const url = new URL(window.location.href)
+  const url = new URL(window.location.href)
 
-    if (!nextDateKey || nextDateKey === todayDateKey) {
-      url.searchParams.delete('date')
-    } else {
-      url.searchParams.set('date', nextDateKey)
+  if (!nextDateKey || nextDateKey === todayDateKey) {
+    url.searchParams.delete('date')
+  } else {
+    url.searchParams.set('date', nextDateKey)
+  }
+
+  window.history.replaceState({}, '', url.toString())
+}
+
+function refreshQueuedActionCount() {
+  setQueuedActionCount(getQueuedJobActionCount())
+}
+
+async function syncQueuedActionsIfOnline() {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    refreshQueuedActionCount()
+    return
+  }
+
+  try {
+    await flushQueuedJobActions()
+  } catch (error) {
+    console.error('Failed to sync queued actions:', error)
+  } finally {
+    refreshQueuedActionCount()
+  }
+}
+
+function applyLocalJobAction(jobId: number, action: OfflineJobActionType) {
+  setJobs((currentJobs) =>
+    currentJobs.map((job) => {
+      if (job.id !== jobId) return job
+
+      const nowIso = new Date().toISOString()
+
+      if (action === 'start') {
+        return {
+          ...job,
+          status: 'in_progress',
+          arrivedAt: job.arrivedAt || nowIso,
+          pausedAt: null,
+          finishedAt: null
+        }
+      }
+
+      if (action === 'pause') {
+        return {
+          ...job,
+          status: 'paused',
+          pausedAt: nowIso
+        }
+      }
+
+      if (action === 'resume') {
+        return {
+          ...job,
+          status: 'in_progress',
+          pausedAt: null,
+          arrivedAt: job.arrivedAt || nowIso
+        }
+      }
+
+      if (action === 'finish') {
+        return {
+          ...job,
+          status: 'done',
+          finishedAt: nowIso,
+          pausedAt: null,
+          arrivedAt: job.arrivedAt || nowIso
+        }
+      }
+
+      return job
+    })
+  )
+}
+
+async function runJobAction(jobId: number, action: OfflineJobActionType, errorMessage: string) {
+  try {
+    setBusyJobId(jobId)
+    setError('')
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      queueJobAction(jobId, action)
+      applyLocalJobAction(jobId, action)
+      refreshQueuedActionCount()
+      setShowingOfflineSnapshot(true)
+      return
     }
 
-    window.history.replaceState({}, '', url.toString())
+    const res = await fetch(`/api/jobs/${jobId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        action
+      })
+    })
+
+    const data = await res.json().catch(() => null)
+
+    if (!res.ok) {
+      throw new Error(data?.error || errorMessage)
+    }
+
+    await syncQueuedActionsIfOnline()
+    await loadJobs()
+  } catch (err) {
+    console.error(err)
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      queueJobAction(jobId, action)
+      applyLocalJobAction(jobId, action)
+      refreshQueuedActionCount()
+      setShowingOfflineSnapshot(true)
+      return
+    }
+
+    setError(errorMessage)
+  } finally {
+    setBusyJobId(null)
   }
+}
 
 async function loadJobs() {
   try {
@@ -1029,51 +1147,70 @@ async function loadCustomers() {
   }
 }
 
-useEffect(() => {
-  const savedWorkerId = localStorage.getItem('workerId')
-  const savedWorkerName = localStorage.getItem('workerName')
-  const savedWorkerPhotoUrl =
-    localStorage.getItem('workerPhotoUrl') ||
-    localStorage.getItem('photoUrl') ||
-    ''
+  useEffect(() => {
+    const savedWorkerId = localStorage.getItem('workerId')
+    const savedWorkerName = localStorage.getItem('workerName')
+    const savedWorkerPhotoUrl =
+      localStorage.getItem('workerPhotoUrl') ||
+      localStorage.getItem('photoUrl') ||
+      ''
 
-  if (savedWorkerId) {
-    setWorkerId(Number(savedWorkerId))
-  }
+    if (savedWorkerId) {
+      setWorkerId(Number(savedWorkerId))
+    }
 
-  if (savedWorkerName) {
-    setWorkerName(savedWorkerName)
-  }
+    if (savedWorkerName) {
+      setWorkerName(savedWorkerName)
+    }
 
-  if (savedWorkerPhotoUrl) {
-    setWorkerPhotoUrl(savedWorkerPhotoUrl)
-  }
+    if (savedWorkerPhotoUrl) {
+      setWorkerPhotoUrl(savedWorkerPhotoUrl)
+    }
 
-  const snapshot = getTodaySnapshot()
+    const snapshot = getTodaySnapshot()
 
-  if (snapshot?.jobs?.length) {
-  setJobs(snapshot.jobs as unknown as Job[])
-  setShowingOfflineSnapshot(true)
-}
+    if (snapshot?.jobs?.length) {
+      setJobs(snapshot.jobs as unknown as Job[])
+      setShowingOfflineSnapshot(true)
+    }
 
-if (snapshot?.customers?.length) {
-  setCustomers(snapshot.customers as unknown as Customer[])
-}
+    if (snapshot?.customers?.length) {
+      setCustomers(snapshot.customers as unknown as Customer[])
+    }
 
-  const defaultToday = toDateKey(new Date())
-  const urlDate =
-    typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('date') || ''
-      : ''
+    const defaultToday = toDateKey(new Date())
+    const urlDate =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('date') || ''
+        : ''
 
-  const initialDate = urlDate || defaultToday
+    const initialDate = urlDate || defaultToday
 
-  setSelectedDateKey(initialDate)
-  setTimeOffForm(DEFAULT_TIME_OFF_FORM(initialDate))
+    setSelectedDateKey(initialDate)
+    setTimeOffForm(DEFAULT_TIME_OFF_FORM(initialDate))
 
-  loadJobs()
-  loadCustomers()
-}, [])
+    refreshQueuedActionCount()
+    loadJobs()
+    loadCustomers()
+  }, [])
+
+  useEffect(() => {
+    function handleOnline() {
+      syncQueuedActionsIfOnline()
+        .then(() => {
+          loadJobs()
+        })
+        .catch((error) => {
+          console.error('Failed to sync queued actions after reconnect:', error)
+        })
+    }
+
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1546,115 +1683,20 @@ if (snapshot?.customers?.length) {
   }
 
   async function handleStartJob(jobId: number) {
-    try {
-      setBusyJobId(jobId)
-      setError('')
-
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'start'
-        })
-      })
-
-      const data = await res.json().catch(() => null)
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to start job')
-      }
-
-      await loadJobs()
-    } catch (err) {
-      console.error(err)
-      setError('Failed to start job.')
-    } finally {
-      setBusyJobId(null)
-    }
+    await runJobAction(jobId, 'start', 'Failed to start job.')
   }
 
   async function handleFinishJob(jobId: number) {
-    try {
-      setBusyJobId(jobId)
-      setError('')
-
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'finish'
-        })
-      })
-
-      const data = await res.json().catch(() => null)
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to finish job')
-      }
-
-      await loadJobs()
-    } catch (err) {
-      console.error(err)
-      setError('Failed to finish job.')
-    } finally {
-      setBusyJobId(null)
-    }
+    await runJobAction(jobId, 'finish', 'Failed to finish job.')
   }
 
   async function handlePauseJob(jobId: number) {
-    try {
-      setBusyJobId(jobId)
-      setError('')
-
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'pause'
-        })
-      })
-
-      const data = await res.json().catch(() => null)
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to pause job')
-      }
-
-      await loadJobs()
-    } catch (err) {
-      console.error(err)
-      setError('Failed to pause job.')
-    } finally {
-      setBusyJobId(null)
-    }
+    await runJobAction(jobId, 'pause', 'Failed to pause job.')
   }
 
   async function handleResumeJob(jobId: number) {
-    try {
-      setBusyJobId(jobId)
-      setError('')
-
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'resume'
-        })
-      })
-
-      const data = await res.json().catch(() => null)
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to resume job')
-      }
+    await runJobAction(jobId, 'resume', 'Failed to resume job.')
+  }
 
       await loadJobs()
     } catch (err) {
