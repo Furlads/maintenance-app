@@ -871,7 +871,7 @@ function WorkerTimeline({
         return (
           <Link
             key={job.id}
-            href={`/jobs/${job.id}`}
+            href={`/jobs/${job.id}?back=/admin/schedule`}
             title={`${job.startTime ?? "TBD"} • ${job.title} • ${job.customerName} • ${
               job.postcode ?? ""
             }${job.needsSchedulingAttention && job.schedulingAttentionReason ? ` • ${job.schedulingAttentionReason}` : ""}`}
@@ -1751,7 +1751,7 @@ export default function SchedulePage() {
                             return (
                               <Link
                                 key={`list-${worker.id}-${job.id}`}
-                                href={`/jobs/${job.id}`}
+                                href={`/jobs/${job.id}?back=/admin/schedule`}
                                 style={{
                                   textDecoration: "none",
                                   color: "inherit",
@@ -2066,7 +2066,7 @@ export default function SchedulePage() {
                             </button>
                           )}
 
-                          <Link href={`/jobs/${job.id}`} style={smallButton()}>
+                          <Link href={`/jobs/${job.id}?back=/admin/schedule`} style={smallButton()}>
                             Open job
                           </Link>
 
