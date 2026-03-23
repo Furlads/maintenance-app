@@ -1698,34 +1698,34 @@ async function loadCustomers() {
   }
 
     async function handleFinishJob(jobId: number) {
-    try {
-      setBusyJobId(jobId)
-      setError('')
+  try {
+    setBusyJobId(jobId)
+    setError('')
 
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'finish'
-        })
+    const res = await fetch(`/api/jobs/${jobId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        action: 'finish'
       })
+    })
 
-      const data = await res.json().catch(() => null)
+    const data = await res.json().catch(() => null)
 
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to finish job.')
-      }
-
-      await refreshTodayView()
-    } catch (err) {
-      console.error(err)
-      setError('Failed to finish job.')
-    } finally {
-      setBusyJobId(null)
+    if (!res.ok) {
+      throw new Error(data?.error || 'Failed to finish job.')
     }
+
+    hardRefreshTodayPage()
+  } catch (err) {
+    console.error(err)
+    setError('Failed to finish job.')
+  } finally {
+    setBusyJobId(null)
   }
+}
 
   async function handlePauseJob(jobId: number) {
     await runJobAction(jobId, 'pause', 'Failed to pause job.')
@@ -1840,89 +1840,71 @@ async function loadCustomers() {
   }
 
     async function handleUndoStart(jobId: number) {
-    try {
-      setBusyJobId(jobId)
-      setError('')
+  try {
+    setBusyJobId(jobId)
+    setError('')
 
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          arrivedAt: null,
-          pausedAt: null,
-          finishedAt: null,
-          pausedMinutes: 0,
-          status: 'todo'
-        })
+    const res = await fetch(`/api/jobs/${jobId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        arrivedAt: null,
+        pausedAt: null,
+        finishedAt: null,
+        pausedMinutes: 0,
+        status: 'todo'
       })
+    })
 
-      const data = await res.json().catch(() => null)
+    const data = await res.json().catch(() => null)
 
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to undo start')
-      }
-
-      await refreshTodayView()
-    } catch (err) {
-      console.error(err)
-      setError('Failed to undo start.')
-    } finally {
-      setBusyJobId(null)
+    if (!res.ok) {
+      throw new Error(data?.error || 'Failed to undo start')
     }
+
+    hardRefreshTodayPage()
+  } catch (err) {
+    console.error(err)
+    setError('Failed to undo start.')
+  } finally {
+    setBusyJobId(null)
   }
+}
         async function handleUndoDone(jobId: number) {
-    const previousJobs = jobs
+  try {
+    setBusyJobId(jobId)
+    setError('')
 
-    try {
-      setBusyJobId(jobId)
-      setError('')
-
-      setJobs((currentJobs) =>
-        currentJobs.map((job) => {
-          if (job.id !== jobId) return job
-
-          return {
-            ...job,
-            status: 'todo',
-            arrivedAt: null,
-            finishedAt: null,
-            pausedAt: null,
-            pausedMinutes: 0
-          }
-        })
-      )
-
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          status: 'todo',
-          arrivedAt: null,
-          finishedAt: null,
-          pausedAt: null,
-          pausedMinutes: 0
-        })
+    const res = await fetch(`/api/jobs/${jobId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        status: 'todo',
+        arrivedAt: null,
+        finishedAt: null,
+        pausedAt: null,
+        pausedMinutes: 0
       })
+    })
 
-      const data = await res.json().catch(() => null)
+    const data = await res.json().catch(() => null)
 
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to undo job')
-      }
-
-      await refreshTodayView()
-    } catch (err) {
-      console.error(err)
-      setJobs(previousJobs)
-      setError('Failed to undo job.')
-    } finally {
-      setBusyJobId(null)
+    if (!res.ok) {
+      throw new Error(data?.error || 'Failed to undo job')
     }
+
+    hardRefreshTodayPage()
+  } catch (err) {
+    console.error(err)
+    setError('Failed to undo job.')
+  } finally {
+    setBusyJobId(null)
   }
+}
 
   async function handleExtendJob(jobId: number, minutes: number) {
     try {
