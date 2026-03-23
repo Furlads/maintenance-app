@@ -983,7 +983,7 @@ async function loadJobs() {
     const snapshot = getTodaySnapshot()
 
     if (snapshot?.jobs?.length) {
-      setJobs(snapshot.jobs as Job[])
+      setJobs(snapshot.jobs as unknown as Job[])
       setError('Live signal was poor, so showing the last saved jobs.')
     } else {
       setJobs([])
@@ -1019,7 +1019,7 @@ async function loadCustomers() {
     const snapshot = getTodaySnapshot()
 
     if (snapshot?.customers?.length) {
-      setCustomers(snapshot.customers as Customer[])
+      setCustomers(snapshot.customers as unknown as Customer[])
     } else {
       setCustomers([])
     }
@@ -1049,11 +1049,11 @@ useEffect(() => {
   const snapshot = getTodaySnapshot()
 
   if (snapshot?.jobs?.length) {
-  setJobs(snapshot.jobs as Job[])
+  setJobs(snapshot.jobs as unknown as Job[])
 }
 
 if (snapshot?.customers?.length) {
-  setCustomers(snapshot.customers as Customer[])
+  setCustomers(snapshot.customers as unknown as Customer[])
 }
 
   const defaultToday = toDateKey(new Date())
