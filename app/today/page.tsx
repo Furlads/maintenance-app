@@ -1837,64 +1837,50 @@ async function loadCustomers() {
     }
   }
     async function handleUndoDone(jobId: number) {
-    try {
-      setBusyJobId(jobId)
-      setError('')
+  const previousJobs = jobs
 
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          toggleStatus: true
-        })
+  try {
+    setBusyJobId(jobId)
+    setError('')
+
+    setJobs((currentJobs) =>
+      currentJobs.map((job) => {
+        if (job.id !== jobId) return job
+
+        return {
+          ...job,
+          status: 'todo',
+          finishedAt: null,
+          pausedAt: null
+        }
       })
+    )
 
-      const data = await res.json().catch(() => null)
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to undo job')
-      }
-
-      await loadJobs()
-    } catch (err) {
-      console.error(err)
-      setError('Failed to undo job.')
-    } finally {
-      setBusyJobId(null)
-    }
-  }
-
-  async function handleExtendJob(jobId: number, minutes: number) {
-    try {
-      setBusyJobId(jobId)
-      setError('')
-
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          extendMins: minutes
-        })
+    const res = await fetch(`/api/jobs/${jobId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        toggleStatus: true
       })
+    })
 
-      const data = await res.json().catch(() => null)
+    const data = await res.json().catch(() => null)
 
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to extend job')
-      }
-
-      await loadJobs()
-    } catch (err) {
-      console.error(err)
-      setError('Failed to extend job.')
-    } finally {
-      setBusyJobId(null)
+    if (!res.ok) {
+      throw new Error(data?.error || 'Failed to undo job')
     }
+
+    await loadJobs()
+  } catch (err) {
+    console.error(err)
+    setJobs(previousJobs)
+    setError('Failed to undo job.')
+  } finally {
+    setBusyJobId(null)
   }
+}
 
   async function handleOtherExtendJob(jobId: number) {
     const value = window.prompt('How many extra minutes?', '90')
