@@ -416,6 +416,17 @@ export default function JobPage() {
     }
   }, [job, hasAutoOpenedFinishReport, searchParams])
 
+  useEffect(() => {
+    if (!showFinishReport) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [showFinishReport])
+
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     const workerId = localStorage.getItem('workerId')
@@ -1457,159 +1468,168 @@ Heavy rain made it unsafe`,
       </div>
 
       {showFinishReport && (
-        <div className="fixed inset-0 z-[1001] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl">
-            <div className="border-b border-zinc-200 px-5 py-4">
-              <h2 className="text-xl font-bold text-zinc-900">Finish job report</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Quick end-of-job report for Kelly before you finish this job.
-              </p>
-            </div>
-
-            <div className="space-y-4 p-5">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                  Work summary
-                </label>
-                <textarea
-                  value={finishSummary}
-                  onChange={(e) => setFinishSummary(e.target.value)}
-                  placeholder="What was done today?"
-                  className="min-h-[100px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                />
+        <div className="fixed inset-0 z-[1001] bg-black/50 sm:flex sm:items-center sm:justify-center sm:p-4">
+          <div className="flex h-[100dvh] w-full items-end justify-center sm:h-auto sm:items-center">
+            <div className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-3xl">
+              <div className="border-b border-zinc-200 px-5 py-4">
+                <h2 className="text-xl font-bold text-zinc-900">Finish job report</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Quick end-of-job report for Kelly before you finish this job.
+                </p>
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                  Follow-up required?
-                </label>
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFinishFollowUpRequired('no')}
-                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                      finishFollowUpRequired === 'no'
-                        ? 'bg-zinc-900 text-white'
-                        : 'border border-zinc-300 bg-white text-zinc-800'
-                    }`}
-                  >
-                    No
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setFinishFollowUpRequired('yes')}
-                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                      finishFollowUpRequired === 'yes'
-                        ? 'bg-zinc-900 text-white'
-                        : 'border border-zinc-300 bg-white text-zinc-800'
-                    }`}
-                  >
-                    Yes
-                  </button>
-                </div>
-              </div>
-
-              {finishFollowUpRequired === 'yes' && (
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                    Follow-up details
-                  </label>
-                  <textarea
-                    value={finishFollowUpDetails}
-                    onChange={(e) => setFinishFollowUpDetails(e.target.value)}
-                    placeholder="What still needs doing, returning for, or chasing?"
-                    className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                  Payment
-                </label>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <button
-                    type="button"
-                    onClick={() => setFinishPaymentStatus('not_recorded')}
-                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                      finishPaymentStatus === 'not_recorded'
-                        ? 'bg-zinc-900 text-white'
-                        : 'border border-zinc-300 bg-white text-zinc-800'
-                    }`}
-                  >
-                    Not recorded
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setFinishPaymentStatus('cash_paid')}
-                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                      finishPaymentStatus === 'cash_paid'
-                        ? 'bg-zinc-900 text-white'
-                        : 'border border-zinc-300 bg-white text-zinc-800'
-                    }`}
-                  >
-                    Cash paid
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setFinishPaymentStatus('invoice_needed')}
-                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                      finishPaymentStatus === 'invoice_needed'
-                        ? 'bg-zinc-900 text-white'
-                        : 'border border-zinc-300 bg-white text-zinc-800'
-                    }`}
-                  >
-                    Needs invoice
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                  Payment notes
-                </label>
-                <input
-                  value={finishPaymentNotes}
-                  onChange={(e) => setFinishPaymentNotes(e.target.value)}
-                  placeholder="Amount paid, part paid, cash details, anything useful"
-                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                  Extra notes for Kelly
-                </label>
-                <textarea
-                  value={finishKellyNotes}
-                  onChange={(e) => setFinishKellyNotes(e.target.value)}
-                  placeholder="Anything Kelly should know?"
-                  className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap justify-end gap-3 border-t border-zinc-200 px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setShowFinishReport(false)}
-                disabled={busyAction !== ''}
-                className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+              <div
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 pb-32"
+                style={{ WebkitOverflowScrolling: 'touch' }}
               >
-                Cancel
-              </button>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Work summary
+                    </label>
+                    <textarea
+                      value={finishSummary}
+                      onChange={(e) => setFinishSummary(e.target.value)}
+                      placeholder="What was done today?"
+                      className="min-h-[100px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  </div>
 
-              <button
-                type="button"
-                onClick={submitFinishReport}
-                disabled={busyAction !== ''}
-                className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busyAction === 'finish job' ? 'Saving...' : 'Save report & finish job'}
-              </button>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Follow-up required?
+                    </label>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setFinishFollowUpRequired('no')}
+                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                          finishFollowUpRequired === 'no'
+                            ? 'bg-zinc-900 text-white'
+                            : 'border border-zinc-300 bg-white text-zinc-800'
+                        }`}
+                      >
+                        No
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFinishFollowUpRequired('yes')}
+                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                          finishFollowUpRequired === 'yes'
+                            ? 'bg-zinc-900 text-white'
+                            : 'border border-zinc-300 bg-white text-zinc-800'
+                        }`}
+                      >
+                        Yes
+                      </button>
+                    </div>
+                  </div>
+
+                  {finishFollowUpRequired === 'yes' && (
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                        Follow-up details
+                      </label>
+                      <textarea
+                        value={finishFollowUpDetails}
+                        onChange={(e) => setFinishFollowUpDetails(e.target.value)}
+                        placeholder="What still needs doing, returning for, or chasing?"
+                        className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Payment
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={() => setFinishPaymentStatus('not_recorded')}
+                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                          finishPaymentStatus === 'not_recorded'
+                            ? 'bg-zinc-900 text-white'
+                            : 'border border-zinc-300 bg-white text-zinc-800'
+                        }`}
+                      >
+                        Not recorded
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFinishPaymentStatus('cash_paid')}
+                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                          finishPaymentStatus === 'cash_paid'
+                            ? 'bg-zinc-900 text-white'
+                            : 'border border-zinc-300 bg-white text-zinc-800'
+                        }`}
+                      >
+                        Cash paid
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFinishPaymentStatus('invoice_needed')}
+                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                          finishPaymentStatus === 'invoice_needed'
+                            ? 'bg-zinc-900 text-white'
+                            : 'border border-zinc-300 bg-white text-zinc-800'
+                        }`}
+                      >
+                        Needs invoice
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Payment notes
+                    </label>
+                    <input
+                      value={finishPaymentNotes}
+                      onChange={(e) => setFinishPaymentNotes(e.target.value)}
+                      placeholder="Amount paid, part paid, cash details, anything useful"
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Extra notes for Kelly
+                    </label>
+                    <textarea
+                      value={finishKellyNotes}
+                      onChange={(e) => setFinishKellyNotes(e.target.value)}
+                      placeholder="Anything Kelly should know?"
+                      className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-200 bg-white px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowFinishReport(false)}
+                    disabled={busyAction !== ''}
+                    className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={submitFinishReport}
+                    disabled={busyAction !== ''}
+                    className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {busyAction === 'finish job' ? 'Saving...' : 'Save report & finish job'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
