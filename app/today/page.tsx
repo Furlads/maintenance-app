@@ -1686,9 +1686,9 @@ async function loadCustomers() {
     await runJobAction(jobId, 'start', 'Failed to start job.')
   }
 
-  async function handleFinishJob(jobId: number) {
-    await runJobAction(jobId, 'finish', 'Failed to finish job.')
-  }
+  function handleFinishJob(jobId: number) {
+  window.location.href = `/jobs/${jobId}?finish=1`
+}
 
   async function handlePauseJob(jobId: number) {
     await runJobAction(jobId, 'pause', 'Failed to pause job.')
