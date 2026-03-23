@@ -390,31 +390,17 @@ export default function JobPage() {
     setQuoteMessage('')
   }, [showQuoteForm, job])
 
-  useEffect(() => {
-    if (!showFinishReport || !job) return
-
-    setFinishSummary('')
-    setFinishFollowUpRequired('no')
-    setFinishFollowUpDetails('')
-    setFinishPaymentStatus(
-      job.paymentStatus === 'cash_paid' || job.paymentStatus === 'invoice_needed'
-        ? job.paymentStatus
-        : 'not_recorded'
-    )
-    setFinishPaymentNotes(job.paymentNotes || '')
-    setFinishKellyNotes('')
-  }, [showFinishReport, job])
+  const finishQueryParam = searchParams.get('finish')
 
   useEffect(() => {
     if (!job) return
     if (isPrepJob(job)) return
     if (hasAutoOpenedFinishReport) return
+    if (finishQueryParam !== '1') return
 
-    if (searchParams.get('finish') === '1') {
-      setShowFinishReport(true)
-      setHasAutoOpenedFinishReport(true)
-    }
-  }, [job, hasAutoOpenedFinishReport, searchParams])
+    setShowFinishReport(true)
+    setHasAutoOpenedFinishReport(true)
+  }, [job, finishQueryParam, hasAutoOpenedFinishReport])
 
   useEffect(() => {
     if (!showFinishReport) return
