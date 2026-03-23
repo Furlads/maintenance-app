@@ -309,17 +309,17 @@ export default function JobPage() {
     setPhotos(Array.isArray(data) ? data : [])
   }
 
-  async function loadJob() {
+    async function loadJob() {
     try {
       setError('')
 
       const [jobRes, photoRes] = await Promise.all([
-        fetch('/api/jobs', { cache: 'no-store' }),
+        fetch(`/api/jobs/${id}`, { cache: 'no-store' }),
         fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
       ])
 
       if (!jobRes.ok) {
-        throw new Error('Failed to load jobs')
+        throw new Error('Failed to load job')
       }
 
       if (!photoRes.ok) {
@@ -327,9 +327,7 @@ export default function JobPage() {
       }
 
       const jobData = await jobRes.json()
-      const jobs = Array.isArray(jobData) ? jobData : []
-      const foundJob = jobs.find((item: Job) => item.id === id) || null
-      setJob(foundJob)
+      setJob(jobData || null)
 
       const photoData = await photoRes.json()
       setPhotos(Array.isArray(photoData) ? photoData : [])
@@ -497,7 +495,7 @@ export default function JobPage() {
     }
   }
 
-  async function patchJob(payload: Record<string, unknown>, actionLabel: string) {
+    async function patchJob(payload: Record<string, unknown>, actionLabel: string) {
     try {
       setBusyAction(actionLabel)
       setError('')
@@ -516,7 +514,11 @@ export default function JobPage() {
         throw new Error(data?.error || `Failed to ${actionLabel}`)
       }
 
-      await loadJob()
+      if (data && typeof data === 'object') {
+        setJob(data as Job)
+      }
+
+      await loadPhotos()
       return true
     } catch (err) {
       console.error(err)
@@ -648,11 +650,12 @@ export default function JobPage() {
     await patchJob({ action: 'resume' }, 'resume job')
   }
 
-  async function handleUndoStart() {
+    async function handleUndoStart() {
     await patchJob(
       {
         arrivedAt: null,
         pausedAt: null,
+        finishedAt: null,
         pausedMinutes: 0,
         status: 'todo'
       },
