@@ -1032,9 +1032,10 @@ async function runJobAction(jobId: number, action: OfflineJobActionType, errorMe
     setBusyJobId(jobId)
     setError('')
 
+    applyLocalJobAction(jobId, action)
+
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       queueJobAction(jobId, action)
-      applyLocalJobAction(jobId, action)
       refreshQueuedActionCount()
       setShowingOfflineSnapshot(true)
       return
@@ -1060,10 +1061,10 @@ async function runJobAction(jobId: number, action: OfflineJobActionType, errorMe
     await loadJobs()
   } catch (err) {
     console.error(err)
+    await loadJobs()
 
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       queueJobAction(jobId, action)
-      applyLocalJobAction(jobId, action)
       refreshQueuedActionCount()
       setShowingOfflineSnapshot(true)
       return
