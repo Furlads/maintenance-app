@@ -18,6 +18,10 @@ type LoginResponse = {
   };
 };
 
+function getRedirectPath(accessLevel: string) {
+  return accessLevel.toLowerCase() === "admin" ? "/admin" : "/today";
+}
+
 function saveWorkerSession(worker: {
   id: number;
   name: string;
@@ -57,6 +61,21 @@ export default function LoginPage() {
 
   useEffect(() => {
     try {
+      const savedWorkerId = localStorage.getItem("workerId");
+      const savedWorkerName = localStorage.getItem("workerName");
+      const savedWorkerAccessLevel = localStorage.getItem("workerAccessLevel");
+
+      if (
+        typeof navigator !== "undefined" &&
+        !navigator.onLine &&
+        savedWorkerId &&
+        savedWorkerName &&
+        savedWorkerAccessLevel
+      ) {
+        window.location.href = getRedirectPath(savedWorkerAccessLevel);
+        return;
+      }
+
       const params = new URLSearchParams(window.location.search);
       const phoneFromQuery = params.get("phone");
       const phoneFromStorage = localStorage.getItem("selectedLoginWorkerPhone");
@@ -82,6 +101,20 @@ export default function LoginPage() {
 
   useEffect(() => {
     try {
+      const savedWorkerId = localStorage.getItem("workerId");
+      const savedWorkerName = localStorage.getItem("workerName");
+      const savedWorkerAccessLevel = localStorage.getItem("workerAccessLevel");
+
+      if (
+        typeof navigator !== "undefined" &&
+        !navigator.onLine &&
+        savedWorkerId &&
+        savedWorkerName &&
+        savedWorkerAccessLevel
+      ) {
+        return;
+      }
+
       const params = new URLSearchParams(window.location.search);
       const shouldAutostart = params.get("autostart") === "1";
 
@@ -152,6 +185,19 @@ export default function LoginPage() {
     try {
       if (!phone.trim()) {
         throw new Error("Enter your phone number first");
+      }
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const savedWorkerId = localStorage.getItem("workerId");
+        const savedWorkerName = localStorage.getItem("workerName");
+        const savedWorkerAccessLevel = localStorage.getItem("workerAccessLevel");
+
+        if (savedWorkerId && savedWorkerName && savedWorkerAccessLevel) {
+          window.location.href = getRedirectPath(savedWorkerAccessLevel);
+          return;
+        }
+
+        throw new Error("No signal. Use a phone that has already logged in before.");
       }
 
       const startRes = await fetch("/api/auth/webauthn/login/start", {
@@ -293,6 +339,22 @@ export default function LoginPage() {
     >
       <div style={{ width: "100%", maxWidth: 400 }}>
         <h1 style={{ marginBottom: 20 }}>Furlads Login</h1>
+
+        {typeof navigator !== "undefined" && !navigator.onLine && (
+          <div
+            style={{
+              marginBottom: 14,
+              padding: 12,
+              borderRadius: 8,
+              border: "1px solid #efcf72",
+              background: "#fff7d6",
+              color: "#5f4a00",
+              lineHeight: 1.45,
+            }}
+          >
+            No signal. If this phone has logged in before, quick login should send you back into the app automatically.
+          </div>
+        )}
 
         <button
           onClick={handleQuickLogin}
