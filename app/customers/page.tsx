@@ -148,24 +148,51 @@ export default function CustomersPage() {
               </p>
             </div>
 
-            <a
-              href="/customers/add"
+            <div
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '13px 16px',
-                borderRadius: 12,
-                textDecoration: 'none',
-                background: '#ffcc00',
-                color: '#111',
-                fontWeight: 800,
-                minHeight: 46,
-                boxShadow: '0 6px 18px rgba(255, 204, 0, 0.22)'
+                display: 'flex',
+                gap: 10,
+                flexWrap: 'wrap'
               }}
             >
-              + Add Customer
-            </a>
+              <a
+                href="/admin"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '13px 16px',
+                  borderRadius: 12,
+                  textDecoration: 'none',
+                  background: '#fff',
+                  color: '#111',
+                  fontWeight: 800,
+                  minHeight: 46,
+                  border: '1px solid rgba(255,255,255,0.18)'
+                }}
+              >
+                ← Dashboard
+              </a>
+
+              <a
+                href="/customers/add"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '13px 16px',
+                  borderRadius: 12,
+                  textDecoration: 'none',
+                  background: '#ffcc00',
+                  color: '#111',
+                  fontWeight: 800,
+                  minHeight: 46,
+                  boxShadow: '0 6px 18px rgba(255, 204, 0, 0.22)'
+                }}
+              >
+                + Add Customer
+              </a>
+            </div>
           </div>
 
           <div
