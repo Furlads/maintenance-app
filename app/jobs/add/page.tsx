@@ -932,15 +932,15 @@ export default function AddJobPage() {
                       />
 
                       <button
-                        type="button"
-                        onClick={() => setStartTime('')}
-                        disabled={
-                          (isTrevQuoteJob && !allowQuoteTimeOverride) || !startTime
-                        }
-                        className="shrink-0 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Reset
-                      </button>
+  type="button"
+  onClick={() => setStartTime('')}
+  disabled={
+    (isTrevQuoteJob && !allowQuoteTimeOverride) || !startTime
+  }
+  className="shrink-0 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+>
+  Clear
+</button>
                     </div>
                   </div>
                 </div>
