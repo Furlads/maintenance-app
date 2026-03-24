@@ -321,7 +321,7 @@ export default function KellyCombinedDashboard() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0 }}>{business?.name ?? "Dashboard"}</h1>
+          <h1 style={{ margin: 0 }}>KELLY TEST DASHBOARD</h1>
           <div style={{ fontSize: 13, opacity: 0.75, marginTop: 6 }}>
             {gbDate(today)} • Auto-refreshing
           </div>
