@@ -290,11 +290,6 @@ export default function AdminReportsPage() {
     : ''
 
   return (
-  <main className="min-h-screen bg-zinc-50 p-4 print:bg-white print:p-0 sm:p-6">
-    <div className="rounded-2xl bg-red-600 p-4 text-2xl font-bold text-white">
-      THIS IS THE REAL REPORTS PAGE
-    </div>
-    
     <main className="min-h-screen bg-zinc-50 p-4 print:bg-white print:p-0 sm:p-6">
       <style jsx global>{`
         @page {
