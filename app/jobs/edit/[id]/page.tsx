@@ -223,6 +223,13 @@ function isTrevWorker(worker: Worker) {
   return firstMatches && lastMatches
 }
 
+function isKellyWorker(worker: Pick<Worker, 'firstName' | 'lastName'>) {
+  const first = worker.firstName.trim().toLowerCase()
+  const last = worker.lastName.trim().toLowerCase()
+
+  return first === 'kelly'
+}
+
 export default function EditJobPage() {
   const params = useParams()
   const router = useRouter()
@@ -273,12 +280,18 @@ export default function EditJobPage() {
         const workerData = await workerRes.json()
 
         const safeCustomers = Array.isArray(customerData) ? customerData : []
-        const safeWorkers = Array.isArray(workerData)
+        const activeWorkers = Array.isArray(workerData)
           ? workerData.filter((worker) => worker.active)
           : []
 
+        const assignableWorkers = activeWorkers.filter(
+          (worker) => !isKellyWorker(worker)
+        )
+
+        const assignableWorkerIds = new Set(assignableWorkers.map((worker) => worker.id))
+
         setCustomers(safeCustomers)
-        setWorkers(safeWorkers)
+        setWorkers(assignableWorkers)
 
         setCustomerId(String(jobData.customerId))
         setTitle(jobData.title || '')
@@ -287,7 +300,9 @@ export default function EditJobPage() {
         setJobType(jobData.jobType || 'Quote')
         setAssignedTo(
           Array.isArray(jobData.assignments)
-            ? jobData.assignments.map((assignment) => assignment.workerId)
+            ? jobData.assignments
+                .map((assignment) => assignment.workerId)
+                .filter((workerId) => assignableWorkerIds.has(workerId))
             : []
         )
         setDurationMinutes(
