@@ -45,6 +45,11 @@ function endOfToday() {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
 }
 
+function startOfTomorrow() {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0)
+}
+
 function fullName(firstName?: string | null, lastName?: string | null) {
   return `${firstName ?? ''} ${lastName ?? ''}`.trim() || 'Unknown worker'
 }
@@ -206,7 +211,7 @@ function StatCard({
 }: {
   label: string
   value: number
-  tone?: 'default' | 'green' | 'blue' | 'amber'
+  tone?: 'default' | 'green' | 'blue' | 'amber' | 'red'
 }) {
   const toneClasses =
     tone === 'green'
@@ -215,7 +220,9 @@ function StatCard({
         ? 'border-blue-200 bg-blue-50'
         : tone === 'amber'
           ? 'border-amber-200 bg-amber-50'
-          : 'border-zinc-200 bg-white'
+          : tone === 'red'
+            ? 'border-red-200 bg-red-50'
+            : 'border-zinc-200 bg-white'
 
   return (
     <div className={`rounded-2xl border p-4 shadow-sm ${toneClasses}`}>
@@ -230,8 +237,16 @@ function StatCard({
 export default async function AdminPage() {
   const todayStart = startOfToday()
   const todayEnd = endOfToday()
+  const tomorrowStart = startOfTomorrow()
 
-  const [jobsTodayRaw, workers, quotesWaiting, inboxMessages] = await Promise.all([
+  const [
+    jobsTodayRaw,
+    workers,
+    quotesWaiting,
+    inboxMessages,
+    overdueCount,
+    unscheduledCount,
+  ] = await Promise.all([
     prisma.job.findMany({
       where: {
         visitDate: {
@@ -279,6 +294,24 @@ export default async function AdminPage() {
         OR: [{ conversation: { archived: false } }, { conversation: null }],
       },
     }) as Promise<InboxMessageRow[]>,
+    prisma.job.count({
+      where: {
+        visitDate: {
+          lt: todayStart,
+        },
+        status: {
+          notIn: ['done', 'completed', 'cancelled', 'archived'],
+        },
+      },
+    }),
+    prisma.job.count({
+      where: {
+        OR: [{ visitDate: null }, { status: 'unscheduled' }],
+        status: {
+          notIn: ['cancelled', 'archived'],
+        },
+      },
+    }),
   ])
 
   const jobsToday = [...jobsTodayRaw].sort((a: any, b: any) => {
@@ -300,6 +333,10 @@ export default async function AdminPage() {
     String(job.jobType || '').toLowerCase().includes('land')
   )
 
+  const quotesToday = jobsToday.filter((job: any) =>
+    String(job.jobType || '').toLowerCase().includes('quote')
+  )
+
   const workersActive = jobsToday.filter((job: any) => {
     const status = String(job.status || '').toLowerCase()
     return (job.arrivedAt && !job.finishedAt) || status.includes('progress')
@@ -315,6 +352,17 @@ export default async function AdminPage() {
   const activeWorkers = workers.filter((worker: any) => activeWorkerIds.has(worker.id))
   const unreadBySource = buildUnreadCountsBySource(inboxMessages)
 
+  const tomorrowJobsCount = await prisma.job.count({
+    where: {
+      visitDate: {
+        gte: tomorrowStart,
+      },
+      status: {
+        notIn: ['cancelled', 'archived'],
+      },
+    },
+  })
+
   return (
     <div className="space-y-4">
       <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-800 p-5 text-white shadow-sm">
@@ -328,7 +376,7 @@ export default async function AdminPage() {
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-300">
               One dashboard for maintenance visits, landscaping jobs, worker activity,
-              inbox pressure and office follow-up.
+              inbox pressure, quote follow-up and office control.
             </p>
           </div>
 
@@ -339,30 +387,42 @@ export default async function AdminPage() {
             >
               Open inbox
             </Link>
+
             <Link
               href="/jobs"
               className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
             >
               View jobs
             </Link>
+
             <Link
               href="/admin/schedule"
               className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
             >
               Schedule board
             </Link>
-            <div className="flex">
+
+            <Link
+              href="/kelly/time-off"
+              className="inline-flex items-center justify-center rounded-xl bg-amber-400 px-4 py-3 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
+            >
+              Time Off / Holidays
+            </Link>
+
+            <div className="flex sm:col-span-2 xl:col-span-2">
               <AdminSchedulerButton />
             </div>
           </div>
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-6">
         <StatCard label="Jobs today" value={jobsToday.length} />
         <StatCard label="Maintenance today" value={maintenanceToday.length} tone="green" />
         <StatCard label="Landscaping today" value={landscapingToday.length} tone="blue" />
-        <StatCard label="Quotes waiting" value={quotesWaiting} tone="amber" />
+        <StatCard label="Quotes today" value={quotesToday.length} tone="amber" />
+        <StatCard label="Overdue" value={overdueCount} tone="red" />
+        <StatCard label="Unscheduled" value={unscheduledCount} tone="amber" />
       </section>
 
       <div className="grid gap-4 xl:grid-cols-12">
@@ -516,6 +576,47 @@ export default async function AdminPage() {
           <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
             <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
+                <h3 className="text-base font-bold text-zinc-900">Kelly quick actions</h3>
+                <p className="text-xs text-zinc-500">
+                  Office shortcuts for absences, diary pressure and forward planning
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 p-4 sm:grid-cols-2">
+              <Link
+                href="/kelly/time-off"
+                className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
+              >
+                Manage time off
+              </Link>
+
+              <Link
+                href="/admin/schedule"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+              >
+                Open schedule board
+              </Link>
+
+              <Link
+                href="/jobs"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+              >
+                Check all jobs
+              </Link>
+
+              <Link
+                href="/admin/inbox?source=worker-quote"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+              >
+                Worker quotes
+              </Link>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
                 <h3 className="text-base font-bold text-zinc-900">Inbox sources</h3>
                 <p className="text-xs text-zinc-500">
                   Unread thread counts with click-through to each channel
@@ -552,6 +653,35 @@ export default async function AdminPage() {
                   source="wix"
                   unreadCount={unreadBySource.wix}
                 />
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+            <div className="border-b border-zinc-200 px-4 py-4">
+              <h3 className="text-base font-bold text-zinc-900">Forward view</h3>
+              <p className="text-xs text-zinc-500">
+                Quick office pressure check beyond today
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 p-4">
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+                  Tomorrow onwards
+                </div>
+                <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
+                  {tomorrowJobsCount}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+                  Quotes waiting
+                </div>
+                <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
+                  {quotesWaiting}
+                </div>
               </div>
             </div>
           </div>
