@@ -917,17 +917,31 @@ export default function AddJobPage() {
                         ? 'Start Time (automatic)'
                         : 'Start Time'}
                     </FieldLabel>
-                    <input
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      disabled={isTrevQuoteJob && !allowQuoteTimeOverride}
-                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
-                        isTrevQuoteJob && !allowQuoteTimeOverride
-                          ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
-                          : 'border-zinc-300 bg-white text-zinc-900'
-                      }`}
-                    />
+
+                    <div className="flex gap-2">
+                      <input
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        disabled={isTrevQuoteJob && !allowQuoteTimeOverride}
+                        className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                          isTrevQuoteJob && !allowQuoteTimeOverride
+                            ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
+                            : 'border-zinc-300 bg-white text-zinc-900'
+                        }`}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setStartTime('')}
+                        disabled={
+                          (isTrevQuoteJob && !allowQuoteTimeOverride) || !startTime
+                        }
+                        className="shrink-0 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Reset
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1149,9 +1163,7 @@ export default function AddJobPage() {
             </SectionCard>
 
             {message && (
-              <div
-                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-sm"
-              >
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-sm">
                 {message}
               </div>
             )}
