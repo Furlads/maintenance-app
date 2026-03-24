@@ -2781,7 +2781,6 @@ function hardRefreshTodayPage() {
                 </div>
               </div>
 
-              {renderQuickActionBar(filteredActiveJob)}
 
               {filteredActiveJob.notes && (
                 <div
@@ -2858,16 +2857,10 @@ function hardRefreshTodayPage() {
                 </div>
               </div>
 
-              <div className="today-active-actions">
+               <div className="today-active-actions">
                 <a href={`/jobs/${filteredActiveJob.id}`} style={styles.actionButton}>
-                  Open Job
+                  View Job
                 </a>
-
-                {filteredActiveJob.customer?.phone && (
-                  <a href={`tel:${filteredActiveJob.customer.phone}`} style={styles.actionButton}>
-                    Call Customer
-                  </a>
-                )}
 
                 {(filteredActiveJob.customer?.postcode || filteredActiveJob.address || filteredActiveJob.customer?.address) && (
                   <a
@@ -3136,7 +3129,6 @@ function hardRefreshTodayPage() {
                     <div style={getStatusPill(job)}>{getStatusText(job)}</div>
                   </div>
 
-                  {renderQuickActionBar(job)}
 
                   {job.notes && (
                     <div
@@ -3241,14 +3233,8 @@ function hardRefreshTodayPage() {
 
                   <div className="today-job-actions">
                     <a href={`/jobs/${job.id}`} style={styles.actionButton}>
-                      Open Job
+                      View Job
                     </a>
-
-                    {job.customer?.phone && (
-                      <a href={`tel:${job.customer.phone}`} style={styles.actionButton}>
-                        Call Customer
-                      </a>
-                    )}
 
                     {navigationQuery && (
                       <a
@@ -3259,133 +3245,6 @@ function hardRefreshTodayPage() {
                       >
                         Navigate
                       </a>
-                    )}
-
-                    {job.isStarted && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleCannotComplete(job.id)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            background: colours.redSoft,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : "Couldn't Complete"}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleUndoStart(job.id)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : 'Undo Start'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleExtendJob(job.id, 15)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : '+15'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleExtendJob(job.id, 30)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : '+30'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleExtendJob(job.id, 45)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : '+45'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleExtendJob(job.id, 60)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : '+60'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleOtherExtendJob(job.id)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : 'Other'}
-                        </button>
-                      </>
-                    )}
-
-                    {job.isPaused && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleCannotComplete(job.id)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            background: colours.redSoft,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : "Couldn't Complete"}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleUndoStart(job.id)}
-                          disabled={busyJobId === job.id}
-                          style={{
-                            ...styles.actionButton,
-                            opacity: busyJobId === job.id ? 0.6 : 1,
-                            cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {busyJobId === job.id ? 'Updating...' : 'Undo Start'}
-                        </button>
-                      </>
                     )}
                   </div>
                 </div>
@@ -3471,21 +3330,24 @@ function hardRefreshTodayPage() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleUndoDone(job.id)}
-                      disabled={busyJobId === job.id}
-                      style={{
-                        ...styles.actionButton,
-                        minWidth: 120,
-                        color: '#1d5d2c',
-                        border: '1px solid #7bc586',
-                        opacity: busyJobId === job.id ? 0.6 : 1,
-                        cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {busyJobId === job.id ? 'Updating...' : 'Undo'}
-                    </button>
+                    <div className="today-job-actions" style={{ minWidth: 160 }}>
+                      <a href={`/jobs/${job.id}`} style={styles.actionButton}>
+                        View Job
+                      </a>
+
+                      {(job.customer?.postcode || job.address || job.customer?.address) && (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                            job.customer?.postcode || job.address || job.customer?.address || ''
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={styles.actionButton}
+                        >
+                          Navigate
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
