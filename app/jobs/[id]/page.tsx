@@ -83,6 +83,9 @@ type ParsedEndOfJobReport = {
   recordedAt: string
 }
 
+function fullName(firstName?: string | null, lastName?: string | null) {
+  return `${firstName ?? ''} ${lastName ?? ''}`.trim() || 'Unknown worker'
+}
 function extractCannotCompleteInfo(notes: string | null): CannotCompleteInfo | null {
   if (!notes) return null
 
