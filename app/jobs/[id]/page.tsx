@@ -25,6 +25,13 @@ type Customer = {
   postcode: string | null
 }
 
+type JobNote = {
+  id: number
+  note: string
+  createdAt: string
+  worker?: Worker | null
+}
+
 type Job = {
   id: number
   title: string
@@ -35,6 +42,7 @@ type Job = {
   createdAt: string
   customer: Customer
   assignments: JobAssignment[]
+  jobNotes?: JobNote[]
   visitDate?: string | null
   startTime?: string | null
   durationMinutes?: number | null
@@ -62,6 +70,17 @@ type CannotCompleteInfo = {
   reportedBy: string
   recordedAt: string
   rawLine: string
+}
+
+type ParsedEndOfJobReport = {
+  workSummary: string
+  followUpRequired: string
+  followUpDetails: string
+  payment: string
+  paymentNotes: string
+  notesForKelly: string
+  reportedBy: string
+  recordedAt: string
 }
 
 function extractCannotCompleteInfo(notes: string | null): CannotCompleteInfo | null {
@@ -99,7 +118,43 @@ function extractCannotCompleteInfo(notes: string | null): CannotCompleteInfo | n
     details: detailsPart.replace(/^details:\s*/i, '').trim(),
     reportedBy: reportedByPart.replace(/^reported by:\s*/i, '').trim(),
     recordedAt: recordedAtPart.replace(/^recorded at:\s*/i, '').trim(),
-    rawLine: matchingLine
+    rawLine: matchingLine,
+  }
+}
+
+function parseEndOfJobReport(note: string | null): ParsedEndOfJobReport | null {
+  if (!note) return null
+
+  const parts = note
+    .split(' | ')
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  const hasReportPrefix = parts.some((part) =>
+    part.toLowerCase().startsWith('end of job report:')
+  )
+
+  if (!hasReportPrefix) return null
+
+  const getValue = (prefix: string) => {
+    const match = parts.find((part) =>
+      part.toLowerCase().startsWith(prefix.toLowerCase())
+    )
+
+    if (!match) return ''
+
+    return match.slice(prefix.length).trim()
+  }
+
+  return {
+    workSummary: getValue('Work summary:'),
+    followUpRequired: getValue('Follow-up required:'),
+    followUpDetails: getValue('Follow-up details:'),
+    payment: getValue('Payment:'),
+    paymentNotes: getValue('Payment notes:'),
+    notesForKelly: getValue('Notes for Kelly:'),
+    reportedBy: getValue('Reported by:'),
+    recordedAt: getValue('Recorded at:'),
   }
 }
 
@@ -128,7 +183,7 @@ function formatTime(value?: string | null) {
 
   return date.toLocaleTimeString('en-GB', {
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
 }
 
@@ -146,7 +201,7 @@ function formatDateTime(value?: string | null) {
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
 }
 
@@ -316,7 +371,7 @@ export default function JobPage() {
 
       const [jobRes, photoRes] = await Promise.all([
         fetch(`/api/jobs/${id}`, { cache: 'no-store' }),
-        fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
+        fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' }),
       ])
 
       if (!jobRes.ok) {
@@ -432,7 +487,7 @@ export default function JobPage() {
 
       const res = await fetch(`/api/jobs/${id}/photos`, {
         method: 'POST',
-        body: formData
+        body: formData,
       })
 
       const data = await res.json().catch(() => null)
@@ -467,7 +522,7 @@ export default function JobPage() {
 
     try {
       const res = await fetch(`/api/job-photos/${photoId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       })
 
       if (!res.ok) {
@@ -504,9 +559,9 @@ export default function JobPage() {
       const res = await fetch(`/api/jobs/${id}`, {
         method: 'PATCH',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json().catch(() => null)
@@ -544,7 +599,7 @@ export default function JobPage() {
       const res = await fetch('/api/chas/quote-request', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           company,
@@ -559,8 +614,8 @@ export default function JobPage() {
           estimatedTimeText: quoteEstimatedTime,
           notes: quoteNotes,
           imageDataUrl: '',
-          chatTranscript: `New Quote created from job page for job ${job?.id ?? id}: ${job?.title || ''}`
-        })
+          chatTranscript: `New Quote created from job page for job ${job?.id ?? id}: ${job?.title || ''}`,
+        }),
       })
 
       const data = await res.json().catch(() => null)
@@ -626,7 +681,7 @@ export default function JobPage() {
       `Payment notes: ${finishPaymentNotes.trim() || 'None'}`,
       `Notes for Kelly: ${finishKellyNotes.trim() || 'None'}`,
       `Reported by: ${workerName}`,
-      `Recorded at: ${recordedAt}`
+      `Recorded at: ${recordedAt}`,
     ]
 
     const success = await patchJob(
@@ -636,7 +691,7 @@ export default function JobPage() {
           finishPaymentStatus === 'not_recorded' ? '' : finishPaymentStatus,
         paymentNotes: finishPaymentNotes.trim(),
         appendNote: reportLines.join(' | '),
-        noteAuthor: workerName
+        noteAuthor: workerName,
       },
       'finish job'
     )
@@ -661,7 +716,7 @@ export default function JobPage() {
         pausedAt: null,
         finishedAt: null,
         pausedMinutes: 0,
-        status: 'todo'
+        status: 'todo',
       },
       'undo start'
     )
@@ -729,7 +784,7 @@ Heavy rain made it unsafe`,
         action: 'cannot_complete',
         reason,
         details,
-        workerName
+        workerName,
       },
       "mark job as couldn't complete"
     )
@@ -851,9 +906,7 @@ Heavy rain made it unsafe`,
                       : job.customer?.name || 'Unknown customer'}
                   </p>
 
-                  <p className="mt-1 text-sm text-zinc-400">
-                    Job #{job.id}
-                  </p>
+                  <p className="mt-1 text-sm text-zinc-400">Job #{job.id}</p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -1063,6 +1116,128 @@ Heavy rain made it unsafe`,
                     </div>
                   </div>
                 )}
+
+                <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        End of job reports
+                      </div>
+                      <div className="mt-1 text-sm text-zinc-500">
+                        Previous visit reports, work summary and office notes.
+                      </div>
+                    </div>
+
+                    <div className="rounded-full bg-white px-3 py-1 text-xs font-bold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                      {job.jobNotes?.length || 0} note{job.jobNotes?.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+
+                  {!job.jobNotes || job.jobNotes.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-500">
+                      No end of job reports saved yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {job.jobNotes.map((note) => {
+                        const parsedReport = parseEndOfJobReport(note.note)
+                        const cleanedNote = stripCannotCompleteLines(note.note)
+
+                        return (
+                          <div
+                            key={note.id}
+                            className="rounded-2xl border border-zinc-200 bg-white p-4"
+                          >
+                            <div className="text-xs text-zinc-500">
+                              {formatDateTime(note.createdAt)} •{' '}
+                              {fullName(note.worker?.firstName, note.worker?.lastName)}
+                            </div>
+
+                            {parsedReport ? (
+                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Work summary
+                                  </div>
+                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                    {parsedReport.workSummary || 'Not provided'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Follow-up required
+                                  </div>
+                                  <div className="mt-2 text-sm text-zinc-700">
+                                    {parsedReport.followUpRequired || 'Not provided'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Payment
+                                  </div>
+                                  <div className="mt-2 text-sm text-zinc-700">
+                                    {parsedReport.payment || 'Not provided'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Follow-up details
+                                  </div>
+                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                    {parsedReport.followUpDetails || 'None'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Notes for Kelly
+                                  </div>
+                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                    {parsedReport.notesForKelly || 'None'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Payment notes
+                                  </div>
+                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                    {parsedReport.paymentNotes || 'None'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Reported by
+                                  </div>
+                                  <div className="mt-2 text-sm text-zinc-700">
+                                    {parsedReport.reportedBy || fullName(note.worker?.firstName, note.worker?.lastName)}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Recorded at
+                                  </div>
+                                  <div className="mt-2 text-sm text-zinc-700">
+                                    {parsedReport.recordedAt || formatDateTime(note.createdAt)}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                {cleanedNote || 'No note text'}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 {showQuoteForm && !prepJob && (
                   <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
