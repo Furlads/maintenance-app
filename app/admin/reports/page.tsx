@@ -1,3 +1,6 @@
+<div className="rounded-2xl bg-red-600 p-4 text-2xl font-bold text-white">
+  THIS IS THE REAL REPORTS PAGE
+</div>
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
