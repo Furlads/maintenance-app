@@ -344,6 +344,25 @@ export default function KellyCombinedDashboard() {
           <button
             type="button"
             onClick={() => {
+              window.location.href = "/kelly/reports";
+            }}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #111",
+              background: "#ffcc00",
+              color: "#111",
+              cursor: "pointer",
+              fontSize: 14,
+              fontWeight: 800,
+            }}
+          >
+            Reports
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
               window.location.href = "/kelly/time-off";
             }}
             style={{
@@ -398,6 +417,27 @@ export default function KellyCombinedDashboard() {
                   zIndex: 50,
                 }}
               >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    window.location.href = "/kelly/reports";
+                  }}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  Reports
+                </button>
+
                 <button
                   type="button"
                   onClick={handleSwitchUser}
