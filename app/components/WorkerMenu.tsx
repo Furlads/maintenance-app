@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 export default function WorkerMenu() {
   const [open, setOpen] = useState(false)
   const [workerName, setWorkerName] = useState('')
+  const [updatingApp, setUpdatingApp] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -50,6 +51,35 @@ export default function WorkerMenu() {
   function handleSwitchWorker() {
     clearWorkerSession()
     window.location.href = '/'
+  }
+
+  async function handleUpdateApp() {
+    if (updatingApp) return
+
+    try {
+      setUpdatingApp(true)
+      setOpen(false)
+
+      window.alert('Updating app now. The app will restart if possible.')
+
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        const cacheKeys = await caches.keys()
+        await Promise.all(cacheKeys.map((key) => caches.delete(key)))
+      }
+
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(registrations.map((registration) => registration.unregister()))
+      }
+
+      const url = new URL(window.location.href)
+      url.searchParams.set('updatedAt', String(Date.now()))
+      window.location.href = url.toString()
+    } catch (error) {
+      console.error('Failed to update app:', error)
+      window.alert('Changes will apply next time you open the app.')
+      setUpdatingApp(false)
+    }
   }
 
   const linkStyle: React.CSSProperties = {
@@ -164,6 +194,28 @@ export default function WorkerMenu() {
           <a href="/menu/change-pin" style={linkStyle} onClick={() => setOpen(false)}>
             Change PIN
           </a>
+
+          <button
+            type="button"
+            onClick={handleUpdateApp}
+            disabled={updatingApp}
+            style={{
+              display: 'block',
+              width: '100%',
+              padding: '12px 0',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: '1px solid #eee',
+              textAlign: 'left',
+              color: '#111',
+              fontSize: 17,
+              cursor: updatingApp ? 'not-allowed' : 'pointer',
+              opacity: updatingApp ? 0.6 : 1,
+              fontWeight: 700
+            }}
+          >
+            {updatingApp ? 'Updating app...' : 'Update App'}
+          </button>
 
           <button
             type="button"
