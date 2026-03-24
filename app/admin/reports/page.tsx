@@ -240,18 +240,60 @@ function StatBox({
 }
 
 function StatusPill({ value }: { value: string }) {
+  const normalised = String(value || '').toLowerCase()
+
+  const className =
+    normalised.includes('done') || normalised.includes('complete')
+      ? 'bg-green-50 text-green-700 ring-green-200'
+      : normalised.includes('progress')
+        ? 'bg-blue-50 text-blue-700 ring-blue-200'
+        : normalised.includes('cancel')
+          ? 'bg-red-50 text-red-700 ring-red-200'
+          : 'bg-zinc-100 text-zinc-700 ring-zinc-200'
+
   return (
-    <span className="rounded-full bg-zinc-900 px-2.5 py-1 text-[11px] font-semibold text-white">
+    <span
+      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${className}`}
+    >
       {formatStatus(value)}
     </span>
   )
 }
 
 function JobTypePill({ value }: { value: string }) {
+  const normalised = String(value || '').toLowerCase()
+
+  const className = normalised.includes('maint')
+    ? 'bg-green-50 text-green-700 ring-green-200'
+    : normalised.includes('land')
+      ? 'bg-blue-50 text-blue-700 ring-blue-200'
+      : normalised.includes('quote')
+        ? 'bg-amber-50 text-amber-700 ring-amber-200'
+        : 'bg-zinc-100 text-zinc-700 ring-zinc-200'
+
   return (
-    <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
+    <span
+      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${className}`}
+    >
       {value || 'Job'}
     </span>
+  )
+}
+
+function MiniInfo({
+  label,
+  value,
+}: {
+  label: string
+  value: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+        {label}
+      </div>
+      <div className="mt-2 text-sm text-zinc-800">{value}</div>
+    </div>
   )
 }
 
@@ -493,173 +535,194 @@ export default function AdminReportsPage() {
               {data.reports.map((report) => (
                 <article
                   key={report.id}
-                  className="print-break-inside-avoid rounded-3xl border border-zinc-200 bg-zinc-50 p-4"
+                  className="print-break-inside-avoid overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm"
                 >
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusPill value={report.status} />
-                        <JobTypePill value={report.jobType} />
+                  <div className="border-b border-zinc-200 bg-zinc-50 p-4">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusPill value={report.status} />
+                          <JobTypePill value={report.jobType} />
+                          <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-600 ring-1 ring-inset ring-zinc-200">
+                            Job #{report.id}
+                          </span>
+                        </div>
+
+                        <h3 className="mt-3 text-xl font-bold text-zinc-900">
+                          {report.customer.name}
+                        </h3>
+
+                        <p className="mt-1 text-sm text-zinc-600">
+                          <span className="font-semibold text-zinc-800">Job:</span> {report.title}
+                        </p>
+
+                        <p className="mt-1 whitespace-pre-line text-sm text-zinc-500">
+                          {report.address || report.customer.address || 'No address saved'}
+                        </p>
                       </div>
 
-                      <h3 className="mt-3 text-xl font-bold text-zinc-900">
-                        {report.customer.name}
-                      </h3>
-
-                      <p className="mt-1 text-sm text-zinc-600">
-                        <span className="font-semibold text-zinc-800">Job:</span> {report.title}
-                      </p>
-
-                      <p className="mt-1 whitespace-pre-line text-sm text-zinc-500">
-                        {report.address || report.customer.address || 'No address saved'}
-                      </p>
-                    </div>
-
-                    <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-4">
-                      <div className="space-y-2 text-sm text-zinc-700">
-                        <div>
-                          <span className="font-semibold">Finished:</span>{' '}
-                          {formatDateTime(report.finishedAt)}
-                        </div>
-                        <div>
-                          <span className="font-semibold">Visit date:</span>{' '}
-                          {formatDate(report.visitDate)}
-                        </div>
-                        <div>
-                          <span className="font-semibold">Workers:</span>{' '}
-                          {report.assignedWorkers.length > 0
-                            ? report.assignedWorkers.join(', ')
-                            : 'Not assigned'}
-                        </div>
-                        <div>
-                          <span className="font-semibold">Customer record:</span>{' '}
-                          <a
-                            href={`/customers/${report.customer.id}`}
-                            className="font-semibold text-zinc-900 underline underline-offset-2"
-                          >
-                            View customer
-                          </a>
+                      <div className="w-full max-w-sm">
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                          <MiniInfo
+                            label="Finished"
+                            value={formatDateTime(report.finishedAt)}
+                          />
+                          <MiniInfo
+                            label="Visit date"
+                            value={formatDate(report.visitDate)}
+                          />
+                          <MiniInfo
+                            label="Workers"
+                            value={
+                              report.assignedWorkers.length > 0
+                                ? report.assignedWorkers.join(', ')
+                                : 'Not assigned'
+                            }
+                          />
+                          <MiniInfo
+                            label="Customer record"
+                            value={
+                              <a
+                                href={`/customers/${report.customer.id}`}
+                                className="font-semibold text-zinc-900 underline underline-offset-2"
+                              >
+                                View customer
+                              </a>
+                            }
+                          />
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {report.cannotCompleteInfo && (
-                    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 print:border-zinc-300 print:bg-white">
-                      <div className="font-bold text-amber-900 print:text-zinc-900">
-                        Job could not be completed
+                  <div className="space-y-4 p-4">
+                    {report.cannotCompleteInfo && (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 print:border-zinc-300 print:bg-white">
+                        <div className="font-bold text-amber-900 print:text-zinc-900">
+                          Job could not be completed
+                        </div>
+                        <div className="mt-2 grid gap-2 text-sm text-amber-900 print:text-zinc-700 sm:grid-cols-2">
+                          <div>
+                            <span className="font-semibold">Reason:</span>{' '}
+                            {report.cannotCompleteInfo.reason || 'Not provided'}
+                          </div>
+
+                          {report.cannotCompleteInfo.reportedBy && (
+                            <div>
+                              <span className="font-semibold">Reported by:</span>{' '}
+                              {report.cannotCompleteInfo.reportedBy}
+                            </div>
+                          )}
+
+                          {report.cannotCompleteInfo.details && (
+                            <div className="sm:col-span-2">
+                              <span className="font-semibold">Details:</span>{' '}
+                              {report.cannotCompleteInfo.details}
+                            </div>
+                          )}
+
+                          {report.cannotCompleteInfo.recordedAt && (
+                            <div className="sm:col-span-2">
+                              <span className="font-semibold">Recorded at:</span>{' '}
+                              {report.cannotCompleteInfo.recordedAt}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="mt-2 space-y-1 text-sm text-amber-900 print:text-zinc-700">
-                        <div>
-                          <span className="font-semibold">Reason:</span>{' '}
-                          {report.cannotCompleteInfo.reason || 'Not provided'}
+                    )}
+
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+                          Main job notes
+                        </div>
+                        <div className="mt-3 whitespace-pre-line text-sm text-zinc-700">
+                          {report.notes || 'No main job notes.'}
+                        </div>
+                      </section>
+
+                      <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+                            End of job report notes
+                          </div>
+                          <div className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-zinc-600 ring-1 ring-inset ring-zinc-200">
+                            {report.reportNotes.length}
+                          </div>
                         </div>
 
-                        {report.cannotCompleteInfo.details && (
-                          <div>
-                            <span className="font-semibold">Details:</span>{' '}
-                            {report.cannotCompleteInfo.details}
+                        {report.reportNotes.length === 0 ? (
+                          <div className="mt-3 text-sm text-zinc-700">
+                            No report notes added.
                           </div>
-                        )}
+                        ) : (
+                          <div className="mt-3 space-y-3">
+                            {report.reportNotes.map((note) => (
+                              <div
+                                key={note.id}
+                                className="rounded-2xl border border-zinc-200 bg-white p-3"
+                              >
+                                <div className="text-xs text-zinc-500">
+                                  {formatDateTime(note.createdAt)}
+                                  {note.createdByWorkerName
+                                    ? ` • ${note.createdByWorkerName}`
+                                    : ''}
+                                </div>
 
-                        {report.cannotCompleteInfo.reportedBy && (
-                          <div>
-                            <span className="font-semibold">Reported by:</span>{' '}
-                            {report.cannotCompleteInfo.reportedBy}
+                                <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                  {note.note || 'No text'}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         )}
-
-                        {report.cannotCompleteInfo.recordedAt && (
-                          <div>
-                            <span className="font-semibold">Recorded at:</span>{' '}
-                            {report.cannotCompleteInfo.recordedAt}
-                          </div>
-                        )}
-                      </div>
+                      </section>
                     </div>
-                  )}
 
-                  <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                    <section className="rounded-2xl border border-zinc-200 bg-white p-4">
-                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                        Main job notes
-                      </div>
-                      <div className="mt-3 whitespace-pre-line text-sm text-zinc-700">
-                        {report.notes || 'No main job notes.'}
-                      </div>
-                    </section>
-
-                    <section className="rounded-2xl border border-zinc-200 bg-white p-4">
-                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                        End of job report notes
-                      </div>
-
-                      {report.reportNotes.length === 0 ? (
-                        <div className="mt-3 text-sm text-zinc-700">
-                          No report notes added.
+                    <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+                          Photos
                         </div>
+                        <div className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-zinc-600 ring-1 ring-inset ring-zinc-200">
+                          {report.photos.length}
+                        </div>
+                      </div>
+
+                      {report.photos.length === 0 ? (
+                        <div className="mt-3 text-sm text-zinc-700">No photos uploaded.</div>
                       ) : (
-                        <div className="mt-3 space-y-3">
-                          {report.reportNotes.map((note) => (
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {report.photos.map((photo) => (
                             <div
-                              key={note.id}
-                              className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3"
+                              key={photo.id}
+                              className="rounded-2xl border border-zinc-200 bg-white p-3"
                             >
-                              <div className="text-xs text-zinc-500">
-                                {formatDateTime(note.createdAt)}
-                                {note.createdByWorkerName
-                                  ? ` • ${note.createdByWorkerName}`
-                                  : ''}
+                              <img
+                                src={photo.imageUrl}
+                                alt={photo.label || report.title}
+                                className="h-44 w-full rounded-xl border border-zinc-200 object-cover print:h-32"
+                              />
+
+                              <div className="mt-3 text-sm font-semibold text-zinc-900">
+                                {photo.label || 'Job photo'}
                               </div>
 
-                              <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
-                                {note.note || 'No text'}
+                              <div className="mt-1 text-xs text-zinc-500">
+                                {formatDateTime(photo.createdAt)}
                               </div>
+
+                              {photo.uploadedByWorkerName && (
+                                <div className="mt-1 text-xs text-zinc-500">
+                                  Uploaded by {photo.uploadedByWorkerName}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
                       )}
                     </section>
                   </div>
-
-                  <section className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4">
-                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                      Photos
-                    </div>
-
-                    {report.photos.length === 0 ? (
-                      <div className="mt-3 text-sm text-zinc-700">No photos uploaded.</div>
-                    ) : (
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {report.photos.map((photo) => (
-                          <div
-                            key={photo.id}
-                            className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3"
-                          >
-                            <img
-                              src={photo.imageUrl}
-                              alt={photo.label || report.title}
-                              className="h-44 w-full rounded-xl border border-zinc-200 object-cover print:h-32"
-                            />
-
-                            <div className="mt-3 text-sm font-semibold text-zinc-900">
-                              {photo.label || 'Job photo'}
-                            </div>
-
-                            <div className="mt-1 text-xs text-zinc-500">
-                              {formatDateTime(photo.createdAt)}
-                            </div>
-
-                            {photo.uploadedByWorkerName && (
-                              <div className="mt-1 text-xs text-zinc-500">
-                                Uploaded by {photo.uploadedByWorkerName}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </section>
                 </article>
               ))}
             </div>
