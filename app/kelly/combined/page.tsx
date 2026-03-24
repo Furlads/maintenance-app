@@ -363,6 +363,7 @@ export default function KellyCombinedDashboard() {
                 justifyContent: "center",
                 fontSize: 22,
                 lineHeight: 1,
+                fontWeight: 800,
               }}
             >
               ☰
@@ -374,13 +375,14 @@ export default function KellyCombinedDashboard() {
                   position: "absolute",
                   top: 52,
                   right: 0,
-                  minWidth: 210,
+                  minWidth: 250,
                   background: "#fff",
                   border: "1px solid #e6e6e6",
                   borderRadius: 14,
                   boxShadow: "0 12px 30px rgba(0,0,0,0.10)",
                   padding: 8,
-                  zIndex: 50,
+                  zIndex: 9999,
+                  overflow: "visible",
                 }}
               >
                 <button
@@ -394,11 +396,13 @@ export default function KellyCombinedDashboard() {
                     textAlign: "left",
                     padding: "12px 14px",
                     borderRadius: 10,
-                    border: "none",
-                    background: "transparent",
+                    border: "1px solid #e6e6e6",
+                    background: "#f8f8f8",
+                    color: "#111",
                     cursor: "pointer",
                     fontSize: 14,
-                    fontWeight: 600,
+                    fontWeight: 700,
+                    marginBottom: 4,
                   }}
                 >
                   Time Off / Holidays
@@ -500,9 +504,7 @@ export default function KellyCombinedDashboard() {
         />
       </div>
 
-      <h2 style={{ marginTop: 22, marginBottom: 10 }}>
-        {filterTitle}
-      </h2>
+      <h2 style={{ marginTop: 22, marginBottom: 10 }}>{filterTitle}</h2>
 
       {perWorker.length === 0 ? (
         <div
