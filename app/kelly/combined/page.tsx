@@ -385,6 +385,27 @@ export default function KellyCombinedDashboard() {
               >
                 <button
                   type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    window.location.href = "/kelly/time-off";
+                  }}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  Time Off / Holidays
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleSwitchUser}
                   style={{
                     width: "100%",
