@@ -331,7 +331,7 @@ export default function KellyCombinedDashboard() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button
             onClick={loadAll}
             style={{
@@ -343,6 +343,24 @@ export default function KellyCombinedDashboard() {
             }}
           >
             Refresh
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = "/kelly/time-off";
+            }}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #111",
+              background: "#111",
+              color: "#fff",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Time Off / Holidays
           </button>
 
           <div ref={menuRef} style={{ position: "relative" }}>
@@ -375,39 +393,15 @@ export default function KellyCombinedDashboard() {
                   position: "absolute",
                   top: 52,
                   right: 0,
-                  minWidth: 250,
+                  minWidth: 210,
                   background: "#fff",
                   border: "1px solid #e6e6e6",
                   borderRadius: 14,
                   boxShadow: "0 12px 30px rgba(0,0,0,0.10)",
                   padding: 8,
                   zIndex: 9999,
-                  overflow: "visible",
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    window.location.href = "/kelly/time-off";
-                  }}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "12px 14px",
-                    borderRadius: 10,
-                    border: "1px solid #e6e6e6",
-                    background: "#f8f8f8",
-                    color: "#111",
-                    cursor: "pointer",
-                    fontSize: 14,
-                    fontWeight: 700,
-                    marginBottom: 4,
-                  }}
-                >
-                  Time Off / Holidays
-                </button>
-
                 <button
                   type="button"
                   onClick={handleSwitchUser}
