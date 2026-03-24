@@ -39,7 +39,11 @@ type KellyTopFilter =
   | "unscheduled";
 
 function isSameDay(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 
 function gbDate(d: Date) {
@@ -114,7 +118,11 @@ export default function KellyCombinedDashboard() {
       if (!bRes.ok) throw new Error(`Business failed: ${bRes.status}`);
       if (!jRes.ok) throw new Error(`Jobs failed: ${jRes.status}`);
 
-      const [wData, bData, jData] = await Promise.all([wRes.json(), bRes.json(), jRes.json()]);
+      const [wData, bData, jData] = await Promise.all([
+        wRes.json(),
+        bRes.json(),
+        jRes.json(),
+      ]);
 
       setWorkers(Array.isArray(wData) ? wData : []);
       setBusiness(bData ?? null);
@@ -220,22 +228,10 @@ export default function KellyCombinedDashboard() {
   }, [dueTodayJobs, overdueJobs, unscheduledJobs]);
 
   const filteredJobsForCards = useMemo(() => {
-    if (topFilter === "due-today") {
-      return dueTodayJobs;
-    }
-
-    if (topFilter === "done-today") {
-      return dueTodayJobs.filter((j) => isDoneStatus(j.status));
-    }
-
-    if (topFilter === "remaining-today") {
-      return inPlayJobs.filter((j) => !isDoneStatus(j.status));
-    }
-
-    if (topFilter === "overdue") {
-      return overdueJobs;
-    }
-
+    if (topFilter === "due-today") return dueTodayJobs;
+    if (topFilter === "done-today") return dueTodayJobs.filter((j) => isDoneStatus(j.status));
+    if (topFilter === "remaining-today") return inPlayJobs.filter((j) => !isDoneStatus(j.status));
+    if (topFilter === "overdue") return overdueJobs;
     return unscheduledJobs;
   }, [topFilter, dueTodayJobs, inPlayJobs, overdueJobs, unscheduledJobs]);
 
@@ -331,7 +327,7 @@ export default function KellyCombinedDashboard() {
           </div>
         </div>
 
-                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button
             onClick={loadAll}
             style={{
@@ -442,7 +438,6 @@ export default function KellyCombinedDashboard() {
             ) : null}
           </div>
         </div>
-        </div>
       </div>
 
       {err ? (
@@ -515,7 +510,13 @@ export default function KellyCombinedDashboard() {
           No matching results for this view.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 12,
+          }}
+        >
           {perWorker.map((row) => {
             const current = row.currentJob;
             const fallback = row.nextJob;
@@ -523,9 +524,21 @@ export default function KellyCombinedDashboard() {
             return (
               <div
                 key={`${row.worker.key}-${topFilter}`}
-                style={{ padding: 14, borderRadius: 14, border: "1px solid #e6e6e6", background: "#fff" }}
+                style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  border: "1px solid #e6e6e6",
+                  background: "#fff",
+                }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "start",
+                  }}
+                >
                   <div>
                     <div style={{ fontWeight: 900, fontSize: 16 }}>{row.worker.displayName}</div>
                     <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
@@ -533,7 +546,14 @@ export default function KellyCombinedDashboard() {
                     </div>
                   </div>
 
-                  <div style={{ fontSize: 12, opacity: 0.7, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      opacity: 0.7,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.6,
+                    }}
+                  >
                     {current ? "On now" : fallback ? "Next up" : "No jobs"}
                   </div>
                 </div>
