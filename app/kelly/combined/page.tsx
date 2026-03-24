@@ -331,7 +331,7 @@ export default function KellyCombinedDashboard() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button
             onClick={loadAll}
             style={{
@@ -357,11 +357,91 @@ export default function KellyCombinedDashboard() {
               background: "#111",
               color: "#fff",
               cursor: "pointer",
+              fontSize: 14,
               fontWeight: 700,
             }}
           >
             Time Off / Holidays
           </button>
+
+          <div ref={menuRef} style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-label="Open Kelly menu"
+              aria-expanded={menuOpen}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                background: "#fff",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 22,
+                lineHeight: 1,
+              }}
+            >
+              ☰
+            </button>
+
+            {menuOpen ? (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 52,
+                  right: 0,
+                  minWidth: 210,
+                  background: "#fff",
+                  border: "1px solid #e6e6e6",
+                  borderRadius: 14,
+                  boxShadow: "0 12px 30px rgba(0,0,0,0.10)",
+                  padding: 8,
+                  zIndex: 50,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleSwitchUser}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  Switch User
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "#b91c1c",
+                  }}
+                >
+                  Logout
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
 
           <div ref={menuRef} style={{ position: "relative" }}>
             <button
