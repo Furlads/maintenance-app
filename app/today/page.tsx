@@ -515,6 +515,19 @@ function getJobSecondaryTitle(job: Job) {
   return ''
 }
 
+function isQuoteJob(job: Job | TimedJob) {
+  const jobType = String(job.jobType || '').trim().toLowerCase()
+  const title = String(job.title || '').trim().toLowerCase()
+
+  return (
+    jobType === 'quote' ||
+    jobType === 'quoted' ||
+    title === 'quote' ||
+    title === 'quoted' ||
+    title.includes('quote visit')
+  )
+}
+
 function ChasMascot({ size = 26 }: { size?: number }) {
   const hatHeight = Math.round(size * 0.3)
   const faceSize = Math.round(size * 0.72)
@@ -2857,10 +2870,16 @@ function hardRefreshTodayPage() {
                 </div>
               </div>
 
-               <div className="today-active-actions">
+              <div className="today-active-actions">
                 <a href={`/jobs/${filteredActiveJob.id}`} style={styles.actionButton}>
-                  View Job
+                  {isQuoteJob(filteredActiveJob) ? 'See Notes' : 'View Job'}
                 </a>
+
+                {filteredActiveJob.customer?.phone && (
+                  <a href={`tel:${filteredActiveJob.customer.phone}`} style={styles.actionButton}>
+                    Call Customer
+                  </a>
+                )}
 
                 {(filteredActiveJob.customer?.postcode || filteredActiveJob.address || filteredActiveJob.customer?.address) && (
                   <a
@@ -3233,8 +3252,14 @@ function hardRefreshTodayPage() {
 
                   <div className="today-job-actions">
                     <a href={`/jobs/${job.id}`} style={styles.actionButton}>
-                      View Job
+                      {isQuoteJob(job) ? 'See Notes' : 'View Job'}
                     </a>
+
+                    {job.customer?.phone && (
+                      <a href={`tel:${job.customer.phone}`} style={styles.actionButton}>
+                        Call Customer
+                      </a>
+                    )}
 
                     {navigationQuery && (
                       <a
@@ -3332,8 +3357,14 @@ function hardRefreshTodayPage() {
 
                     <div className="today-job-actions" style={{ minWidth: 160 }}>
                       <a href={`/jobs/${job.id}`} style={styles.actionButton}>
-                        View Job
+                        {isQuoteJob(job) ? 'See Notes' : 'View Job'}
                       </a>
+
+                      {job.customer?.phone && (
+                        <a href={`tel:${job.customer.phone}`} style={styles.actionButton}>
+                          Call Customer
+                        </a>
+                      )}
 
                       {(job.customer?.postcode || job.address || job.customer?.address) && (
                         <a
