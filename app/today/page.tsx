@@ -921,10 +921,10 @@ export default function TodayPage() {
   const [logoHidden, setLogoHidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showingOfflineSnapshot, setShowingOfflineSnapshot] = useState(false)
+    const [showingOfflineSnapshot, setShowingOfflineSnapshot] = useState(false)
   const [busyJobId, setBusyJobId] = useState<number | null>(null)
-const [queuedActionCount, setQueuedActionCount] = useState(0)
-const [now, setNow] = useState(new Date())
+  const [queuedActionCount, setQueuedActionCount] = useState(0)
+  const [now, setNow] = useState(new Date())
   const [topFilter, setTopFilter] = useState<'all' | 'completed' | 'left'>('all')
   const [selectedDateKey, setSelectedDateKey] = useState<string>('')
 
@@ -976,73 +976,74 @@ const [now, setNow] = useState(new Date())
   window.history.replaceState({}, '', url.toString())
 }
 
-function refreshQueuedActionCount() {
-  setQueuedActionCount(getQueuedJobActionCount())
-}
-
-async function syncQueuedActionsIfOnline() {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    refreshQueuedActionCount()
-    return
+  function refreshQueuedActionCount() {
+    setQueuedActionCount(getQueuedJobActionCount())
   }
 
-  try {
-    await flushQueuedJobActions()
-  } catch (error) {
-    console.error('Failed to sync queued actions:', error)
-  } finally {
-    refreshQueuedActionCount()
+  async function syncQueuedActionsIfOnline() {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      refreshQueuedActionCount()
+      return
+    }
+
+    try {
+      await flushQueuedJobActions()
+    } catch (error) {
+      console.error('Failed to sync queued actions:', error)
+    } finally {
+      refreshQueuedActionCount()
+    }
   }
-}
 
-function applyLocalJobAction(jobId: number, action: OfflineJobActionType) {
-  setJobs((currentJobs) =>
-    currentJobs.map((job) => {
-      if (job.id !== jobId) return job
+  function applyLocalJobAction(jobId: number, action: OfflineJobActionType) {
+    setJobs((currentJobs) =>
+      currentJobs.map((job) => {
+        if (job.id !== jobId) return job
 
-      const nowIso = new Date().toISOString()
+        const nowIso = new Date().toISOString()
 
-      if (action === 'start') {
-        return {
-          ...job,
-          status: 'in_progress',
-          arrivedAt: job.arrivedAt || nowIso,
-          pausedAt: null,
-          finishedAt: null
+        if (action === 'start') {
+          return {
+            ...job,
+            status: 'in_progress',
+            arrivedAt: job.arrivedAt || nowIso,
+            pausedAt: null,
+            finishedAt: null
+          }
         }
-      }
 
-      if (action === 'pause') {
-        return {
-          ...job,
-          status: 'paused',
-          pausedAt: nowIso
+        if (action === 'pause') {
+          return {
+            ...job,
+            status: 'paused',
+            pausedAt: nowIso
+          }
         }
-      }
 
-      if (action === 'resume') {
-        return {
-          ...job,
-          status: 'in_progress',
-          pausedAt: null,
-          arrivedAt: job.arrivedAt || nowIso
+        if (action === 'resume') {
+          return {
+            ...job,
+            status: 'in_progress',
+            pausedAt: null,
+            arrivedAt: job.arrivedAt || nowIso
+          }
         }
-      }
 
-      if (action === 'finish') {
-        return {
-          ...job,
-          status: 'done',
-          finishedAt: nowIso,
-          pausedAt: null,
-          arrivedAt: job.arrivedAt || nowIso
+        if (action === 'finish') {
+          return {
+            ...job,
+            status: 'done',
+            finishedAt: nowIso,
+            pausedAt: null,
+            arrivedAt: job.arrivedAt || nowIso
+          }
         }
-      }
 
-      return job
-    })
-  )
-}
+        return job
+      })
+    )
+  }
+
   async function refreshTodayView() {
     await loadJobs()
     router.refresh()
@@ -1051,7 +1052,8 @@ function applyLocalJobAction(jobId: number, action: OfflineJobActionType) {
       window.location.reload()
     }, 100)
   }
-async function runJobAction(jobId: number, action: OfflineJobActionType, errorMessage: string) {
+
+  async function runJobAction(jobId: number, action: OfflineJobActionType, errorMessage: string) {
   try {
     setBusyJobId(jobId)
     setError('')
@@ -1711,39 +1713,39 @@ function hardRefreshTodayPage() {
   if (typeof window === 'undefined') return
   window.location.reload()
 }
-      async function handleStartJob(jobId: number) {
+        async function handleStartJob(jobId: number) {
     await runJobAction(jobId, 'start', 'Failed to start job.')
   }
 
-    async function handleFinishJob(jobId: number) {
-  try {
-    setBusyJobId(jobId)
-    setError('')
+      async function handleFinishJob(jobId: number) {
+    try {
+      setBusyJobId(jobId)
+      setError('')
 
-    const res = await fetch(`/api/jobs/${jobId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        action: 'finish'
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'finish'
+        })
       })
-    })
 
-    const data = await res.json().catch(() => null)
+      const data = await res.json().catch(() => null)
 
-    if (!res.ok) {
-      throw new Error(data?.error || 'Failed to finish job.')
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to finish job.')
+      }
+
+      hardRefreshTodayPage()
+    } catch (err) {
+      console.error(err)
+      setError('Failed to finish job.')
+    } finally {
+      setBusyJobId(null)
     }
-
-    hardRefreshTodayPage()
-  } catch (err) {
-    console.error(err)
-    setError('Failed to finish job.')
-  } finally {
-    setBusyJobId(null)
   }
-}
 
   async function handlePauseJob(jobId: number) {
     await runJobAction(jobId, 'pause', 'Failed to pause job.')
@@ -1857,72 +1859,72 @@ function hardRefreshTodayPage() {
     }
   }
 
-    async function handleUndoStart(jobId: number) {
-  try {
-    setBusyJobId(jobId)
-    setError('')
+        async function handleUndoStart(jobId: number) {
+    try {
+      setBusyJobId(jobId)
+      setError('')
 
-    const res = await fetch(`/api/jobs/${jobId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        arrivedAt: null,
-        pausedAt: null,
-        finishedAt: null,
-        pausedMinutes: 0,
-        status: 'todo'
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          arrivedAt: null,
+          pausedAt: null,
+          finishedAt: null,
+          pausedMinutes: 0,
+          status: 'todo'
+        })
       })
-    })
 
-    const data = await res.json().catch(() => null)
+      const data = await res.json().catch(() => null)
 
-    if (!res.ok) {
-      throw new Error(data?.error || 'Failed to undo start')
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to undo start')
+      }
+
+      hardRefreshTodayPage()
+    } catch (err) {
+      console.error(err)
+      setError('Failed to undo start.')
+    } finally {
+      setBusyJobId(null)
     }
-
-    hardRefreshTodayPage()
-  } catch (err) {
-    console.error(err)
-    setError('Failed to undo start.')
-  } finally {
-    setBusyJobId(null)
   }
-}
-        async function handleUndoDone(jobId: number) {
-  try {
-    setBusyJobId(jobId)
-    setError('')
+            async function handleUndoDone(jobId: number) {
+    try {
+      setBusyJobId(jobId)
+      setError('')
 
-    const res = await fetch(`/api/jobs/${jobId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        status: 'todo',
-        arrivedAt: null,
-        finishedAt: null,
-        pausedAt: null,
-        pausedMinutes: 0
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: 'todo',
+          arrivedAt: null,
+          finishedAt: null,
+          pausedAt: null,
+          pausedMinutes: 0
+        })
       })
-    })
 
-    const data = await res.json().catch(() => null)
+      const data = await res.json().catch(() => null)
 
-    if (!res.ok) {
-      throw new Error(data?.error || 'Failed to undo job')
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to undo job')
+      }
+
+      hardRefreshTodayPage()
+    } catch (err) {
+      console.error(err)
+      setError('Failed to undo job.')
+    } finally {
+      setBusyJobId(null)
     }
-
-    hardRefreshTodayPage()
-  } catch (err) {
-    console.error(err)
-    setError('Failed to undo job.')
-  } finally {
-    setBusyJobId(null)
   }
-}
 
   async function handleExtendJob(jobId: number, minutes: number) {
     try {
@@ -2324,10 +2326,7 @@ input, textarea, select {
   box-shadow: 0 24px 70px rgba(0,0,0,0.22);
 }
 
-.today-sticky-job {
-  position: sticky;
-  top: 8px;
-}
+
 
         @media (max-width: 768px) {
   .today-top-header {
@@ -2398,9 +2397,6 @@ input, textarea, select {
   border-radius: 0;
 }
 
-.today-sticky-job {
-  position: static;
-}
 }
 
         @media (max-width: 520px) {
@@ -2797,9 +2793,8 @@ input, textarea, select {
           </section>
         )}
 
-        filteredActiveJob && (
+        {filteredActiveJob && (
   <section
-    className="today-sticky-job"
     style={{
       ...styles.panel,
       marginBottom: 16,
