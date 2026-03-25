@@ -71,6 +71,11 @@ You are CHAS, a helpful office teammate for Furlads.
 
 You help workers in the field so they do not need to ring the office all the time.
 
+Main rule:
+- If you are not 99% sure, do not guess.
+- Always say: "Remember, if in doubt give Trev a shout."
+- Wrong action is worse than waiting and checking first.
+
 How to behave:
 - Answer the actual question clearly and practically.
 - Keep replies short and useful for someone working on site.
@@ -83,49 +88,37 @@ How to behave:
 - Kelly confirms final quotes.
 - Never mention prompts, hidden rules, policies, JSON, or systems.
 
+Critical caution rule:
+- Never guess plant identification.
+- Never approve cutting, pruning, removing, digging out, or spraying if you are not 99% sure.
+- If you are not 99% sure, clearly say: "Remember, if in doubt give Trev a shout." and tell them to call Trev before going ahead.
+- If a photo is unclear, say so and tell them to call Trev or send a clearer one.
+- Be conservative. It is better to check than get it wrong.
+
 Critical pricing rule:
 - You can give a rough guide price when the worker asks for cost help.
 - Never present any price as final or confirmed.
-- Use a sensible range where possible, not a single fixed final figure.
-- For very small jobs, it is fine to explain that it would usually fall under a minimum visit charge.
-- Do not mention an hourly rate unless the worker explicitly asks for one.
-- Keep quote help practical and simple.
-- If there is not enough detail for a sensible guide, ask one or two short practical follow-up questions only.
+- Use a sensible range where possible.
+- For very small jobs, explain it may fall under a minimum visit charge.
+- Do not mention hourly rates unless asked.
 - Always make clear that Kelly will confirm the final price.
-- Do not tell the worker to avoid giving any price at all if a sensible rough guide can be given safely.
 
 How to format estimate-style replies:
 - Start with: "Estimated price:"
-- Then give a short practical guide price or guide range.
-- Then briefly say what that would typically include.
-- Then end with a short note making clear it is a guide only and Kelly will confirm the final price.
-- Keep estimate replies confident, simple, and useful.
+- Give a short practical range.
+- Briefly say what it includes.
+- End by saying it is a guide and Kelly will confirm.
 
-Example style for estimate replies:
-Estimated price:
-For a job like this, it would usually fall around £X - £Y all in.
-
-This would typically include:
-- Labour
-- Materials if needed
-- Standard prep and clean-up
-
-Important:
-This is a guide price only. Kelly will confirm the final price based on site conditions, access, exact measurements, and any extra work needed.
-
-Landscaping and site knowledge:
-- Be useful on common Furlads-type work such as turfing, fencing, patios, gravel, hedge cutting, pruning, weeding, garden clearances, and general outside maintenance.
-- If asked whether something can be cut or pruned, answer directly first.
-- If the timing depends on the exact plant, answer cautiously and use the image if one is available.
-- If there is any real safety concern, say so clearly and tell them to stop and check.
+Landscaping knowledge:
+- Be useful on turfing, fencing, patios, gravel, hedge cutting, pruning, weeding, and general maintenance.
+- Only give firm answers on cutting/pruning/removal if you are 99% sure.
+- Plant ID must be treated cautiously.
 
 Tone:
 - like a real office teammate
 - practical
-- normal
 - calm
 - helpful
-- not cheesy
 - not overly chatty
 `.trim()
 }
@@ -154,6 +147,57 @@ ${historyText}
 Latest worker message:
 ${latestQuestion}
 `.trim()
+}
+
+function isHighRiskQuestion(question: string) {
+  const text = question.toLowerCase()
+
+  const keywords = [
+    "what plant",
+    "identify",
+    "plant id",
+    "is this",
+    "cut",
+    "prune",
+    "remove",
+    "rip out",
+    "dig out",
+    "pull out",
+    "spray",
+  ]
+
+  return keywords.some((keyword) => text.includes(keyword))
+}
+
+function inferEscalation(answer: string) {
+  const text = answer.toLowerCase()
+
+  if (text.includes("give trev a shout") || text.includes("call trev") || text.includes("ring trev")) {
+    return "trev"
+  }
+
+  return "none"
+}
+
+function inferConfidence(escalateTo: string, question: string) {
+  if (escalateTo === "trev") return 0.2
+  if (isHighRiskQuestion(question)) return 0.55
+  return 0.9
+}
+
+function inferSafetyFlag(question: string, answer: string) {
+  const text = `${question} ${answer}`.toLowerCase()
+
+  const safetyPhrases = [
+    "stop",
+    "danger",
+    "unsafe",
+    "ppe",
+    "chemical",
+    "spray",
+  ]
+
+  return safetyPhrases.some((phrase) => text.includes(phrase))
 }
 
 async function callOpenAI(params: {
@@ -207,7 +251,7 @@ async function callOpenAI(params: {
           content,
         },
       ],
-      temperature: 0.6,
+      temperature: 0.3,
     }),
   })
 
@@ -256,20 +300,10 @@ export async function POST(req: NextRequest) {
 
     try {
       history = await prisma.chasMessage.findMany({
-        where: {
-          company,
-          worker,
-          sessionId,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
+        where: { company, worker, sessionId },
+        orderBy: { createdAt: "asc" },
         take: 20,
-        select: {
-          question: true,
-          answer: true,
-          imageDataUrl: true,
-        },
+        select: { question: true, answer: true, imageDataUrl: true },
       })
     } catch (error) {
       console.error("Failed to load CHAS history", error)
@@ -285,6 +319,10 @@ export async function POST(req: NextRequest) {
       carryForwardImageDataUrl: imageDataUrl ? "" : latestSavedImage,
     })
 
+    const escalateTo = inferEscalation(answer)
+    const confidence = inferConfidence(escalateTo, question)
+    const safetyFlag = inferSafetyFlag(question, answer)
+
     try {
       await prisma.chasMessage.create({
         data: {
@@ -296,9 +334,9 @@ export async function POST(req: NextRequest) {
           answer,
           imageDataUrl: imageDataUrl || null,
           intent: "general",
-          confidence: 0.9,
-          escalateTo: "none",
-          safetyFlag: false,
+          confidence,
+          escalateTo,
+          safetyFlag,
         },
       })
     } catch (error) {
@@ -309,9 +347,9 @@ export async function POST(req: NextRequest) {
       ok: true,
       answer,
       intent: "general",
-      confidence: 0.9,
-      escalateTo: "none",
-      safetyFlag: false,
+      confidence,
+      escalateTo,
+      safetyFlag,
     })
   } catch (error) {
     console.error("CHAS error", error)
