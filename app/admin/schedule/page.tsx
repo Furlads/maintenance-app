@@ -909,14 +909,14 @@ function WorkerTimeline({
         );
       })}
 
-      {timeline.jobs.map((job) => {
+            {timeline.jobs.map((job) => {
         const left = getTimelineLeft(job.startMinutes);
         const width = getTimelineWidth(job.startMinutes, job.endMinutes);
         const top = 38 + job.lane * laneHeight;
         const cardColor = getCardColor(job);
         const offHours = isOffHours(job);
 
-                return (
+        return (
           <div
             key={job.id}
             title={`${job.startTime ?? "TBD"} • ${job.title} • ${job.customerName} • ${
