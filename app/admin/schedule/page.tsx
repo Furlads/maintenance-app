@@ -1012,16 +1012,28 @@ function WorkerTimeline({
   );
 }
 
-function WorkerTimeline({
+function MobileWorkerCard({
   worker,
+  remainingMinutes,
+  workerAttentionJobs,
+  refittingWorkerId,
   busyTimeOffId,
+  movingJobId,
+  onRefitWorkerDay,
   onApproveTimeOff,
   onDeclineTimeOff,
+  onOpenMoveJob,
 }: {
   worker: ScheduleWorker;
+  remainingMinutes: number;
+  workerAttentionJobs: ScheduleJob[];
+  refittingWorkerId: number | null;
   busyTimeOffId: number | null;
+  movingJobId: number | null;
+  onRefitWorkerDay: (workerId: number) => void;
   onApproveTimeOff: (block: ScheduleAvailabilityBlock) => void;
   onDeclineTimeOff: (block: ScheduleAvailabilityBlock) => void;
+  onOpenMoveJob: (job: ScheduleJob, worker: ScheduleWorker) => void;
 }) {
   const sortedJobs = [...worker.jobs].sort(sortWorkerJobs);
   const sortedBlocks = [...(worker.availabilityBlocks ?? [])].sort(sortAvailabilityBlocks);
