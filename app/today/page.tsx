@@ -2414,7 +2414,6 @@ input, textarea, select {
     font-size: 18px !important;
   }
 }
-        }
       `}</style>
       <div style={styles.shell}>
         <section style={styles.topCard}>
@@ -2437,37 +2436,36 @@ input, textarea, select {
                 </div>
               )}
 
-              <h1
-<h1
-  style={{
-    margin: 0,
-    fontSize: 28,
-    lineHeight: 1,
-    fontWeight: 900
-  }}
->
-  Today
-</h1>
+                            <h1
+                style={{
+                  margin: 0,
+                  fontSize: 28,
+                  lineHeight: 1,
+                  fontWeight: 900
+                }}
+              >
+                Today
+              </h1>
 
-{queuedActionCount > 0 && (
-  <div
-    style={{
-      marginTop: 8,
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 6,
-      padding: '8px 10px',
-      borderRadius: 999,
-      background: 'rgba(250, 204, 21, 0.14)',
-      border: '1px solid rgba(250, 204, 21, 0.38)',
-      color: '#fff4b8',
-      fontSize: 12,
-      fontWeight: 800
-    }}
-  >
-    {queuedActionCount} queued offline
-  </div>
-)}
+              {queuedActionCount > 0 && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 10px',
+                    borderRadius: 999,
+                    background: 'rgba(250, 204, 21, 0.14)',
+                    border: '1px solid rgba(250, 204, 21, 0.38)',
+                    color: '#fff4b8',
+                    fontSize: 12,
+                    fontWeight: 800
+                  }}
+                >
+                  {queuedActionCount} queued offline
+                </div>
+              )}
             </div>
 
             <div className="today-top-actions">
