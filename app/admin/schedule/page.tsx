@@ -86,12 +86,6 @@ type TimeOffDecisionSheetState = {
   block: ScheduleAvailabilityBlock;
 } | null;
 
-type MoveJobSheetState = {
-  job: ScheduleJob;
-  currentWorkerId: number;
-  currentWorkerName: string;
-} | null;
-
 const PREP_START_MINUTES = 8 * 60 + 30;
 const WORK_START_MINUTES = 9 * 60;
 const DAY_END_MINUTES = 16 * 60 + 30;
@@ -1016,26 +1010,18 @@ function MobileWorkerCard({
   workerAttentionJobs,
   refittingWorkerId,
   busyTimeOffId,
-  movingJobId,
   onRefitWorkerDay,
   onApproveTimeOff,
   onDeclineTimeOff,
-  onOpenMoveJob,
 }: {
   worker: ScheduleWorker;
   remainingMinutes: number;
   workerAttentionJobs: ScheduleJob[];
   refittingWorkerId: number | null;
   busyTimeOffId: number | null;
-  movingJobId: number | null;
   onRefitWorkerDay: (workerId: number) => void;
   onApproveTimeOff: (block: ScheduleAvailabilityBlock) => void;
   onDeclineTimeOff: (block: ScheduleAvailabilityBlock) => void;
-  onOpenMoveJob: (
-    job: ScheduleJob,
-    currentWorkerId: number,
-    currentWorkerName: string
-  ) => void;
 }) {
   const sortedJobs = [...worker.jobs].sort(sortWorkerJobs);
   const sortedBlocks = [...(worker.availabilityBlocks ?? [])].sort(sortAvailabilityBlocks);
@@ -1311,176 +1297,151 @@ function MobileWorkerCard({
             const offHours = isOffHours(job);
 
             return (
-  <div
-    key={`mobile-job-${worker.id}-${job.id}`}
-    style={{
-      ...jobRowCard(),
-      background: offHours
-        ? "#fff7f7"
-        : job.needsSchedulingAttention
-          ? "#fff7f7"
-          : "#fafafa",
-      border: offHours
-        ? "1px solid #fecaca"
-        : job.needsSchedulingAttention
-          ? "1px solid #fecaca"
-          : "1px solid #e5e7eb",
-      padding: 14,
-    }}
-  >
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        gap: 10,
-        flexWrap: "wrap",
-        marginBottom: 10,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <span
-          style={{
-            ...pillBase(),
-            ...getJobTypeBadgeStyle(job.jobType),
-          }}
-        >
-          {formatJobType(job.jobType)}
-        </span>
+              <Link
+                key={`mobile-job-${worker.id}-${job.id}`}
+                href={`/jobs/${job.id}?back=/admin/schedule`}
+                style={{
+                  textDecoration: "none",
+                  color: "inherit",
+                }}
+              >
+                <div
+                  style={{
+                    ...jobRowCard(),
+                    background: offHours
+                      ? "#fff7f7"
+                      : job.needsSchedulingAttention
+                        ? "#fff7f7"
+                        : "#fafafa",
+                    border: offHours
+                      ? "1px solid #fecaca"
+                      : job.needsSchedulingAttention
+                        ? "1px solid #fecaca"
+                        : "1px solid #e5e7eb",
+                    padding: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span
+                        style={{
+                          ...pillBase(),
+                          ...getJobTypeBadgeStyle(job.jobType),
+                        }}
+                      >
+                        {formatJobType(job.jobType)}
+                      </span>
 
-        <span
-          style={{
-            ...pillBase(),
-            ...getStatusBadgeStyle(job.status),
-          }}
-        >
-          {formatStatus(job.status)}
-        </span>
+                      <span
+                        style={{
+                          ...pillBase(),
+                          ...getStatusBadgeStyle(job.status),
+                        }}
+                      >
+                        {formatStatus(job.status)}
+                      </span>
 
-        {job.needsSchedulingAttention && (
-          <span
-            style={{
-              ...pillBase(),
-              background: "#fff1f2",
-              color: "#9f1239",
-              border: "1px solid #fecaca",
-            }}
-          >
-            Needs attention
-          </span>
-        )}
+                      {job.needsSchedulingAttention && (
+                        <span
+                          style={{
+                            ...pillBase(),
+                            background: "#fff1f2",
+                            color: "#9f1239",
+                            border: "1px solid #fecaca",
+                          }}
+                        >
+                          Needs attention
+                        </span>
+                      )}
 
-        {offHours && (
-          <span
-            style={{
-              ...pillBase(),
-              background: "#fee2e2",
-              color: "#991b1b",
-              border: "1px solid #fecaca",
-            }}
-          >
-            Off-hours
-          </span>
-        )}
-      </div>
+                      {offHours && (
+                        <span
+                          style={{
+                            ...pillBase(),
+                            background: "#fee2e2",
+                            color: "#991b1b",
+                            border: "1px solid #fecaca",
+                          }}
+                        >
+                          Off-hours
+                        </span>
+                      )}
+                    </div>
 
-      <div
-        style={{
-          fontWeight: 900,
-          fontSize: 14,
-          color: "#18181b",
-        }}
-      >
-        {formatTimeRange(job.startTime, job.durationMinutes)}
-      </div>
-    </div>
+                    <div
+                      style={{
+                        fontWeight: 900,
+                        fontSize: 14,
+                        color: "#18181b",
+                      }}
+                    >
+                      {formatTimeRange(job.startTime, job.durationMinutes)}
+                    </div>
+                  </div>
 
-    <div
-      style={{
-        fontWeight: 900,
-        fontSize: 16,
-        lineHeight: 1.2,
-        marginBottom: 6,
-        color: "#18181b",
-      }}
-    >
-      {cleanCustomer}
-    </div>
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      fontSize: 16,
+                      lineHeight: 1.2,
+                      marginBottom: 6,
+                      color: "#18181b",
+                    }}
+                  >
+                    {cleanCustomer}
+                  </div>
 
-    <div
-      style={{
-        fontSize: 13,
-        color: "#3f3f46",
-        marginBottom: 4,
-      }}
-    >
-      {cleanTitle}
-    </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#3f3f46",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {cleanTitle}
+                  </div>
 
-    <div
-      style={{
-        fontSize: 13,
-        color: "#52525b",
-      }}
-    >
-      {displayAddress || "No address"}
-      {postcode ? ` • ${postcode}` : ""}
-      {` • ${job.durationMinutes ?? 60} mins`}
-    </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#52525b",
+                    }}
+                  >
+                    {displayAddress || "No address"}
+                    {postcode ? ` • ${postcode}` : ""}
+                    {` • ${job.durationMinutes ?? 60} mins`}
+                  </div>
 
-    {job.needsSchedulingAttention && (
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#9f1239",
-        }}
-      >
-        ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
-      </div>
-    )}
-
-    <div
-      style={{
-        marginTop: 12,
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap: 8,
-      }}
-    >
-      <Link
-        href={`/jobs/${job.id}?back=/admin/schedule`}
-        style={{
-          ...smallButton(),
-          width: "100%",
-        }}
-      >
-        Open
-      </Link>
-
-      <button
-        type="button"
-        onClick={() => onOpenMoveJob(job, worker.id, worker.name)}
-        disabled={movingJobId === job.id}
-        style={{
-          ...smallPrimaryButton(),
-          width: "100%",
-          cursor: movingJobId === job.id ? "default" : "pointer",
-          opacity: movingJobId === job.id ? 0.7 : 1,
-        }}
-      >
-        {movingJobId === job.id ? "Moving..." : "Move"}
-      </button>
-    </div>
-  </div>
-);
+                  {job.needsSchedulingAttention && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#9f1239",
+                      }}
+                    >
+                      ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
+                    </div>
+                  )}
+                </div>
+              </Link>
+            );
           })}
         </div>
       )}
@@ -1500,12 +1461,9 @@ export default function SchedulePage() {
   const [busyTimeOffId, setBusyTimeOffId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState<FeedbackMessage>(null);
-const [timeOffDecisionSheet, setTimeOffDecisionSheet] =
-  useState<TimeOffDecisionSheetState>(null);
-const [timeOffReviewNotes, setTimeOffReviewNotes] = useState("");
-const [moveJobSheet, setMoveJobSheet] = useState<MoveJobSheetState>(null);
-const [moveWorkerId, setMoveWorkerId] = useState<number | null>(null);
-const [movingJobId, setMovingJobId] = useState<number | null>(null);
+  const [timeOffDecisionSheet, setTimeOffDecisionSheet] =
+    useState<TimeOffDecisionSheetState>(null);
+  const [timeOffReviewNotes, setTimeOffReviewNotes] = useState("");
 
   const isMobile = useIsMobile();
 
@@ -1759,83 +1717,12 @@ const [movingJobId, setMovingJobId] = useState<number | null>(null);
   }
 
   function closeTimeOffDecisionSheet() {
-  if (busyTimeOffId !== null) return;
-  setTimeOffDecisionSheet(null);
-  setTimeOffReviewNotes("");
-}
-
-function openMoveJob(job: ScheduleJob, currentWorkerId: number, currentWorkerName: string) {
-  if (movingJobId !== null) return;
-  setMoveWorkerId(currentWorkerId);
-  setMoveJobSheet({
-    job,
-    currentWorkerId,
-    currentWorkerName,
-  });
-}
-
-function closeMoveJobSheet() {
-  if (movingJobId !== null) return;
-  setMoveJobSheet(null);
-  setMoveWorkerId(null);
-}
-
-async function submitMoveJob() {
-  if (!moveJobSheet || moveWorkerId === null || movingJobId !== null) return;
-
-  try {
-    setMovingJobId(moveJobSheet.job.id);
-    setError("");
-    setFeedbackMessage(null);
-
-    const res = await fetch("/api/scheduler/move-job", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jobId: moveJobSheet.job.id,
-        workerId: moveWorkerId,
-        date,
-      }),
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok || !data?.ok) {
-      throw new Error(data?.error || "Failed to move job.");
-    }
-
-    await loadPage(date, true);
-
-    const movedWorker = workers.find((worker) => worker.id === moveWorkerId);
-
-    setFeedbackMessage({
-      tone: "success",
-      title: "Job moved",
-      text: `${titleCase(moveJobSheet.job.customerName) || "Job"} moved to ${
-        movedWorker?.name || "selected worker"
-      }.`,
-    });
-
-    setMoveJobSheet(null);
-    setMoveWorkerId(null);
-  } catch (err) {
-    console.error(err);
-    const message =
-      err instanceof Error ? err.message : "Failed to move job.";
-    setError(message);
-    setFeedbackMessage({
-      tone: "error",
-      title: "Move failed",
-      text: message,
-    });
-  } finally {
-    setMovingJobId(null);
+    if (busyTimeOffId !== null) return;
+    setTimeOffDecisionSheet(null);
+    setTimeOffReviewNotes("");
   }
-}
 
-async function submitTimeOffDecision() {
+  async function submitTimeOffDecision() {
     if (!timeOffDecisionSheet?.block.timeOffRequestId || busyTimeOffId !== null) return;
 
     const block = timeOffDecisionSheet.block;
@@ -2311,18 +2198,16 @@ async function submitTimeOffDecision() {
                   if (isMobile) {
                     return (
                       <MobileWorkerCard
-  key={worker.id}
-  worker={worker}
-  remainingMinutes={remainingMinutes}
-  workerAttentionJobs={workerAttentionJobs}
-  refittingWorkerId={refittingWorkerId}
-  busyTimeOffId={busyTimeOffId}
-  movingJobId={movingJobId}
-  onRefitWorkerDay={handleRefitWorkerDay}
-  onApproveTimeOff={openApproveTimeOff}
-  onDeclineTimeOff={openDeclineTimeOff}
-  onOpenMoveJob={openMoveJob}
-/>
+                        key={worker.id}
+                        worker={worker}
+                        remainingMinutes={remainingMinutes}
+                        workerAttentionJobs={workerAttentionJobs}
+                        refittingWorkerId={refittingWorkerId}
+                        busyTimeOffId={busyTimeOffId}
+                        onRefitWorkerDay={handleRefitWorkerDay}
+                        onApproveTimeOff={openApproveTimeOff}
+                        onDeclineTimeOff={openDeclineTimeOff}
+                      />
                     );
                   }
 
@@ -2520,334 +2405,351 @@ async function submitTimeOffDecision() {
                             const postcode = normaliseDisplayText(job.postcode);
 
                             return (
-  <div
-    key={`list-${worker.id}-${job.id}`}
-    style={jobRowCard()}
-  >
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        gap: 10,
-        flexWrap: "wrap",
-        marginBottom: 8,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <span
-          style={{
-            ...pillBase(),
-            ...getJobTypeBadgeStyle(job.jobType),
-          }}
-        >
-          {formatJobType(job.jobType)}
-        </span>
+                              <Link
+                                key={`list-${worker.id}-${job.id}`}
+                                href={`/jobs/${job.id}?back=/admin/schedule`}
+                                style={{
+                                  textDecoration: "none",
+                                  color: "inherit",
+                                }}
+                              >
+                                <div style={jobRowCard()}>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      gap: 10,
+                                      flexWrap: "wrap",
+                                      marginBottom: 8,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        gap: 8,
+                                        flexWrap: "wrap",
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          ...pillBase(),
+                                          ...getJobTypeBadgeStyle(job.jobType),
+                                        }}
+                                      >
+                                        {formatJobType(job.jobType)}
+                                      </span>
 
-        <span
-          style={{
-            ...pillBase(),
-            ...getStatusBadgeStyle(job.status),
-          }}
-        >
-          {formatStatus(job.status)}
-        </span>
+                                      <span
+                                        style={{
+                                          ...pillBase(),
+                                          ...getStatusBadgeStyle(job.status),
+                                        }}
+                                      >
+                                        {formatStatus(job.status)}
+                                      </span>
 
-        {job.needsSchedulingAttention && (
-          <span
-            style={{
-              ...pillBase(),
-              background: "#fff1f2",
-              color: "#9f1239",
-              border: "1px solid #fecaca",
-            }}
-          >
-            Needs attention
-          </span>
+                                      {job.needsSchedulingAttention && (
+                                        <span
+                                          style={{
+                                            ...pillBase(),
+                                            background: "#fff1f2",
+                                            color: "#9f1239",
+                                            border: "1px solid #fecaca",
+                                          }}
+                                        >
+                                          Needs attention
+                                        </span>
+                                      )}
+
+                                      {isOffHours(job) && (
+                                        <span
+                                          style={{
+                                            ...pillBase(),
+                                            background: "#fee2e2",
+                                            color: "#991b1b",
+                                            border: "1px solid #fecaca",
+                                          }}
+                                        >
+                                          Off-hours
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div
+                                      style={{
+                                        fontWeight: 800,
+                                        color: "#18181b",
+                                      }}
+                                    >
+                                      {formatTimeRange(job.startTime, job.durationMinutes)}
+                                    </div>
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      fontWeight: 800,
+                                      marginBottom: 4,
+                                    }}
+                                  >
+                                    {cleanCustomer} — {cleanTitle}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      fontSize: 13,
+                                      color: "#52525b",
+                                    }}
+                                  >
+                                    {displayAddress || "No address"}
+                                    {postcode ? ` • ${postcode}` : ""}
+                                    {` • ${job.durationMinutes ?? 60} mins`}
+                                  </div>
+
+                                  {job.needsSchedulingAttention && (
+                                    <div
+                                      style={{
+                                        marginTop: 8,
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        color: "#9f1239",
+                                      }}
+                                    >
+                                      ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
+                                    </div>
+                                  )}
+                                </div>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: isMobile ? 16 : 18,
+                background: "#fff",
+                padding: isMobile ? 14 : 18,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  alignItems: isMobile ? "start" : "center",
+                  flexDirection: isMobile ? "column" : "row",
+                  marginBottom: 14,
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0, fontSize: isMobile ? 20 : 22 }}>
+                    Needs scheduling {attentionJobs.length > 0 && `⚠️ (${attentionJobs.length})`}
+                  </h2>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      color: "#71717a",
+                      fontSize: 14,
+                    }}
+                  >
+                    Jobs waiting to be fitted into the diary
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: attentionJobs.length > 0 ? "#b91c1c" : "#92400e",
+                  }}
+                >
+                  {unscheduledJobs.length} waiting
+                </div>
+              </div>
+
+              {unscheduledJobs.length === 0 ? (
+                <div
+                  style={{
+                    border: "1px dashed #d4d4d8",
+                    borderRadius: 12,
+                    padding: 18,
+                    color: "#71717a",
+                    background: "#fafafa",
+                  }}
+                >
+                  Nothing waiting to be scheduled 🎉
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {unscheduledJobs.map((job) => (
+                    <div
+                      key={job.id}
+                      style={{
+                        ...unscheduledCard(),
+                        border: job.needsSchedulingAttention
+                          ? "1px solid #fecaca"
+                          : "1px solid #e5e7eb",
+                        background: job.needsSchedulingAttention ? "#fff7f7" : "#fafafa",
+                        padding: isMobile ? 12 : 14,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          flexWrap: "wrap",
+                          alignItems: "start",
+                          flexDirection: isMobile ? "column" : "row",
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1, width: "100%" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              flexWrap: "wrap",
+                              alignItems: "center",
+                              marginBottom: 8,
+                            }}
+                          >
+                            <span
+                              style={{
+                                ...pillBase(),
+                                ...getJobTypeBadgeStyle(job.jobType),
+                              }}
+                            >
+                              {formatJobType(job.jobType)}
+                            </span>
+
+                            <span
+                              style={{
+                                ...pillBase(),
+                                ...getStatusBadgeStyle(job.status),
+                              }}
+                            >
+                              {formatStatus(job.status)}
+                            </span>
+
+                            {job.needsSchedulingAttention && (
+                              <span
+                                style={{
+                                  ...pillBase(),
+                                  background: "#fff1f2",
+                                  color: "#9f1239",
+                                  border: "1px solid #fecaca",
+                                }}
+                              >
+                                Needs attention
+                              </span>
+                            )}
+                          </div>
+
+                          <div
+                            style={{
+                              fontWeight: 800,
+                              marginBottom: 4,
+                              fontSize: 16,
+                            }}
+                          >
+                            {titleCase(job.customer?.name) || "No customer"} —{" "}
+                            {titleCase(job.title) || "General"}
+                          </div>
+
+                          <div
+                            style={{
+                              color: "#52525b",
+                              fontSize: 14,
+                              marginBottom: 6,
+                            }}
+                          >
+                            {titleCase(job.address) || "No address"}
+                            {job.customer?.postcode ? ` • ${job.customer.postcode}` : ""}
+                          </div>
+
+                          <div
+                            style={{
+                              color: "#71717a",
+                              fontSize: 13,
+                            }}
+                          >
+                            Expected: {job.durationMinutes ?? 60} mins • Assigned:{" "}
+                            {formatWorkers(job.assignments)}
+                          </div>
+
+                          {job.needsSchedulingAttention && (
+                            <div
+                              style={{
+                                marginTop: 8,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: "#9f1239",
+                              }}
+                            >
+                              ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
+                              {job.schedulingLastAttemptAt
+                                ? ` • Last tried ${formatDateTime(job.schedulingLastAttemptAt)}`
+                                : ""}
+                            </div>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: isMobile ? "1fr" : "repeat(3, auto)",
+                            gap: 8,
+                            width: isMobile ? "100%" : "auto",
+                          }}
+                        >
+                          {job.needsSchedulingAttention && (
+                            <button
+                              type="button"
+                              onClick={() => handleRefitJob(job.id)}
+                              disabled={refittingJobId === job.id}
+                              style={{
+                                ...smallPrimaryButton(),
+                                width: isMobile ? "100%" : "auto",
+                                cursor: refittingJobId === job.id ? "default" : "pointer",
+                                opacity: refittingJobId === job.id ? 0.7 : 1,
+                              }}
+                            >
+                              {refittingJobId === job.id ? "Re-fitting..." : "Re-fit now"}
+                            </button>
+                          )}
+
+                          <Link
+                            href={`/jobs/${job.id}?back=/admin/schedule`}
+                            style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}
+                          >
+                            Open job
+                          </Link>
+
+                          <Link
+                            href={`/jobs/edit/${job.id}`}
+                            style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}
+                          >
+                            Edit / place
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         )}
-
-        {isOffHours(job) && (
-          <span
-            style={{
-              ...pillBase(),
-              background: "#fee2e2",
-              color: "#991b1b",
-              border: "1px solid #fecaca",
-            }}
-          >
-            Off-hours
-          </span>
-        )}
       </div>
-
-      <div
-        style={{
-          fontWeight: 800,
-          color: "#18181b",
-        }}
-      >
-        {formatTimeRange(job.startTime, job.durationMinutes)}
-      </div>
-    </div>
-
-    <div
-      style={{
-        fontWeight: 800,
-        marginBottom: 4,
-      }}
-    >
-      {cleanCustomer} — {cleanTitle}
-    </div>
-
-    <div
-      style={{
-        fontSize: 13,
-        color: "#52525b",
-      }}
-    >
-      {displayAddress || "No address"}
-      {postcode ? ` • ${postcode}` : ""}
-      {` • ${job.durationMinutes ?? 60} mins`}
-    </div>
-
-    {job.needsSchedulingAttention && (
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#9f1239",
-        }}
-      >
-        ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
-      </div>
-    )}
-
-    <div
-      style={{
-        marginTop: 10,
-        display: "flex",
-        gap: 8,
-        flexWrap: "wrap",
-      }}
-    >
-      <Link
-        href={`/jobs/${job.id}?back=/admin/schedule`}
-        style={smallButton()}
-      >
-        Open
-      </Link>
-
-      <button
-        type="button"
-        onClick={() => openMoveJob(job, worker.id, worker.name)}
-        disabled={movingJobId === job.id}
-        style={{
-          ...smallPrimaryButton(),
-          cursor: movingJobId === job.id ? "default" : "pointer",
-          opacity: movingJobId === job.id ? 0.7 : 1,
-        }}
-      >
-        {movingJobId === job.id ? "Moving..." : "Move"}
-      </button>
-    </div>
-  </div>
-);
-                          {moveJobSheet && (
-  <div
-    onClick={closeMoveJobSheet}
-    style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.5)",
-      zIndex: 1190,
-      display: "flex",
-      alignItems: isMobile ? "flex-end" : "center",
-      justifyContent: "center",
-      padding: isMobile ? 0 : 16,
-    }}
-  >
-    <div
-      onClick={(event) => event.stopPropagation()}
-      style={{
-        width: "100%",
-        maxWidth: 560,
-        background: "#fff",
-        borderRadius: isMobile ? "22px 22px 0 0" : 22,
-        border: "1px solid #e5e7eb",
-        boxShadow: "0 24px 60px rgba(0,0,0,0.2)",
-        padding: 18,
-        paddingBottom: isMobile ? "calc(env(safe-area-inset-bottom) + 18px)" : 18,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "start",
-          marginBottom: 14,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 800,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "#1d4ed8",
-              marginBottom: 6,
-            }}
-          >
-            Move job
-          </div>
-
-          <h3
-            style={{
-              margin: 0,
-              fontSize: 22,
-              lineHeight: 1.15,
-              color: "#18181b",
-            }}
-          >
-            {titleCase(moveJobSheet.job.customerName) || "No customer"}
-          </h3>
-
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 14,
-              color: "#52525b",
-              lineHeight: 1.45,
-            }}
-          >
-            {titleCase(moveJobSheet.job.title) || "General"} • currently on{" "}
-            {moveJobSheet.currentWorkerName}
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={closeMoveJobSheet}
-          disabled={movingJobId !== null}
-          style={{
-            border: "1px solid #e4e4e7",
-            background: "#fff",
-            color: "#3f3f46",
-            borderRadius: 999,
-            width: 38,
-            height: 38,
-            fontSize: 20,
-            cursor: movingJobId !== null ? "default" : "pointer",
-            opacity: movingJobId !== null ? 0.7 : 1,
-            flexShrink: 0,
-          }}
-        >
-          ×
-        </button>
-      </div>
-
-      <div
-        style={{
-          marginBottom: 12,
-          fontSize: 14,
-          color: "#3f3f46",
-          lineHeight: 1.5,
-        }}
-      >
-        Choose which worker should take this job for {formatDate(date)}.
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gap: 8,
-          marginBottom: 14,
-        }}
-      >
-        {workers.map((worker) => (
-          <button
-            key={`move-worker-${worker.id}`}
-            type="button"
-            onClick={() => setMoveWorkerId(worker.id)}
-            disabled={movingJobId !== null}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              borderRadius: 12,
-              border:
-                moveWorkerId === worker.id
-                  ? "2px solid #18181b"
-                  : "1px solid #d4d4d8",
-              background: "#fff",
-              color: "#18181b",
-              padding: "12px 14px",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: movingJobId !== null ? "default" : "pointer",
-              opacity: movingJobId !== null ? 0.7 : 1,
-            }}
-          >
-            {worker.name}
-          </button>
-        ))}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-          gap: 10,
-        }}
-      >
-        <button
-          type="button"
-          onClick={closeMoveJobSheet}
-          disabled={movingJobId !== null}
-          style={{
-            ...smallButton(),
-            width: "100%",
-            minHeight: 46,
-            cursor: movingJobId !== null ? "default" : "pointer",
-            opacity: movingJobId !== null ? 0.7 : 1,
-          }}
-        >
-          Cancel
-        </button>
-
-        <button
-          type="button"
-          onClick={submitMoveJob}
-          disabled={movingJobId !== null || moveWorkerId === null}
-          style={{
-            width: "100%",
-            minHeight: 46,
-            borderRadius: 10,
-            border: "1px solid #18181b",
-            background: "#18181b",
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 800,
-            cursor:
-              movingJobId !== null || moveWorkerId === null
-                ? "default"
-                : "pointer",
-            opacity: movingJobId !== null || moveWorkerId === null ? 0.7 : 1,
-          }}
-        >
-          {movingJobId !== null ? "Moving..." : "Move job"}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
 
       {timeOffDecisionSheet && (
         <div
