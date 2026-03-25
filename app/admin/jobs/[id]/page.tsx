@@ -95,6 +95,17 @@ type CannotCompleteInfo = {
   recordedAt: string
 }
 
+type ParsedEndOfJobReport = {
+  workSummary: string
+  followUpRequired: string
+  followUpDetails: string
+  payment: string
+  paymentNotes: string
+  notesForKelly: string
+  reportedBy: string
+  recordedAt: string
+}
+
 function extractCannotCompleteInfoFromText(value?: string | null): CannotCompleteInfo | null {
   if (!value) return null
 
@@ -144,6 +155,42 @@ function stripCannotCompleteLines(value?: string | null) {
         line && !line.toLowerCase().startsWith('job could not be completed:')
     )
     .join('\n')
+}
+
+function parseEndOfJobReport(value?: string | null): ParsedEndOfJobReport | null {
+  if (!value) return null
+
+  const parts = value
+    .split(' | ')
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  const hasEndOfJobPrefix = parts.some((part) =>
+    part.toLowerCase().startsWith('end of job report:')
+  )
+
+  if (!hasEndOfJobPrefix) return null
+
+  function getPart(prefix: string) {
+    const match = parts.find((part) =>
+      part.toLowerCase().startsWith(prefix.toLowerCase())
+    )
+
+    if (!match) return ''
+
+    return match.slice(prefix.length).trim()
+  }
+
+  return {
+    workSummary: getPart('Work summary:'),
+    followUpRequired: getPart('Follow-up required:'),
+    followUpDetails: getPart('Follow-up details:'),
+    payment: getPart('Payment:'),
+    paymentNotes: getPart('Payment notes:'),
+    notesForKelly: getPart('Notes for Kelly:'),
+    reportedBy: getPart('Reported by:'),
+    recordedAt: getPart('Recorded at:'),
+  }
 }
 
 export default async function AdminJobPage({ params }: PageProps) {
@@ -410,6 +457,7 @@ export default async function AdminJobPage({ params }: PageProps) {
               ) : (
                 <div className="mt-4 space-y-3">
                   {job.jobNotes.map((note: any) => {
+                    const parsedReport = parseEndOfJobReport(note.note)
                     const cleanedNote = stripCannotCompleteLines(note.note)
 
                     return (
@@ -422,9 +470,85 @@ export default async function AdminJobPage({ params }: PageProps) {
                           {fullName(note.worker?.firstName, note.worker?.lastName)}
                         </div>
 
-                        <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
-                          {cleanedNote || 'No note text'}
-                        </div>
+                        {parsedReport ? (
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-xl border border-zinc-200 bg-white p-3 sm:col-span-2">
+                              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                Work summary
+                              </div>
+                              <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                {parsedReport.workSummary || 'Not provided'}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-zinc-200 bg-white p-3">
+                              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                Follow-up required
+                              </div>
+                              <div className="mt-2 text-sm text-zinc-700">
+                                {parsedReport.followUpRequired || 'Not provided'}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-zinc-200 bg-white p-3">
+                              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                Payment
+                              </div>
+                              <div className="mt-2 text-sm text-zinc-700">
+                                {parsedReport.payment || 'Not provided'}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-zinc-200 bg-white p-3 sm:col-span-2">
+                              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                Follow-up details
+                              </div>
+                              <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                {parsedReport.followUpDetails || 'None'}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-zinc-200 bg-white p-3 sm:col-span-2">
+                              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                Notes for Kelly
+                              </div>
+                              <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                {parsedReport.notesForKelly || 'None'}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-zinc-200 bg-white p-3">
+                              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                Payment notes
+                              </div>
+                              <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                {parsedReport.paymentNotes || 'None'}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-zinc-200 bg-white p-3">
+                              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                Reported by
+                              </div>
+                              <div className="mt-2 text-sm text-zinc-700">
+                                {parsedReport.reportedBy || 'Unknown worker'}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-zinc-200 bg-white p-3 sm:col-span-2">
+                              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                Recorded at
+                              </div>
+                              <div className="mt-2 text-sm text-zinc-700">
+                                {parsedReport.recordedAt || formatDateTime(note.createdAt)}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                            {cleanedNote || 'No note text'}
+                          </div>
+                        )}
                       </div>
                     )
                   })}

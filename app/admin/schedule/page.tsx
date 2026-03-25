@@ -1079,6 +1079,19 @@ function MobileWorkerCard({
               {formatRemaining(remainingMinutes)}
             </span>
 
+            {workerAttentionJobs.length > 0 && (
+              <span
+                style={{
+                  ...pillBase(),
+                  background: "#fff1f2",
+                  color: "#9f1239",
+                  border: "1px solid #fecaca",
+                }}
+              >
+                {workerAttentionJobs.length} attention
+              </span>
+            )}
+
             {(worker.availabilityBlocks?.length ?? 0) > 0 && (
               <span
                 style={{
@@ -1112,6 +1125,48 @@ function MobileWorkerCard({
         </button>
       </div>
 
+      {workerAttentionJobs.length > 0 && (
+        <div style={{ marginBottom: 12, display: "grid", gap: 8 }}>
+          {workerAttentionJobs.map((job) => (
+            <div
+              key={`mobile-attention-${worker.id}-${job.id}`}
+              style={{
+                borderRadius: 14,
+                border: "1px solid #fecaca",
+                background: "#fff1f2",
+                padding: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: "#9f1239",
+                  marginBottom: 4,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
+                ⚠️ {titleCase(job.customerName) || "No customer"} — {titleCase(job.title) || "General"}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#7f1d1d",
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
+                {job.schedulingAttentionReason || "Needs scheduling attention"}
+                {job.schedulingLastAttemptAt
+                  ? ` • Last tried ${formatDateTime(job.schedulingLastAttemptAt)}`
+                  : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {sortedBlocks.length > 0 && (
         <div style={{ marginBottom: 12, display: "grid", gap: 8 }}>
           {sortedBlocks.map((block) => {
@@ -1141,13 +1196,15 @@ function MobileWorkerCard({
                     flexWrap: "wrap",
                   }}
                 >
-                  <div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
                     <div
                       style={{
                         fontSize: 13,
                         fontWeight: 800,
                         color: blockColor.text,
                         marginBottom: 4,
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
                       }}
                     >
                       {block.title}
@@ -1176,6 +1233,8 @@ function MobileWorkerCard({
                       fontSize: 12,
                       color: blockColor.text,
                       opacity: 0.9,
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
                     }}
                   >
                     {block.notes}
@@ -1205,6 +1264,7 @@ function MobileWorkerCard({
                         padding: "10px 12px",
                         cursor: isBusy ? "default" : "pointer",
                         opacity: isBusy ? 0.7 : 1,
+                        minHeight: 44,
                       }}
                     >
                       {isBusy ? "Working..." : "Approve"}
@@ -1224,6 +1284,7 @@ function MobileWorkerCard({
                         padding: "10px 12px",
                         cursor: isBusy ? "default" : "pointer",
                         opacity: isBusy ? 0.7 : 1,
+                        minHeight: 44,
                       }}
                     >
                       {isBusy ? "Working..." : "Decline"}
@@ -1233,44 +1294,6 @@ function MobileWorkerCard({
               </div>
             );
           })}
-        </div>
-      )}
-
-      {workerAttentionJobs.length > 0 && (
-        <div style={{ marginBottom: 12, display: "grid", gap: 8 }}>
-          {workerAttentionJobs.map((job) => (
-            <div
-              key={`mobile-attention-${worker.id}-${job.id}`}
-              style={{
-                borderRadius: 14,
-                border: "1px solid #fecaca",
-                background: "#fff1f2",
-                padding: 12,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 800,
-                  color: "#9f1239",
-                  marginBottom: 4,
-                }}
-              >
-                ⚠️ {titleCase(job.customerName) || "No customer"} — {titleCase(job.title) || "General"}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#7f1d1d",
-                }}
-              >
-                {job.schedulingAttentionReason || "Needs scheduling attention"}
-                {job.schedulingLastAttemptAt
-                  ? ` • Last tried ${formatDateTime(job.schedulingLastAttemptAt)}`
-                  : ""}
-              </div>
-            </div>
-          ))}
         </div>
       )}
 
@@ -1401,6 +1424,8 @@ function MobileWorkerCard({
                       lineHeight: 1.2,
                       marginBottom: 6,
                       color: "#18181b",
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
                     }}
                   >
                     {cleanCustomer}
@@ -1411,6 +1436,8 @@ function MobileWorkerCard({
                       fontSize: 13,
                       color: "#3f3f46",
                       marginBottom: 4,
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
                     }}
                   >
                     {cleanTitle}
@@ -1420,6 +1447,8 @@ function MobileWorkerCard({
                     style={{
                       fontSize: 13,
                       color: "#52525b",
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
                     }}
                   >
                     {displayAddress || "No address"}
@@ -1434,6 +1463,8 @@ function MobileWorkerCard({
                         fontSize: 12,
                         fontWeight: 700,
                         color: "#9f1239",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
                       }}
                     >
                       ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
@@ -1811,7 +1842,7 @@ export default function SchedulePage() {
         style={{
           maxWidth: 1440,
           margin: "0 auto",
-          padding: isMobile ? 12 : 24,
+          padding: isMobile ? 10 : 24,
         }}
       >
         <TimeOffAlert />
@@ -1819,7 +1850,7 @@ export default function SchedulePage() {
         {feedbackMessage && (
           <section
             style={{
-              marginBottom: 16,
+              marginBottom: 12,
               borderRadius: 16,
               border:
                 feedbackMessage.tone === "success"
@@ -1833,7 +1864,7 @@ export default function SchedulePage() {
                   : feedbackMessage.tone === "error"
                     ? "#fff1f2"
                     : "#eff6ff",
-              padding: 14,
+              padding: 12,
               boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
             }}
           >
@@ -1845,7 +1876,7 @@ export default function SchedulePage() {
                 alignItems: "start",
               }}
             >
-              <div>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{
                     fontSize: 14,
@@ -1871,6 +1902,8 @@ export default function SchedulePage() {
                           ? "#9f1239"
                           : "#1e40af",
                     lineHeight: 1.45,
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
                   }}
                 >
                   {feedbackMessage.text}
@@ -1901,18 +1934,18 @@ export default function SchedulePage() {
         <section
           style={{
             overflow: "hidden",
-            borderRadius: isMobile ? 18 : 24,
+            borderRadius: isMobile ? 16 : 24,
             border: "1px solid #e5e7eb",
             background: "#fff",
             boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-            marginBottom: 16,
+            marginBottom: 12,
           }}
         >
           <div
             style={{
               background: "#18181b",
               color: "#fff",
-              padding: isMobile ? 16 : 24,
+              padding: isMobile ? 12 : 24,
             }}
           >
             <div
@@ -1920,7 +1953,7 @@ export default function SchedulePage() {
                 display: "flex",
                 flexDirection: isMobile ? "column" : "row",
                 justifyContent: "space-between",
-                gap: 16,
+                gap: 12,
                 flexWrap: "wrap",
                 alignItems: isMobile ? "stretch" : "end",
               }}
@@ -1928,12 +1961,12 @@ export default function SchedulePage() {
               <div>
                 <div
                   style={{
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: 900,
                     letterSpacing: "0.18em",
                     textTransform: "uppercase",
                     color: "#facc15",
-                    marginBottom: 8,
+                    marginBottom: 6,
                   }}
                 >
                   Furlads Scheduler
@@ -1941,13 +1974,13 @@ export default function SchedulePage() {
 
                 <h1
                   style={{
-                    fontSize: isMobile ? 28 : 34,
-                    lineHeight: 1.1,
+                    fontSize: isMobile ? 24 : 34,
+                    lineHeight: 1.08,
                     margin: 0,
-                    marginBottom: 10,
+                    marginBottom: 8,
                   }}
                 >
-                  {isMobile ? "Mobile Schedule" : "Schedule Board"}
+                  {isMobile ? "Today’s schedule" : "Schedule Board"}
                 </h1>
 
                 <p
@@ -1955,12 +1988,12 @@ export default function SchedulePage() {
                     margin: 0,
                     maxWidth: 760,
                     color: "#d4d4d8",
-                    fontSize: isMobile ? 14 : 15,
-                    lineHeight: 1.45,
+                    fontSize: isMobile ? 13 : 15,
+                    lineHeight: 1.4,
                   }}
                 >
                   {isMobile
-                    ? "Quick mobile control for the day. Check each worker, blocked time and jobs waiting to be placed."
+                    ? "Quick control for the day. Check workers, blocked time and jobs still waiting to be placed."
                     : "Office control for the day. See worker timelines, scheduled work and everything still waiting to be placed into the diary."}
                 </p>
               </div>
@@ -1969,7 +2002,7 @@ export default function SchedulePage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns: isMobile ? "1fr" : "repeat(3, auto)",
-                  gap: 10,
+                  gap: 8,
                   width: isMobile ? "100%" : "auto",
                 }}
               >
@@ -2008,17 +2041,17 @@ export default function SchedulePage() {
             style={{
               borderTop: "1px solid #e5e7eb",
               background: "#fafafa",
-              padding: isMobile ? 12 : 16,
+              padding: isMobile ? 10 : 16,
               display: "flex",
               flexDirection: "column",
-              gap: 12,
+              gap: 10,
             }}
           >
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: isMobile ? "1fr 1fr" : "auto auto auto auto",
-                gap: 10,
+                gap: 8,
                 alignItems: "center",
               }}
             >
@@ -2068,11 +2101,11 @@ export default function SchedulePage() {
 
             <div
               style={{
-                fontSize: 13,
+                fontSize: 12,
                 color: "#52525b",
                 display: "flex",
                 flexDirection: isMobile ? "column" : "row",
-                gap: 8,
+                gap: 6,
                 flexWrap: "wrap",
               }}
             >
@@ -2095,31 +2128,31 @@ export default function SchedulePage() {
             gridTemplateColumns: isMobile
               ? "repeat(2, minmax(0, 1fr))"
               : "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 12,
-            marginBottom: 16,
+            gap: isMobile ? 8 : 12,
+            marginBottom: 14,
           }}
         >
-          <StatCard label="Active workers" value={workers.length} compact={isMobile} />
-          <StatCard label="Scheduled jobs" value={scheduledJobCount} compact={isMobile} />
+          <StatCard label="Workers" value={workers.length} compact={isMobile} />
+          <StatCard label="Jobs" value={scheduledJobCount} compact={isMobile} />
           <StatCard
-            label="Scheduled hours"
+            label="Hours"
             value={`${(totalScheduledMinutes / 60).toFixed(1)}h`}
             compact={isMobile}
           />
           <StatCard
-            label="Blocked periods"
+            label="Blocked"
             value={totalAvailabilityBlocks}
             accent="#7c3aed"
             compact={isMobile}
           />
           <StatCard
-            label="Needs attention"
+            label="Attention"
             value={attentionJobs.length}
             accent={attentionJobs.length > 0 ? "#b91c1c" : "#166534"}
             compact={isMobile}
           />
           <StatCard
-            label="Needs scheduling"
+            label="Waiting"
             value={unscheduledJobs.length}
             accent="#b45309"
             compact={isMobile}
@@ -2156,21 +2189,21 @@ export default function SchedulePage() {
                   justifyContent: "space-between",
                   gap: 12,
                   flexWrap: "wrap",
-                  marginBottom: 12,
+                  marginBottom: 10,
                   flexDirection: isMobile ? "column" : "row",
                 }}
               >
                 <div>
-                  <h2 style={{ margin: 0, fontSize: isMobile ? 20 : 22 }}>
+                  <h2 style={{ margin: 0, fontSize: isMobile ? 19 : 22 }}>
                     {isMobile ? "Worker day cards" : "Worker timelines"}
                   </h2>
-                  <div style={{ marginTop: 4, color: "#71717a", fontSize: 14 }}>
+                  <div style={{ marginTop: 4, color: "#71717a", fontSize: 13 }}>
                     Scheduled work for {formatDate(scheduleData?.date ?? date)}
                   </div>
                 </div>
               </div>
 
-              <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ display: "grid", gap: 14 }}>
                 {workers.length === 0 && (
                   <div style={messageCard()}>
                     No active workers found.
@@ -2535,7 +2568,7 @@ export default function SchedulePage() {
                 border: "1px solid #e5e7eb",
                 borderRadius: isMobile ? 16 : 18,
                 background: "#fff",
-                padding: isMobile ? 14 : 18,
+                padding: isMobile ? 12 : 18,
                 boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
               }}
             >
@@ -2659,6 +2692,8 @@ export default function SchedulePage() {
                               fontWeight: 800,
                               marginBottom: 4,
                               fontSize: 16,
+                              overflowWrap: "anywhere",
+                              wordBreak: "break-word",
                             }}
                           >
                             {titleCase(job.customer?.name) || "No customer"} —{" "}
@@ -2670,6 +2705,8 @@ export default function SchedulePage() {
                               color: "#52525b",
                               fontSize: 14,
                               marginBottom: 6,
+                              overflowWrap: "anywhere",
+                              wordBreak: "break-word",
                             }}
                           >
                             {titleCase(job.address) || "No address"}
@@ -2680,6 +2717,8 @@ export default function SchedulePage() {
                             style={{
                               color: "#71717a",
                               fontSize: 13,
+                              overflowWrap: "anywhere",
+                              wordBreak: "break-word",
                             }}
                           >
                             Expected: {job.durationMinutes ?? 60} mins • Assigned:{" "}
@@ -2693,6 +2732,8 @@ export default function SchedulePage() {
                                 fontSize: 12,
                                 fontWeight: 700,
                                 color: "#9f1239",
+                                overflowWrap: "anywhere",
+                                wordBreak: "break-word",
                               }}
                             >
                               ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
@@ -2770,6 +2811,9 @@ export default function SchedulePage() {
             style={{
               width: "100%",
               maxWidth: 560,
+              maxHeight: isMobile ? "88vh" : "calc(100vh - 32px)",
+              overflowY: "auto",
+              WebkitOverflowScrolling: "touch",
               background: "#fff",
               borderRadius: isMobile ? "22px 22px 0 0" : 22,
               border: "1px solid #e5e7eb",
@@ -2787,7 +2831,7 @@ export default function SchedulePage() {
                 marginBottom: 14,
               }}
             >
-              <div>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{
                     fontSize: 12,
@@ -2810,6 +2854,8 @@ export default function SchedulePage() {
                     fontSize: 22,
                     lineHeight: 1.15,
                     color: "#18181b",
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
                   }}
                 >
                   {timeOffDecisionSheet.block.title}
@@ -2821,6 +2867,8 @@ export default function SchedulePage() {
                     fontSize: 14,
                     color: "#52525b",
                     lineHeight: 1.45,
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
                   }}
                 >
                   {formatBlockTimeRange(timeOffDecisionSheet.block)}
@@ -2906,6 +2954,10 @@ export default function SchedulePage() {
 
             <div
               style={{
+                position: "sticky",
+                bottom: -18,
+                background: "#fff",
+                paddingTop: 8,
                 display: "grid",
                 gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                 gap: 10,
@@ -2978,18 +3030,18 @@ function StatCard({
         border: "1px solid #e5e7eb",
         borderRadius: compact ? 14 : 16,
         background: "#fff",
-        padding: compact ? 14 : 16,
+        padding: compact ? 12 : 16,
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
       <div
         style={{
-          fontSize: compact ? 11 : 12,
+          fontSize: compact ? 10 : 12,
           fontWeight: 800,
           textTransform: "uppercase",
           letterSpacing: "0.06em",
           color: "#71717a",
-          marginBottom: 8,
+          marginBottom: compact ? 6 : 8,
         }}
       >
         {label}
@@ -2997,7 +3049,7 @@ function StatCard({
 
       <div
         style={{
-          fontSize: compact ? 24 : 28,
+          fontSize: compact ? 22 : 28,
           fontWeight: 900,
           color: accent || "#18181b",
           lineHeight: 1.05,
