@@ -909,7 +909,7 @@ function WorkerTimeline({
         );
       })}
 
-      {timeline.jobs.map((job) => {
+            {timeline.jobs.map((job) => {
         const left = getTimelineLeft(job.startMinutes);
         const width = getTimelineWidth(job.startMinutes, job.endMinutes);
         const top = 38 + job.lane * laneHeight;
@@ -917,8 +917,9 @@ function WorkerTimeline({
         const offHours = isOffHours(job);
 
         return (
-          <div
+          <Link
             key={job.id}
+            href={`/jobs/${job.id}?back=/admin/schedule`}
             title={`${job.startTime ?? "TBD"} • ${job.title} • ${job.customerName} • ${
               job.postcode ?? ""
             }${
@@ -939,71 +940,38 @@ function WorkerTimeline({
               overflow: "hidden",
               fontSize: 12,
               boxSizing: "border-box",
+              textDecoration: "none",
               color: "#18181b",
               boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
               zIndex: 2,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
             }}
           >
-            <Link
-              href={`/jobs/${job.id}?back=/admin/schedule`}
+            <div
               style={{
-                minWidth: 0,
-                flex: 1,
-                textDecoration: "none",
-                color: "inherit",
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: 800,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  marginBottom: 2,
-                }}
-              >
-                {job.startTime ?? "TBD"} • {titleCase(job.customerName) || "No customer"}
-              </div>
-
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#52525b",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {job.postcode ?? "No postcode"} • {job.durationMinutes ?? 60}m
-                {offHours ? " • Off-hours" : ""}
-                {job.needsSchedulingAttention ? " • Attention" : ""}
-              </div>
-            </Link>
-
-            <button
-              type="button"
-              onClick={() => onOpenMoveJob(job, worker)}
-              disabled={movingJobId === job.id}
-              style={{
-                borderRadius: 8,
-                border: "1px solid #d4d4d8",
-                background: "#fff",
-                color: "#18181b",
-                fontSize: 11,
                 fontWeight: 800,
-                padding: "6px 8px",
-                cursor: movingJobId === job.id ? "default" : "pointer",
-                opacity: movingJobId === job.id ? 0.7 : 1,
-                flexShrink: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                marginBottom: 2,
               }}
             >
-              {movingJobId === job.id ? "Moving..." : "Move"}
-            </button>
-          </div>
+              {job.startTime ?? "TBD"} • {titleCase(job.customerName) || "No customer"}
+            </div>
+
+            <div
+              style={{
+                fontSize: 11,
+                color: "#52525b",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {job.postcode ?? "No postcode"} • {job.durationMinutes ?? 60}m
+              {offHours ? " • Off-hours" : ""}
+              {job.needsSchedulingAttention ? " • Attention" : ""}
+            </div>
+          </Link>
         );
       })}
 
@@ -1044,28 +1012,16 @@ function WorkerTimeline({
   );
 }
 
-function MobileWorkerCard({
+function WorkerTimeline({
   worker,
-  remainingMinutes,
-  workerAttentionJobs,
-  refittingWorkerId,
   busyTimeOffId,
-  movingJobId,
-  onRefitWorkerDay,
   onApproveTimeOff,
   onDeclineTimeOff,
-  onOpenMoveJob,
 }: {
   worker: ScheduleWorker;
-  remainingMinutes: number;
-  workerAttentionJobs: ScheduleJob[];
-  refittingWorkerId: number | null;
   busyTimeOffId: number | null;
-  movingJobId: number | null;
-  onRefitWorkerDay: (workerId: number) => void;
   onApproveTimeOff: (block: ScheduleAvailabilityBlock) => void;
   onDeclineTimeOff: (block: ScheduleAvailabilityBlock) => void;
-  onOpenMoveJob: (job: ScheduleJob, worker: ScheduleWorker) => void;
 }) {
   const sortedJobs = [...worker.jobs].sort(sortWorkerJobs);
   const sortedBlocks = [...(worker.availabilityBlocks ?? [])].sort(sortAvailabilityBlocks);
@@ -2439,13 +2395,11 @@ export default function SchedulePage() {
                         </div>
                       </div>
 
-                                            <WorkerTimeline
+                      <WorkerTimeline
                         worker={worker}
                         busyTimeOffId={busyTimeOffId}
-                        movingJobId={movingJobId}
                         onApproveTimeOff={openApproveTimeOff}
                         onDeclineTimeOff={openDeclineTimeOff}
-                        onOpenMoveJob={openMoveJob}
                       />
 
                       {(worker.availabilityBlocks?.length ?? 0) > 0 && (
