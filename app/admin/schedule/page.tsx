@@ -176,7 +176,8 @@ function formatJobType(jobType: string) {
 }
 
 function formatRemaining(minutes: number) {
-  if (minutes <= 30) return "FULL";
+  if (minutes <= 0) return "FULL";
+  if (minutes < 30) return "<30m free";
 
   const safe = Math.max(0, minutes);
   const hours = Math.floor(safe / 60);
@@ -1045,16 +1046,37 @@ function MobileWorkerCard({
               flexWrap: "wrap",
             }}
           >
-            <span style={{ ...pillBase(), background: "#f4f4f5", color: "#3f3f46", border: "1px solid #e4e4e7" }}>
+            <span
+              style={{
+                ...pillBase(),
+                background: "#f4f4f5",
+                color: "#3f3f46",
+                border: "1px solid #e4e4e7",
+              }}
+            >
               {worker.jobs.length} job{worker.jobs.length === 1 ? "" : "s"}
             </span>
 
-            <span style={{ ...pillBase(), background: "#ecfeff", color: "#155e75", border: "1px solid #a5f3fc" }}>
+            <span
+              style={{
+                ...pillBase(),
+                background: "#ecfeff",
+                color: "#155e75",
+                border: "1px solid #a5f3fc",
+              }}
+            >
               {formatRemaining(remainingMinutes)}
             </span>
 
             {(worker.availabilityBlocks?.length ?? 0) > 0 && (
-              <span style={{ ...pillBase(), background: "#f5f3ff", color: "#6d28d9", border: "1px solid #ddd6fe" }}>
+              <span
+                style={{
+                  ...pillBase(),
+                  background: "#f5f3ff",
+                  color: "#6d28d9",
+                  border: "1px solid #ddd6fe",
+                }}
+              >
                 {worker.availabilityBlocks.length} blocked
               </span>
             )}
@@ -1819,11 +1841,17 @@ export default function SchedulePage() {
                   width: isMobile ? "100%" : "auto",
                 }}
               >
-                <Link href="/admin" style={{ ...headerSecondaryButton(), width: isMobile ? "100%" : "auto" }}>
+                <Link
+                  href="/admin"
+                  style={{ ...headerSecondaryButton(), width: isMobile ? "100%" : "auto" }}
+                >
                   Back to Dashboard
                 </Link>
 
-                <Link href="/jobs" style={{ ...headerSecondaryButton(), width: isMobile ? "100%" : "auto" }}>
+                <Link
+                  href="/jobs"
+                  style={{ ...headerSecondaryButton(), width: isMobile ? "100%" : "auto" }}
+                >
                   Open Jobs
                 </Link>
 
@@ -2023,8 +2051,13 @@ export default function SchedulePage() {
                     0
                   );
 
+                  const breakMinutes = scheduledMinutes >= 360 ? 20 : 0;
+                  const bufferMinutes = Math.round(scheduledMinutes * 0.15);
+                  const realisticUsedMinutes =
+                    scheduledMinutes + breakMinutes + bufferMinutes;
+
                   const remainingMinutes =
-                    DAY_END_MINUTES - WORK_START_MINUTES - scheduledMinutes;
+                    DAY_END_MINUTES - WORK_START_MINUTES - realisticUsedMinutes;
 
                   const workerAttentionJobs = worker.jobs.filter(
                     (job) => job.needsSchedulingAttention
@@ -2562,11 +2595,17 @@ export default function SchedulePage() {
                             </button>
                           )}
 
-                          <Link href={`/jobs/${job.id}?back=/admin/schedule`} style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}>
+                          <Link
+                            href={`/jobs/${job.id}?back=/admin/schedule`}
+                            style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}
+                          >
                             Open job
                           </Link>
 
-                          <Link href={`/jobs/edit/${job.id}`} style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}>
+                          <Link
+                            href={`/jobs/edit/${job.id}`}
+                            style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}
+                          >
                             Edit / place
                           </Link>
                         </div>
