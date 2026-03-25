@@ -1493,7 +1493,7 @@ function MobileWorkerCard({
 
                   <button
                     type="button"
-                    onClick={() => openMoveJob(job, worker)}
+                    onClick={() => onOpenMoveJob(job, worker)}
                     disabled={movingJobId === job.id}
                     style={{
                       ...smallPrimaryButton(),
