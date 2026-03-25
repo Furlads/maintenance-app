@@ -79,6 +79,8 @@ const PREP_START_MINUTES = 8 * 60 + 30;
 const WORK_START_MINUTES = 9 * 60;
 const DAY_END_MINUTES = 16 * 60 + 30;
 const TOTAL_DAY_MINUTES = DAY_END_MINUTES - PREP_START_MINUTES;
+const MOBILE_BREAKPOINT = 920;
+
 const TIMELINE_MARKERS = [
   { label: "08:30", minutes: PREP_START_MINUTES },
   { label: "09:00", minutes: WORK_START_MINUTES },
@@ -468,7 +470,11 @@ function getAvailabilityBlockColor(block: ScheduleAvailabilityBlock): {
     };
   }
 
-  if (title.includes("late start") || title.includes("early finish") || title.includes("appointment")) {
+  if (
+    title.includes("late start") ||
+    title.includes("early finish") ||
+    title.includes("appointment")
+  ) {
     return {
       background: "rgba(168, 85, 247, 0.12)",
       border: "#d8b4fe",
@@ -555,8 +561,12 @@ function sortWorkerJobs(a: ScheduleJob, b: ScheduleJob) {
 }
 
 function sortAvailabilityBlocks(a: ScheduleAvailabilityBlock, b: ScheduleAvailabilityBlock) {
-  const aStart = a.isFullDay ? PREP_START_MINUTES : parseTimeToMinutes(a.startTime) ?? PREP_START_MINUTES;
-  const bStart = b.isFullDay ? PREP_START_MINUTES : parseTimeToMinutes(b.startTime) ?? PREP_START_MINUTES;
+  const aStart = a.isFullDay
+    ? PREP_START_MINUTES
+    : parseTimeToMinutes(a.startTime) ?? PREP_START_MINUTES;
+  const bStart = b.isFullDay
+    ? PREP_START_MINUTES
+    : parseTimeToMinutes(b.startTime) ?? PREP_START_MINUTES;
 
   if (aStart !== bStart) return aStart - bStart;
   return a.id - b.id;
@@ -643,6 +653,22 @@ function getBlockStartMinutes(block: ScheduleAvailabilityBlock) {
 function getBlockEndMinutes(block: ScheduleAvailabilityBlock) {
   if (block.isFullDay) return DAY_END_MINUTES;
   return parseTimeToMinutes(block.endTime) ?? DAY_END_MINUTES;
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    function update() {
+      setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+    }
+
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  return isMobile;
 }
 
 function WorkerTimeline({
@@ -751,7 +777,9 @@ function WorkerTimeline({
         return (
           <div
             key={`block-${block.id}`}
-            title={`${block.title} • ${formatBlockTimeRange(block)}${block.notes ? ` • ${block.notes}` : ""}`}
+            title={`${block.title} • ${formatBlockTimeRange(block)}${
+              block.notes ? ` • ${block.notes}` : ""
+            }`}
             style={{
               position: "absolute",
               left: `${left}%`,
@@ -874,7 +902,11 @@ function WorkerTimeline({
             href={`/jobs/${job.id}?back=/admin/schedule`}
             title={`${job.startTime ?? "TBD"} • ${job.title} • ${job.customerName} • ${
               job.postcode ?? ""
-            }${job.needsSchedulingAttention && job.schedulingAttentionReason ? ` • ${job.schedulingAttentionReason}` : ""}`}
+            }${
+              job.needsSchedulingAttention && job.schedulingAttentionReason
+                ? ` • ${job.schedulingAttentionReason}`
+                : ""
+            }`}
             style={{
               position: "absolute",
               left: `${left}%`,
@@ -938,11 +970,8 @@ function WorkerTimeline({
             zIndex: 2,
           }}
         >
-          {
-            sortedJobs.filter((job) => parseTimeToMinutes(job.startTime) === null)
-              .length
-          }{" "}
-          without a time
+          {sortedJobs.filter((job) => parseTimeToMinutes(job.startTime) === null).length} without a
+          time
         </div>
       )}
 
@@ -963,6 +992,430 @@ function WorkerTimeline({
   );
 }
 
+function MobileWorkerCard({
+  worker,
+  remainingMinutes,
+  workerAttentionJobs,
+  refittingWorkerId,
+  busyTimeOffId,
+  onRefitWorkerDay,
+  onApproveTimeOff,
+  onDeclineTimeOff,
+}: {
+  worker: ScheduleWorker;
+  remainingMinutes: number;
+  workerAttentionJobs: ScheduleJob[];
+  refittingWorkerId: number | null;
+  busyTimeOffId: number | null;
+  onRefitWorkerDay: (workerId: number) => void;
+  onApproveTimeOff: (block: ScheduleAvailabilityBlock) => void;
+  onDeclineTimeOff: (block: ScheduleAvailabilityBlock) => void;
+}) {
+  const sortedJobs = [...worker.jobs].sort(sortWorkerJobs);
+  const sortedBlocks = [...(worker.availabilityBlocks ?? [])].sort(sortAvailabilityBlocks);
+
+  return (
+    <div style={mobileWorkerCard()}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "start",
+          gap: 12,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: 20,
+              lineHeight: 1.15,
+              color: "#18181b",
+            }}
+          >
+            {worker.name}
+          </h3>
+
+          <div
+            style={{
+              marginTop: 6,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <span style={{ ...pillBase(), background: "#f4f4f5", color: "#3f3f46", border: "1px solid #e4e4e7" }}>
+              {worker.jobs.length} job{worker.jobs.length === 1 ? "" : "s"}
+            </span>
+
+            <span style={{ ...pillBase(), background: "#ecfeff", color: "#155e75", border: "1px solid #a5f3fc" }}>
+              {formatRemaining(remainingMinutes)}
+            </span>
+
+            {(worker.availabilityBlocks?.length ?? 0) > 0 && (
+              <span style={{ ...pillBase(), background: "#f5f3ff", color: "#6d28d9", border: "1px solid #ddd6fe" }}>
+                {worker.availabilityBlocks.length} blocked
+              </span>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onRefitWorkerDay(worker.id)}
+          disabled={refittingWorkerId === worker.id}
+          style={{
+            ...smallPrimaryButton(),
+            padding: "11px 12px",
+            fontSize: 12,
+            minWidth: 102,
+            cursor: refittingWorkerId === worker.id ? "default" : "pointer",
+            opacity: refittingWorkerId === worker.id ? 0.7 : 1,
+            flexShrink: 0,
+          }}
+        >
+          {refittingWorkerId === worker.id ? "Re-fitting..." : "Re-fit day"}
+        </button>
+      </div>
+
+      {sortedBlocks.length > 0 && (
+        <div style={{ marginBottom: 12, display: "grid", gap: 8 }}>
+          {sortedBlocks.map((block) => {
+            const blockColor = getAvailabilityBlockColor(block);
+            const isPendingRequest =
+              block.source === "time_off_request" &&
+              block.status === "pending" &&
+              typeof block.timeOffRequestId === "number";
+            const isBusy = busyTimeOffId === block.timeOffRequestId;
+
+            return (
+              <div
+                key={`mobile-block-${worker.id}-${block.id}`}
+                style={{
+                  borderRadius: 14,
+                  border: `1px solid ${blockColor.border}`,
+                  background: blockColor.background,
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    alignItems: "start",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 800,
+                        color: blockColor.text,
+                        marginBottom: 4,
+                      }}
+                    >
+                      {block.title}
+                    </div>
+                    <div style={{ fontSize: 12, color: blockColor.text, opacity: 0.9 }}>
+                      {formatBlockTimeRange(block)}
+                    </div>
+                  </div>
+
+                  <span
+                    style={{
+                      ...pillBase(),
+                      ...getBlockStatusBadgeStyle(block.status),
+                      fontSize: 10,
+                      padding: "4px 8px",
+                    }}
+                  >
+                    {block.status}
+                  </span>
+                </div>
+
+                {block.notes && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      color: blockColor.text,
+                      opacity: 0.9,
+                    }}
+                  >
+                    {block.notes}
+                  </div>
+                )}
+
+                {isPendingRequest && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 8,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onApproveTimeOff(block)}
+                      disabled={isBusy}
+                      style={{
+                        borderRadius: 10,
+                        border: "1px solid #166534",
+                        background: "#166534",
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        padding: "10px 12px",
+                        cursor: isBusy ? "default" : "pointer",
+                        opacity: isBusy ? 0.7 : 1,
+                      }}
+                    >
+                      {isBusy ? "Working..." : "Approve"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onDeclineTimeOff(block)}
+                      disabled={isBusy}
+                      style={{
+                        borderRadius: 10,
+                        border: "1px solid #b91c1c",
+                        background: "#fff",
+                        color: "#b91c1c",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        padding: "10px 12px",
+                        cursor: isBusy ? "default" : "pointer",
+                        opacity: isBusy ? 0.7 : 1,
+                      }}
+                    >
+                      {isBusy ? "Working..." : "Decline"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {workerAttentionJobs.length > 0 && (
+        <div style={{ marginBottom: 12, display: "grid", gap: 8 }}>
+          {workerAttentionJobs.map((job) => (
+            <div
+              key={`mobile-attention-${worker.id}-${job.id}`}
+              style={{
+                borderRadius: 14,
+                border: "1px solid #fecaca",
+                background: "#fff1f2",
+                padding: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: "#9f1239",
+                  marginBottom: 4,
+                }}
+              >
+                ⚠️ {titleCase(job.customerName) || "No customer"} — {titleCase(job.title) || "General"}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#7f1d1d",
+                }}
+              >
+                {job.schedulingAttentionReason || "Needs scheduling attention"}
+                {job.schedulingLastAttemptAt
+                  ? ` • Last tried ${formatDateTime(job.schedulingLastAttemptAt)}`
+                  : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {sortedJobs.length === 0 ? (
+        <div
+          style={{
+            borderRadius: 14,
+            border: "1px dashed #d4d4d8",
+            background: "#fafafa",
+            padding: 14,
+            color: "#71717a",
+            fontSize: 13,
+          }}
+        >
+          No jobs scheduled for this worker.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {sortedJobs.map((job) => {
+            const displayAddress = getDisplayAddress(job);
+            const cleanCustomer = titleCase(job.customerName) || "No customer";
+            const cleanTitle = titleCase(job.title) || "General";
+            const postcode = normaliseDisplayText(job.postcode);
+            const offHours = isOffHours(job);
+
+            return (
+              <Link
+                key={`mobile-job-${worker.id}-${job.id}`}
+                href={`/jobs/${job.id}?back=/admin/schedule`}
+                style={{
+                  textDecoration: "none",
+                  color: "inherit",
+                }}
+              >
+                <div
+                  style={{
+                    ...jobRowCard(),
+                    background: offHours
+                      ? "#fff7f7"
+                      : job.needsSchedulingAttention
+                        ? "#fff7f7"
+                        : "#fafafa",
+                    border: offHours
+                      ? "1px solid #fecaca"
+                      : job.needsSchedulingAttention
+                        ? "1px solid #fecaca"
+                        : "1px solid #e5e7eb",
+                    padding: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span
+                        style={{
+                          ...pillBase(),
+                          ...getJobTypeBadgeStyle(job.jobType),
+                        }}
+                      >
+                        {formatJobType(job.jobType)}
+                      </span>
+
+                      <span
+                        style={{
+                          ...pillBase(),
+                          ...getStatusBadgeStyle(job.status),
+                        }}
+                      >
+                        {formatStatus(job.status)}
+                      </span>
+
+                      {job.needsSchedulingAttention && (
+                        <span
+                          style={{
+                            ...pillBase(),
+                            background: "#fff1f2",
+                            color: "#9f1239",
+                            border: "1px solid #fecaca",
+                          }}
+                        >
+                          Needs attention
+                        </span>
+                      )}
+
+                      {offHours && (
+                        <span
+                          style={{
+                            ...pillBase(),
+                            background: "#fee2e2",
+                            color: "#991b1b",
+                            border: "1px solid #fecaca",
+                          }}
+                        >
+                          Off-hours
+                        </span>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        fontWeight: 900,
+                        fontSize: 14,
+                        color: "#18181b",
+                      }}
+                    >
+                      {formatTimeRange(job.startTime, job.durationMinutes)}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      fontSize: 16,
+                      lineHeight: 1.2,
+                      marginBottom: 6,
+                      color: "#18181b",
+                    }}
+                  >
+                    {cleanCustomer}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#3f3f46",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {cleanTitle}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#52525b",
+                    }}
+                  >
+                    {displayAddress || "No address"}
+                    {postcode ? ` • ${postcode}` : ""}
+                    {` • ${job.durationMinutes ?? 60} mins`}
+                  </div>
+
+                  {job.needsSchedulingAttention && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#9f1239",
+                      }}
+                    >
+                      ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
+                    </div>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SchedulePage() {
   const [date, setDate] = useState(getTodayDateString());
   const [scheduleData, setScheduleData] = useState<ScheduleResponse | null>(null);
@@ -974,6 +1427,8 @@ export default function SchedulePage() {
   const [refittingWorkerId, setRefittingWorkerId] = useState<number | null>(null);
   const [busyTimeOffId, setBusyTimeOffId] = useState<number | null>(null);
   const [error, setError] = useState("");
+
+  const isMobile = useIsMobile();
 
   const workers = useMemo(() => {
     return (scheduleData?.workers ?? []).map((worker) => ({
@@ -1284,7 +1739,7 @@ export default function SchedulePage() {
         style={{
           maxWidth: 1440,
           margin: "0 auto",
-          padding: 24,
+          padding: isMobile ? 12 : 24,
         }}
       >
         <TimeOffAlert />
@@ -1292,27 +1747,28 @@ export default function SchedulePage() {
         <section
           style={{
             overflow: "hidden",
-            borderRadius: 24,
+            borderRadius: isMobile ? 18 : 24,
             border: "1px solid #e5e7eb",
             background: "#fff",
             boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-            marginBottom: 20,
+            marginBottom: 16,
           }}
         >
           <div
             style={{
               background: "#18181b",
               color: "#fff",
-              padding: 24,
+              padding: isMobile ? 16 : 24,
             }}
           >
             <div
               style={{
                 display: "flex",
+                flexDirection: isMobile ? "column" : "row",
                 justifyContent: "space-between",
                 gap: 16,
                 flexWrap: "wrap",
-                alignItems: "end",
+                alignItems: isMobile ? "stretch" : "end",
               }}
             >
               <div>
@@ -1331,13 +1787,13 @@ export default function SchedulePage() {
 
                 <h1
                   style={{
-                    fontSize: 34,
+                    fontSize: isMobile ? 28 : 34,
                     lineHeight: 1.1,
                     margin: 0,
                     marginBottom: 10,
                   }}
                 >
-                  Schedule Board
+                  {isMobile ? "Mobile Schedule" : "Schedule Board"}
                 </h1>
 
                 <p
@@ -1345,26 +1801,29 @@ export default function SchedulePage() {
                     margin: 0,
                     maxWidth: 760,
                     color: "#d4d4d8",
-                    fontSize: 15,
+                    fontSize: isMobile ? 14 : 15,
+                    lineHeight: 1.45,
                   }}
                 >
-                  Office control for the day. See worker timelines, scheduled
-                  work and everything still waiting to be placed into the diary.
+                  {isMobile
+                    ? "Quick mobile control for the day. Check each worker, blocked time and jobs waiting to be placed."
+                    : "Office control for the day. See worker timelines, scheduled work and everything still waiting to be placed into the diary."}
                 </p>
               </div>
 
               <div
                 style={{
-                  display: "flex",
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, auto)",
                   gap: 10,
-                  flexWrap: "wrap",
+                  width: isMobile ? "100%" : "auto",
                 }}
               >
-                <Link href="/admin" style={headerSecondaryButton()}>
+                <Link href="/admin" style={{ ...headerSecondaryButton(), width: isMobile ? "100%" : "auto" }}>
                   Back to Dashboard
                 </Link>
 
-                <Link href="/jobs" style={headerSecondaryButton()}>
+                <Link href="/jobs" style={{ ...headerSecondaryButton(), width: isMobile ? "100%" : "auto" }}>
                   Open Jobs
                 </Link>
 
@@ -1374,6 +1833,7 @@ export default function SchedulePage() {
                   disabled={runningScheduler}
                   style={{
                     ...headerPrimaryButton(),
+                    width: isMobile ? "100%" : "auto",
                     opacity: runningScheduler ? 0.7 : 1,
                     cursor: runningScheduler ? "default" : "pointer",
                   }}
@@ -1388,25 +1848,28 @@ export default function SchedulePage() {
             style={{
               borderTop: "1px solid #e5e7eb",
               background: "#fafafa",
-              padding: 16,
+              padding: isMobile ? 12 : 16,
               display: "flex",
+              flexDirection: "column",
               gap: 12,
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
             }}
           >
             <div
               style={{
-                display: "flex",
-                gap: 12,
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr 1fr" : "auto auto auto auto",
+                gap: 10,
                 alignItems: "center",
-                flexWrap: "wrap",
               }}
             >
               <label
                 htmlFor="schedule-date"
-                style={{ fontSize: 14, fontWeight: 700, color: "#27272a" }}
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "#27272a",
+                  gridColumn: isMobile ? "1 / -1" : "auto",
+                }}
               >
                 Date
               </label>
@@ -1416,13 +1879,13 @@ export default function SchedulePage() {
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                style={inputStyle()}
+                style={{ ...inputStyle(), width: "100%" }}
               />
 
               <button
                 type="button"
                 onClick={() => setDate(getTodayDateString())}
-                style={toolbarButton()}
+                style={{ ...toolbarButton(), width: "100%" }}
               >
                 Today
               </button>
@@ -1433,6 +1896,8 @@ export default function SchedulePage() {
                 disabled={refreshing}
                 style={{
                   ...toolbarButton(),
+                  width: isMobile ? "100%" : "auto",
+                  gridColumn: isMobile ? "1 / -1" : "auto",
                   opacity: refreshing ? 0.7 : 1,
                   cursor: refreshing ? "default" : "pointer",
                 }}
@@ -1446,7 +1911,8 @@ export default function SchedulePage() {
                 fontSize: 13,
                 color: "#52525b",
                 display: "flex",
-                gap: 14,
+                flexDirection: isMobile ? "column" : "row",
+                gap: 8,
                 flexWrap: "wrap",
               }}
             >
@@ -1466,31 +1932,37 @@ export default function SchedulePage() {
         <section
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gridTemplateColumns: isMobile
+              ? "repeat(2, minmax(0, 1fr))"
+              : "repeat(auto-fit, minmax(180px, 1fr))",
             gap: 12,
-            marginBottom: 20,
+            marginBottom: 16,
           }}
         >
-          <StatCard label="Active workers" value={workers.length} />
-          <StatCard label="Scheduled jobs" value={scheduledJobCount} />
+          <StatCard label="Active workers" value={workers.length} compact={isMobile} />
+          <StatCard label="Scheduled jobs" value={scheduledJobCount} compact={isMobile} />
           <StatCard
             label="Scheduled hours"
             value={`${(totalScheduledMinutes / 60).toFixed(1)}h`}
+            compact={isMobile}
           />
           <StatCard
             label="Blocked periods"
             value={totalAvailabilityBlocks}
             accent="#7c3aed"
+            compact={isMobile}
           />
           <StatCard
             label="Needs attention"
             value={attentionJobs.length}
             accent={attentionJobs.length > 0 ? "#b91c1c" : "#166534"}
+            compact={isMobile}
           />
           <StatCard
             label="Needs scheduling"
             value={unscheduledJobs.length}
             accent="#b45309"
+            compact={isMobile}
           />
         </section>
 
@@ -1516,19 +1988,22 @@ export default function SchedulePage() {
 
         {!loading && !error && (
           <>
-            <section style={{ marginBottom: 20 }}>
+            <section style={{ marginBottom: 16 }}>
               <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
+                  alignItems: isMobile ? "start" : "center",
                   justifyContent: "space-between",
                   gap: 12,
                   flexWrap: "wrap",
                   marginBottom: 12,
+                  flexDirection: isMobile ? "column" : "row",
                 }}
               >
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 22 }}>Worker timelines</h2>
+                  <h2 style={{ margin: 0, fontSize: isMobile ? 20 : 22 }}>
+                    {isMobile ? "Worker day cards" : "Worker timelines"}
+                  </h2>
                   <div style={{ marginTop: 4, color: "#71717a", fontSize: 14 }}>
                     Scheduled work for {formatDate(scheduleData?.date ?? date)}
                   </div>
@@ -1554,6 +2029,22 @@ export default function SchedulePage() {
                   const workerAttentionJobs = worker.jobs.filter(
                     (job) => job.needsSchedulingAttention
                   );
+
+                  if (isMobile) {
+                    return (
+                      <MobileWorkerCard
+                        key={worker.id}
+                        worker={worker}
+                        remainingMinutes={remainingMinutes}
+                        workerAttentionJobs={workerAttentionJobs}
+                        refittingWorkerId={refittingWorkerId}
+                        busyTimeOffId={busyTimeOffId}
+                        onRefitWorkerDay={handleRefitWorkerDay}
+                        onApproveTimeOff={handleApproveTimeOff}
+                        onDeclineTimeOff={handleDeclineTimeOff}
+                      />
+                    );
+                  }
 
                   return (
                     <div key={worker.id} style={workerCard()}>
@@ -1877,9 +2368,9 @@ export default function SchedulePage() {
             <section
               style={{
                 border: "1px solid #e5e7eb",
-                borderRadius: 18,
+                borderRadius: isMobile ? 16 : 18,
                 background: "#fff",
-                padding: 18,
+                padding: isMobile ? 14 : 18,
                 boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
               }}
             >
@@ -1889,12 +2380,13 @@ export default function SchedulePage() {
                   justifyContent: "space-between",
                   gap: 12,
                   flexWrap: "wrap",
-                  alignItems: "center",
+                  alignItems: isMobile ? "start" : "center",
+                  flexDirection: isMobile ? "column" : "row",
                   marginBottom: 14,
                 }}
               >
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 22 }}>
+                  <h2 style={{ margin: 0, fontSize: isMobile ? 20 : 22 }}>
                     Needs scheduling {attentionJobs.length > 0 && `⚠️ (${attentionJobs.length})`}
                   </h2>
                   <div
@@ -1942,6 +2434,7 @@ export default function SchedulePage() {
                           ? "1px solid #fecaca"
                           : "1px solid #e5e7eb",
                         background: job.needsSchedulingAttention ? "#fff7f7" : "#fafafa",
+                        padding: isMobile ? 12 : 14,
                       }}
                     >
                       <div
@@ -1951,9 +2444,10 @@ export default function SchedulePage() {
                           gap: 12,
                           flexWrap: "wrap",
                           alignItems: "start",
+                          flexDirection: isMobile ? "column" : "row",
                         }}
                       >
-                        <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ minWidth: 0, flex: 1, width: "100%" }}>
                           <div
                             style={{
                               display: "flex",
@@ -2046,9 +2540,10 @@ export default function SchedulePage() {
 
                         <div
                           style={{
-                            display: "flex",
+                            display: "grid",
+                            gridTemplateColumns: isMobile ? "1fr" : "repeat(3, auto)",
                             gap: 8,
-                            flexWrap: "wrap",
+                            width: isMobile ? "100%" : "auto",
                           }}
                         >
                           {job.needsSchedulingAttention && (
@@ -2058,6 +2553,7 @@ export default function SchedulePage() {
                               disabled={refittingJobId === job.id}
                               style={{
                                 ...smallPrimaryButton(),
+                                width: isMobile ? "100%" : "auto",
                                 cursor: refittingJobId === job.id ? "default" : "pointer",
                                 opacity: refittingJobId === job.id ? 0.7 : 1,
                               }}
@@ -2066,14 +2562,11 @@ export default function SchedulePage() {
                             </button>
                           )}
 
-                          <Link href={`/jobs/${job.id}?back=/admin/schedule`} style={smallButton()}>
+                          <Link href={`/jobs/${job.id}?back=/admin/schedule`} style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}>
                             Open job
                           </Link>
 
-                          <Link
-                            href={`/jobs/edit/${job.id}`}
-                            style={smallButton()}
-                          >
+                          <Link href={`/jobs/edit/${job.id}`} style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}>
                             Edit / place
                           </Link>
                         </div>
@@ -2094,24 +2587,26 @@ function StatCard({
   label,
   value,
   accent,
+  compact = false,
 }: {
   label: string;
   value: string | number;
   accent?: string;
+  compact?: boolean;
 }) {
   return (
     <div
       style={{
         border: "1px solid #e5e7eb",
-        borderRadius: 16,
+        borderRadius: compact ? 14 : 16,
         background: "#fff",
-        padding: 16,
+        padding: compact ? 14 : 16,
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
       <div
         style={{
-          fontSize: 12,
+          fontSize: compact ? 11 : 12,
           fontWeight: 800,
           textTransform: "uppercase",
           letterSpacing: "0.06em",
@@ -2124,9 +2619,10 @@ function StatCard({
 
       <div
         style={{
-          fontSize: 28,
+          fontSize: compact ? 24 : 28,
           fontWeight: 900,
           color: accent || "#18181b",
+          lineHeight: 1.05,
         }}
       >
         {value}
@@ -2148,6 +2644,7 @@ function headerSecondaryButton(): React.CSSProperties {
     fontSize: 14,
     fontWeight: 700,
     padding: "12px 14px",
+    minHeight: 46,
   };
 }
 
@@ -2163,29 +2660,32 @@ function headerPrimaryButton(): React.CSSProperties {
     fontSize: 14,
     fontWeight: 800,
     padding: "12px 14px",
+    minHeight: 46,
   };
 }
 
 function toolbarButton(): React.CSSProperties {
   return {
-    padding: "9px 12px",
+    padding: "10px 12px",
     fontSize: 14,
     border: "1px solid #d4d4d8",
     borderRadius: 10,
     background: "#fff",
     cursor: "pointer",
-    fontWeight: 600,
+    fontWeight: 700,
+    minHeight: 44,
   };
 }
 
 function inputStyle(): React.CSSProperties {
   return {
-    padding: "9px 12px",
+    padding: "10px 12px",
     fontSize: 14,
     border: "1px solid #d4d4d8",
     borderRadius: 10,
     background: "#fff",
     color: "#18181b",
+    minHeight: 44,
   };
 }
 
@@ -2206,6 +2706,16 @@ function workerCard(): React.CSSProperties {
     borderRadius: 18,
     background: "#fff",
     padding: 18,
+    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+  };
+}
+
+function mobileWorkerCard(): React.CSSProperties {
+  return {
+    border: "1px solid #e5e7eb",
+    borderRadius: 18,
+    background: "#fff",
+    padding: 14,
     boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
   };
 }
@@ -2252,6 +2762,7 @@ function smallButton(): React.CSSProperties {
     fontSize: 13,
     fontWeight: 700,
     padding: "10px 12px",
+    minHeight: 42,
   };
 }
 
@@ -2268,5 +2779,6 @@ function smallPrimaryButton(): React.CSSProperties {
     fontSize: 13,
     fontWeight: 700,
     padding: "10px 12px",
+    minHeight: 42,
   };
 }
