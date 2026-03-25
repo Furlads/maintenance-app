@@ -644,22 +644,22 @@ const styles = {
     color: colours.ink
   } satisfies CSSProperties,
 
-  shell: {
-    width: '100%',
-    maxWidth: 920,
-    margin: '0 auto',
-    padding: '16px 14px 36px'
-  } satisfies CSSProperties,
+shell: {
+  width: '100%',
+  maxWidth: 920,
+  margin: '0 auto',
+  padding: '12px 12px 28px'
+} satisfies CSSProperties,
 
-  topCard: {
-    borderRadius: 22,
-    background: `linear-gradient(135deg, ${colours.ink} 0%, #2a2a2a 100%)`,
-    color: '#fff',
-    border: '1px solid rgba(255,255,255,0.08)',
-    boxShadow: '0 20px 50px rgba(0,0,0,0.16)',
-    padding: 16,
-    marginBottom: 16
-  } satisfies CSSProperties,
+topCard: {
+  borderRadius: 20,
+  background: `linear-gradient(135deg, ${colours.ink} 0%, #2a2a2a 100%)`,
+  color: '#fff',
+  border: '1px solid rgba(255,255,255,0.08)',
+  boxShadow: '0 20px 50px rgba(0,0,0,0.16)',
+  padding: 14,
+  marginBottom: 14
+} satisfies CSSProperties,
 
   panel: {
     background: colours.panel,
@@ -699,21 +699,21 @@ const styles = {
   } satisfies CSSProperties,
 
   actionButtonDark: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    minHeight: 52,
-    padding: '14px 18px',
-    borderRadius: 14,
-    border: `1px solid ${colours.ink}`,
-    background: colours.ink,
-    color: '#fff',
-    textDecoration: 'none',
-    fontWeight: 800,
-    fontSize: 16,
-    cursor: 'pointer'
-  } satisfies CSSProperties,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  minHeight: 50,
+  padding: '13px 16px',
+  borderRadius: 14,
+  border: `1px solid ${colours.ink}`,
+  background: colours.ink,
+  color: '#fff',
+  textDecoration: 'none',
+  fontWeight: 800,
+  fontSize: 15,
+  cursor: 'pointer'
+} satisfies CSSProperties,  
 
   smallBadge: {
     display: 'inline-flex',
@@ -725,12 +725,12 @@ const styles = {
     fontWeight: 800
   } satisfies CSSProperties,
 
-  metaCard: {
-    borderRadius: 16,
-    padding: 14,
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.1)'
-  } satisfies CSSProperties,
+metaCard: {
+  borderRadius: 16,
+  padding: 12,
+  background: 'rgba(255,255,255,0.08)',
+  border: '1px solid rgba(255,255,255,0.1)'
+} satisfies CSSProperties,
 
   jobCard: {
     borderRadius: 18,
@@ -748,9 +748,11 @@ const styles = {
   } satisfies CSSProperties,
 
   value: {
-    fontSize: 15,
-    lineHeight: 1.45
-  } satisfies CSSProperties,
+  fontSize: 15,
+  lineHeight: 1.45,
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word'
+} satisfies CSSProperties,
 
   gridTwo: {
     display: 'grid',
@@ -2196,21 +2198,25 @@ function hardRefreshTodayPage() {
         }
 
         input, textarea, select, button {
-          font: inherit;
-        }
+  font: inherit;
+}
+
+input, textarea, select {
+  font-size: 16px;
+}
 
         a, button {
           -webkit-tap-highlight-color: transparent;
         }
 
         .today-top-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 12px;
-          margin-bottom: 16px;
-          flex-wrap: wrap;
-        }
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
 
         .today-top-actions {
           display: flex;
@@ -2233,22 +2239,22 @@ function hardRefreshTodayPage() {
         }
 
         .today-top-stats {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-          gap: 12px;
-        }
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
 
         .today-date-strip {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          margin-bottom: 14px;
-          padding: 12px;
-          border-radius: 16px;
-          background: rgba(255,255,255,0.08);
-          border: 1px solid rgba(255,255,255,0.1);
-        }
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+}
 
         .today-date-strip-left {
           min-width: 0;
@@ -2306,94 +2312,112 @@ function hardRefreshTodayPage() {
         }
 
         .today-chas-shell {
-          width: 100%;
-          max-width: 820px;
-          height: 86vh;
-          overflow: hidden;
-          background: #fff;
-          border-radius: 20px;
-          border: 1px solid #ddd;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 24px 70px rgba(0,0,0,0.22);
-        }
+  width: 100%;
+  max-width: 820px;
+  height: 86vh;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.22);
+}
+
+.today-sticky-job {
+  position: sticky;
+  top: 8px;
+}
 
         @media (max-width: 768px) {
-          .today-top-header {
-            flex-direction: column;
-            align-items: stretch;
-          }
+  .today-top-header {
+    flex-direction: column;
+    align-items: stretch;
+    margin-bottom: 12px;
+  }
 
-          .today-top-actions {
-            width: 100%;
-            margin-left: 0;
-            justify-content: stretch;
-            flex-direction: column;
-            align-items: stretch;
-          }
+  .today-top-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: stretch;
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-          .today-ask-chas-button {
-            width: 100%;
-          }
+  .today-ask-chas-button {
+    width: 100%;
+  }
 
-          .today-worker-badge {
-            width: 100%;
-          }
+  .today-worker-badge {
+    width: 100%;
+  }
 
-          .today-top-stats {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
+  .today-top-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
-          .today-stat-card {
-            min-height: 118px;
-          }
+  .today-stat-card {
+    min-height: 102px;
+  }
 
-          .today-stat-value {
-            font-size: 24px !important;
-          }
+  .today-stat-value {
+    font-size: 20px !important;
+  }
 
-          .today-date-strip {
-            flex-direction: column;
-            align-items: stretch;
-          }
+  .today-date-strip {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-          .today-date-controls {
-            justify-content: stretch;
-          }
+  .today-date-controls {
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
 
-          .today-date-button,
-          .today-date-input {
-            width: 100%;
-          }
+  .today-date-button,
+  .today-date-input {
+    width: 100%;
+  }
 
-          .today-active-actions,
-          .today-job-actions,
-          .today-meta-grid,
-          .today-quick-actions {
-            grid-template-columns: 1fr;
-          }
+  .today-date-input {
+    grid-column: 1 / -1;
+  }
 
-          .today-chas-shell {
-            height: 100vh;
-            max-width: none;
-            border-radius: 0;
-          }
-        }
+  .today-active-actions,
+  .today-job-actions,
+  .today-meta-grid,
+  .today-quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .today-chas-shell {
+  height: 100vh;
+  max-width: none;
+  border-radius: 0;
+}
+
+.today-sticky-job {
+  position: static;
+}
+}
 
         @media (max-width: 520px) {
-          .today-top-stats {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
-          }
+  .today-top-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
 
-          .today-stat-card {
-            padding: 12px !important;
-            min-height: 108px;
-          }
+  .today-stat-card {
+    padding: 10px !important;
+    min-height: 96px;
+  }
 
-          .today-stat-value {
-            font-size: 22px !important;
-          }
+  .today-stat-value {
+    font-size: 18px !important;
+  }
+}
         }
       `}</style>
       <div style={styles.shell}>
@@ -2407,26 +2431,47 @@ function hardRefreshTodayPage() {
                     alt="Furlads and Three Counties"
                     onError={() => setLogoHidden(true)}
                     style={{
-                      height: 42,
-                      width: 'auto',
-                      display: 'block',
-                      maxWidth: 280,
-                      objectFit: 'contain'
-                    }}
+  height: 36,
+  width: 'auto',
+  display: 'block',
+  maxWidth: 240,
+  objectFit: 'contain'
+}}
                   />
                 </div>
               )}
 
               <h1
-                style={{
-                  margin: 0,
-                  fontSize: 32,
-                  lineHeight: 1,
-                  fontWeight: 900
-                }}
-              >
-                Today
-              </h1>
+<h1
+  style={{
+    margin: 0,
+    fontSize: 28,
+    lineHeight: 1,
+    fontWeight: 900
+  }}
+>
+  Today
+</h1>
+
+{queuedActionCount > 0 && (
+  <div
+    style={{
+      marginTop: 8,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '8px 10px',
+      borderRadius: 999,
+      background: 'rgba(250, 204, 21, 0.14)',
+      border: '1px solid rgba(250, 204, 21, 0.38)',
+      color: '#fff4b8',
+      fontSize: 12,
+      fontWeight: 800
+    }}
+  >
+    {queuedActionCount} queued offline
+  </div>
+)}
             </div>
 
             <div className="today-top-actions">
@@ -2752,19 +2797,20 @@ function hardRefreshTodayPage() {
           </section>
         )}
 
-        {filteredActiveJob && (
-          <section
-            style={{
-              ...styles.panel,
-              marginBottom: 16,
-              position: 'sticky',
-              top: 10,
-              zIndex: 20,
-              border: '1px solid #efcf72',
-              background: 'linear-gradient(180deg, #fff7d6 0%, #fff2be 100%)',
-              boxShadow: '0 16px 40px rgba(0,0,0,0.12)'
-            }}
-          >
+        filteredActiveJob && (
+  <section
+    className="today-sticky-job"
+    style={{
+      ...styles.panel,
+      marginBottom: 16,
+      position: 'sticky',
+      top: 10,
+      zIndex: 20,
+      border: '1px solid #efcf72',
+      background: 'linear-gradient(180deg, #fff7d6 0%, #fff2be 100%)',
+      boxShadow: '0 16px 40px rgba(0,0,0,0.12)'
+    }}
+  >
             <div style={{ padding: 16 }}>
               <div
                 style={{
@@ -2778,9 +2824,9 @@ function hardRefreshTodayPage() {
               >
                 <div>
                   <div style={styles.sectionTitle}>Current job</div>
-                  <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15 }}>
-                    {getJobPrimaryTitle(filteredActiveJob)}
-                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+  {getJobPrimaryTitle(filteredActiveJob)}
+</div>
 
                   {getJobSecondaryTitle(filteredActiveJob) && (
                     <div style={{ marginTop: 6, fontSize: 15 }}>
@@ -3127,13 +3173,15 @@ function hardRefreshTodayPage() {
                         style={{ textDecoration: 'none', color: 'inherit' }}
                       >
                         <h2
-                          style={{
-                            margin: 0,
-                            fontSize: 22,
-                            lineHeight: 1.15,
-                            fontWeight: 900
-                          }}
-                        >
+  style={{
+    margin: 0,
+    fontSize: 20,
+    lineHeight: 1.15,
+    fontWeight: 900,
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word'
+  }}
+>
                           {getJobPrimaryTitle(job)}
                         </h2>
                       </a>
@@ -3308,9 +3356,9 @@ function hardRefreshTodayPage() {
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                        <div style={{ fontSize: 20, fontWeight: 900 }}>
-                          {getJobPrimaryTitle(job)}
-                        </div>
+                        <div style={{ fontSize: 19, fontWeight: 900, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+  {getJobPrimaryTitle(job)}
+</div>
                         <div style={getStatusPill(job)}>{getStatusText(job)}</div>
                       </div>
 
@@ -3395,10 +3443,10 @@ function hardRefreshTodayPage() {
             inset: 0,
             background: 'rgba(0,0,0,0.58)',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 12,
-            zIndex: 1100
+            alignItems: 'flex-end',
+justifyContent: 'center',
+padding: 0,
+zIndex: 1100
           }}
         >
           <div
@@ -3406,13 +3454,14 @@ function hardRefreshTodayPage() {
             style={{
               width: '100%',
               maxWidth: 560,
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              background: '#fff',
-              borderRadius: 20,
-              border: '1px solid #ddd',
-              boxShadow: '0 24px 70px rgba(0,0,0,0.22)',
-              padding: 18
+maxHeight: '92vh',
+overflowY: 'auto',
+background: '#fff',
+borderRadius: '20px 20px 0 0',
+border: '1px solid #ddd',
+boxShadow: '0 24px 70px rgba(0,0,0,0.22)',
+padding: 16,
+paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)'
             }}
           >
             <div
