@@ -75,6 +75,17 @@ type TimelinePlacedJob = ScheduleJob & {
   lane: number;
 };
 
+type FeedbackMessage = {
+  tone: "success" | "error" | "info";
+  title: string;
+  text: string;
+} | null;
+
+type TimeOffDecisionSheetState = {
+  mode: "approve" | "decline";
+  block: ScheduleAvailabilityBlock;
+} | null;
+
 const PREP_START_MINUTES = 8 * 60 + 30;
 const WORK_START_MINUTES = 9 * 60;
 const DAY_END_MINUTES = 16 * 60 + 30;
@@ -1449,6 +1460,10 @@ export default function SchedulePage() {
   const [refittingWorkerId, setRefittingWorkerId] = useState<number | null>(null);
   const [busyTimeOffId, setBusyTimeOffId] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState<FeedbackMessage>(null);
+  const [timeOffDecisionSheet, setTimeOffDecisionSheet] =
+    useState<TimeOffDecisionSheetState>(null);
+  const [timeOffReviewNotes, setTimeOffReviewNotes] = useState("");
 
   const isMobile = useIsMobile();
 
@@ -1533,9 +1548,14 @@ export default function SchedulePage() {
       setJobsData(Array.isArray(jobsJson) ? jobsJson : []);
     } catch (err) {
       console.error("Failed to load schedule page", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to load schedule page."
-      );
+      const message =
+        err instanceof Error ? err.message : "Failed to load schedule page.";
+      setError(message);
+      setFeedbackMessage({
+        tone: "error",
+        title: "Couldn’t load schedule",
+        text: message,
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -1547,6 +1567,7 @@ export default function SchedulePage() {
 
     setRunningScheduler(true);
     setError("");
+    setFeedbackMessage(null);
 
     try {
       const res = await fetch("/api/scheduler/run", {
@@ -1561,17 +1582,24 @@ export default function SchedulePage() {
 
       await loadPage(date, true);
 
-      window.alert(
-        data?.scheduled > 0
-          ? `${data.scheduled} job${data.scheduled === 1 ? "" : "s"} placed into the diary.`
-          : data?.message || "No unscheduled jobs found."
-      );
+      setFeedbackMessage({
+        tone: "success",
+        title: "Scheduler complete",
+        text:
+          data?.scheduled > 0
+            ? `${data.scheduled} job${data.scheduled === 1 ? "" : "s"} placed into the diary.`
+            : data?.message || "No unscheduled jobs found.",
+      });
     } catch (err) {
       console.error(err);
       const message =
         err instanceof Error ? err.message : "Scheduler failed to run.";
       setError(message);
-      window.alert(message);
+      setFeedbackMessage({
+        tone: "error",
+        title: "Scheduler failed",
+        text: message,
+      });
     } finally {
       setRunningScheduler(false);
     }
@@ -1582,6 +1610,7 @@ export default function SchedulePage() {
 
     setRefittingJobId(jobId);
     setError("");
+    setFeedbackMessage(null);
 
     try {
       const res = await fetch("/api/scheduler/refit-job", {
@@ -1600,17 +1629,23 @@ export default function SchedulePage() {
 
       await loadPage(date, true);
 
-      if (data?.repaired) {
-        window.alert("Job re-fitted successfully.");
-      } else {
-        window.alert("The system tried again but this job still needs attention.");
-      }
+      setFeedbackMessage({
+        tone: data?.repaired ? "success" : "info",
+        title: data?.repaired ? "Job re-fitted" : "Job still needs attention",
+        text: data?.repaired
+          ? "Job re-fitted successfully."
+          : "The system tried again but this job still needs attention.",
+      });
     } catch (err) {
       console.error(err);
       const message =
         err instanceof Error ? err.message : "Failed to re-fit job.";
       setError(message);
-      window.alert(message);
+      setFeedbackMessage({
+        tone: "error",
+        title: "Re-fit failed",
+        text: message,
+      });
     } finally {
       setRefittingJobId(null);
     }
@@ -1621,6 +1656,7 @@ export default function SchedulePage() {
 
     setRefittingWorkerId(workerId);
     setError("");
+    setFeedbackMessage(null);
 
     try {
       const res = await fetch("/api/scheduler/refit-worker-day", {
@@ -1639,113 +1675,127 @@ export default function SchedulePage() {
 
       await loadPage(date, true);
 
-      if (data?.remaining > 0) {
-        window.alert(
-          `${data.repaired} job${data.repaired === 1 ? "" : "s"} re-fitted. ${data.remaining} still need attention.`
-        );
-      } else {
-        window.alert(
-          `${data.repaired} job${data.repaired === 1 ? "" : "s"} re-fitted for this worker/day.`
-        );
-      }
+      setFeedbackMessage({
+        tone: data?.remaining > 0 ? "info" : "success",
+        title: data?.remaining > 0 ? "Day partly re-fitted" : "Day re-fitted",
+        text:
+          data?.remaining > 0
+            ? `${data.repaired} job${data.repaired === 1 ? "" : "s"} re-fitted. ${data.remaining} still need attention.`
+            : `${data.repaired} job${data.repaired === 1 ? "" : "s"} re-fitted for this worker/day.`,
+      });
     } catch (err) {
       console.error(err);
       const message =
         err instanceof Error ? err.message : "Failed to re-fit worker day.";
       setError(message);
-      window.alert(message);
+      setFeedbackMessage({
+        tone: "error",
+        title: "Worker re-fit failed",
+        text: message,
+      });
     } finally {
       setRefittingWorkerId(null);
     }
   }
 
-  async function handleApproveTimeOff(block: ScheduleAvailabilityBlock) {
+  function openApproveTimeOff(block: ScheduleAvailabilityBlock) {
     if (!block.timeOffRequestId || busyTimeOffId !== null) return;
-
-    const confirmed = window.confirm("Approve this time off request?");
-    if (!confirmed) return;
-
-    const reviewNotes =
-      window.prompt("Approval notes for the worker / diary (optional)", "") ?? "";
-
-    try {
-      setBusyTimeOffId(block.timeOffRequestId);
-      setError("");
-
-      const res = await fetch(`/api/kelly/time-off/${block.timeOffRequestId}/approve`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          reviewedByName: "Kelly",
-          reviewNotes,
-        }),
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || "Failed to approve request.");
-      }
-
-      await loadPage(date, true);
-
-      const moved = Array.isArray(data?.impactedJobIds) ? data.impactedJobIds.length : 0;
-      const scheduled = Number(data?.schedulerResult?.scheduled || 0);
-
-      window.alert(
-        `Approved. ${moved} impacted job${moved === 1 ? "" : "s"} were cleared and ${scheduled} unscheduled job${scheduled === 1 ? "" : "s"} were re-placed automatically.`
-      );
-    } catch (err) {
-      console.error(err);
-      const message =
-        err instanceof Error ? err.message : "Failed to approve request.";
-      setError(message);
-      window.alert(message);
-    } finally {
-      setBusyTimeOffId(null);
-    }
+    setTimeOffReviewNotes("");
+    setTimeOffDecisionSheet({
+      mode: "approve",
+      block,
+    });
   }
 
-  async function handleDeclineTimeOff(block: ScheduleAvailabilityBlock) {
+  function openDeclineTimeOff(block: ScheduleAvailabilityBlock) {
     if (!block.timeOffRequestId || busyTimeOffId !== null) return;
+    setTimeOffReviewNotes("");
+    setTimeOffDecisionSheet({
+      mode: "decline",
+      block,
+    });
+  }
 
-    const confirmed = window.confirm("Decline this time off request?");
-    if (!confirmed) return;
+  function closeTimeOffDecisionSheet() {
+    if (busyTimeOffId !== null) return;
+    setTimeOffDecisionSheet(null);
+    setTimeOffReviewNotes("");
+  }
 
-    const reviewNotes =
-      window.prompt("Why are you declining this request? (optional)", "") ?? "";
+  async function submitTimeOffDecision() {
+    if (!timeOffDecisionSheet?.block.timeOffRequestId || busyTimeOffId !== null) return;
+
+    const block = timeOffDecisionSheet.block;
+    const mode = timeOffDecisionSheet.mode;
+    const requestId = block.timeOffRequestId;
 
     try {
-      setBusyTimeOffId(block.timeOffRequestId);
+      setBusyTimeOffId(requestId);
       setError("");
+      setFeedbackMessage(null);
 
-      const res = await fetch(`/api/kelly/time-off/${block.timeOffRequestId}/decline`, {
+      const endpoint =
+        mode === "approve"
+          ? `/api/kelly/time-off/${requestId}/approve`
+          : `/api/kelly/time-off/${requestId}/decline`;
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           reviewedByName: "Kelly",
-          reviewNotes,
+          reviewNotes: timeOffReviewNotes,
         }),
       });
 
       const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || "Failed to decline request.");
+        throw new Error(
+          data?.error ||
+            (mode === "approve"
+              ? "Failed to approve request."
+              : "Failed to decline request.")
+        );
       }
 
       await loadPage(date, true);
-      window.alert("Request declined.");
+
+      if (mode === "approve") {
+        const moved = Array.isArray(data?.impactedJobIds) ? data.impactedJobIds.length : 0;
+        const scheduled = Number(data?.schedulerResult?.scheduled || 0);
+
+        setFeedbackMessage({
+          tone: "success",
+          title: "Time off approved",
+          text: `Approved. ${moved} impacted job${moved === 1 ? "" : "s"} were cleared and ${scheduled} unscheduled job${scheduled === 1 ? "" : "s"} were re-placed automatically.`,
+        });
+      } else {
+        setFeedbackMessage({
+          tone: "success",
+          title: "Time off declined",
+          text: "Request declined.",
+        });
+      }
+
+      setTimeOffDecisionSheet(null);
+      setTimeOffReviewNotes("");
     } catch (err) {
       console.error(err);
       const message =
-        err instanceof Error ? err.message : "Failed to decline request.";
+        err instanceof Error
+          ? err.message
+          : mode === "approve"
+            ? "Failed to approve request."
+            : "Failed to decline request.";
       setError(message);
-      window.alert(message);
+      setFeedbackMessage({
+        tone: "error",
+        title: mode === "approve" ? "Approval failed" : "Decline failed",
+        text: message,
+      });
     } finally {
       setBusyTimeOffId(null);
     }
@@ -1765,6 +1815,88 @@ export default function SchedulePage() {
         }}
       >
         <TimeOffAlert />
+
+        {feedbackMessage && (
+          <section
+            style={{
+              marginBottom: 16,
+              borderRadius: 16,
+              border:
+                feedbackMessage.tone === "success"
+                  ? "1px solid #86efac"
+                  : feedbackMessage.tone === "error"
+                    ? "1px solid #fecaca"
+                    : "1px solid #bfdbfe",
+              background:
+                feedbackMessage.tone === "success"
+                  ? "#f0fdf4"
+                  : feedbackMessage.tone === "error"
+                    ? "#fff1f2"
+                    : "#eff6ff",
+              padding: 14,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "start",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 800,
+                    color:
+                      feedbackMessage.tone === "success"
+                        ? "#166534"
+                        : feedbackMessage.tone === "error"
+                          ? "#9f1239"
+                          : "#1d4ed8",
+                    marginBottom: 4,
+                  }}
+                >
+                  {feedbackMessage.title}
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color:
+                      feedbackMessage.tone === "success"
+                        ? "#166534"
+                        : feedbackMessage.tone === "error"
+                          ? "#9f1239"
+                          : "#1e40af",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {feedbackMessage.text}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setFeedbackMessage(null)}
+                style={{
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  background: "#fff",
+                  color: "#3f3f46",
+                  borderRadius: 999,
+                  width: 34,
+                  height: 34,
+                  fontSize: 18,
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+          </section>
+        )}
 
         <section
           style={{
@@ -2073,8 +2205,8 @@ export default function SchedulePage() {
                         refittingWorkerId={refittingWorkerId}
                         busyTimeOffId={busyTimeOffId}
                         onRefitWorkerDay={handleRefitWorkerDay}
-                        onApproveTimeOff={handleApproveTimeOff}
-                        onDeclineTimeOff={handleDeclineTimeOff}
+                        onApproveTimeOff={openApproveTimeOff}
+                        onDeclineTimeOff={openDeclineTimeOff}
                       />
                     );
                   }
@@ -2161,8 +2293,8 @@ export default function SchedulePage() {
                       <WorkerTimeline
                         worker={worker}
                         busyTimeOffId={busyTimeOffId}
-                        onApproveTimeOff={handleApproveTimeOff}
-                        onDeclineTimeOff={handleDeclineTimeOff}
+                        onApproveTimeOff={openApproveTimeOff}
+                        onDeclineTimeOff={openDeclineTimeOff}
                       />
 
                       {(worker.availabilityBlocks?.length ?? 0) > 0 && (
@@ -2618,6 +2750,213 @@ export default function SchedulePage() {
           </>
         )}
       </div>
+
+      {timeOffDecisionSheet && (
+        <div
+          onClick={closeTimeOffDecisionSheet}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 1200,
+            display: "flex",
+            alignItems: isMobile ? "flex-end" : "center",
+            justifyContent: "center",
+            padding: isMobile ? 0 : 16,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              background: "#fff",
+              borderRadius: isMobile ? "22px 22px 0 0" : 22,
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.2)",
+              padding: 18,
+              paddingBottom: isMobile ? "calc(env(safe-area-inset-bottom) + 18px)" : 18,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "start",
+                marginBottom: 14,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color:
+                      timeOffDecisionSheet.mode === "approve" ? "#166534" : "#b91c1c",
+                    marginBottom: 6,
+                  }}
+                >
+                  {timeOffDecisionSheet.mode === "approve"
+                    ? "Approve time off"
+                    : "Decline time off"}
+                </div>
+
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 22,
+                    lineHeight: 1.15,
+                    color: "#18181b",
+                  }}
+                >
+                  {timeOffDecisionSheet.block.title}
+                </h3>
+
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 14,
+                    color: "#52525b",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {formatBlockTimeRange(timeOffDecisionSheet.block)}
+                  {timeOffDecisionSheet.block.notes
+                    ? ` • ${timeOffDecisionSheet.block.notes}`
+                    : ""}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeTimeOffDecisionSheet}
+                disabled={busyTimeOffId !== null}
+                style={{
+                  border: "1px solid #e4e4e7",
+                  background: "#fff",
+                  color: "#3f3f46",
+                  borderRadius: 999,
+                  width: 38,
+                  height: 38,
+                  fontSize: 20,
+                  cursor: busyTimeOffId !== null ? "default" : "pointer",
+                  opacity: busyTimeOffId !== null ? 0.7 : 1,
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                marginBottom: 12,
+                fontSize: 14,
+                color: "#3f3f46",
+                lineHeight: 1.5,
+              }}
+            >
+              {timeOffDecisionSheet.mode === "approve"
+                ? "Approve this request and let the scheduler clear any impacted jobs automatically."
+                : "Decline this request and optionally leave a note explaining why."}
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label
+                htmlFor="timeoff-review-notes"
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#27272a",
+                  marginBottom: 6,
+                }}
+              >
+                {timeOffDecisionSheet.mode === "approve"
+                  ? "Approval notes (optional)"
+                  : "Decline notes (optional)"}
+              </label>
+
+              <textarea
+                id="timeoff-review-notes"
+                value={timeOffReviewNotes}
+                onChange={(e) => setTimeOffReviewNotes(e.target.value)}
+                placeholder={
+                  timeOffDecisionSheet.mode === "approve"
+                    ? "Any note for the worker or diary..."
+                    : "Why are you declining this request?"
+                }
+                style={{
+                  width: "100%",
+                  minHeight: 110,
+                  borderRadius: 14,
+                  border: "1px solid #d4d4d8",
+                  padding: 12,
+                  fontSize: 14,
+                  resize: "vertical",
+                  outline: "none",
+                  fontFamily: "inherit",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeTimeOffDecisionSheet}
+                disabled={busyTimeOffId !== null}
+                style={{
+                  ...smallButton(),
+                  width: "100%",
+                  minHeight: 46,
+                  cursor: busyTimeOffId !== null ? "default" : "pointer",
+                  opacity: busyTimeOffId !== null ? 0.7 : 1,
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={submitTimeOffDecision}
+                disabled={busyTimeOffId !== null}
+                style={{
+                  width: "100%",
+                  minHeight: 46,
+                  borderRadius: 10,
+                  border:
+                    timeOffDecisionSheet.mode === "approve"
+                      ? "1px solid #166534"
+                      : "1px solid #b91c1c",
+                  background:
+                    timeOffDecisionSheet.mode === "approve" ? "#166534" : "#b91c1c",
+                  color: "#fff",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  cursor: busyTimeOffId !== null ? "default" : "pointer",
+                  opacity: busyTimeOffId !== null ? 0.7 : 1,
+                }}
+              >
+                {busyTimeOffId !== null
+                  ? "Saving..."
+                  : timeOffDecisionSheet.mode === "approve"
+                    ? "Approve request"
+                    : "Decline request"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
