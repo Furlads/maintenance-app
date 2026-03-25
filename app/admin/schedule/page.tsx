@@ -86,6 +86,14 @@ type TimeOffDecisionSheetState = {
   block: ScheduleAvailabilityBlock;
 } | null;
 
+type MoveJobSheetState = {
+  jobId: number;
+  currentWorkerId: number | null;
+  currentWorkerName: string;
+  selectedWorkerId: string;
+  jobLabel: string;
+} | null;
+
 const PREP_START_MINUTES = 8 * 60 + 30;
 const WORK_START_MINUTES = 9 * 60;
 const DAY_END_MINUTES = 16 * 60 + 30;
@@ -908,10 +916,9 @@ function WorkerTimeline({
         const cardColor = getCardColor(job);
         const offHours = isOffHours(job);
 
-        return (
-          <Link
+                return (
+          <div
             key={job.id}
-            href={`/jobs/${job.id}?back=/admin/schedule`}
             title={`${job.startTime ?? "TBD"} • ${job.title} • ${job.customerName} • ${
               job.postcode ?? ""
             }${
@@ -932,38 +939,71 @@ function WorkerTimeline({
               overflow: "hidden",
               fontSize: 12,
               boxSizing: "border-box",
-              textDecoration: "none",
               color: "#18181b",
               boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
               zIndex: 2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
             }}
           >
-            <div
+            <Link
+              href={`/jobs/${job.id}?back=/admin/schedule`}
               style={{
-                fontWeight: 800,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                marginBottom: 2,
+                minWidth: 0,
+                flex: 1,
+                textDecoration: "none",
+                color: "inherit",
               }}
             >
-              {job.startTime ?? "TBD"} • {titleCase(job.customerName) || "No customer"}
-            </div>
+              <div
+                style={{
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  marginBottom: 2,
+                }}
+              >
+                {job.startTime ?? "TBD"} • {titleCase(job.customerName) || "No customer"}
+              </div>
 
-            <div
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#52525b",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {job.postcode ?? "No postcode"} • {job.durationMinutes ?? 60}m
+                {offHours ? " • Off-hours" : ""}
+                {job.needsSchedulingAttention ? " • Attention" : ""}
+              </div>
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => onOpenMoveJob(job, worker)}
+              disabled={movingJobId === job.id}
               style={{
+                borderRadius: 8,
+                border: "1px solid #d4d4d8",
+                background: "#fff",
+                color: "#18181b",
                 fontSize: 11,
-                color: "#52525b",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                fontWeight: 800,
+                padding: "6px 8px",
+                cursor: movingJobId === job.id ? "default" : "pointer",
+                opacity: movingJobId === job.id ? 0.7 : 1,
+                flexShrink: 0,
               }}
             >
-              {job.postcode ?? "No postcode"} • {job.durationMinutes ?? 60}m
-              {offHours ? " • Off-hours" : ""}
-              {job.needsSchedulingAttention ? " • Attention" : ""}
-            </div>
-          </Link>
+              {movingJobId === job.id ? "Moving..." : "Move"}
+            </button>
+          </div>
         );
       })}
 
@@ -1010,18 +1050,22 @@ function MobileWorkerCard({
   workerAttentionJobs,
   refittingWorkerId,
   busyTimeOffId,
+  movingJobId,
   onRefitWorkerDay,
   onApproveTimeOff,
   onDeclineTimeOff,
+  onOpenMoveJob,
 }: {
   worker: ScheduleWorker;
   remainingMinutes: number;
   workerAttentionJobs: ScheduleJob[];
   refittingWorkerId: number | null;
   busyTimeOffId: number | null;
+  movingJobId: number | null;
   onRefitWorkerDay: (workerId: number) => void;
   onApproveTimeOff: (block: ScheduleAvailabilityBlock) => void;
   onDeclineTimeOff: (block: ScheduleAvailabilityBlock) => void;
+  onOpenMoveJob: (job: ScheduleJob, worker: ScheduleWorker) => void;
 }) {
   const sortedJobs = [...worker.jobs].sort(sortWorkerJobs);
   const sortedBlocks = [...(worker.availabilityBlocks ?? [])].sort(sortAvailabilityBlocks);
@@ -1319,31 +1363,24 @@ function MobileWorkerCard({
             const postcode = normaliseDisplayText(job.postcode);
             const offHours = isOffHours(job);
 
-            return (
-              <Link
+                        return (
+              <div
                 key={`mobile-job-${worker.id}-${job.id}`}
-                href={`/jobs/${job.id}?back=/admin/schedule`}
                 style={{
-                  textDecoration: "none",
-                  color: "inherit",
+                  ...jobRowCard(),
+                  background: offHours
+                    ? "#fff7f7"
+                    : job.needsSchedulingAttention
+                      ? "#fff7f7"
+                      : "#fafafa",
+                  border: offHours
+                    ? "1px solid #fecaca"
+                    : job.needsSchedulingAttention
+                      ? "1px solid #fecaca"
+                      : "1px solid #e5e7eb",
+                  padding: 14,
                 }}
               >
-                <div
-                  style={{
-                    ...jobRowCard(),
-                    background: offHours
-                      ? "#fff7f7"
-                      : job.needsSchedulingAttention
-                        ? "#fff7f7"
-                        : "#fafafa",
-                    border: offHours
-                      ? "1px solid #fecaca"
-                      : job.needsSchedulingAttention
-                        ? "1px solid #fecaca"
-                        : "1px solid #e5e7eb",
-                    padding: 14,
-                  }}
-                >
                   <div
                     style={{
                       display: "flex",
@@ -1490,6 +1527,8 @@ export default function SchedulePage() {
   const [refittingJobId, setRefittingJobId] = useState<number | null>(null);
   const [refittingWorkerId, setRefittingWorkerId] = useState<number | null>(null);
   const [busyTimeOffId, setBusyTimeOffId] = useState<number | null>(null);
+  const [movingJobId, setMovingJobId] = useState<number | null>(null);
+  const [moveJobSheet, setMoveJobSheet] = useState<MoveJobSheetState>(null);
   const [error, setError] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState<FeedbackMessage>(null);
   const [timeOffDecisionSheet, setTimeOffDecisionSheet] =
@@ -1728,7 +1767,82 @@ export default function SchedulePage() {
       setRefittingWorkerId(null);
     }
   }
+  function openMoveJob(job: ScheduleJob, worker: ScheduleWorker) {
+    setMoveJobSheet({
+      jobId: job.id,
+      currentWorkerId: worker.id,
+      currentWorkerName: worker.name,
+      selectedWorkerId: String(worker.id),
+      jobLabel: `${titleCase(job.customerName) || "No customer"} — ${titleCase(job.title) || "General"}`,
+    });
+  }
 
+  function closeMoveJobSheet() {
+    if (movingJobId !== null) return;
+    setMoveJobSheet(null);
+  }
+
+  async function submitMoveJob() {
+    if (!moveJobSheet || movingJobId !== null) return;
+
+    const nextWorkerId = Number(moveJobSheet.selectedWorkerId);
+
+    if (!Number.isInteger(nextWorkerId) || nextWorkerId <= 0) {
+      setFeedbackMessage({
+        tone: "error",
+        title: "Choose a worker",
+        text: "Please choose a worker to move this job to.",
+      });
+      return;
+    }
+
+    try {
+      setMovingJobId(moveJobSheet.jobId);
+      setError("");
+      setFeedbackMessage(null);
+
+      const res = await fetch(`/api/jobs/${moveJobSheet.jobId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          assignedTo: [nextWorkerId],
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to move job");
+      }
+
+      await loadPage(date, true);
+
+      const targetWorker =
+        workers.find((worker) => worker.id === nextWorkerId)?.name || "selected worker";
+
+      setFeedbackMessage({
+        tone: "success",
+        title: "Job moved",
+        text: `${moveJobSheet.jobLabel} moved to ${targetWorker}.`,
+      });
+
+      setMoveJobSheet(null);
+    } catch (err) {
+      console.error(err);
+      const message =
+        err instanceof Error ? err.message : "Failed to move job.";
+      setError(message);
+      setFeedbackMessage({
+        tone: "error",
+        title: "Move failed",
+        text: message,
+      });
+    } finally {
+      setMovingJobId(null);
+    }
+  }
   function openApproveTimeOff(block: ScheduleAvailabilityBlock) {
     if (!block.timeOffRequestId || busyTimeOffId !== null) return;
     setTimeOffReviewNotes("");
@@ -2230,16 +2344,18 @@ export default function SchedulePage() {
 
                   if (isMobile) {
                     return (
-                      <MobileWorkerCard
+                                            <MobileWorkerCard
                         key={worker.id}
                         worker={worker}
                         remainingMinutes={remainingMinutes}
                         workerAttentionJobs={workerAttentionJobs}
                         refittingWorkerId={refittingWorkerId}
                         busyTimeOffId={busyTimeOffId}
+                        movingJobId={movingJobId}
                         onRefitWorkerDay={handleRefitWorkerDay}
                         onApproveTimeOff={openApproveTimeOff}
                         onDeclineTimeOff={openDeclineTimeOff}
+                        onOpenMoveJob={openMoveJob}
                       />
                     );
                   }
@@ -2323,11 +2439,13 @@ export default function SchedulePage() {
                         </div>
                       </div>
 
-                      <WorkerTimeline
+                                            <WorkerTimeline
                         worker={worker}
                         busyTimeOffId={busyTimeOffId}
+                        movingJobId={movingJobId}
                         onApproveTimeOff={openApproveTimeOff}
                         onDeclineTimeOff={openDeclineTimeOff}
+                        onOpenMoveJob={openMoveJob}
                       />
 
                       {(worker.availabilityBlocks?.length ?? 0) > 0 && (
@@ -2438,15 +2556,10 @@ export default function SchedulePage() {
                             const postcode = normaliseDisplayText(job.postcode);
 
                             return (
-                              <Link
+                                                            <div
                                 key={`list-${worker.id}-${job.id}`}
-                                href={`/jobs/${job.id}?back=/admin/schedule`}
-                                style={{
-                                  textDecoration: "none",
-                                  color: "inherit",
-                                }}
+                                style={jobRowCard()}
                               >
-                                <div style={jobRowCard()}>
                                   <div
                                     style={{
                                       display: "flex",
@@ -2551,8 +2664,36 @@ export default function SchedulePage() {
                                       ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
                                     </div>
                                   )}
+                                                                  <div
+                                    style={{
+                                      marginTop: 10,
+                                      display: "flex",
+                                      gap: 8,
+                                      flexWrap: "wrap",
+                                    }}
+                                  >
+                                    <Link
+                                      href={`/jobs/${job.id}?back=/admin/schedule`}
+                                      style={smallButton()}
+                                    >
+                                      Open job
+                                    </Link>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => openMoveJob(job, worker)}
+                                      disabled={movingJobId === job.id}
+                                      style={{
+                                        ...smallPrimaryButton(),
+                                        cursor: movingJobId === job.id ? "default" : "pointer",
+                                        opacity: movingJobId === job.id ? 0.7 : 1,
+                                      }}
+                                    >
+                                      {movingJobId === job.id ? "Moving..." : "Move job"}
+                                    </button>
+                                  </div>
                                 </div>
-                              </Link>
+                              </div>
                             );
                           })}
                         </div>
@@ -2791,7 +2932,200 @@ export default function SchedulePage() {
           </>
         )}
       </div>
+      {moveJobSheet && (
+        <div
+          onClick={closeMoveJobSheet}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 1190,
+            display: "flex",
+            alignItems: isMobile ? "flex-end" : "center",
+            justifyContent: "center",
+            padding: isMobile ? 0 : 16,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              maxHeight: isMobile ? "88vh" : "calc(100vh - 32px)",
+              overflowY: "auto",
+              WebkitOverflowScrolling: "touch",
+              background: "#fff",
+              borderRadius: isMobile ? "22px 22px 0 0" : 22,
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.2)",
+              padding: 18,
+              paddingBottom: isMobile ? "calc(env(safe-area-inset-bottom) + 18px)" : 18,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "start",
+                marginBottom: 14,
+              }}
+            >
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: "#1d4ed8",
+                    marginBottom: 6,
+                  }}
+                >
+                  Move job
+                </div>
 
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 22,
+                    lineHeight: 1.15,
+                    color: "#18181b",
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {moveJobSheet.jobLabel}
+                </h3>
+
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 14,
+                    color: "#52525b",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Currently assigned to {moveJobSheet.currentWorkerName}.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeMoveJobSheet}
+                disabled={movingJobId !== null}
+                style={{
+                  border: "1px solid #e4e4e7",
+                  background: "#fff",
+                  color: "#3f3f46",
+                  borderRadius: 999,
+                  width: 38,
+                  height: 38,
+                  fontSize: 20,
+                  cursor: movingJobId !== null ? "default" : "pointer",
+                  opacity: movingJobId !== null ? 0.7 : 1,
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label
+                htmlFor="move-job-worker"
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#27272a",
+                  marginBottom: 6,
+                }}
+              >
+                Move to worker
+              </label>
+
+              <select
+                id="move-job-worker"
+                value={moveJobSheet.selectedWorkerId}
+                onChange={(e) =>
+                  setMoveJobSheet((current) =>
+                    current
+                      ? {
+                          ...current,
+                          selectedWorkerId: e.target.value,
+                        }
+                      : current
+                  )
+                }
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #d4d4d8",
+                  background: "#fff",
+                  color: "#18181b",
+                  fontSize: 14,
+                  minHeight: 46,
+                }}
+              >
+                {workers.map((worker) => (
+                  <option key={worker.id} value={String(worker.id)}>
+                    {worker.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div
+              style={{
+                position: "sticky",
+                bottom: -18,
+                background: "#fff",
+                paddingTop: 8,
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeMoveJobSheet}
+                disabled={movingJobId !== null}
+                style={{
+                  ...smallButton(),
+                  width: "100%",
+                  minHeight: 46,
+                  cursor: movingJobId !== null ? "default" : "pointer",
+                  opacity: movingJobId !== null ? 0.7 : 1,
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={submitMoveJob}
+                disabled={movingJobId !== null}
+                style={{
+                  width: "100%",
+                  minHeight: 46,
+                  borderRadius: 10,
+                  border: "1px solid #18181b",
+                  background: "#18181b",
+                  color: "#fff",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  cursor: movingJobId !== null ? "default" : "pointer",
+                  opacity: movingJobId !== null ? 0.7 : 1,
+                }}
+              >
+                {movingJobId !== null ? "Moving..." : "Move job"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {timeOffDecisionSheet && (
         <div
           onClick={closeTimeOffDecisionSheet}
