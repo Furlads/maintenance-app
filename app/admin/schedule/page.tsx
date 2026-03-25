@@ -1331,7 +1331,7 @@ function MobileWorkerCard({
             const postcode = normaliseDisplayText(job.postcode);
             const offHours = isOffHours(job);
 
-                        return (
+                                    return (
               <div
                 key={`mobile-job-${worker.id}-${job.id}`}
                 style={{
@@ -1349,134 +1349,162 @@ function MobileWorkerCard({
                   padding: 14,
                 }}
               >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    marginBottom: 10,
+                  }}
+                >
                   <div
                     style={{
                       display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
+                      gap: 8,
                       flexWrap: "wrap",
-                      marginBottom: 10,
+                      alignItems: "center",
                     }}
                   >
-                    <div
+                    <span
                       style={{
-                        display: "flex",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        alignItems: "center",
+                        ...pillBase(),
+                        ...getJobTypeBadgeStyle(job.jobType),
                       }}
                     >
+                      {formatJobType(job.jobType)}
+                    </span>
+
+                    <span
+                      style={{
+                        ...pillBase(),
+                        ...getStatusBadgeStyle(job.status),
+                      }}
+                    >
+                      {formatStatus(job.status)}
+                    </span>
+
+                    {job.needsSchedulingAttention && (
                       <span
                         style={{
                           ...pillBase(),
-                          ...getJobTypeBadgeStyle(job.jobType),
+                          background: "#fff1f2",
+                          color: "#9f1239",
+                          border: "1px solid #fecaca",
                         }}
                       >
-                        {formatJobType(job.jobType)}
+                        Needs attention
                       </span>
+                    )}
 
+                    {offHours && (
                       <span
                         style={{
                           ...pillBase(),
-                          ...getStatusBadgeStyle(job.status),
+                          background: "#fee2e2",
+                          color: "#991b1b",
+                          border: "1px solid #fecaca",
                         }}
                       >
-                        {formatStatus(job.status)}
+                        Off-hours
                       </span>
-
-                      {job.needsSchedulingAttention && (
-                        <span
-                          style={{
-                            ...pillBase(),
-                            background: "#fff1f2",
-                            color: "#9f1239",
-                            border: "1px solid #fecaca",
-                          }}
-                        >
-                          Needs attention
-                        </span>
-                      )}
-
-                      {offHours && (
-                        <span
-                          style={{
-                            ...pillBase(),
-                            background: "#fee2e2",
-                            color: "#991b1b",
-                            border: "1px solid #fecaca",
-                          }}
-                        >
-                          Off-hours
-                        </span>
-                      )}
-                    </div>
-
-                    <div
-                      style={{
-                        fontWeight: 900,
-                        fontSize: 14,
-                        color: "#18181b",
-                      }}
-                    >
-                      {formatTimeRange(job.startTime, job.durationMinutes)}
-                    </div>
+                    )}
                   </div>
 
                   <div
                     style={{
                       fontWeight: 900,
-                      fontSize: 16,
-                      lineHeight: 1.2,
-                      marginBottom: 6,
+                      fontSize: 14,
                       color: "#18181b",
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
                     }}
                   >
-                    {cleanCustomer}
+                    {formatTimeRange(job.startTime, job.durationMinutes)}
                   </div>
-
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "#3f3f46",
-                      marginBottom: 4,
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {cleanTitle}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "#52525b",
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {displayAddress || "No address"}
-                    {postcode ? ` • ${postcode}` : ""}
-                    {` • ${job.durationMinutes ?? 60} mins`}
-                  </div>
-
-                  {job.needsSchedulingAttention && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "#9f1239",
-                        overflowWrap: "anywhere",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
-                    </div>
-                  )}
                 </div>
-              </Link>
+
+                <div
+                  style={{
+                    fontWeight: 900,
+                    fontSize: 16,
+                    lineHeight: 1.2,
+                    marginBottom: 6,
+                    color: "#18181b",
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {cleanCustomer}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "#3f3f46",
+                    marginBottom: 4,
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {cleanTitle}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "#52525b",
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {displayAddress || "No address"}
+                  {postcode ? ` • ${postcode}` : ""}
+                  {` • ${job.durationMinutes ?? 60} mins`}
+                </div>
+
+                {job.needsSchedulingAttention && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#9f1239",
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Link
+                    href={`/jobs/${job.id}?back=/admin/schedule`}
+                    style={smallButton()}
+                  >
+                    Open job
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={() => openMoveJob(job, worker)}
+                    disabled={movingJobId === job.id}
+                    style={{
+                      ...smallPrimaryButton(),
+                      cursor: movingJobId === job.id ? "default" : "pointer",
+                      opacity: movingJobId === job.id ? 0.7 : 1,
+                    }}
+                  >
+                    {movingJobId === job.id ? "Moving..." : "Move job"}
+                  </button>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -2521,143 +2549,143 @@ export default function SchedulePage() {
                             const cleanTitle = titleCase(job.title) || "General";
                             const postcode = normaliseDisplayText(job.postcode);
 
-                            return (
-                                                            <div
+                                                        return (
+                              <div
                                 key={`list-${worker.id}-${job.id}`}
                                 style={jobRowCard()}
                               >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                    flexWrap: "wrap",
+                                    marginBottom: 8,
+                                  }}
+                                >
                                   <div
                                     style={{
                                       display: "flex",
-                                      justifyContent: "space-between",
-                                      gap: 10,
+                                      gap: 8,
                                       flexWrap: "wrap",
-                                      marginBottom: 8,
+                                      alignItems: "center",
                                     }}
                                   >
-                                    <div
+                                    <span
                                       style={{
-                                        display: "flex",
-                                        gap: 8,
-                                        flexWrap: "wrap",
-                                        alignItems: "center",
+                                        ...pillBase(),
+                                        ...getJobTypeBadgeStyle(job.jobType),
                                       }}
                                     >
+                                      {formatJobType(job.jobType)}
+                                    </span>
+
+                                    <span
+                                      style={{
+                                        ...pillBase(),
+                                        ...getStatusBadgeStyle(job.status),
+                                      }}
+                                    >
+                                      {formatStatus(job.status)}
+                                    </span>
+
+                                    {job.needsSchedulingAttention && (
                                       <span
                                         style={{
                                           ...pillBase(),
-                                          ...getJobTypeBadgeStyle(job.jobType),
+                                          background: "#fff1f2",
+                                          color: "#9f1239",
+                                          border: "1px solid #fecaca",
                                         }}
                                       >
-                                        {formatJobType(job.jobType)}
+                                        Needs attention
                                       </span>
+                                    )}
 
+                                    {isOffHours(job) && (
                                       <span
                                         style={{
                                           ...pillBase(),
-                                          ...getStatusBadgeStyle(job.status),
+                                          background: "#fee2e2",
+                                          color: "#991b1b",
+                                          border: "1px solid #fecaca",
                                         }}
                                       >
-                                        {formatStatus(job.status)}
+                                        Off-hours
                                       </span>
-
-                                      {job.needsSchedulingAttention && (
-                                        <span
-                                          style={{
-                                            ...pillBase(),
-                                            background: "#fff1f2",
-                                            color: "#9f1239",
-                                            border: "1px solid #fecaca",
-                                          }}
-                                        >
-                                          Needs attention
-                                        </span>
-                                      )}
-
-                                      {isOffHours(job) && (
-                                        <span
-                                          style={{
-                                            ...pillBase(),
-                                            background: "#fee2e2",
-                                            color: "#991b1b",
-                                            border: "1px solid #fecaca",
-                                          }}
-                                        >
-                                          Off-hours
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    <div
-                                      style={{
-                                        fontWeight: 800,
-                                        color: "#18181b",
-                                      }}
-                                    >
-                                      {formatTimeRange(job.startTime, job.durationMinutes)}
-                                    </div>
+                                    )}
                                   </div>
 
                                   <div
                                     style={{
                                       fontWeight: 800,
-                                      marginBottom: 4,
+                                      color: "#18181b",
                                     }}
                                   >
-                                    {cleanCustomer} — {cleanTitle}
+                                    {formatTimeRange(job.startTime, job.durationMinutes)}
                                   </div>
+                                </div>
 
+                                <div
+                                  style={{
+                                    fontWeight: 800,
+                                    marginBottom: 4,
+                                  }}
+                                >
+                                  {cleanCustomer} — {cleanTitle}
+                                </div>
+
+                                <div
+                                  style={{
+                                    fontSize: 13,
+                                    color: "#52525b",
+                                  }}
+                                >
+                                  {displayAddress || "No address"}
+                                  {postcode ? ` • ${postcode}` : ""}
+                                  {` • ${job.durationMinutes ?? 60} mins`}
+                                </div>
+
+                                {job.needsSchedulingAttention && (
                                   <div
                                     style={{
-                                      fontSize: 13,
-                                      color: "#52525b",
+                                      marginTop: 8,
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      color: "#9f1239",
                                     }}
                                   >
-                                    {displayAddress || "No address"}
-                                    {postcode ? ` • ${postcode}` : ""}
-                                    {` • ${job.durationMinutes ?? 60} mins`}
+                                    ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
                                   </div>
+                                )}
 
-                                  {job.needsSchedulingAttention && (
-                                    <div
-                                      style={{
-                                        marginTop: 8,
-                                        fontSize: 12,
-                                        fontWeight: 700,
-                                        color: "#9f1239",
-                                      }}
-                                    >
-                                      ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
-                                    </div>
-                                  )}
-                                                                  <div
+                                <div
+                                  style={{
+                                    marginTop: 10,
+                                    display: "flex",
+                                    gap: 8,
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <Link
+                                    href={`/jobs/${job.id}?back=/admin/schedule`}
+                                    style={smallButton()}
+                                  >
+                                    Open job
+                                  </Link>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => openMoveJob(job, worker)}
+                                    disabled={movingJobId === job.id}
                                     style={{
-                                      marginTop: 10,
-                                      display: "flex",
-                                      gap: 8,
-                                      flexWrap: "wrap",
+                                      ...smallPrimaryButton(),
+                                      cursor: movingJobId === job.id ? "default" : "pointer",
+                                      opacity: movingJobId === job.id ? 0.7 : 1,
                                     }}
                                   >
-                                    <Link
-                                      href={`/jobs/${job.id}?back=/admin/schedule`}
-                                      style={smallButton()}
-                                    >
-                                      Open job
-                                    </Link>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => openMoveJob(job, worker)}
-                                      disabled={movingJobId === job.id}
-                                      style={{
-                                        ...smallPrimaryButton(),
-                                        cursor: movingJobId === job.id ? "default" : "pointer",
-                                        opacity: movingJobId === job.id ? 0.7 : 1,
-                                      }}
-                                    >
-                                      {movingJobId === job.id ? "Moving..." : "Move job"}
-                                    </button>
-                                  </div>
+                                    {movingJobId === job.id ? "Moving..." : "Move job"}
+                                  </button>
                                 </div>
                               </div>
                             );
