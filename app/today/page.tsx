@@ -1859,7 +1859,7 @@ function hardRefreshTodayPage() {
     }
   }
 
-        async function handleUndoStart(jobId: number) {
+            async function handleUndoStart(jobId: number) {
     try {
       setBusyJobId(jobId)
       setError('')
@@ -1892,7 +1892,7 @@ function hardRefreshTodayPage() {
       setBusyJobId(null)
     }
   }
-            async function handleUndoDone(jobId: number) {
+                async function handleUndoDone(jobId: number) {
     try {
       setBusyJobId(jobId)
       setError('')
