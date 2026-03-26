@@ -32,7 +32,7 @@ function formatDate(value: string) {
     return new Date(value).toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
     })
   } catch {
     return value
@@ -63,7 +63,7 @@ export default function CustomerPage() {
       try {
         const [customerRes, jobsRes] = await Promise.all([
           fetch(`/api/customers/${id}`, { cache: 'no-store' }),
-          fetch('/api/jobs', { cache: 'no-store' })
+          fetch('/api/jobs', { cache: 'no-store' }),
         ])
 
         const customerData = await customerRes.json()
@@ -105,9 +105,9 @@ export default function CustomerPage() {
       const res = await fetch(`/api/customers/${customer.id}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ action: 'archive' })
+        body: JSON.stringify({ action: 'archive' }),
       })
 
       const data = await res.json()
@@ -142,7 +142,7 @@ export default function CustomerPage() {
 
     try {
       const res = await fetch(`/api/customers/${customer.id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       })
 
       const data = await res.json()
@@ -170,7 +170,7 @@ export default function CustomerPage() {
           minHeight: '100vh',
           background: '#f5f5f5',
           padding: 12,
-          fontFamily: 'sans-serif'
+          fontFamily: 'sans-serif',
         }}
       >
         <div style={{ maxWidth: 980, margin: '0 auto' }}>
@@ -180,7 +180,7 @@ export default function CustomerPage() {
               border: '1px solid #e6e6e6',
               borderRadius: 18,
               padding: 18,
-              boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
             }}
           >
             <p style={{ margin: 0 }}>Loading...</p>
@@ -197,7 +197,7 @@ export default function CustomerPage() {
           minHeight: '100vh',
           background: '#f5f5f5',
           padding: 12,
-          fontFamily: 'sans-serif'
+          fontFamily: 'sans-serif',
         }}
       >
         <div style={{ maxWidth: 980, margin: '0 auto' }}>
@@ -207,7 +207,7 @@ export default function CustomerPage() {
               border: '1px solid #e6e6e6',
               borderRadius: 18,
               padding: 18,
-              boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
             }}
           >
             <p style={{ margin: 0 }}>Customer not found</p>
@@ -225,13 +225,13 @@ export default function CustomerPage() {
         minHeight: '100vh',
         background: '#f5f5f5',
         padding: 12,
-        fontFamily: 'sans-serif'
+        fontFamily: 'sans-serif',
       }}
     >
       <div
         style={{
           maxWidth: 980,
-          margin: '0 auto'
+          margin: '0 auto',
         }}
       >
         <section
@@ -242,7 +242,7 @@ export default function CustomerPage() {
             padding: 18,
             marginBottom: 16,
             boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
-            border: '1px solid #222'
+            border: '1px solid #222',
           }}
         >
           <div style={{ marginBottom: 14 }}>
@@ -255,7 +255,7 @@ export default function CustomerPage() {
                 textDecoration: 'none',
                 color: 'rgba(255,255,255,0.78)',
                 fontSize: 14,
-                fontWeight: 600
+                fontWeight: 600,
               }}
             >
               ← Back to customers
@@ -268,7 +268,7 @@ export default function CustomerPage() {
               justifyContent: 'space-between',
               alignItems: 'flex-start',
               gap: 16,
-              flexWrap: 'wrap'
+              flexWrap: 'wrap',
             }}
           >
             <div style={{ flex: '1 1 260px', minWidth: 0 }}>
@@ -284,7 +284,7 @@ export default function CustomerPage() {
                   fontSize: 12,
                   fontWeight: 700,
                   letterSpacing: 0.3,
-                  marginBottom: 12
+                  marginBottom: 12,
                 }}
               >
                 CUSTOMER PROFILE
@@ -295,7 +295,7 @@ export default function CustomerPage() {
                   fontSize: 32,
                   lineHeight: 1.1,
                   margin: '0 0 8px 0',
-                  wordBreak: 'break-word'
+                  wordBreak: 'break-word',
                 }}
               >
                 {customer.name}
@@ -305,7 +305,7 @@ export default function CustomerPage() {
                 style={{
                   margin: 0,
                   color: 'rgba(255,255,255,0.78)',
-                  fontSize: 15
+                  fontSize: 15,
                 }}
               >
                 Customer since {formatDate(customer.createdAt)}
@@ -317,7 +317,7 @@ export default function CustomerPage() {
                 display: 'flex',
                 alignItems: 'flex-start',
                 justifyContent: 'flex-end',
-                flex: '0 0 auto'
+                flex: '0 0 auto',
               }}
             >
               <WorkerMenu />
@@ -332,14 +332,14 @@ export default function CustomerPage() {
             borderRadius: 18,
             padding: 16,
             marginBottom: 16,
-            boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+            boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
           }}
         >
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: 12
+              gap: 12,
             }}
           >
             {customer.phone && (
@@ -353,7 +353,7 @@ export default function CustomerPage() {
                   color: '#111',
                   fontWeight: 700,
                   background: '#fff',
-                  textAlign: 'center'
+                  textAlign: 'center',
                 }}
               >
                 Call Customer
@@ -371,7 +371,7 @@ export default function CustomerPage() {
                   color: '#111',
                   fontWeight: 700,
                   background: '#fff',
-                  textAlign: 'center'
+                  textAlign: 'center',
                 }}
               >
                 Email Customer
@@ -391,7 +391,7 @@ export default function CustomerPage() {
                   color: '#111',
                   fontWeight: 700,
                   background: '#fff',
-                  textAlign: 'center'
+                  textAlign: 'center',
                 }}
               >
                 Navigate
@@ -409,10 +409,58 @@ export default function CustomerPage() {
                 fontWeight: 800,
                 background: '#ffcc00',
                 boxShadow: '0 6px 18px rgba(255, 204, 0, 0.18)',
-                textAlign: 'center'
+                textAlign: 'center',
               }}
             >
               + Add Job
+            </a>
+
+            <a
+              href={`/jobs/add?customerId=${customer.id}&jobType=Quote`}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 12,
+                border: '1px solid #e4b700',
+                textDecoration: 'none',
+                color: '#111',
+                fontWeight: 800,
+                background: '#ffe37a',
+                textAlign: 'center',
+              }}
+            >
+              + Add Quote
+            </a>
+
+            <a
+              href={`/jobs/add?customerId=${customer.id}&jobType=Maintenance`}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 12,
+                border: '1px solid #15803d',
+                textDecoration: 'none',
+                color: '#fff',
+                fontWeight: 800,
+                background: '#16a34a',
+                textAlign: 'center',
+              }}
+            >
+              + Add Maintenance
+            </a>
+
+            <a
+              href={`/jobs/add?customerId=${customer.id}&jobType=Landscaping`}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 12,
+                border: '1px solid #1d4ed8',
+                textDecoration: 'none',
+                color: '#fff',
+                fontWeight: 800,
+                background: '#2563eb',
+                textAlign: 'center',
+              }}
+            >
+              + Add Landscaping
             </a>
 
             <a
@@ -425,7 +473,7 @@ export default function CustomerPage() {
                 color: '#111',
                 fontWeight: 800,
                 background: '#fff',
-                textAlign: 'center'
+                textAlign: 'center',
               }}
             >
               Edit Customer
@@ -443,7 +491,7 @@ export default function CustomerPage() {
                 color: '#6b4f00',
                 fontWeight: 800,
                 cursor: actionLoading ? 'default' : 'pointer',
-                width: '100%'
+                width: '100%',
               }}
             >
               {actionLoading ? 'Working...' : 'Archive Customer'}
@@ -461,7 +509,7 @@ export default function CustomerPage() {
                 color: '#991b1b',
                 fontWeight: 800,
                 cursor: actionLoading ? 'default' : 'pointer',
-                width: '100%'
+                width: '100%',
               }}
             >
               {actionLoading ? 'Working...' : 'Delete Customer'}
@@ -476,7 +524,7 @@ export default function CustomerPage() {
                 borderRadius: 12,
                 background: '#fff4f4',
                 border: '1px solid #f0c9c9',
-                color: '#333'
+                color: '#333',
               }}
             >
               {message}
@@ -488,7 +536,7 @@ export default function CustomerPage() {
           style={{
             display: 'grid',
             gap: 16,
-            marginBottom: 20
+            marginBottom: 20,
           }}
         >
           <section
@@ -497,7 +545,7 @@ export default function CustomerPage() {
               padding: 18,
               borderRadius: 18,
               background: '#fff',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
             }}
           >
             <div
@@ -507,7 +555,7 @@ export default function CustomerPage() {
                 gap: 12,
                 alignItems: 'center',
                 flexWrap: 'wrap',
-                marginBottom: 16
+                marginBottom: 16,
               }}
             >
               <h2 style={{ fontSize: 22, margin: 0 }}>Customer Details</h2>
@@ -523,7 +571,7 @@ export default function CustomerPage() {
                     fontWeight: 800,
                     color: '#6a5600',
                     maxWidth: '100%',
-                    wordBreak: 'break-word'
+                    wordBreak: 'break-word',
                   }}
                 >
                   {customer.postcode}
@@ -535,7 +583,7 @@ export default function CustomerPage() {
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: 12
+                gap: 12,
               }}
             >
               <div
@@ -544,7 +592,7 @@ export default function CustomerPage() {
                   border: '1px solid #efefef',
                   borderRadius: 12,
                   padding: 12,
-                  minWidth: 0
+                  minWidth: 0,
                 }}
               >
                 <div
@@ -554,7 +602,7 @@ export default function CustomerPage() {
                     color: '#777',
                     marginBottom: 6,
                     textTransform: 'uppercase',
-                    letterSpacing: 0.3
+                    letterSpacing: 0.3,
                   }}
                 >
                   Phone
@@ -570,7 +618,7 @@ export default function CustomerPage() {
                   border: '1px solid #efefef',
                   borderRadius: 12,
                   padding: 12,
-                  minWidth: 0
+                  minWidth: 0,
                 }}
               >
                 <div
@@ -580,7 +628,7 @@ export default function CustomerPage() {
                     color: '#777',
                     marginBottom: 6,
                     textTransform: 'uppercase',
-                    letterSpacing: 0.3
+                    letterSpacing: 0.3,
                   }}
                 >
                   Email
@@ -589,7 +637,7 @@ export default function CustomerPage() {
                   style={{
                     fontSize: 15,
                     color: '#222',
-                    wordBreak: 'break-word'
+                    wordBreak: 'break-word',
                   }}
                 >
                   {customer.email || 'Not added'}
@@ -603,7 +651,7 @@ export default function CustomerPage() {
                   borderRadius: 12,
                   padding: 12,
                   gridColumn: '1 / -1',
-                  minWidth: 0
+                  minWidth: 0,
                 }}
               >
                 <div
@@ -613,7 +661,7 @@ export default function CustomerPage() {
                     color: '#777',
                     marginBottom: 6,
                     textTransform: 'uppercase',
-                    letterSpacing: 0.3
+                    letterSpacing: 0.3,
                   }}
                 >
                   Address
@@ -623,7 +671,7 @@ export default function CustomerPage() {
                     fontSize: 15,
                     color: '#222',
                     whiteSpace: 'pre-line',
-                    wordBreak: 'break-word'
+                    wordBreak: 'break-word',
                   }}
                 >
                   {customer.address || 'Not added'}
@@ -638,7 +686,7 @@ export default function CustomerPage() {
                   background: '#fffdf4',
                   border: '1px solid #f3e6a8',
                   borderRadius: 12,
-                  padding: 12
+                  padding: 12,
                 }}
               >
                 <div
@@ -648,7 +696,7 @@ export default function CustomerPage() {
                     color: '#7a6700',
                     marginBottom: 6,
                     textTransform: 'uppercase',
-                    letterSpacing: 0.3
+                    letterSpacing: 0.3,
                   }}
                 >
                   Notes
@@ -658,7 +706,7 @@ export default function CustomerPage() {
                     fontSize: 14,
                     color: '#3f3a22',
                     whiteSpace: 'pre-line',
-                    wordBreak: 'break-word'
+                    wordBreak: 'break-word',
                   }}
                 >
                   {customer.notes}
@@ -684,7 +732,7 @@ export default function CustomerPage() {
               padding: 18,
               background: '#fff',
               boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-              marginBottom: 4
+              marginBottom: 4,
             }}
           >
             <div
@@ -694,7 +742,7 @@ export default function CustomerPage() {
                 gap: 12,
                 alignItems: 'center',
                 flexWrap: 'wrap',
-                marginBottom: 16
+                marginBottom: 16,
               }}
             >
               <h2 style={{ fontSize: 22, margin: 0 }}>Jobs</h2>
@@ -713,7 +761,7 @@ export default function CustomerPage() {
                   padding: 14,
                   borderRadius: 14,
                   marginBottom: 12,
-                  background: '#fafafa'
+                  background: '#fafafa',
                 }}
               >
                 <div
@@ -723,7 +771,7 @@ export default function CustomerPage() {
                     alignItems: 'flex-start',
                     gap: 12,
                     flexWrap: 'wrap',
-                    marginBottom: 8
+                    marginBottom: 8,
                   }}
                 >
                   <h3
@@ -732,7 +780,7 @@ export default function CustomerPage() {
                       fontSize: 18,
                       color: '#111',
                       wordBreak: 'break-word',
-                      flex: '1 1 220px'
+                      flex: '1 1 220px',
                     }}
                   >
                     {job.title}
@@ -746,7 +794,7 @@ export default function CustomerPage() {
                       border: '1px solid #ddd',
                       fontSize: 13,
                       fontWeight: 700,
-                      color: '#444'
+                      color: '#444',
                     }}
                   >
                     {formatStatus(job.status)}
@@ -760,7 +808,7 @@ export default function CustomerPage() {
                       border: '1px solid #ececec',
                       borderRadius: 10,
                       padding: 10,
-                      marginTop: 8
+                      marginTop: 8,
                     }}
                   >
                     <div
@@ -770,7 +818,7 @@ export default function CustomerPage() {
                         color: '#777',
                         marginBottom: 6,
                         textTransform: 'uppercase',
-                        letterSpacing: 0.3
+                        letterSpacing: 0.3,
                       }}
                     >
                       Address
@@ -780,7 +828,7 @@ export default function CustomerPage() {
                         whiteSpace: 'pre-line',
                         fontSize: 14,
                         color: '#222',
-                        wordBreak: 'break-word'
+                        wordBreak: 'break-word',
                       }}
                     >
                       {job.address}
@@ -795,7 +843,7 @@ export default function CustomerPage() {
                       border: '1px solid #ececec',
                       borderRadius: 10,
                       padding: 10,
-                      marginTop: 8
+                      marginTop: 8,
                     }}
                   >
                     <div
@@ -805,7 +853,7 @@ export default function CustomerPage() {
                         color: '#777',
                         marginBottom: 6,
                         textTransform: 'uppercase',
-                        letterSpacing: 0.3
+                        letterSpacing: 0.3,
                       }}
                     >
                       Notes
@@ -815,7 +863,7 @@ export default function CustomerPage() {
                         whiteSpace: 'pre-line',
                         fontSize: 14,
                         color: '#444',
-                        wordBreak: 'break-word'
+                        wordBreak: 'break-word',
                       }}
                     >
                       {job.notes}
@@ -837,7 +885,7 @@ export default function CustomerPage() {
             borderRadius: 18,
             padding: 18,
             background: '#fff',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+            boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
           }}
         >
           <CustomerHistory customerId={customer.id} />

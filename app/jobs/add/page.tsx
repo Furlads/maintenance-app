@@ -298,17 +298,39 @@ export default function AddJobPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
+
     const customerIdFromUrl = params.get('customerId') || ''
+    const jobTypeFromUrl = params.get('jobType') || ''
     const titleFromUrl = params.get('title') || ''
     const addressFromUrl = params.get('address') || ''
-    const jobTypeFromUrl = params.get('jobType') || ''
     const visitDateFromUrl = params.get('visitDate') || ''
     const startTimeFromUrl = params.get('startTime') || ''
 
-    setCustomerId(customerIdFromUrl)
+    if (customerIdFromUrl) setCustomerId(customerIdFromUrl)
+
+    if (jobTypeFromUrl) {
+      setJobType(jobTypeFromUrl)
+
+      if (jobTypeFromUrl === 'Quote') {
+        setTitle('Quote Visit')
+        setStatus('Scheduled')
+        setDurationMinutes('60')
+      }
+
+      if (jobTypeFromUrl === 'Maintenance') {
+        setTitle('Garden Maintenance')
+        setStatus('Scheduled')
+        setDurationMinutes('60')
+      }
+
+      if (jobTypeFromUrl === 'Landscaping') {
+        setTitle('Landscaping Job')
+        setStatus('Scheduled')
+        setDurationMinutes('390')
+      }
+    }
 
     if (titleFromUrl) setTitle(titleFromUrl)
-    if (jobTypeFromUrl) setJobType(jobTypeFromUrl)
     if (visitDateFromUrl) setVisitDate(visitDateFromUrl)
     if (startTimeFromUrl) setStartTime(startTimeFromUrl)
 
