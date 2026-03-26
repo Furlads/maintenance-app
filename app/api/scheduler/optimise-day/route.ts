@@ -11,14 +11,20 @@ export async function POST(req: Request) {
 
     if (!Number.isInteger(workerId) || workerId <= 0) {
       return NextResponse.json(
-        { ok: false, error: 'Invalid workerId.' },
+        {
+          ok: false,
+          error: 'Invalid workerId.',
+        },
         { status: 400 }
       )
     }
 
     if (!date || Number.isNaN(date.getTime())) {
       return NextResponse.json(
-        { ok: false, error: 'Invalid date.' },
+        {
+          ok: false,
+          error: 'Invalid date.',
+        },
         { status: 400 }
       )
     }
@@ -33,7 +39,21 @@ export async function POST(req: Request) {
       return NextResponse.json(result, { status: 400 })
     }
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      ok: true,
+      workerId: result.workerId,
+      date: result.date,
+      repaired: result.repaired,
+      remaining: result.remaining,
+      unplacedJobIds: result.unplacedJobIds,
+      message:
+        result.message ||
+        (result.repaired > 0
+          ? `Optimised this worker day and re-fitted ${result.repaired} job${
+              result.repaired === 1 ? '' : 's'
+            }.`
+          : 'No better route found for this worker/day.'),
+    })
   } catch (error) {
     console.error('POST /api/scheduler/optimise-day failed:', error)
 
