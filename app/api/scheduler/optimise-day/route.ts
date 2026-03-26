@@ -46,12 +46,16 @@ export async function POST(req: Request) {
       repaired: result.repaired,
       remaining: result.remaining,
       unplacedJobIds: result.unplacedJobIds,
+      optimised: result.optimised ?? false,
+      travelMinutesSaved: result.travelMinutesSaved ?? 0,
+      reorderedJobs: result.reorderedJobs ?? 0,
+      warning: result.warning ?? null,
       message:
         result.message ||
-        (result.repaired > 0
-          ? `Optimised this worker day and re-fitted ${result.repaired} job${
-              result.repaired === 1 ? '' : 's'
-            }.`
+        (result.optimised
+          ? `Saved ${result.travelMinutesSaved ?? 0} mins travel by reordering ${
+              result.reorderedJobs ?? 0
+            } job${(result.reorderedJobs ?? 0) === 1 ? '' : 's'}.`
           : 'No better route found for this worker/day.'),
     })
   } catch (error) {
