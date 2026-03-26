@@ -2,13 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== GLOBAL MOBILE FOUNDATION ===== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
 body {
   min-height: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
   background: #f8fafc;
   color: #18181b;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Prevent media overflow */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Improve touch feel */
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS safe area support */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }

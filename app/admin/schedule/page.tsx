@@ -98,7 +98,7 @@ const PREP_START_MINUTES = 8 * 60 + 30;
 const WORK_START_MINUTES = 9 * 60;
 const DAY_END_MINUTES = 16 * 60 + 30;
 const TOTAL_DAY_MINUTES = DAY_END_MINUTES - PREP_START_MINUTES;
-const MOBILE_BREAKPOINT = 920;
+const MOBILE_BREAKPOINT = 1024;
 
 const TIMELINE_MARKERS = [
   { label: "08:30", minutes: PREP_START_MINUTES },
@@ -714,13 +714,14 @@ function WorkerTimeline({
   return (
     <div
       style={{
-        position: "relative",
-        border: "1px solid #d4d4d8",
-        borderRadius: 12,
-        minHeight: timelineHeight,
-        background: "#fafafa",
-        overflow: "hidden",
-      }}
+  position: "relative",
+  border: "1px solid #d4d4d8",
+  borderRadius: 12,
+  minHeight: timelineHeight,
+  background: "#fafafa",
+  overflowX: "hidden",
+  overflowY: "visible",
+}}
     >
       <div
         style={{
@@ -758,6 +759,9 @@ function WorkerTimeline({
                 fontSize: 11,
                 color: "#71717a",
                 whiteSpace: "nowrap",
+maxWidth: "100%",
+overflow: "hidden",
+textOverflow: "ellipsis",
                 fontWeight: marker.minutes === PREP_START_MINUTES ? 700 : 500,
               }}
             >
@@ -2046,7 +2050,7 @@ export default function SchedulePage() {
   }, [date]);
 
   return (
-    <main style={{ minHeight: "100vh", background: "#f5f5f5" }}>
+    <main style={{ minHeight: "100vh", background: "#f5f5f5", overflowX: "hidden" }}>
       <div
         style={{
           maxWidth: 1440,
