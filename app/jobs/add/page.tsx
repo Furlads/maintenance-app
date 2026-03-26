@@ -68,7 +68,7 @@ function SectionCard({
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="mb-4">
         <h2 className="text-lg font-bold text-zinc-900">{title}</h2>
         {description ? (
@@ -160,7 +160,7 @@ function SaveConfirmationModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 px-4 py-6">
       <div className="w-full max-w-xl rounded-3xl border border-zinc-200 bg-white shadow-2xl">
-        <div className="border-b border-zinc-200 px-6 py-5">
+        <div className="border-b border-zinc-200 px-5 py-5 sm:px-6">
           <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-500">
             Job Saved
           </div>
@@ -172,10 +172,10 @@ function SaveConfirmationModal({
           </p>
         </div>
 
-        <div className="space-y-4 px-6 py-5">
+        <div className="space-y-4 px-5 py-5 sm:px-6">
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-            <div className="text-sm font-bold text-zinc-900">{summary.customerName}</div>
-            <div className="mt-1 text-sm text-zinc-700">{summary.title}</div>
+            <div className="break-words text-sm font-bold text-zinc-900">{summary.customerName}</div>
+            <div className="mt-1 break-words text-sm text-zinc-700">{summary.title}</div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -186,7 +186,7 @@ function SaveConfirmationModal({
               <div className="mt-2 text-sm font-bold text-zinc-900">
                 {summary.scheduled ? 'Scheduled' : 'Unscheduled'}
               </div>
-              <div className="mt-1 text-sm text-zinc-600">{summary.locationLabel}</div>
+              <div className="mt-1 break-words text-sm text-zinc-600">{summary.locationLabel}</div>
             </div>
 
             <div className="rounded-2xl border border-zinc-200 bg-white p-4">
@@ -204,7 +204,7 @@ function SaveConfirmationModal({
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Assigned workers
             </div>
-            <div className="mt-2 text-sm font-bold text-zinc-900">
+            <div className="mt-2 break-words text-sm font-bold text-zinc-900">
               {summary.assignedWorkerNames.length > 0
                 ? summary.assignedWorkerNames.join(', ')
                 : 'No workers assigned'}
@@ -229,18 +229,18 @@ function SaveConfirmationModal({
           )}
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-zinc-200 px-6 py-5 sm:flex-row sm:justify-end">
+        <div className="flex flex-col gap-3 border-t border-zinc-200 px-5 py-5 sm:flex-row sm:justify-end sm:px-6">
           <button
             type="button"
             onClick={onClearForm}
-            className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+            className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
           >
             Confirm and clear form
           </button>
           <button
             type="button"
             onClick={onGoToJobs}
-            className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black"
+            className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black"
           >
             Confirm and go to Jobs
           </button>
@@ -627,10 +627,10 @@ export default function AddJobPage() {
 
   return (
     <main className="min-h-screen bg-zinc-50">
-      <div className="mx-auto max-w-4xl px-4 py-5 md:px-6">
-        <div className="space-y-5">
+      <div className="mx-auto max-w-4xl px-4 py-4 md:px-6">
+        <div className="space-y-4 sm:space-y-5">
           <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="bg-zinc-900 px-5 py-5 text-white md:px-6">
+            <div className="bg-zinc-900 px-4 py-5 text-white md:px-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-400">
@@ -644,10 +644,10 @@ export default function AddJobPage() {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
                   <Link
                     href="/jobs"
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
                   >
                     Back to Jobs
                   </Link>
@@ -655,12 +655,12 @@ export default function AddJobPage() {
               </div>
             </div>
 
-            <div className="border-t border-zinc-200 bg-zinc-50 px-5 py-3 text-sm text-zinc-600 md:px-6">
+            <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 md:px-6">
               Add the customer, job details, workers and timing in one place.
             </div>
           </section>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
             <SectionCard
               title="Customer"
               description="Select an existing customer or add a new one."
@@ -676,7 +676,7 @@ export default function AddJobPage() {
                       setJobAddress('')
                     }}
                     required
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   >
                     <option value="">Select customer</option>
                     {customers.map((customer) => (
@@ -687,14 +687,26 @@ export default function AddJobPage() {
                   </select>
                 </div>
 
-                <div>
+                {selectedCustomer ? (
+                  <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-green-700">
+                      Selected customer
+                    </div>
+                    <div className="mt-2 font-bold text-zinc-900">{selectedCustomer.name}</div>
+                    <div className="mt-1 whitespace-pre-line text-sm text-zinc-700">
+                      {defaultCustomerAddress || 'No saved address'}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     type="button"
                     onClick={() => {
                       setShowAddCustomer((prev) => !prev)
                       setCustomerMessage('')
                     }}
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
                   >
                     {showAddCustomer ? 'Close New Customer' : 'Add New Customer'}
                   </button>
@@ -712,17 +724,28 @@ export default function AddJobPage() {
                         <input
                           value={newCustomerName}
                           onChange={(e) => setNewCustomerName(e.target.value)}
-                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                          className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                         />
                       </div>
 
-                      <div>
-                        <FieldLabel>Phone</FieldLabel>
-                        <input
-                          value={newCustomerPhone}
-                          onChange={(e) => setNewCustomerPhone(e.target.value)}
-                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        />
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <FieldLabel>Phone</FieldLabel>
+                          <input
+                            value={newCustomerPhone}
+                            onChange={(e) => setNewCustomerPhone(e.target.value)}
+                            className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                          />
+                        </div>
+
+                        <div>
+                          <FieldLabel>Postcode</FieldLabel>
+                          <input
+                            value={newCustomerPostcode}
+                            onChange={(e) => setNewCustomerPostcode(e.target.value.toUpperCase())}
+                            className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                          />
+                        </div>
                       </div>
 
                       <div>
@@ -735,21 +758,12 @@ export default function AddJobPage() {
                         />
                       </div>
 
-                      <div>
-                        <FieldLabel>Postcode</FieldLabel>
-                        <input
-                          value={newCustomerPostcode}
-                          onChange={(e) => setNewCustomerPostcode(e.target.value.toUpperCase())}
-                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap gap-3">
+                      <div className="flex flex-col gap-3 sm:flex-row">
                         <button
                           type="button"
                           onClick={handleAddCustomer}
                           disabled={customerLoading}
-                          className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
+                          className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
                         >
                           {customerLoading ? 'Saving Customer...' : 'Save Customer'}
                         </button>
@@ -771,15 +785,9 @@ export default function AddJobPage() {
                   </div>
                 )}
 
-                {selectedCustomer && (
-                  <div>
-                    <FieldLabel>Customer Address</FieldLabel>
-                    <textarea
-                      value={defaultCustomerAddress}
-                      readOnly
-                      rows={3}
-                      className="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-3 text-sm text-zinc-700"
-                    />
+                {!selectedCustomer && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    Pick a customer first so the address and job setup flow can auto-fill properly.
                   </div>
                 )}
               </div>
@@ -796,11 +804,11 @@ export default function AddJobPage() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     required
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <FieldLabel>Job Type</FieldLabel>
                     <select
@@ -821,7 +829,7 @@ export default function AddJobPage() {
                           setDurationMinutes('60')
                         }
                       }}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
                       <option value="Quote">Quote</option>
                       <option value="Maintenance">Maintenance</option>
@@ -835,7 +843,7 @@ export default function AddJobPage() {
                     <select
                       value={status}
                       onChange={(e) => setStatus(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
                       <option value="Scheduled">Scheduled</option>
                       <option value="Quoted">Quoted</option>
@@ -853,7 +861,7 @@ export default function AddJobPage() {
                         key={minutes}
                         type="button"
                         onClick={() => setDurationMinutes(String(minutes))}
-                        className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                        className={`min-h-[44px] rounded-xl border px-3 py-2 text-sm font-semibold transition ${
                           durationMinutes === String(minutes)
                             ? 'border-zinc-900 bg-zinc-900 text-white'
                             : 'border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100'
@@ -871,7 +879,7 @@ export default function AddJobPage() {
                     value={durationMinutes}
                     onChange={(e) => setDurationMinutes(e.target.value)}
                     required
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
 
                   {jobType === 'Maintenance' && (
@@ -899,7 +907,7 @@ export default function AddJobPage() {
                   </div>
                 )}
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <FieldLabel required={isTrevQuoteJob}>Visit Date</FieldLabel>
                     <input
@@ -907,7 +915,7 @@ export default function AddJobPage() {
                       value={visitDate}
                       onChange={(e) => setVisitDate(e.target.value)}
                       required={isTrevQuoteJob}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     />
                   </div>
 
@@ -918,13 +926,13 @@ export default function AddJobPage() {
                         : 'Start Time'}
                     </FieldLabel>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <input
                         type="time"
                         value={startTime}
                         onChange={(e) => setStartTime(e.target.value)}
                         disabled={isTrevQuoteJob && !allowQuoteTimeOverride}
-                        className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                        className={`min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
                           isTrevQuoteJob && !allowQuoteTimeOverride
                             ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
                             : 'border-zinc-300 bg-white text-zinc-900'
@@ -932,15 +940,15 @@ export default function AddJobPage() {
                       />
 
                       <button
-  type="button"
-  onClick={() => setStartTime('')}
-  disabled={
-    (isTrevQuoteJob && !allowQuoteTimeOverride) || !startTime
-  }
-  className="shrink-0 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
->
-  Clear
-</button>
+                        type="button"
+                        onClick={() => setStartTime('')}
+                        disabled={
+                          (isTrevQuoteJob && !allowQuoteTimeOverride) || !startTime
+                        }
+                        className="shrink-0 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Clear
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -983,7 +991,7 @@ export default function AddJobPage() {
                     <select
                       value={visitPattern}
                       onChange={(e) => setVisitPattern(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
                       <option value="one-off">One-off job</option>
                       <option value="regular-maintenance">Regular maintenance</option>
@@ -1001,7 +1009,7 @@ export default function AddJobPage() {
                               e.target.value as MaintenanceFrequencyValue
                             )
                           }
-                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                          className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                         >
                           <option value="weekly">Weekly</option>
                           <option value="fortnightly">Fortnightly</option>
@@ -1018,7 +1026,7 @@ export default function AddJobPage() {
                         <select
                           value={timePreferenceMode}
                           onChange={(e) => setTimePreferenceMode(e.target.value)}
-                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                          className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                         >
                           <option value="best-fit">Drop into the diary in the best place</option>
                           <option value="specific">Customer wants a specific day / time</option>
@@ -1026,13 +1034,13 @@ export default function AddJobPage() {
                       </div>
 
                       {useSpecificVisitPreference && (
-                        <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-4 md:grid-cols-2">
                           <div>
                             <FieldLabel>Preferred day</FieldLabel>
                             <select
                               value={preferredDay}
                               onChange={(e) => setPreferredDay(e.target.value)}
-                              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                              className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                             >
                               <option value="">Select preferred day</option>
                               <option value="Monday">Monday</option>
@@ -1048,7 +1056,7 @@ export default function AddJobPage() {
                             <select
                               value={preferredTimeBand}
                               onChange={(e) => setPreferredTimeBand(e.target.value)}
-                              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                              className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                             >
                               <option value="Morning">Morning</option>
                               <option value="Midday">Midday</option>
@@ -1069,6 +1077,17 @@ export default function AddJobPage() {
               description="Use the customer address or set a different job address."
             >
               <div className="space-y-4">
+                {!useDifferentAddress && selectedCustomer ? (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      Using customer address
+                    </div>
+                    <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                      {defaultCustomerAddress || 'No saved address'}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                   <label className="flex items-start gap-3 text-sm text-zinc-800">
                     <input
@@ -1111,14 +1130,14 @@ export default function AddJobPage() {
                 <p className="text-sm text-zinc-500">No active workers found.</p>
               ) : (
                 <>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3">
                     {workers.map((worker) => {
                       const checked = assignedTo.includes(worker.id)
 
                       return (
                         <label
                           key={worker.id}
-                          className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 text-sm transition ${
+                          className={`flex min-h-[56px] cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 text-sm transition sm:min-h-[60px] ${
                             checked
                               ? 'border-zinc-900 bg-zinc-900 text-white'
                               : 'border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50'
@@ -1128,7 +1147,7 @@ export default function AddJobPage() {
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleWorker(worker.id)}
-                            className="h-4 w-4"
+                            className="h-4 w-4 shrink-0"
                           />
                           <span className="font-semibold">
                             {worker.firstName} {worker.lastName}
@@ -1173,7 +1192,7 @@ export default function AddJobPage() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                   <Link
                     href="/jobs"
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
                   >
                     Cancel
                   </Link>
@@ -1181,7 +1200,7 @@ export default function AddJobPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {loading ? 'Saving...' : 'Save Job'}
                   </button>
