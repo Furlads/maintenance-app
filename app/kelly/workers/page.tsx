@@ -10,13 +10,12 @@ type Worker = {
   role: string;
   jobTitle?: string | null;
   photoUrl: string;
-  phone?: string; // ✅ NEW
+  phone?: string;
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
 
-// ✅ ONLY roles linked to current routing logic
 const ROLE_OPTIONS = ["Worker", "Office", "Admin", "Manager", "Owner"] as const;
 type RoleOption = (typeof ROLE_OPTIONS)[number];
 
@@ -48,6 +47,7 @@ const BRANDS: Brand[] = [
 function clean(s: unknown) {
   return typeof s === "string" ? s.trim() : "";
 }
+
 function norm(v: string) {
   return (v || "").trim().toLowerCase();
 }
@@ -86,7 +86,6 @@ function safeRole(role: string): RoleOption {
 function whatsappUrlFromPhone(phoneRaw: string, displayName?: string) {
   const p = clean(phoneRaw);
   if (!p) return "";
-  // Keep digits only (wa.me needs digits, no +, spaces etc)
   const digits = p.replace(/[^\d]/g, "");
   if (!digits) return "";
   const msg = encodeURIComponent(`Hi ${clean(displayName) || ""}`.trim());
@@ -126,17 +125,15 @@ export default function KellyWorkersPage() {
   const [q, setQ] = useState("");
   const [showArchived, setShowArchived] = useState(false);
 
-  // Add form
   const [addName, setAddName] = useState("");
   const [addRole, setAddRole] = useState<RoleOption>("Worker");
   const [addJobTitle, setAddJobTitle] = useState("");
   const [addPhotoUrl, setAddPhotoUrl] = useState("");
-  const [addPhone, setAddPhone] = useState(""); // ✅ NEW
+  const [addPhone, setAddPhone] = useState("");
   const [addActive, setAddActive] = useState(true);
   const [addUploading, setAddUploading] = useState(false);
   const addFileRef = useRef<HTMLInputElement | null>(null);
 
-  // Edit modal
   const [editOpen, setEditOpen] = useState(false);
   const [edit, setEdit] = useState<Worker | null>(null);
 
@@ -144,7 +141,7 @@ export default function KellyWorkersPage() {
   const [editRole, setEditRole] = useState<RoleOption>("Worker");
   const [editJobTitle, setEditJobTitle] = useState("");
   const [editPhotoUrl, setEditPhotoUrl] = useState("");
-  const [editPhone, setEditPhone] = useState(""); // ✅ NEW
+  const [editPhone, setEditPhone] = useState("");
   const [editActive, setEditActive] = useState(true);
   const [editUploading, setEditUploading] = useState(false);
   const editFileRef = useRef<HTMLInputElement | null>(null);
@@ -154,7 +151,29 @@ export default function KellyWorkersPage() {
     return BRANDS.find((b) => b.key === key)!;
   }, [company]);
 
-  // ---------- styles ----------
+  useEffect(() => {
+    const c = getCompanyFromUrlOrStorage();
+    setCompany(c);
+    localStorage.setItem("company", c);
+    loadWorkers(c);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!editOpen) return;
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setEditOpen(false);
+        setEdit(null);
+        setEditUploading(false);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editOpen]);
+
   const shell: React.CSSProperties = {
     minHeight: "100vh",
     background: brand.softBg,
@@ -172,9 +191,15 @@ export default function KellyWorkersPage() {
     background: "#fff",
     padding: 14,
     boxShadow: "0 10px 30px rgba(0,0,0,0.04)",
+    boxSizing: "border-box",
   };
 
-  const label: React.CSSProperties = { fontSize: 12, opacity: 0.75, marginBottom: 6, fontWeight: 900 };
+  const label: React.CSSProperties = {
+    fontSize: 12,
+    opacity: 0.75,
+    marginBottom: 6,
+    fontWeight: 900,
+  };
 
   const input: React.CSSProperties = {
     width: "100%",
@@ -184,6 +209,7 @@ export default function KellyWorkersPage() {
     fontSize: 16,
     minHeight: 48,
     background: "#fff",
+    boxSizing: "border-box",
   };
 
   const btn: React.CSSProperties = {
@@ -200,6 +226,7 @@ export default function KellyWorkersPage() {
     justifyContent: "center",
     gap: 10,
     whiteSpace: "nowrap",
+    boxSizing: "border-box",
   };
 
   const btnPrimary: React.CSSProperties = {
@@ -209,7 +236,11 @@ export default function KellyWorkersPage() {
     color: "#fff",
   };
 
-  const btnDanger: React.CSSProperties = { ...btn, border: "1px solid #ffb3b3", background: "#ffecec" };
+  const btnDanger: React.CSSProperties = {
+    ...btn,
+    border: "1px solid #ffb3b3",
+    background: "#ffecec",
+  };
 
   const pill: React.CSSProperties = {
     padding: "6px 10px",
@@ -227,7 +258,6 @@ export default function KellyWorkersPage() {
     color: brand.primary,
   };
 
-  // ---------- helpers ----------
   function go(path: string) {
     window.location.href = path;
   }
@@ -242,7 +272,9 @@ export default function KellyWorkersPage() {
     setErrorMsg("");
     setLoading(true);
     try {
-      const res = await fetch(`/api/workers?company=${encodeURIComponent(c)}&includeArchived=1`, { cache: "no-store" });
+      const res = await fetch(`/api/workers?company=${encodeURIComponent(c)}&includeArchived=1`, {
+        cache: "no-store",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || `Load failed (${res.status})`);
       setWorkers(safeWorkers(data));
@@ -253,14 +285,6 @@ export default function KellyWorkersPage() {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    const c = getCompanyFromUrlOrStorage();
-    setCompany(c);
-    localStorage.setItem("company", c);
-    loadWorkers(c);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const filtered = useMemo(() => {
     const term = clean(q).toLowerCase();
@@ -282,7 +306,6 @@ export default function KellyWorkersPage() {
   const activeCount = workers.filter((w) => w.active).length;
   const archivedCount = workers.filter((w) => !w.active).length;
 
-  // ---------- actions ----------
   async function onAddFilePicked(file: File | null) {
     if (!file) return;
     setErrorMsg("");
@@ -333,7 +356,7 @@ export default function KellyWorkersPage() {
           role: addRole,
           jobTitle: clean(addJobTitle) || "",
           photoUrl: clean(addPhotoUrl) || "",
-          phone: clean(addPhone) || "", // ✅ NEW
+          phone: clean(addPhone) || "",
           active: !!addActive,
         }),
       });
@@ -347,7 +370,7 @@ export default function KellyWorkersPage() {
       setAddRole("Worker");
       setAddJobTitle("");
       setAddPhotoUrl("");
-      setAddPhone(""); // ✅ NEW
+      setAddPhone("");
       setAddActive(true);
       if (addFileRef.current) addFileRef.current.value = "";
 
@@ -366,7 +389,7 @@ export default function KellyWorkersPage() {
     setEditRole(safeRole(w.role));
     setEditJobTitle(w.jobTitle || "");
     setEditPhotoUrl(w.photoUrl || "");
-    setEditPhone(w.phone || ""); // ✅ NEW
+    setEditPhone(w.phone || "");
     setEditActive(!!w.active);
     if (editFileRef.current) editFileRef.current.value = "";
     setEditOpen(true);
@@ -395,7 +418,7 @@ export default function KellyWorkersPage() {
           role: editRole,
           jobTitle: clean(editJobTitle) || "",
           photoUrl: clean(editPhotoUrl) || "",
-          phone: clean(editPhone) || "", // ✅ NEW
+          phone: clean(editPhone) || "",
           active: !!editActive,
         }),
       });
@@ -439,7 +462,6 @@ export default function KellyWorkersPage() {
 
   return (
     <main style={shell}>
-      {/* Sticky top controls (mobile-friendly) */}
       <div
         style={{
           position: "sticky",
@@ -451,14 +473,18 @@ export default function KellyWorkersPage() {
         }}
       >
         <div style={container}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <button style={btn} onClick={backToDashboard}>
+          <div className="kw-topbar">
+            <button style={btn} className="kw-mobile-full-btn" onClick={backToDashboard}>
               ← Back to dashboard
             </button>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="kw-topbar-right">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={brand.logo} alt={brand.label} style={{ height: 34, objectFit: "contain" }} />
+              <img
+                src={brand.logo}
+                alt={brand.label}
+                style={{ height: 34, objectFit: "contain" }}
+              />
 
               <select
                 value={company}
@@ -468,43 +494,65 @@ export default function KellyWorkersPage() {
                   localStorage.setItem("company", next);
                   loadWorkers(next);
                 }}
-                style={{ ...input, width: 200 }}
+                style={input}
+                className="kw-company-select"
               >
                 <option value="threecounties">Three Counties</option>
                 <option value="furlads">Furlads</option>
               </select>
 
-              <button style={btn} onClick={() => loadWorkers(company)} disabled={loading}>
+              <button
+                style={btn}
+                className="kw-mobile-full-btn"
+                onClick={() => loadWorkers(company)}
+                disabled={loading}
+              >
                 {loading ? "Refreshing…" : "Refresh"}
               </button>
             </div>
           </div>
 
-          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="kw-toolbar-row" style={{ marginTop: 10 }}>
             <div style={{ fontWeight: 950, fontSize: 18 }}>Workers</div>
             <span style={pillAccent}>Active: {activeCount}</span>
             <span style={pill}>Archived: {archivedCount}</span>
 
-            <label style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
-              <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            <label className="kw-archive-toggle">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+              />
               <span style={{ fontWeight: 900 }}>Show archived</span>
             </label>
           </div>
 
           {errorMsg ? (
-            <div style={{ marginTop: 10, padding: 12, borderRadius: 16, border: "1px solid #ffb3b3", background: "#ffecec" }}>
+            <div
+              style={{
+                marginTop: 10,
+                padding: 12,
+                borderRadius: 16,
+                border: "1px solid #ffb3b3",
+                background: "#ffecec",
+              }}
+            >
               <b>Oops:</b> {errorMsg}
             </div>
           ) : null}
 
           <div style={{ marginTop: 10 }}>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search staff…" style={input} />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search staff…"
+              style={input}
+            />
           </div>
         </div>
       </div>
 
       <div style={container}>
-        {/* Add worker */}
         <div style={{ ...card, marginTop: 14 }}>
           <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 10 }}>Add worker</div>
 
@@ -514,10 +562,14 @@ export default function KellyWorkersPage() {
               <input value={addName} onChange={(e) => setAddName(e.target.value)} style={input} />
             </div>
 
-            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
+            <div className="kw-two-col-grid">
               <div>
                 <div style={label}>Role</div>
-                <select value={addRole} onChange={(e) => setAddRole(e.target.value as RoleOption)} style={input}>
+                <select
+                  value={addRole}
+                  onChange={(e) => setAddRole(e.target.value as RoleOption)}
+                  style={input}
+                >
                   {ROLE_OPTIONS.map((r) => (
                     <option key={r} value={r}>
                       {r}
@@ -531,11 +583,15 @@ export default function KellyWorkersPage() {
 
               <div>
                 <div style={label}>Job title (shown to them)</div>
-                <input value={addJobTitle} onChange={(e) => setAddJobTitle(e.target.value)} style={input} placeholder="e.g. Office Manager" />
+                <input
+                  value={addJobTitle}
+                  onChange={(e) => setAddJobTitle(e.target.value)}
+                  style={input}
+                  placeholder="e.g. Office Manager"
+                />
               </div>
             </div>
 
-            {/* ✅ NEW: phone */}
             <div>
               <div style={label}>Phone (WhatsApp)</div>
               <input
@@ -551,15 +607,22 @@ export default function KellyWorkersPage() {
 
             <div>
               <div style={label}>Photo</div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div className="kw-photo-row">
                 <input
                   ref={addFileRef}
                   type="file"
                   accept="image/*"
                   onChange={(e) => onAddFilePicked(e.target.files?.[0] ?? null)}
-                  style={{ fontSize: 14 }}
+                  style={{ fontSize: 14, width: "100%" }}
                 />
-                <button type="button" style={btn} onClick={() => addFileRef.current?.click()} disabled={addUploading}>
+
+                <button
+                  type="button"
+                  style={btn}
+                  className="kw-mobile-full-btn"
+                  onClick={() => addFileRef.current?.click()}
+                  disabled={addUploading}
+                >
                   {addUploading ? "Uploading…" : "Choose photo"}
                 </button>
 
@@ -568,64 +631,142 @@ export default function KellyWorkersPage() {
                   <img
                     src={addPhotoUrl}
                     alt="Preview"
-                    style={{ width: 54, height: 54, borderRadius: 14, objectFit: "cover", border: "1px solid #e5e7eb" }}
+                    style={{
+                      width: 54,
+                      height: 54,
+                      borderRadius: 14,
+                      objectFit: "cover",
+                      border: "1px solid #e5e7eb",
+                    }}
                   />
                 ) : null}
               </div>
             </div>
 
             <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <input type="checkbox" checked={addActive} onChange={(e) => setAddActive(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={addActive}
+                onChange={(e) => setAddActive(e.target.checked)}
+              />
               <span style={{ fontWeight: 900 }}>Active</span>
             </label>
 
-            <button type="submit" style={btnPrimary} disabled={busyId === -1}>
+            <button
+              type="submit"
+              style={btnPrimary}
+              className="kw-mobile-full-btn"
+              disabled={busyId === -1}
+            >
               {busyId === -1 ? "Adding…" : "Add worker"}
             </button>
           </form>
         </div>
 
-        {/* List */}
         <div style={{ ...card, marginTop: 14 }}>
-          <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 10 }}>Staff ({filtered.length})</div>
+          <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 10 }}>
+            Staff ({filtered.length})
+          </div>
 
           {loading ? (
-            <div style={{ padding: 12, borderRadius: 16, border: "1px solid #eee", background: "#fafafa", opacity: 0.9 }}>Loading…</div>
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 16,
+                border: "1px solid #eee",
+                background: "#fafafa",
+                opacity: 0.9,
+              }}
+            >
+              Loading…
+            </div>
           ) : filtered.length === 0 ? (
-            <div style={{ padding: 12, borderRadius: 16, border: "1px dashed #ddd", background: "#fafafa", opacity: 0.9 }}>No staff found.</div>
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 16,
+                border: "1px dashed #ddd",
+                background: "#fafafa",
+                opacity: 0.9,
+              }}
+            >
+              No staff found.
+            </div>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
               {filtered.map((w) => (
-                <div key={w.id} style={{ border: "1px solid #e5e7eb", borderRadius: 18, padding: 12, background: "#fff" }}>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <div
+                  key={w.id}
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 18,
+                    padding: 12,
+                    background: "#fff",
+                  }}
+                >
+                  <div className="kw-worker-row">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={w.photoUrl || "/favicon.ico"}
                       alt={w.name}
-                      style={{ width: 56, height: 56, borderRadius: 16, objectFit: "cover", border: "1px solid #e5e7eb", background: "#fafafa" }}
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 16,
+                        objectFit: "cover",
+                        border: "1px solid #e5e7eb",
+                        background: "#fafafa",
+                        flexShrink: 0,
+                      }}
                     />
 
-                    <div style={{ flex: 1, minWidth: 240 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                        <div style={{ fontWeight: 950, fontSize: 18 }}>{w.name}</div>
-                        <div style={{ fontSize: 12, opacity: 0.75 }}>
+                    <div className="kw-worker-main">
+                      <div className="kw-worker-heading">
+                        <div style={{ fontWeight: 950, fontSize: 18, wordBreak: "break-word" }}>
+                          {w.name}
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.75, wordBreak: "break-word" }}>
                           Key: <b>{w.key}</b>
                         </div>
                       </div>
 
-                      <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
                         <span style={pillAccent}>Role: {w.role || "Worker"}</span>
                         <span style={pill}>Title: {w.jobTitle || "—"}</span>
-                        <span style={{ ...pill, background: w.active ? "#eaffea" : "#fff1f1" }}>{w.active ? "Active" : "Archived"}</span>
+                        <span
+                          style={{
+                            ...pill,
+                            background: w.active ? "#eaffea" : "#fff1f1",
+                          }}
+                        >
+                          {w.active ? "Active" : "Archived"}
+                        </span>
                         {w.phone ? <span style={pill}>📞 {w.phone}</span> : null}
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <button style={btn} onClick={() => openEdit(w)} disabled={busyId === w.id}>
+                    <div className="kw-worker-actions">
+                      <button
+                        style={btn}
+                        className="kw-mobile-full-btn"
+                        onClick={() => openEdit(w)}
+                        disabled={busyId === w.id}
+                      >
                         Edit
                       </button>
-                      <button style={btnDanger} onClick={() => toggleArchive(w)} disabled={busyId === w.id}>
+                      <button
+                        style={btnDanger}
+                        className="kw-mobile-full-btn"
+                        onClick={() => toggleArchive(w)}
+                        disabled={busyId === w.id}
+                      >
                         {w.active ? "Archive" : "Unarchive"}
                       </button>
                     </div>
@@ -637,7 +778,6 @@ export default function KellyWorkersPage() {
         </div>
       </div>
 
-      {/* Edit modal */}
       {editOpen && edit ? (
         <div
           role="dialog"
@@ -655,8 +795,18 @@ export default function KellyWorkersPage() {
             zIndex: 9999,
           }}
         >
-          <div style={{ width: "100%", maxWidth: 720, ...card }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+          <div
+            className="kw-modal-card"
+            style={{
+              ...card,
+              width: "100%",
+              maxWidth: 720,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              margin: "0 auto",
+            }}
+          >
+            <div className="kw-modal-header">
               <div>
                 <div style={{ fontWeight: 950, fontSize: 18 }}>Edit worker</div>
                 <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
@@ -664,21 +814,29 @@ export default function KellyWorkersPage() {
                 </div>
               </div>
 
-              <button style={btn} onClick={closeEdit}>
+              <button style={btn} className="kw-mobile-full-btn" onClick={closeEdit}>
                 Close ✕
               </button>
             </div>
 
             <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
+              <div className="kw-two-col-grid">
                 <div>
                   <div style={label}>Name *</div>
-                  <input value={editName} onChange={(e) => setEditName(e.target.value)} style={input} />
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    style={input}
+                  />
                 </div>
 
                 <div>
                   <div style={label}>Role</div>
-                  <select value={editRole} onChange={(e) => setEditRole(e.target.value as RoleOption)} style={input}>
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as RoleOption)}
+                    style={input}
+                  >
                     {ROLE_OPTIONS.map((r) => (
                       <option key={r} value={r}>
                         {r}
@@ -690,11 +848,14 @@ export default function KellyWorkersPage() {
 
               <div>
                 <div style={label}>Job title (shown to them)</div>
-                <input value={editJobTitle} onChange={(e) => setEditJobTitle(e.target.value)} style={input} />
+                <input
+                  value={editJobTitle}
+                  onChange={(e) => setEditJobTitle(e.target.value)}
+                  style={input}
+                />
               </div>
 
-              {/* ✅ NEW: phone + WhatsApp */}
-              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr auto" }}>
+              <div className="kw-phone-row">
                 <div>
                   <div style={label}>Phone (WhatsApp)</div>
                   <input
@@ -705,10 +866,11 @@ export default function KellyWorkersPage() {
                   />
                 </div>
 
-                <div style={{ display: "grid", alignContent: "end" }}>
+                <div className="kw-phone-action">
                   <button
                     type="button"
                     style={btn}
+                    className="kw-mobile-full-btn"
                     disabled={!clean(editPhone)}
                     onClick={() => {
                       const url = whatsappUrlFromPhone(editPhone, editName);
@@ -724,23 +886,36 @@ export default function KellyWorkersPage() {
 
               <div>
                 <div style={label}>Photo</div>
-                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <div className="kw-edit-photo-row">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={editPhotoUrl || "/favicon.ico"}
                     alt={editName}
-                    style={{ width: 72, height: 72, borderRadius: 18, objectFit: "cover", border: "1px solid #e5e7eb" }}
+                    style={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: 18,
+                      objectFit: "cover",
+                      border: "1px solid #e5e7eb",
+                      flexShrink: 0,
+                    }}
                   />
 
-                  <div style={{ display: "grid", gap: 8 }}>
+                  <div className="kw-edit-photo-controls">
                     <input
                       ref={editFileRef}
                       type="file"
                       accept="image/*"
                       onChange={(e) => onEditFilePicked(e.target.files?.[0] ?? null)}
-                      style={{ fontSize: 14 }}
+                      style={{ fontSize: 14, width: "100%" }}
                     />
-                    <button type="button" style={btn} onClick={() => editFileRef.current?.click()} disabled={editUploading}>
+                    <button
+                      type="button"
+                      style={btn}
+                      className="kw-mobile-full-btn"
+                      onClick={() => editFileRef.current?.click()}
+                      disabled={editUploading}
+                    >
                       {editUploading ? "Uploading…" : "Choose new photo"}
                     </button>
                   </div>
@@ -748,15 +923,24 @@ export default function KellyWorkersPage() {
               </div>
 
               <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={editActive}
+                  onChange={(e) => setEditActive(e.target.checked)}
+                />
                 <span style={{ fontWeight: 900 }}>Active</span>
               </label>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <button style={btn} onClick={closeEdit}>
+              <div className="kw-modal-actions">
+                <button style={btn} className="kw-mobile-full-btn" onClick={closeEdit}>
                   Cancel
                 </button>
-                <button style={btnPrimary} onClick={saveEdit} disabled={busyId === edit.id || editUploading}>
+                <button
+                  style={btnPrimary}
+                  className="kw-mobile-full-btn"
+                  onClick={saveEdit}
+                  disabled={busyId === edit.id || editUploading}
+                >
                   {busyId === edit.id ? "Saving…" : "Save changes"}
                 </button>
               </div>
@@ -765,11 +949,196 @@ export default function KellyWorkersPage() {
         </div>
       ) : null}
 
-      {/* Mobile: force 1 column for 2-col grids */}
-      <style jsx global>{`
+      <style jsx>{`
+        .kw-topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .kw-topbar-right {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .kw-company-select {
+          width: 200px;
+        }
+
+        .kw-toolbar-row {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .kw-archive-toggle {
+          margin-left: auto;
+          display: flex;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .kw-two-col-grid {
+          display: grid;
+          gap: 10px;
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .kw-photo-row {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .kw-worker-row {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: nowrap;
+        }
+
+        .kw-worker-main {
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+
+        .kw-worker-heading {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: flex-start;
+        }
+
+        .kw-worker-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: flex-end;
+          flex-shrink: 0;
+        }
+
+        .kw-modal-card {
+          box-sizing: border-box;
+        }
+
+        .kw-modal-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          align-items: flex-start;
+        }
+
+        .kw-phone-row {
+          display: grid;
+          gap: 10px;
+          grid-template-columns: 1fr auto;
+          align-items: end;
+        }
+
+        .kw-phone-action {
+          display: grid;
+          align-content: end;
+        }
+
+        .kw-edit-photo-row {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .kw-edit-photo-controls {
+          display: grid;
+          gap: 8px;
+          flex: 1 1 260px;
+          min-width: 0;
+        }
+
+        .kw-modal-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
         @media (max-width: 860px) {
-          main div[style*="gridTemplateColumns: 1fr 1fr"] {
-            grid-template-columns: 1fr !important;
+          .kw-topbar {
+            align-items: stretch;
+          }
+
+          .kw-topbar-right {
+            width: 100%;
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .kw-company-select {
+            width: 100%;
+          }
+
+          .kw-toolbar-row {
+            align-items: stretch;
+          }
+
+          .kw-archive-toggle {
+            margin-left: 0;
+            width: 100%;
+          }
+
+          .kw-two-col-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .kw-photo-row {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .kw-worker-row {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .kw-worker-actions {
+            width: 100%;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: stretch;
+          }
+
+          .kw-modal-header {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .kw-phone-row {
+            grid-template-columns: 1fr;
+          }
+
+          .kw-phone-action {
+            align-content: stretch;
+          }
+
+          .kw-edit-photo-row {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .kw-modal-actions {
+            flex-direction: column;
+            justify-content: stretch;
+          }
+
+          .kw-mobile-full-btn {
+            width: 100%;
           }
         }
       `}</style>

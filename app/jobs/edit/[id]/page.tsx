@@ -54,11 +54,7 @@ function toDateInputValue(value?: string | null) {
 function normalizeEditStatus(value?: string | null) {
   const status = String(value || '').trim().toLowerCase()
 
-  if (
-    status === 'scheduled' ||
-    status === 'todo' ||
-    status === 'to do'
-  ) {
+  if (status === 'scheduled' || status === 'todo' || status === 'to do') {
     return 'todo'
   }
 
@@ -74,18 +70,11 @@ function normalizeEditStatus(value?: string | null) {
     return 'paused'
   }
 
-  if (
-    status === 'done' ||
-    status === 'completed' ||
-    status === 'complete'
-  ) {
+  if (status === 'done' || status === 'completed' || status === 'complete') {
     return 'done'
   }
 
-  if (
-    status === 'quoted' ||
-    status === 'quote'
-  ) {
+  if (status === 'quoted' || status === 'quote') {
     return 'quoted'
   }
 
@@ -95,10 +84,7 @@ function normalizeEditStatus(value?: string | null) {
 function normalizeMaintenanceFrequency(value?: string | null) {
   const frequency = String(value || '').trim().toLowerCase()
 
-  if (
-    frequency === 'weekly' ||
-    frequency === 'week'
-  ) {
+  if (frequency === 'weekly' || frequency === 'week') {
     return 'weekly'
   }
 
@@ -120,11 +106,7 @@ function normalizeMaintenanceFrequency(value?: string | null) {
     return '4-weekly'
   }
 
-  if (
-    frequency === 'one-off' ||
-    frequency === 'one off' ||
-    frequency === 'once'
-  ) {
+  if (frequency === 'one-off' || frequency === 'one off' || frequency === 'once') {
     return 'one-off'
   }
 
@@ -151,25 +133,15 @@ function normalizePreferredDay(value?: string | null) {
 function normalizePreferredTimeBand(value?: string | null) {
   const timeBand = String(value || '').trim().toLowerCase()
 
-  if (
-    timeBand === 'am' ||
-    timeBand === 'morning'
-  ) {
+  if (timeBand === 'am' || timeBand === 'morning') {
     return 'am'
   }
 
-  if (
-    timeBand === 'pm' ||
-    timeBand === 'afternoon'
-  ) {
+  if (timeBand === 'pm' || timeBand === 'afternoon') {
     return 'pm'
   }
 
-  if (
-    timeBand === 'anytime' ||
-    timeBand === 'any time' ||
-    timeBand === 'any'
-  ) {
+  if (timeBand === 'anytime' || timeBand === 'any time' || timeBand === 'any') {
     return 'anytime'
   }
 
@@ -186,7 +158,7 @@ function SectionCard({
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="mb-4">
         <h2 className="text-lg font-bold text-zinc-900">{title}</h2>
         {description ? (
@@ -268,7 +240,7 @@ export default function EditJobPage() {
         const [jobRes, customerRes, workerRes] = await Promise.all([
           fetch(`/api/jobs/${id}`, { cache: 'no-store' }),
           fetch('/api/customers', { cache: 'no-store' }),
-          fetch('/api/workers', { cache: 'no-store' })
+          fetch('/api/workers', { cache: 'no-store' }),
         ])
 
         if (!jobRes.ok) {
@@ -324,7 +296,7 @@ export default function EditJobPage() {
 
         const customerAddress = [
           selectedCustomer?.address || '',
-          selectedCustomer?.postcode || ''
+          selectedCustomer?.postcode || '',
         ]
           .filter(Boolean)
           .join('\n')
@@ -436,7 +408,7 @@ export default function EditJobPage() {
       const res = await fetch(`/api/jobs/${id}`, {
         method: 'PATCH',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           customerId: Number(customerId),
@@ -465,8 +437,8 @@ export default function EditJobPage() {
           preferredTimeBand:
             isMaintenanceJob && isRegularMaintenance
               ? preferredTimeBand
-              : null
-        })
+              : null,
+        }),
       })
 
       const data = await res.json().catch(() => null)
@@ -501,10 +473,10 @@ export default function EditJobPage() {
 
   return (
     <main className="min-h-screen bg-zinc-50">
-      <div className="mx-auto max-w-4xl px-4 py-5 md:px-6">
-        <div className="space-y-5">
+      <div className="mx-auto max-w-4xl px-4 py-4 md:px-6">
+        <div className="space-y-4 sm:space-y-5">
           <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="bg-zinc-900 px-5 py-5 text-white md:px-6">
+            <div className="bg-zinc-900 px-4 py-5 text-white md:px-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-400">
@@ -518,10 +490,10 @@ export default function EditJobPage() {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
                   <Link
                     href={`/jobs/${id}`}
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
                   >
                     Cancel
                   </Link>
@@ -529,12 +501,12 @@ export default function EditJobPage() {
               </div>
             </div>
 
-            <div className="border-t border-zinc-200 bg-zinc-50 px-5 py-3 text-sm text-zinc-600 md:px-6">
+            <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 md:px-6">
               Job #{id}
             </div>
           </section>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
             <SectionCard
               title="Job Details"
               description="Basic details for the customer and type of work."
@@ -550,7 +522,7 @@ export default function EditJobPage() {
                       setJobAddress('')
                     }}
                     required
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   >
                     <option value="">Select customer</option>
                     {customers.map((customer) => (
@@ -567,11 +539,11 @@ export default function EditJobPage() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     required
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <FieldLabel>Job Type</FieldLabel>
                     <select
@@ -584,7 +556,7 @@ export default function EditJobPage() {
                           setAllowQuoteTimeOverride(false)
                         }
                       }}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
                       <option value="Quote">Quote</option>
                       <option value="Maintenance">Maintenance</option>
@@ -598,7 +570,7 @@ export default function EditJobPage() {
                     <select
                       value={status}
                       onChange={(e) => setStatus(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
                       <option value="todo">Scheduled</option>
                       <option value="in_progress">In Progress</option>
@@ -625,7 +597,7 @@ export default function EditJobPage() {
                         key={minutes}
                         type="button"
                         onClick={() => setDurationMinutes(String(minutes))}
-                        className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                        className={`min-h-[44px] rounded-xl border px-3 py-2 text-sm font-semibold transition ${
                           durationMinutes === String(minutes)
                             ? 'border-zinc-900 bg-zinc-900 text-white'
                             : 'border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100'
@@ -643,7 +615,7 @@ export default function EditJobPage() {
                     value={durationMinutes}
                     onChange={(e) => setDurationMinutes(e.target.value)}
                     required
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
                 </div>
 
@@ -653,12 +625,14 @@ export default function EditJobPage() {
                     <div className="mt-1 space-y-1 text-zinc-700">
                       <p>• Trev can only have 3 quote visits per day.</p>
                       <p>• Default quote slots are 11:00, 12:00 and 13:00.</p>
-                      <p>• If you leave manual override off, the system will pick the next free slot automatically.</p>
+                      <p>
+                        • If you leave manual override off, the system will pick the next free slot automatically.
+                      </p>
                     </div>
                   </div>
                 )}
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <FieldLabel required={isTrevQuoteJob}>Visit Date</FieldLabel>
                     <input
@@ -666,7 +640,7 @@ export default function EditJobPage() {
                       value={visitDate}
                       onChange={(e) => setVisitDate(e.target.value)}
                       required={isTrevQuoteJob}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     />
                   </div>
 
@@ -681,7 +655,7 @@ export default function EditJobPage() {
                       value={startTime}
                       onChange={(e) => setStartTime(e.target.value)}
                       disabled={isTrevQuoteJob && !allowQuoteTimeOverride}
-                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                      className={`min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
                         isTrevQuoteJob && !allowQuoteTimeOverride
                           ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
                           : 'border-zinc-300 bg-white text-zinc-900'
@@ -724,7 +698,9 @@ export default function EditJobPage() {
               <div className="space-y-4">
                 {!isMaintenanceJob && (
                   <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
-                    Switch the job type to <span className="font-semibold text-zinc-900">Maintenance</span> to enable regular maintenance controls.
+                    Switch the job type to{' '}
+                    <span className="font-semibold text-zinc-900">Maintenance</span>{' '}
+                    to enable regular maintenance controls.
                   </div>
                 )}
 
@@ -748,14 +724,14 @@ export default function EditJobPage() {
                   </label>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-3">
                   <div>
                     <FieldLabel>Frequency</FieldLabel>
                     <select
                       value={maintenanceFrequency}
                       onChange={(e) => setMaintenanceFrequency(e.target.value)}
                       disabled={!isMaintenanceJob || !isRegularMaintenance}
-                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                      className={`min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
                         !isMaintenanceJob || !isRegularMaintenance
                           ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
                           : 'border-zinc-300 bg-white text-zinc-900'
@@ -774,7 +750,7 @@ export default function EditJobPage() {
                       value={preferredDay}
                       onChange={(e) => setPreferredDay(e.target.value)}
                       disabled={!isMaintenanceJob || !isRegularMaintenance}
-                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                      className={`min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
                         !isMaintenanceJob || !isRegularMaintenance
                           ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
                           : 'border-zinc-300 bg-white text-zinc-900'
@@ -795,7 +771,7 @@ export default function EditJobPage() {
                       value={preferredTimeBand}
                       onChange={(e) => setPreferredTimeBand(e.target.value)}
                       disabled={!isMaintenanceJob || !isRegularMaintenance}
-                      className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
+                      className={`min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
                         !isMaintenanceJob || !isRegularMaintenance
                           ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
                           : 'border-zinc-300 bg-white text-zinc-900'
@@ -877,14 +853,14 @@ export default function EditJobPage() {
               {workers.length === 0 ? (
                 <p className="text-sm text-zinc-500">No active workers found.</p>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3">
                   {workers.map((worker) => {
                     const checked = assignedTo.includes(worker.id)
 
                     return (
                       <label
                         key={worker.id}
-                        className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 text-sm transition ${
+                        className={`flex min-h-[56px] cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 text-sm transition sm:min-h-[60px] ${
                           checked
                             ? 'border-zinc-900 bg-zinc-900 text-white'
                             : 'border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50'
@@ -894,7 +870,7 @@ export default function EditJobPage() {
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleWorker(worker.id)}
-                          className="h-4 w-4"
+                          className="h-4 w-4 shrink-0"
                         />
                         <span className="font-semibold">
                           {worker.firstName} {worker.lastName}
@@ -932,7 +908,7 @@ export default function EditJobPage() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                   <Link
                     href={`/jobs/${id}`}
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
                   >
                     Cancel
                   </Link>
@@ -940,7 +916,7 @@ export default function EditJobPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {saving ? 'Saving…' : 'Save Changes'}
                   </button>

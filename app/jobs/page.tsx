@@ -1,4 +1,5 @@
 import Link from "next/link"
+import type { ReactNode } from "react"
 import { prisma } from "@/lib/prisma"
 import ScheduleNeedsSchedulingButton from "./ScheduleNeedsSchedulingButton"
 import JobQuickActions from "./JobQuickActions"
@@ -135,7 +136,7 @@ function Pill({
   children,
   className,
 }: {
-  children: React.ReactNode
+  children: ReactNode
   className: string
 }) {
   return (
@@ -176,7 +177,7 @@ function StatCard({
       >
         {label}
       </div>
-      <div className={`mt-2 text-3xl font-bold ${active ? "text-white" : "text-zinc-900"}`}>
+      <div className={`mt-2 text-2xl font-bold sm:text-3xl ${active ? "text-white" : "text-zinc-900"}`}>
         {value}
       </div>
     </Link>
@@ -271,7 +272,7 @@ function FilterTab({
   return (
     <Link
       href={href}
-      className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+      className={`inline-flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
         active
           ? "bg-zinc-900 text-white"
           : "border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100"
@@ -436,7 +437,7 @@ function JobCards({ jobs }: { jobs: JobItem[] }) {
           </div>
 
           <div className="mt-4">
-            <div className="text-lg font-bold text-zinc-900">
+            <div className="break-words text-lg font-bold text-zinc-900">
               {job.customer?.name ?? "Unknown"}
             </div>
             <div className="mt-1 text-xs text-zinc-400">Job #{job.id}</div>
@@ -445,10 +446,10 @@ function JobCards({ jobs }: { jobs: JobItem[] }) {
           <div className="mt-4 grid gap-2 text-sm text-zinc-700">
             <div className="rounded-xl bg-zinc-50 px-3 py-2">
               <span className="font-semibold text-zinc-900">Address:</span>{" "}
-              {job.address || "No address"}
+              <span className="break-words">{job.address || "No address"}</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div className="rounded-xl bg-zinc-50 px-3 py-2">
                 <span className="font-semibold text-zinc-900">Visit Date:</span>{" "}
                 {formatDate(job.visitDate)}
@@ -462,27 +463,27 @@ function JobCards({ jobs }: { jobs: JobItem[] }) {
 
             <div className="rounded-xl bg-zinc-50 px-3 py-2">
               <span className="font-semibold text-zinc-900">Workers:</span>{" "}
-              {formatWorkers(job.assignments)}
+              <span className="break-words">{formatWorkers(job.assignments)}</span>
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Link
               href={`/jobs/${job.id}`}
-              className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
             >
               Open
             </Link>
 
             <Link
               href={`/jobs/edit/${job.id}`}
-              className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
             >
               Edit
             </Link>
           </div>
 
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <JobQuickActions
               jobId={job.id}
               customerName={job.customer?.name ?? `Job #${job.id}`}
@@ -503,7 +504,7 @@ function JobSection({
   title: string
   description: string
   jobs: JobItem[]
-  action?: React.ReactNode
+  action?: ReactNode
 }) {
   if (jobs.length === 0) return null
 
@@ -664,10 +665,10 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
 
   return (
     <main className="min-h-screen bg-zinc-50">
-      <div className="mx-auto max-w-7xl px-4 py-5 md:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 lg:px-8">
         <div className="space-y-5">
           <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="bg-zinc-900 px-5 py-5 text-white md:px-6">
+            <div className="bg-zinc-900 px-4 py-5 text-white md:px-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-400">
@@ -682,24 +683,24 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <Link
                     href="/admin"
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
                   >
                     Back to Dashboard
                   </Link>
 
                   <Link
                     href="/jobs/archived"
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-600 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-600 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
                   >
                     Archived Jobs ({archivedCount})
                   </Link>
 
                   <Link
                     href="/jobs/add"
-                    className="inline-flex items-center justify-center rounded-xl bg-yellow-400 px-4 py-3 text-sm font-bold text-zinc-900 transition hover:bg-yellow-300"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-yellow-400 px-4 py-3 text-sm font-bold text-zinc-900 transition hover:bg-yellow-300"
                   >
                     + Add Job
                   </Link>
@@ -777,7 +778,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                   </p>
                 </div>
 
-                <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-600">
+                <div className="self-start rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-600 md:self-auto">
                   {filteredJobsCount} shown
                 </div>
               </div>
@@ -798,17 +799,17 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                     value={activeFilter === "all" ? "" : activeFilter}
                   />
 
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex">
                     <button
                       type="submit"
-                      className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
+                      className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
                     >
                       Search
                     </button>
 
                     <Link
                       href="/jobs"
-                      className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                      className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
                     >
                       Clear
                     </Link>
@@ -816,37 +817,39 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                 </form>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <FilterTab
-                  href={buildFilterHref("all", search)}
-                  label="All"
-                  active={activeFilter === "all"}
-                />
-                <FilterTab
-                  href={buildFilterHref("today", search)}
-                  label="Today"
-                  active={activeFilter === "today"}
-                />
-                <FilterTab
-                  href={buildFilterHref("scheduled", search)}
-                  label="Scheduled"
-                  active={activeFilter === "scheduled"}
-                />
-                <FilterTab
-                  href={buildFilterHref("in-progress", search)}
-                  label="In Progress"
-                  active={activeFilter === "in-progress"}
-                />
-                <FilterTab
-                  href={buildFilterHref("completed", search)}
-                  label="Completed"
-                  active={activeFilter === "completed"}
-                />
-                <FilterTab
-                  href={buildFilterHref("quoted", search)}
-                  label="Quoted"
-                  active={activeFilter === "quoted"}
-                />
+              <div className="mt-4 -mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+                <div className="flex min-w-max gap-2 pb-1">
+                  <FilterTab
+                    href={buildFilterHref("all", search)}
+                    label="All"
+                    active={activeFilter === "all"}
+                  />
+                  <FilterTab
+                    href={buildFilterHref("today", search)}
+                    label="Today"
+                    active={activeFilter === "today"}
+                  />
+                  <FilterTab
+                    href={buildFilterHref("scheduled", search)}
+                    label="Scheduled"
+                    active={activeFilter === "scheduled"}
+                  />
+                  <FilterTab
+                    href={buildFilterHref("in-progress", search)}
+                    label="In Progress"
+                    active={activeFilter === "in-progress"}
+                  />
+                  <FilterTab
+                    href={buildFilterHref("completed", search)}
+                    label="Completed"
+                    active={activeFilter === "completed"}
+                  />
+                  <FilterTab
+                    href={buildFilterHref("quoted", search)}
+                    label="Quoted"
+                    active={activeFilter === "quoted"}
+                  />
+                </div>
               </div>
             </div>
 

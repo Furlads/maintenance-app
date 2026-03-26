@@ -12,6 +12,40 @@ type DuplicateCustomer = {
   createdAt: string
 }
 
+const fieldLabelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: 8,
+  fontWeight: 700,
+  fontSize: 13,
+  color: '#555',
+  textTransform: 'uppercase',
+  letterSpacing: 0.3,
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  minHeight: 48,
+  padding: 14,
+  borderRadius: 12,
+  border: '1px solid #d6d6d6',
+  fontSize: 16,
+  boxSizing: 'border-box',
+  background: '#fcfcfc',
+  outline: 'none',
+}
+
+const textareaStyle: React.CSSProperties = {
+  width: '100%',
+  padding: 14,
+  borderRadius: 12,
+  border: '1px solid #d6d6d6',
+  fontSize: 16,
+  boxSizing: 'border-box',
+  resize: 'vertical',
+  background: '#fcfcfc',
+  outline: 'none',
+}
+
 export default function AddCustomerPage() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -32,7 +66,7 @@ export default function AddCustomerPage() {
       const res = await fetch('/api/customers', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           name,
@@ -41,8 +75,8 @@ export default function AddCustomerPage() {
           address,
           postcode,
           notes,
-          forceCreate
-        })
+          forceCreate,
+        }),
       })
 
       const data = await res.json()
@@ -96,13 +130,13 @@ export default function AddCustomerPage() {
         minHeight: '100vh',
         background: '#f5f5f5',
         padding: 16,
-        fontFamily: 'sans-serif'
+        fontFamily: 'sans-serif',
       }}
     >
       <div
         style={{
           maxWidth: 860,
-          margin: '0 auto'
+          margin: '0 auto',
         }}
       >
         <section
@@ -113,7 +147,7 @@ export default function AddCustomerPage() {
             padding: 20,
             marginBottom: 18,
             boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
-            border: '1px solid #222'
+            border: '1px solid #222',
           }}
         >
           <div style={{ marginBottom: 12 }}>
@@ -126,7 +160,8 @@ export default function AddCustomerPage() {
                 textDecoration: 'none',
                 color: 'rgba(255,255,255,0.78)',
                 fontSize: 14,
-                fontWeight: 600
+                fontWeight: 600,
+                minHeight: 44,
               }}
             >
               ← Back to customers
@@ -145,7 +180,7 @@ export default function AddCustomerPage() {
               fontSize: 12,
               fontWeight: 700,
               letterSpacing: 0.3,
-              marginBottom: 12
+              marginBottom: 12,
             }}
           >
             NEW CUSTOMER
@@ -160,7 +195,7 @@ export default function AddCustomerPage() {
               margin: 0,
               color: 'rgba(255,255,255,0.78)',
               fontSize: 15,
-              maxWidth: 560
+              maxWidth: 560,
             }}
           >
             Save customer contact details, address and any important notes.
@@ -174,22 +209,11 @@ export default function AddCustomerPage() {
             borderRadius: 18,
             background: '#fff',
             padding: 20,
-            boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+            boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
           }}
         >
           <div style={{ marginBottom: 18 }}>
-            <label
-              htmlFor="name"
-              style={{
-                display: 'block',
-                marginBottom: 8,
-                fontWeight: 700,
-                fontSize: 13,
-                color: '#555',
-                textTransform: 'uppercase',
-                letterSpacing: 0.3
-              }}
-            >
+            <label htmlFor="name" style={fieldLabelStyle}>
               Name
             </label>
             <input
@@ -198,40 +222,21 @@ export default function AddCustomerPage() {
               onChange={(e) => setName(e.target.value)}
               required
               placeholder="Customer name"
-              style={{
-                width: '100%',
-                padding: 14,
-                borderRadius: 12,
-                border: '1px solid #d6d6d6',
-                fontSize: 16,
-                boxSizing: 'border-box',
-                background: '#fcfcfc',
-                outline: 'none'
-              }}
+              style={inputStyle}
             />
           </div>
 
           <div
+            className="customer-two-col"
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gridTemplateColumns: '1fr',
               gap: 16,
-              marginBottom: 18
+              marginBottom: 18,
             }}
           >
             <div>
-              <label
-                htmlFor="phone"
-                style={{
-                  display: 'block',
-                  marginBottom: 8,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  color: '#555',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.3
-                }}
-              >
+              <label htmlFor="phone" style={fieldLabelStyle}>
                 Phone
               </label>
               <input
@@ -239,32 +244,12 @@ export default function AddCustomerPage() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="Phone number"
-                style={{
-                  width: '100%',
-                  padding: 14,
-                  borderRadius: 12,
-                  border: '1px solid #d6d6d6',
-                  fontSize: 16,
-                  boxSizing: 'border-box',
-                  background: '#fcfcfc',
-                  outline: 'none'
-                }}
+                style={inputStyle}
               />
             </div>
 
             <div>
-              <label
-                htmlFor="email"
-                style={{
-                  display: 'block',
-                  marginBottom: 8,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  color: '#555',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.3
-                }}
-              >
+              <label htmlFor="email" style={fieldLabelStyle}>
                 Email
               </label>
               <input
@@ -273,33 +258,13 @@ export default function AddCustomerPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Email address"
-                style={{
-                  width: '100%',
-                  padding: 14,
-                  borderRadius: 12,
-                  border: '1px solid #d6d6d6',
-                  fontSize: 16,
-                  boxSizing: 'border-box',
-                  background: '#fcfcfc',
-                  outline: 'none'
-                }}
+                style={inputStyle}
               />
             </div>
           </div>
 
           <div style={{ marginBottom: 18 }}>
-            <label
-              htmlFor="address"
-              style={{
-                display: 'block',
-                marginBottom: 8,
-                fontWeight: 700,
-                fontSize: 13,
-                color: '#555',
-                textTransform: 'uppercase',
-                letterSpacing: 0.3
-              }}
-            >
+            <label htmlFor="address" style={fieldLabelStyle}>
               Address
             </label>
             <textarea
@@ -308,33 +273,12 @@ export default function AddCustomerPage() {
               onChange={(e) => setAddress(e.target.value)}
               rows={4}
               placeholder="Customer address"
-              style={{
-                width: '100%',
-                padding: 14,
-                borderRadius: 12,
-                border: '1px solid #d6d6d6',
-                fontSize: 16,
-                boxSizing: 'border-box',
-                resize: 'vertical',
-                background: '#fcfcfc',
-                outline: 'none'
-              }}
+              style={textareaStyle}
             />
           </div>
 
           <div style={{ marginBottom: 18 }}>
-            <label
-              htmlFor="postcode"
-              style={{
-                display: 'block',
-                marginBottom: 8,
-                fontWeight: 700,
-                fontSize: 13,
-                color: '#555',
-                textTransform: 'uppercase',
-                letterSpacing: 0.3
-              }}
-            >
+            <label htmlFor="postcode" style={fieldLabelStyle}>
               Postcode
             </label>
             <input
@@ -342,32 +286,12 @@ export default function AddCustomerPage() {
               value={postcode}
               onChange={(e) => setPostcode(e.target.value.toUpperCase())}
               placeholder="Postcode"
-              style={{
-                width: '100%',
-                padding: 14,
-                borderRadius: 12,
-                border: '1px solid #d6d6d6',
-                fontSize: 16,
-                boxSizing: 'border-box',
-                background: '#fcfcfc',
-                outline: 'none'
-              }}
+              style={inputStyle}
             />
           </div>
 
           <div style={{ marginBottom: 18 }}>
-            <label
-              htmlFor="notes"
-              style={{
-                display: 'block',
-                marginBottom: 8,
-                fontWeight: 700,
-                fontSize: 13,
-                color: '#555',
-                textTransform: 'uppercase',
-                letterSpacing: 0.3
-              }}
-            >
+            <label htmlFor="notes" style={fieldLabelStyle}>
               Customer Notes
             </label>
             <textarea
@@ -376,32 +300,24 @@ export default function AddCustomerPage() {
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
               placeholder="Gate codes, access details, preferences, pets, anything useful..."
-              style={{
-                width: '100%',
-                padding: 14,
-                borderRadius: 12,
-                border: '1px solid #d6d6d6',
-                fontSize: 16,
-                boxSizing: 'border-box',
-                resize: 'vertical',
-                background: '#fcfcfc',
-                outline: 'none'
-              }}
+              style={textareaStyle}
             />
           </div>
 
           <div
+            className="customer-actions"
             style={{
               display: 'flex',
               gap: 12,
-              alignItems: 'center',
-              flexWrap: 'wrap'
+              alignItems: 'stretch',
+              flexWrap: 'wrap',
             }}
           >
             <button
               type="submit"
               disabled={loading}
               style={{
+                minHeight: 48,
                 padding: '12px 18px',
                 borderRadius: 12,
                 border: '1px solid #111',
@@ -410,7 +326,7 @@ export default function AddCustomerPage() {
                 cursor: loading ? 'default' : 'pointer',
                 fontWeight: 800,
                 minWidth: 140,
-                boxShadow: '0 6px 18px rgba(255, 204, 0, 0.18)'
+                boxShadow: '0 6px 18px rgba(255, 204, 0, 0.18)',
               }}
             >
               {loading ? 'Saving...' : 'Save Customer'}
@@ -419,13 +335,18 @@ export default function AddCustomerPage() {
             <a
               href="/customers"
               style={{
+                minHeight: 48,
                 padding: '12px 18px',
                 borderRadius: 12,
                 border: '1px solid #d8d8d8',
                 textDecoration: 'none',
                 color: '#333',
                 background: '#fff',
-                fontWeight: 700
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxSizing: 'border-box',
               }}
             >
               Cancel
@@ -440,7 +361,7 @@ export default function AddCustomerPage() {
                 borderRadius: 12,
                 background: '#fff8e7',
                 border: '1px solid #f0d48a',
-                color: '#333'
+                color: '#333',
               }}
             >
               <div style={{ fontWeight: 800, marginBottom: 8 }}>
@@ -459,15 +380,19 @@ export default function AddCustomerPage() {
                       background: '#fff',
                       border: '1px solid #ead79a',
                       borderRadius: 10,
-                      padding: 10
+                      padding: 10,
+                      overflowWrap: 'anywhere',
                     }}
                   >
-                    <div style={{ fontWeight: 700 }}>{customer.name}</div>
-                    <div style={{ fontSize: 14, color: '#555' }}>
+                    <div style={{ fontWeight: 700, overflowWrap: 'anywhere' }}>
+                      {customer.name}
+                    </div>
+                    <div style={{ fontSize: 14, color: '#555', overflowWrap: 'anywhere' }}>
                       {customer.phone || 'No phone'} • {customer.email || 'No email'}
                     </div>
-                    <div style={{ fontSize: 14, color: '#555' }}>
-                      {customer.address || 'No address'} {customer.postcode ? `• ${customer.postcode}` : ''}
+                    <div style={{ fontSize: 14, color: '#555', overflowWrap: 'anywhere' }}>
+                      {customer.address || 'No address'}{' '}
+                      {customer.postcode ? `• ${customer.postcode}` : ''}
                     </div>
                   </div>
                 ))}
@@ -485,12 +410,30 @@ export default function AddCustomerPage() {
                 border: message.includes('successfully')
                   ? '1px solid #cfe7c7'
                   : '1px solid #f0c9c9',
-                color: '#333'
+                color: '#333',
               }}
             >
               {message}
             </div>
           )}
+
+          <style jsx>{`
+            @media (min-width: 720px) {
+              .customer-two-col {
+                grid-template-columns: 1fr 1fr !important;
+              }
+            }
+
+            @media (max-width: 719px) {
+              .customer-actions {
+                flex-direction: column;
+              }
+
+              .customer-actions > * {
+                width: 100%;
+              }
+            }
+          `}</style>
         </form>
       </div>
     </main>
