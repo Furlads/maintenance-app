@@ -84,6 +84,10 @@ type LocalRepairResult = {
   remaining: number
   unplacedJobIds: number[]
   message?: string
+  optimised?: boolean
+  travelMinutesSaved?: number
+  reorderedJobs?: number
+  warning?: string | null
 }
 
 type LocalRepairForJobResult = {
@@ -92,6 +96,13 @@ type LocalRepairForJobResult = {
   jobId: number
   repairs: LocalRepairResult[]
   message?: string
+}
+
+type ApplyOptimisedRouteResult = {
+  improved: boolean
+  saved: number
+  reorderedJobs: number
+  warning: string | null
 }
 
 // -------------------------
@@ -248,6 +259,21 @@ function optimiseOrder(jobs: DayJobLike[]) {
   return ordered
 }
 
+function countReorderedJobs(original: DayJobLike[], optimised: DayJobLike[]) {
+  const originalIds = original.map((job) => job.id)
+  const optimisedIds = optimised.map((job) => job.id)
+
+  let changed = 0
+
+  for (let i = 0; i < Math.max(originalIds.length, optimisedIds.length); i++) {
+    if (originalIds[i] !== optimisedIds[i]) {
+      changed += 1
+    }
+  }
+
+  return changed
+}
+
 function isWorkerBlockedForSlot(params: {
   blocks: WorkerBlock[]
   date: Date
@@ -340,27 +366,73 @@ function buildRouteSchedule(params: {
   return schedule
 }
 
+function buildDayWarning(schedule: RouteScheduleItem[], jobs: DayJobLike[]) {
+  if (schedule.length === 0) return null
+
+  const lastEnd = schedule[schedule.length - 1]?.endMinutes ?? JOBS_START_MINUTES
+  const totalJobMinutes = jobs.reduce(
+    (sum, job) => sum + getJobDurationMinutes(job),
+    0
+  )
+
+  const breakMinutes = totalJobMinutes >= BREAK_THRESHOLD_MINUTES ? BREAK_DURATION_MINUTES : 0
+  const routeTravelMinutes = calculateRouteTravel(jobs)
+  const usedMinutes =
+    (lastEnd - JOBS_START_MINUTES) + breakMinutes
+  const remainingMinutes = END_OF_DAY_MINUTES - lastEnd
+
+  if (lastEnd > END_OF_DAY_MINUTES - 15) {
+    return 'Warning: this day is right up against the end of the working day.'
+  }
+
+  if (remainingMinutes <= 30) {
+    return 'Warning: this day is tight with less than 30 mins spare.'
+  }
+
+  if (totalJobMinutes >= 360 && routeTravelMinutes >= 90) {
+    return 'Warning: this day is workable but still heavy on labour plus travel.'
+  }
+
+  if (usedMinutes >= 420) {
+    return 'Warning: this day is heavily loaded and leaves little room for overruns.'
+  }
+
+  return null
+}
+
 async function applyOptimisedRoute(params: {
   worker: WorkerLite
   date: Date
   jobs: DayJobLike[]
   blocks: WorkerBlock[]
-}) {
+}): Promise<ApplyOptimisedRouteResult> {
   const { date, jobs, blocks } = params
 
   const sorted = sortJobs(jobs)
 
   if (sorted.length <= 1) {
-    return { improved: false, saved: 0 }
+    return { improved: false, saved: 0, reorderedJobs: 0, warning: null }
   }
 
   const originalTravel = calculateRouteTravel(sorted)
   const optimised = optimiseOrder(sorted)
   const newTravel = calculateRouteTravel(optimised)
   const saved = originalTravel - newTravel
+  const reorderedJobs = countReorderedJobs(sorted, optimised)
 
-  if (saved < MIN_TRAVEL_SAVING_TO_APPLY) {
-    return { improved: false, saved: 0 }
+  if (saved < MIN_TRAVEL_SAVING_TO_APPLY || reorderedJobs === 0) {
+    const existingSchedule = buildRouteSchedule({
+      date,
+      jobs: sorted,
+      blocks,
+    })
+
+    return {
+      improved: false,
+      saved: 0,
+      reorderedJobs: 0,
+      warning: existingSchedule ? buildDayWarning(existingSchedule, sorted) : null,
+    }
   }
 
   const rebuiltSchedule = buildRouteSchedule({
@@ -370,7 +442,7 @@ async function applyOptimisedRoute(params: {
   })
 
   if (!rebuiltSchedule) {
-    return { improved: false, saved: 0 }
+    return { improved: false, saved: 0, reorderedJobs: 0, warning: null }
   }
 
   for (const item of rebuiltSchedule) {
@@ -386,6 +458,8 @@ async function applyOptimisedRoute(params: {
   return {
     improved: true,
     saved,
+    reorderedJobs,
+    warning: buildDayWarning(rebuiltSchedule, optimised),
   }
 }
 
@@ -428,10 +502,7 @@ async function getWorkerDayJobs(params: {
       customer: true,
       assignments: true,
     },
-    orderBy: [
-      { startTime: 'asc' },
-      { createdAt: 'asc' },
-    ],
+    orderBy: [{ startTime: 'asc' }, { createdAt: 'asc' }],
   })) as DayJobLike[]
 }
 
@@ -458,6 +529,10 @@ export async function runLocalWorkerDayRepair(params: {
       repaired: 0,
       remaining: 0,
       unplacedJobIds: [],
+      optimised: false,
+      travelMinutesSaved: 0,
+      reorderedJobs: 0,
+      warning: null,
     }
   }
 
@@ -482,9 +557,14 @@ export async function runLocalWorkerDayRepair(params: {
       repaired: 0,
       remaining: 0,
       unplacedJobIds: [],
-      message: jobs.length === 0
-        ? 'No assigned jobs found for this worker/day'
-        : 'Only one job on this worker/day, nothing to optimise',
+      optimised: false,
+      travelMinutesSaved: 0,
+      reorderedJobs: 0,
+      warning: null,
+      message:
+        jobs.length === 0
+          ? 'No assigned jobs found for this worker/day.'
+          : 'Only one job on this worker/day, nothing to optimise.',
     }
   }
 
@@ -495,17 +575,35 @@ export async function runLocalWorkerDayRepair(params: {
     blocks,
   })
 
+  const messageParts: string[] = []
+
+  if (result.improved) {
+    messageParts.push(
+      `Saved ${result.saved} mins travel by reordering ${result.reorderedJobs} job${
+        result.reorderedJobs === 1 ? '' : 's'
+      }.`
+    )
+  } else {
+    messageParts.push('No better route found for this worker/day.')
+  }
+
+  if (result.warning) {
+    messageParts.push(result.warning)
+  }
+
   return {
     ok: true,
     workerId: worker.id,
     date: day.toISOString(),
     reason: repairReason,
-    repaired: result.improved ? jobs.length : 0,
+    repaired: result.improved ? result.reorderedJobs : 0,
     remaining: 0,
     unplacedJobIds: [],
-    message: result.improved
-      ? `Route improved and saved ${result.saved} mins travel`
-      : 'No more economical route found for this worker/day',
+    optimised: result.improved,
+    travelMinutesSaved: result.saved,
+    reorderedJobs: result.reorderedJobs,
+    warning: result.warning,
+    message: messageParts.join(' '),
   }
 }
 
