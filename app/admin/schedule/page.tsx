@@ -712,17 +712,17 @@ function WorkerTimeline({
   const timelineHeight = 38 + Math.max(timeline.laneCount, 1) * laneHeight + 14;
 
   return (
-    <div
-      style={{
-  position: "relative",
-  border: "1px solid #d4d4d8",
-  borderRadius: 12,
-  minHeight: timelineHeight,
-  background: "#fafafa",
-  overflowX: "hidden",
-  overflowY: "visible",
-}}
-    >
+  <div
+    style={{
+      position: "relative",
+      border: "1px solid #d4d4d8",
+      borderRadius: 12,
+      minHeight: timelineHeight,
+      background: "#fafafa",
+      overflowX: "hidden",
+      overflowY: "visible",
+    }}
+  >
       <div
         style={{
           position: "absolute",
@@ -753,17 +753,17 @@ function WorkerTimeline({
           >
             <div
               style={{
-                position: "absolute",
-                top: 8,
-                left: 6,
-                fontSize: 11,
-                color: "#71717a",
-                whiteSpace: "nowrap",
-maxWidth: "100%",
-overflow: "hidden",
-textOverflow: "ellipsis",
-                fontWeight: marker.minutes === PREP_START_MINUTES ? 700 : 500,
-              }}
+  position: "absolute",
+  top: 8,
+  left: 6,
+  fontSize: 11,
+  color: "#71717a",
+  whiteSpace: "nowrap",
+  maxWidth: "100%",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  fontWeight: marker.minutes === PREP_START_MINUTES ? 700 : 500,
+}}
             >
               {marker.label}
             </div>
