@@ -295,23 +295,24 @@ export default function WorkerTimeOffPage() {
           </div>
 
           <div
-  style={{
-    marginTop: 16,
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    gap: 10,
-  }}
->
-  <Link href="/today" style={quickLinkStyle}>
-    Today
-  </Link>
-  <Link href="/my-visits" style={quickLinkStyle}>
-    My Visits
-  </Link>
-  <Link href="/chas" style={quickLinkStyle}>
-    CHAS
-  </Link>
-</div>
+            style={{
+              marginTop: 16,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gap: 10,
+            }}
+          >
+            <Link href="/today" style={quickLinkStyle}>
+              Today
+            </Link>
+            <Link href="/my-visits" style={quickLinkStyle}>
+              My Visits
+            </Link>
+            <Link href="/chas" style={quickLinkStyle}>
+              CHAS
+            </Link>
+          </div>
+        </div>
 
         <section style={{ ...cardStyle, marginBottom: 16 }}>
           <div
