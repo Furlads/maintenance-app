@@ -114,7 +114,10 @@ const TIMELINE_MARKERS = [
 
 function getTodayDateString() {
   const today = new Date();
-  return today.toISOString().split("T")[0];
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function parseTimeToMinutes(time: string | null) {
@@ -909,7 +912,7 @@ function WorkerTimeline({
         );
       })}
 
-            {timeline.jobs.map((job) => {
+      {timeline.jobs.map((job) => {
         const left = getTimelineLeft(job.startMinutes);
         const width = getTimelineWidth(job.startMinutes, job.endMinutes);
         const top = 38 + job.lane * laneHeight;
@@ -1017,9 +1020,11 @@ function MobileWorkerCard({
   remainingMinutes,
   workerAttentionJobs,
   refittingWorkerId,
+  optimisingWorkerId,
   busyTimeOffId,
   movingJobId,
   onRefitWorkerDay,
+  onOptimiseWorkerDay,
   onApproveTimeOff,
   onDeclineTimeOff,
   onOpenMoveJob,
@@ -1028,9 +1033,11 @@ function MobileWorkerCard({
   remainingMinutes: number;
   workerAttentionJobs: ScheduleJob[];
   refittingWorkerId: number | null;
+  optimisingWorkerId: number | null;
   busyTimeOffId: number | null;
   movingJobId: number | null;
   onRefitWorkerDay: (workerId: number) => void;
+  onOptimiseWorkerDay: (workerId: number) => void;
   onApproveTimeOff: (block: ScheduleAvailabilityBlock) => void;
   onDeclineTimeOff: (block: ScheduleAvailabilityBlock) => void;
   onOpenMoveJob: (job: ScheduleJob, worker: ScheduleWorker) => void;
@@ -1118,7 +1125,16 @@ function MobileWorkerCard({
             )}
           </div>
         </div>
+      </div>
 
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 8,
+          marginBottom: 12,
+        }}
+      >
         <button
           type="button"
           onClick={() => onRefitWorkerDay(worker.id)}
@@ -1127,13 +1143,32 @@ function MobileWorkerCard({
             ...smallPrimaryButton(),
             padding: "11px 12px",
             fontSize: 12,
-            minWidth: 102,
             cursor: refittingWorkerId === worker.id ? "default" : "pointer",
             opacity: refittingWorkerId === worker.id ? 0.7 : 1,
-            flexShrink: 0,
+            width: "100%",
           }}
         >
           {refittingWorkerId === worker.id ? "Re-fitting..." : "Re-fit day"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOptimiseWorkerDay(worker.id)}
+          disabled={optimisingWorkerId === worker.id}
+          style={{
+            ...smallButton(),
+            padding: "11px 12px",
+            fontSize: 12,
+            cursor: optimisingWorkerId === worker.id ? "default" : "pointer",
+            opacity: optimisingWorkerId === worker.id ? 0.7 : 1,
+            width: "100%",
+            background: "#facc15",
+            border: "1px solid #facc15",
+            color: "#18181b",
+            fontWeight: 800,
+          }}
+        >
+          {optimisingWorkerId === worker.id ? "Optimising..." : "Optimise day"}
         </button>
       </div>
 
@@ -1331,7 +1366,7 @@ function MobileWorkerCard({
             const postcode = normaliseDisplayText(job.postcode);
             const offHours = isOffHours(job);
 
-                                    return (
+            return (
               <div
                 key={`mobile-job-${worker.id}-${job.id}`}
                 style={{
@@ -1522,6 +1557,7 @@ export default function SchedulePage() {
   const [runningScheduler, setRunningScheduler] = useState(false);
   const [refittingJobId, setRefittingJobId] = useState<number | null>(null);
   const [refittingWorkerId, setRefittingWorkerId] = useState<number | null>(null);
+  const [optimisingWorkerId, setOptimisingWorkerId] = useState<number | null>(null);
   const [busyTimeOffId, setBusyTimeOffId] = useState<number | null>(null);
   const [movingJobId, setMovingJobId] = useState<number | null>(null);
   const [moveJobSheet, setMoveJobSheet] = useState<MoveJobSheetState>(null);
@@ -1648,14 +1684,27 @@ export default function SchedulePage() {
 
       await loadPage(date, true);
 
-      setFeedbackMessage({
-        tone: "success",
-        title: "Scheduler complete",
-        text:
-          data?.scheduled > 0
-            ? `${data.scheduled} job${data.scheduled === 1 ? "" : "s"} placed into the diary.`
-            : data?.message || "No unscheduled jobs found.",
-      });
+      const optimisedDays = Number(data?.optimisedDays || 0);
+      const travelMinutesSaved = Number(data?.travelMinutesSaved || 0);
+
+      if (travelMinutesSaved > 0 && optimisedDays > 0) {
+        setFeedbackMessage({
+          tone: "success",
+          title: "Scheduler complete",
+          text: `Saved ${travelMinutesSaved} mins travel across ${optimisedDays} day${
+            optimisedDays === 1 ? "" : "s"
+          }.`,
+        });
+      } else {
+        setFeedbackMessage({
+          tone: "success",
+          title: "Scheduler complete",
+          text:
+            data?.scheduled > 0
+              ? `${data.scheduled} job${data.scheduled === 1 ? "" : "s"} placed into the diary.`
+              : data?.message || "No better route found.",
+        });
+      }
     } catch (err) {
       console.error(err);
       const message =
@@ -1763,6 +1812,51 @@ export default function SchedulePage() {
       setRefittingWorkerId(null);
     }
   }
+
+  async function handleOptimiseWorkerDay(workerId: number) {
+    if (optimisingWorkerId !== null) return;
+
+    setOptimisingWorkerId(workerId);
+    setError("");
+    setFeedbackMessage(null);
+
+    try {
+      const res = await fetch("/api/scheduler/optimise-day", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ workerId, date }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to optimise worker day");
+      }
+
+      await loadPage(date, true);
+
+      setFeedbackMessage({
+        tone: "success",
+        title: "Day optimisation complete",
+        text: data?.message || "Worker day optimised successfully.",
+      });
+    } catch (err) {
+      console.error(err);
+      const message =
+        err instanceof Error ? err.message : "Failed to optimise worker day.";
+      setError(message);
+      setFeedbackMessage({
+        tone: "error",
+        title: "Optimise day failed",
+        text: message,
+      });
+    } finally {
+      setOptimisingWorkerId(null);
+    }
+  }
+
   function openMoveJob(job: ScheduleJob, worker: ScheduleWorker) {
     setMoveJobSheet({
       jobId: job.id,
@@ -1839,6 +1933,7 @@ export default function SchedulePage() {
       setMovingJobId(null);
     }
   }
+
   function openApproveTimeOff(block: ScheduleAvailabilityBlock) {
     if (!block.timeOffRequestId || busyTimeOffId !== null) return;
     setTimeOffReviewNotes("");
@@ -1906,12 +2001,16 @@ export default function SchedulePage() {
 
       if (mode === "approve") {
         const moved = Array.isArray(data?.impactedJobIds) ? data.impactedJobIds.length : 0;
-        const scheduled = Number(data?.schedulerResult?.scheduled || 0);
+        const optimisedDays = Number(data?.schedulerResult?.optimisedDays || 0);
+        const travelMinutesSaved = Number(data?.schedulerResult?.travelMinutesSaved || 0);
 
         setFeedbackMessage({
           tone: "success",
           title: "Time off approved",
-          text: `Approved. ${moved} impacted job${moved === 1 ? "" : "s"} were cleared and ${scheduled} unscheduled job${scheduled === 1 ? "" : "s"} were re-placed automatically.`,
+          text:
+            travelMinutesSaved > 0 && optimisedDays > 0
+              ? `Approved. ${moved} impacted job${moved === 1 ? "" : "s"} were cleared and the scheduler then saved ${travelMinutesSaved} mins travel across ${optimisedDays} day${optimisedDays === 1 ? "" : "s"}.`
+              : `Approved. ${moved} impacted job${moved === 1 ? "" : "s"} were cleared and the scheduler was re-run automatically.`,
         });
       } else {
         setFeedbackMessage({
@@ -2340,15 +2439,17 @@ export default function SchedulePage() {
 
                   if (isMobile) {
                     return (
-                                            <MobileWorkerCard
+                      <MobileWorkerCard
                         key={worker.id}
                         worker={worker}
                         remainingMinutes={remainingMinutes}
                         workerAttentionJobs={workerAttentionJobs}
                         refittingWorkerId={refittingWorkerId}
+                        optimisingWorkerId={optimisingWorkerId}
                         busyTimeOffId={busyTimeOffId}
                         movingJobId={movingJobId}
                         onRefitWorkerDay={handleRefitWorkerDay}
+                        onOptimiseWorkerDay={handleOptimiseWorkerDay}
                         onApproveTimeOff={openApproveTimeOff}
                         onDeclineTimeOff={openDeclineTimeOff}
                         onOpenMoveJob={openMoveJob}
@@ -2419,6 +2520,23 @@ export default function SchedulePage() {
                           >
                             {formatRemaining(remainingMinutes)}
                           </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOptimiseWorkerDay(worker.id)}
+                            disabled={optimisingWorkerId === worker.id}
+                            style={{
+                              ...smallButton(),
+                              background: "#facc15",
+                              border: "1px solid #facc15",
+                              color: "#18181b",
+                              fontWeight: 800,
+                              cursor: optimisingWorkerId === worker.id ? "default" : "pointer",
+                              opacity: optimisingWorkerId === worker.id ? 0.7 : 1,
+                            }}
+                          >
+                            {optimisingWorkerId === worker.id ? "Optimising..." : "Optimise day"}
+                          </button>
 
                           <button
                             type="button"
@@ -2549,7 +2667,7 @@ export default function SchedulePage() {
                             const cleanTitle = titleCase(job.title) || "General";
                             const postcode = normaliseDisplayText(job.postcode);
 
-                                                        return (
+                            return (
                               <div
                                 key={`list-${worker.id}-${job.id}`}
                                 style={jobRowCard()}
@@ -2926,6 +3044,7 @@ export default function SchedulePage() {
           </>
         )}
       </div>
+
       {moveJobSheet && (
         <div
           onClick={closeMoveJobSheet}
@@ -3120,6 +3239,7 @@ export default function SchedulePage() {
           </div>
         </div>
       )}
+
       {timeOffDecisionSheet && (
         <div
           onClick={closeTimeOffDecisionSheet}
