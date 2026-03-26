@@ -9,7 +9,13 @@ export async function POST() {
       return NextResponse.json(result, { status: 400 })
     }
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      ok: true,
+      scheduled: result.scheduled,
+      optimisedDays: result.optimisedDays,
+      travelMinutesSaved: result.travelMinutesSaved,
+      message: result.message,
+    })
   } catch (error) {
     console.error('POST /api/scheduler/run failed:', error)
 
@@ -17,6 +23,9 @@ export async function POST() {
       {
         ok: false,
         error: 'Failed to run scheduler',
+        scheduled: 0,
+        optimisedDays: 0,
+        travelMinutesSaved: 0,
       },
       { status: 500 }
     )
