@@ -72,6 +72,28 @@ type AutoSchedulerResult = {
   message?: string
 }
 
+type LocalRepairReason = 'cancel' | 'edit' | 'manual'
+
+type LocalRepairResult = {
+  ok: boolean
+  error?: string
+  workerId: number
+  date: string
+  reason: LocalRepairReason
+  repaired: number
+  remaining: number
+  unplacedJobIds: number[]
+  message?: string
+}
+
+type LocalRepairForJobResult = {
+  ok: boolean
+  error?: string
+  jobId: number
+  repairs: LocalRepairResult[]
+  message?: string
+}
+
 // -------------------------
 // POSTCODE + TRAVEL
 // -------------------------
@@ -109,7 +131,7 @@ function getTravelMinutes(fromPostcode: unknown, toPostcode: unknown) {
   const fromOutward = postcodeOutward(from)
   const toOutward = postcodeOutward(to)
 
-  if (fromOutward && fromOutward === toOutward) return 12
+  if (fromOutward && toOutward && fromOutward === toOutward) return 12
 
   const fromDistrict = postcodeDistrict(from)
   const toDistrict = postcodeDistrict(to)
@@ -372,6 +394,184 @@ function buildDayKey(workerId: number, date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${workerId}__${year}-${month}-${day}`
+}
+
+// -------------------------
+// LOCAL REPAIR HELPERS
+// -------------------------
+
+async function getWorkerDayJobs(params: {
+  workerId: number
+  date: Date
+  excludeJobId?: number | null
+}) {
+  const dayStart = startOfLocalDay(params.date)
+  const dayEnd = endOfLocalDay(params.date)
+
+  return (await prisma.job.findMany({
+    where: {
+      id: params.excludeJobId ? { not: params.excludeJobId } : undefined,
+      visitDate: {
+        gte: dayStart,
+        lte: dayEnd,
+      },
+      status: {
+        notIn: ['done', 'cancelled', 'archived', 'unscheduled'],
+      },
+      assignments: {
+        some: {
+          workerId: params.workerId,
+        },
+      },
+    },
+    include: {
+      customer: true,
+      assignments: true,
+    },
+    orderBy: [
+      { startTime: 'asc' },
+      { createdAt: 'asc' },
+    ],
+  })) as DayJobLike[]
+}
+
+export async function runLocalWorkerDayRepair(params: {
+  workerId: number
+  date: Date
+  reason?: LocalRepairReason
+  excludeJobId?: number | null
+}): Promise<LocalRepairResult> {
+  const repairReason = params.reason ?? 'manual'
+  const day = startOfLocalDay(params.date)
+
+  const worker = (await prisma.worker.findUnique({
+    where: { id: params.workerId },
+  })) as WorkerLite | null
+
+  if (!worker || !worker.active) {
+    return {
+      ok: false,
+      error: 'Worker not found or inactive',
+      workerId: params.workerId,
+      date: day.toISOString(),
+      reason: repairReason,
+      repaired: 0,
+      remaining: 0,
+      unplacedJobIds: [],
+    }
+  }
+
+  const blocks = (await getActiveBlocksForWorkersRange({
+    workerIds: [worker.id],
+    startDate: day,
+    endDate: day,
+  })) as WorkerBlock[]
+
+  const jobs = await getWorkerDayJobs({
+    workerId: worker.id,
+    date: day,
+    excludeJobId: params.excludeJobId ?? null,
+  })
+
+  if (jobs.length <= 1) {
+    return {
+      ok: true,
+      workerId: worker.id,
+      date: day.toISOString(),
+      reason: repairReason,
+      repaired: 0,
+      remaining: 0,
+      unplacedJobIds: [],
+      message: jobs.length === 0
+        ? 'No assigned jobs found for this worker/day'
+        : 'Only one job on this worker/day, nothing to optimise',
+    }
+  }
+
+  const result = await applyOptimisedRoute({
+    worker,
+    date: day,
+    jobs,
+    blocks,
+  })
+
+  return {
+    ok: true,
+    workerId: worker.id,
+    date: day.toISOString(),
+    reason: repairReason,
+    repaired: result.improved ? jobs.length : 0,
+    remaining: 0,
+    unplacedJobIds: [],
+    message: result.improved
+      ? `Route improved and saved ${result.saved} mins travel`
+      : 'No more economical route found for this worker/day',
+  }
+}
+
+export async function runLocalRepairForJob(params: {
+  jobId: number
+  reason?: LocalRepairReason
+}): Promise<LocalRepairForJobResult> {
+  const repairReason = params.reason ?? 'manual'
+
+  const job = (await prisma.job.findUnique({
+    where: { id: params.jobId },
+    include: {
+      customer: true,
+      assignments: true,
+    },
+  })) as DayJobLike | null
+
+  if (!job) {
+    return {
+      ok: false,
+      error: 'Job not found',
+      jobId: params.jobId,
+      repairs: [],
+    }
+  }
+
+  if (!job.visitDate) {
+    return {
+      ok: false,
+      error: 'Job has no visit date for local repair',
+      jobId: params.jobId,
+      repairs: [],
+    }
+  }
+
+  if (!job.assignments?.length) {
+    return {
+      ok: false,
+      error: 'Job has no assigned worker for local repair',
+      jobId: params.jobId,
+      repairs: [],
+    }
+  }
+
+  const repairs: LocalRepairResult[] = []
+
+  for (const assignment of job.assignments) {
+    const repair = await runLocalWorkerDayRepair({
+      workerId: assignment.workerId,
+      date: new Date(job.visitDate),
+      reason: repairReason,
+      excludeJobId: repairReason === 'cancel' ? job.id : null,
+    })
+
+    repairs.push(repair)
+  }
+
+  return {
+    ok: repairs.every((item) => item.ok),
+    jobId: params.jobId,
+    repairs,
+    message:
+      repairs.length > 0
+        ? 'Triggered local repair for assigned worker/day'
+        : 'No repairs were triggered',
+  }
 }
 
 // -------------------------
