@@ -364,11 +364,41 @@ export default function LoginPage() {
           alignItems: "center",
           justifyContent: "center",
           padding: 20,
+          background:
+            "linear-gradient(180deg, #f7f7f2 0%, #eef2e7 50%, #f7f7f2 100%)",
         }}
       >
-        <div style={{ width: "100%", maxWidth: 400 }}>
-          <h1 style={{ marginBottom: 20 }}>Furlads Login</h1>
-          <p style={{ color: "#555" }}>Loading login...</p>
+        <div style={{ width: "100%", maxWidth: 460 }}>
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 20,
+              overflow: "hidden",
+              boxShadow: "0 16px 50px rgba(0,0,0,0.12)",
+              border: "1px solid #e8e8e8",
+            }}
+          >
+            <div
+              style={{
+                width: "100%",
+                height: 220,
+                background: "#f3f3f3",
+              }}
+            />
+            <div style={{ padding: 24 }}>
+              <h1
+                style={{
+                  margin: "0 0 12px 0",
+                  fontSize: 28,
+                  fontWeight: 800,
+                  color: "#111",
+                }}
+              >
+                Furlads Login
+              </h1>
+              <p style={{ color: "#555", margin: 0 }}>Loading login...</p>
+            </div>
+          </div>
         </div>
       </main>
     );
@@ -382,131 +412,232 @@ export default function LoginPage() {
         alignItems: "center",
         justifyContent: "center",
         padding: 20,
+        background:
+          "linear-gradient(180deg, #f7f7f2 0%, #eef2e7 50%, #f7f7f2 100%)",
       }}
     >
-      <div style={{ width: "100%", maxWidth: 400 }}>
-        <h1 style={{ marginBottom: 20 }}>Furlads Login</h1>
-
-        {isOffline && (
-          <div
-            style={{
-              marginBottom: 14,
-              padding: 12,
-              borderRadius: 8,
-              border: "1px solid #efcf72",
-              background: "#fff7d6",
-              color: "#5f4a00",
-              lineHeight: 1.45,
-            }}
-          >
-            No signal. Quick login needs a live connection for now.
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={handleQuickLogin}
-          disabled={loading || isOffline}
+      <div style={{ width: "100%", maxWidth: 460 }}>
+        <div
           style={{
-            width: "100%",
-            padding: "14px",
-            fontSize: 16,
-            fontWeight: "bold",
-            marginBottom: 16,
-            background: "black",
-            color: "yellow",
-            border: "none",
-            borderRadius: 8,
-            opacity: isOffline ? 0.6 : 1,
+            background: "#ffffff",
+            borderRadius: 20,
+            overflow: "hidden",
+            boxShadow: "0 16px 50px rgba(0,0,0,0.12)",
+            border: "1px solid #e8e8e8",
           }}
         >
-          {loading ? "Please wait..." : "Quick Login (Face ID / Fingerprint)"}
-        </button>
-
-        <div style={{ textAlign: "center", margin: "10px 0" }}>
-          <small>or use phone &amp; password</small>
-        </div>
-
-        <form onSubmit={handlePasswordLogin}>
-          <input
-            type="tel"
-            placeholder="Phone number"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            required
-            autoComplete="username"
-            data-lpignore="true"
-            data-1p-ignore="true"
-            style={{
-              width: "100%",
-              padding: 12,
-              marginBottom: 10,
-              borderRadius: 6,
-              border: "1px solid #ccc",
-              boxSizing: "border-box",
-            }}
-          />
-
           <div
             style={{
-              display: "flex",
-              alignItems: "stretch",
-              marginBottom: 10,
-              gap: 8,
+              position: "relative",
+              width: "100%",
+              height: 220,
+              overflow: "hidden",
+              background: "#f3f3f3",
             }}
           >
-            <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-              data-lpignore="true"
-              data-1p-ignore="true"
+            <img
+              src="/login-hero.png"
+              alt="Furlads and Three Counties landscaping and garden maintenance"
               style={{
-                flex: 1,
-                padding: 12,
-                borderRadius: 6,
-                border: "1px solid #ccc",
-                boxSizing: "border-box",
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                display: "block",
               }}
             />
 
-            <button
-              type="button"
-              onClick={() => setShowPassword((prev) => !prev)}
+            <div
               style={{
-                padding: "0 14px",
-                borderRadius: 6,
-                border: "1px solid #ccc",
-                background: "#f3f3f3",
-                color: "#111",
-                fontWeight: 700,
-                minWidth: 72,
+                position: "absolute",
+                inset: 0,
+                background:
+                  "linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.35) 100%)",
+              }}
+            />
+
+            <div
+              style={{
+                position: "absolute",
+                left: 16,
+                right: 16,
+                bottom: 16,
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "space-between",
+                gap: 12,
               }}
             >
-              {showPassword ? "Hide" : "Show"}
-            </button>
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.92)",
+                  padding: "10px 14px",
+                  borderRadius: 14,
+                  boxShadow: "0 8px 20px rgba(0,0,0,0.10)",
+                  maxWidth: "100%",
+                }}
+              >
+                <img
+                  src="/login-logo.png"
+                  alt="Furlads and Three Counties"
+                  style={{
+                    height: 44,
+                    width: "auto",
+                    display: "block",
+                    objectFit: "contain",
+                    maxWidth: "100%",
+                  }}
+                />
+              </div>
+            </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: 12,
-              background: "black",
-              color: "white",
-              border: "none",
-              borderRadius: 6,
-            }}
-          >
-            {loading ? "Logging in..." : "Login"}
-          </button>
-        </form>
+          <div style={{ padding: 24 }}>
+            <h1
+              style={{
+                margin: "0 0 6px 0",
+                fontSize: 28,
+                fontWeight: 800,
+                color: "#111",
+              }}
+            >
+              Welcome back
+            </h1>
 
-        {error && <p style={{ color: "red", marginTop: 10 }}>{error}</p>}
+            <p
+              style={{
+                margin: "0 0 20px 0",
+                color: "#555",
+                lineHeight: 1.5,
+              }}
+            >
+              Log in to view jobs, schedules, and field updates.
+            </p>
+
+            {isOffline && (
+              <div
+                style={{
+                  marginBottom: 14,
+                  padding: 12,
+                  borderRadius: 8,
+                  border: "1px solid #efcf72",
+                  background: "#fff7d6",
+                  color: "#5f4a00",
+                  lineHeight: 1.45,
+                }}
+              >
+                No signal. Quick login needs a live connection for now.
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleQuickLogin}
+              disabled={loading || isOffline}
+              style={{
+                width: "100%",
+                padding: "14px",
+                fontSize: 16,
+                fontWeight: "bold",
+                marginBottom: 16,
+                background: "black",
+                color: "yellow",
+                border: "none",
+                borderRadius: 8,
+                opacity: isOffline ? 0.6 : 1,
+                cursor: loading || isOffline ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? "Please wait..." : "Quick Login (Face ID / Fingerprint)"}
+            </button>
+
+            <div style={{ textAlign: "center", margin: "10px 0" }}>
+              <small>or use phone &amp; password</small>
+            </div>
+
+            <form onSubmit={handlePasswordLogin}>
+              <input
+                type="tel"
+                placeholder="Phone number"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                required
+                autoComplete="username"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  marginBottom: 10,
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  boxSizing: "border-box",
+                }}
+              />
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "stretch",
+                  marginBottom: 10,
+                  gap: 8,
+                }}
+              >
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  style={{
+                    flex: 1,
+                    padding: 12,
+                    borderRadius: 6,
+                    border: "1px solid #ccc",
+                    boxSizing: "border-box",
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  style={{
+                    padding: "0 14px",
+                    borderRadius: 6,
+                    border: "1px solid #ccc",
+                    background: "#f3f3f3",
+                    color: "#111",
+                    fontWeight: 700,
+                    minWidth: 72,
+                    cursor: "pointer",
+                  }}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  background: "black",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: loading ? "not-allowed" : "pointer",
+                }}
+              >
+                {loading ? "Logging in..." : "Login"}
+              </button>
+            </form>
+
+            {error && <p style={{ color: "red", marginTop: 10 }}>{error}</p>}
+          </div>
+        </div>
       </div>
 
       {showPasskeyPrompt && (
@@ -565,6 +696,7 @@ export default function LoginPage() {
                   border: "none",
                   borderRadius: 8,
                   fontWeight: 700,
+                  cursor: loading ? "not-allowed" : "pointer",
                 }}
               >
                 {loading ? "Setting up..." : "Yes, enable quick login"}
@@ -582,6 +714,7 @@ export default function LoginPage() {
                   border: "1px solid #ddd",
                   borderRadius: 8,
                   fontWeight: 700,
+                  cursor: loading ? "not-allowed" : "pointer",
                 }}
               >
                 Not now
