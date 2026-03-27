@@ -28,6 +28,40 @@ function clearQuickLoginSettings() {
   localStorage.removeItem("quickLoginPhone");
 }
 
+function cleanupSelectedWorkerStorage() {
+  localStorage.removeItem("selectedLoginWorkerId");
+  localStorage.removeItem("selectedLoginWorkerName");
+  localStorage.removeItem("selectedLoginWorkerPhone");
+  localStorage.removeItem("selectedLoginWorkerPhotoUrl");
+}
+
+function saveLastLoggedInWorker(worker: {
+  id: number;
+  name: string;
+  accessLevel: string;
+}) {
+  localStorage.setItem("lastWorkerId", String(worker.id));
+  localStorage.setItem("lastWorkerName", worker.name);
+  localStorage.setItem("lastWorkerAccessLevel", worker.accessLevel);
+}
+
+function isAlreadyRegisteredPasskeyError(error: unknown) {
+  const message =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+      ? error.message
+      : "";
+
+  const text = message.toLowerCase();
+
+  return (
+    text.includes("previously registered") ||
+    text.includes("already registered") ||
+    text.includes("already been registered")
+  );
+}
+
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -87,23 +121,6 @@ export default function LoginPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone]);
-
-  function cleanupSelectedWorkerStorage() {
-    localStorage.removeItem("selectedLoginWorkerId");
-    localStorage.removeItem("selectedLoginWorkerName");
-    localStorage.removeItem("selectedLoginWorkerPhone");
-    localStorage.removeItem("selectedLoginWorkerPhotoUrl");
-  }
-
-  function saveLastLoggedInWorker(worker: {
-    id: number;
-    name: string;
-    accessLevel: string;
-  }) {
-    localStorage.setItem("lastWorkerId", String(worker.id));
-    localStorage.setItem("lastWorkerName", worker.name);
-    localStorage.setItem("lastWorkerAccessLevel", worker.accessLevel);
-  }
 
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -234,25 +251,31 @@ export default function LoginPage() {
         throw new Error(startData?.error || "Could not start Face ID setup");
       }
 
-      const registrationResponse = await startRegistration({
-        optionsJSON: startData.options,
-      });
+      try {
+        const registrationResponse = await startRegistration({
+          optionsJSON: startData.options,
+        });
 
-      const finishRes = await fetch("/api/auth/webauthn/register", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          phone: postLoginWorkerPhone,
-          credential: registrationResponse,
-        }),
-      });
+        const finishRes = await fetch("/api/auth/webauthn/register", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            phone: postLoginWorkerPhone,
+            credential: registrationResponse,
+          }),
+        });
 
-      const finishData = await finishRes.json().catch(() => null);
+        const finishData = await finishRes.json().catch(() => null);
 
-      if (!finishRes.ok || !finishData?.ok) {
-        throw new Error(finishData?.error || "Could not save Face ID");
+        if (!finishRes.ok || !finishData?.ok) {
+          throw new Error(finishData?.error || "Could not save Face ID");
+        }
+      } catch (registrationError) {
+        if (!isAlreadyRegisteredPasskeyError(registrationError)) {
+          throw registrationError;
+        }
       }
 
       if (postLoginWorker) {
