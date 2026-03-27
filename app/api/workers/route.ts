@@ -6,6 +6,12 @@ export async function GET() {
       where: {
         active: true
       },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        phone: true
+      },
       orderBy: {
         firstName: 'asc'
       }
