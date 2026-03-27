@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-type MonthEntryType = "job" | "timeOff";
-
 type MonthEntry = {
   id: string;
-  type: MonthEntryType;
+  type: "job" | "timeOff";
   workerId: number;
   workerName: string;
   title: string;
@@ -13,6 +11,8 @@ type MonthEntry = {
   startTime: string | null;
   isFullDay: boolean;
   status: string;
+  startDate?: string;
+  endDate?: string;
 };
 
 type MonthDay = {
@@ -143,6 +143,77 @@ function getBlockDaysWithinMonth(startDate: Date, endDate: Date, monthStart: Dat
   );
 
   return eachDateInRange(safeStart, safeEnd);
+}
+
+function addDays(dateString: string, amount: number) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  date.setDate(date.getDate() + amount);
+  return toDateString(date);
+}
+
+function buildJobSpanKey(entry: MonthEntry) {
+  return [
+    entry.workerId,
+    entry.workerName.trim().toLowerCase(),
+    entry.title.trim().toLowerCase(),
+    String(entry.subtitle || "").trim().toLowerCase(),
+  ].join("::");
+}
+
+function applyJobSpans(daysMap: Map<string, MonthEntry[]>) {
+  const datedEntries: Array<{ date: string; entry: MonthEntry }> = [];
+
+  for (const [date, entries] of daysMap.entries()) {
+    for (const entry of entries) {
+      if (entry.type !== "job") continue;
+      datedEntries.push({ date, entry });
+    }
+  }
+
+  const grouped = new Map<string, Array<{ date: string; entry: MonthEntry }>>();
+
+  for (const item of datedEntries) {
+    const key = buildJobSpanKey(item.entry);
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key)!.push(item);
+  }
+
+  for (const items of grouped.values()) {
+    const sorted = [...items].sort((a, b) => a.date.localeCompare(b.date));
+
+    let runStart = 0;
+
+    while (runStart < sorted.length) {
+      let runEnd = runStart;
+
+      while (runEnd + 1 < sorted.length) {
+        const currentDate = sorted[runEnd].date;
+        const nextDate = sorted[runEnd + 1].date;
+        const expectedNext = addDays(currentDate, 1);
+
+        if (nextDate !== expectedNext) {
+          break;
+        }
+
+        runEnd += 1;
+      }
+
+      const spanStartDate = sorted[runStart].date;
+      const spanEndDate = sorted[runEnd].date;
+
+      if (runEnd > runStart) {
+        for (let i = runStart; i <= runEnd; i += 1) {
+          sorted[i].entry.startDate = spanStartDate;
+          sorted[i].entry.endDate = spanEndDate;
+        }
+      }
+
+      runStart = runEnd + 1;
+    }
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -285,12 +356,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    applyJobSpans(daysMap);
+
     for (const block of blocksForMonth) {
       const workerName = workerNames.get(block.workerId);
       if (!workerName) continue;
 
       const status = normaliseBlockStatus(block.source, block.request?.status);
       const dayKeys = getBlockDaysWithinMonth(block.startDate, block.endDate, start, end);
+      const spanStartDate = toDateString(new Date(block.startDate));
+      const spanEndDate = toDateString(new Date(block.endDate));
 
       for (const dayKey of dayKeys) {
         const entries = daysMap.get(dayKey);
@@ -306,6 +381,8 @@ export async function GET(req: NextRequest) {
           startTime: block.isFullDay ? null : block.startTime,
           isFullDay: block.isFullDay,
           status,
+          startDate: spanStartDate,
+          endDate: spanEndDate,
         });
       }
     }
