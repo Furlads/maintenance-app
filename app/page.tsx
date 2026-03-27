@@ -57,15 +57,11 @@ export default function Page() {
     const quickLoginEnabled = localStorage.getItem('quickLoginEnabled') === 'true'
     const quickLoginPhone = localStorage.getItem('quickLoginPhone') || ''
 
-    // Always prefer a saved logged-in session first.
-    // This lets the worker get back into the app even with weak/no signal.
     if (savedWorkerId && savedWorkerName && savedWorkerAccessLevel) {
       window.location.href = getRedirectPath(savedWorkerAccessLevel)
       return
     }
 
-    // Only try quick login if there is no saved session.
-    // If there is no signal, stay on this page and use cached workers if possible.
     if (quickLoginEnabled && quickLoginPhone.trim()) {
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         window.location.href = `/login?phone=${encodeURIComponent(
@@ -156,7 +152,7 @@ export default function Page() {
     <main
       style={{
         minHeight: '100vh',
-        padding: '24px 16px 40px',
+        padding: '20px 14px 40px',
         fontFamily: 'Arial, Helvetica, sans-serif',
         background:
           'linear-gradient(180deg, #f7f5ef 0%, #f2f4ef 48%, #f8f8f6 100%)',
@@ -166,15 +162,15 @@ export default function Page() {
       <div
         style={{
           width: '100%',
-          maxWidth: 560,
+          maxWidth: 580,
           margin: '0 auto'
         }}
       >
-        <div
+        <section
           style={{
             textAlign: 'center',
             marginBottom: 18,
-            paddingTop: 8
+            padding: '10px 14px 0'
           }}
         >
           <div
@@ -184,12 +180,12 @@ export default function Page() {
               justifyContent: 'center',
               gap: 10,
               flexWrap: 'wrap',
-              marginBottom: 10
+              marginBottom: 12
             }}
           >
             <span
               style={{
-                fontSize: 36,
+                fontSize: 34,
                 fontWeight: 900,
                 letterSpacing: '-0.03em',
                 color: '#c69214'
@@ -210,7 +206,7 @@ export default function Page() {
 
             <span
               style={{
-                fontSize: 32,
+                fontSize: 30,
                 fontWeight: 900,
                 letterSpacing: '-0.03em',
                 color: '#245c3b'
@@ -238,13 +234,13 @@ export default function Page() {
               fontSize: 15,
               lineHeight: 1.5,
               color: '#575757',
-              maxWidth: 360,
+              maxWidth: 390,
               marginInline: 'auto'
             }}
           >
             Tap your name to go straight to secure login.
           </p>
-        </div>
+        </section>
 
         {!loading && showingOfflineWorkers && (
           <div
@@ -255,7 +251,8 @@ export default function Page() {
               background: '#fff7d6',
               color: '#5f4a00',
               lineHeight: 1.45,
-              marginBottom: 14
+              marginBottom: 14,
+              boxShadow: '0 8px 20px rgba(0,0,0,0.04)'
             }}
           >
             Showing the last saved worker list from this phone because signal looks weak.
@@ -345,11 +342,12 @@ export default function Page() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 14,
-                      padding: '17px 16px',
+                      padding: '18px 16px',
                       borderRadius: 22,
                       border: '1px solid rgba(0,0,0,0.10)',
                       background: '#fff',
-                      boxShadow: '0 14px 30px rgba(0,0,0,0.06)'
+                      boxShadow: '0 14px 30px rgba(0,0,0,0.06)',
+                      minHeight: 88
                     }}
                   >
                     {hasPhoto ? (
@@ -398,7 +396,9 @@ export default function Page() {
                           fontWeight: 900,
                           color: '#171717',
                           marginBottom: 4,
-                          letterSpacing: '-0.01em'
+                          letterSpacing: '-0.01em',
+                          overflowWrap: 'anywhere',
+                          wordBreak: 'break-word'
                         }}
                       >
                         {worker.firstName} {worker.lastName}
@@ -418,7 +418,8 @@ export default function Page() {
                       style={{
                         fontSize: 14,
                         fontWeight: 800,
-                        color: useGold ? '#b17e07' : '#245c3b'
+                        color: useGold ? '#b17e07' : '#245c3b',
+                        flexShrink: 0
                       }}
                     >
                       Open
