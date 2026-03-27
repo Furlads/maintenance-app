@@ -63,6 +63,7 @@ function isAlreadyRegisteredPasskeyError(error: unknown) {
 }
 
 export default function LoginPage() {
+  const [mounted, setMounted] = useState(false);
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -76,10 +77,34 @@ export default function LoginPage() {
     name: string;
     accessLevel: string;
   } | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
 
   const autoStartedRef = useRef(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    function syncOnlineState() {
+      setIsOffline(!navigator.onLine);
+    }
+
+    syncOnlineState();
+    window.addEventListener("online", syncOnlineState);
+    window.addEventListener("offline", syncOnlineState);
+
+    return () => {
+      window.removeEventListener("online", syncOnlineState);
+      window.removeEventListener("offline", syncOnlineState);
+    };
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+
     try {
       const params = new URLSearchParams(window.location.search);
       const phoneFromQuery = params.get("phone");
@@ -102,9 +127,11 @@ export default function LoginPage() {
     } catch (err) {
       console.error(err);
     }
-  }, []);
+  }, [mounted]);
 
   useEffect(() => {
+    if (!mounted) return;
+
     try {
       const params = new URLSearchParams(window.location.search);
       const shouldAutostart = params.get("autostart") === "1";
@@ -112,6 +139,7 @@ export default function LoginPage() {
       if (!shouldAutostart) return;
       if (!phone.trim()) return;
       if (autoStartedRef.current) return;
+      if (isOffline) return;
 
       autoStartedRef.current = true;
 
@@ -120,7 +148,7 @@ export default function LoginPage() {
       console.error(err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone]);
+  }, [mounted, phone, isOffline]);
 
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -303,6 +331,25 @@ export default function LoginPage() {
     window.location.href = postLoginRedirectTo;
   }
 
+  if (!mounted) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 20,
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: 400 }}>
+          <h1 style={{ marginBottom: 20 }}>Furlads Login</h1>
+          <p style={{ color: "#555" }}>Loading login…</p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main
       style={{
@@ -316,7 +363,7 @@ export default function LoginPage() {
       <div style={{ width: "100%", maxWidth: 400 }}>
         <h1 style={{ marginBottom: 20 }}>Furlads Login</h1>
 
-        {typeof navigator !== "undefined" && !navigator.onLine && (
+        {isOffline && (
           <div
             style={{
               marginBottom: 14,
@@ -333,8 +380,9 @@ export default function LoginPage() {
         )}
 
         <button
+          type="button"
           onClick={handleQuickLogin}
-          disabled={loading || (typeof navigator !== "undefined" && !navigator.onLine)}
+          disabled={loading || isOffline}
           style={{
             width: "100%",
             padding: "14px",
@@ -345,8 +393,7 @@ export default function LoginPage() {
             color: "yellow",
             border: "none",
             borderRadius: 8,
-            opacity:
-              typeof navigator !== "undefined" && !navigator.onLine ? 0.6 : 1,
+            opacity: isOffline ? 0.6 : 1,
           }}
         >
           {loading ? "Please wait..." : "Quick Login (Face ID / Fingerprint)"}
@@ -363,6 +410,9 @@ export default function LoginPage() {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             required
+            autoComplete="username"
+            data-lpignore="true"
+            data-1p-ignore="true"
             style={{
               width: "100%",
               padding: 12,
@@ -387,6 +437,9 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
+              data-lpignore="true"
+              data-1p-ignore="true"
               style={{
                 flex: 1,
                 padding: 12,
@@ -477,6 +530,7 @@ export default function LoginPage() {
 
             <div style={{ display: "grid", gap: 10 }}>
               <button
+                type="button"
                 onClick={handleEnableQuickLogin}
                 disabled={loading}
                 style={{
@@ -493,6 +547,7 @@ export default function LoginPage() {
               </button>
 
               <button
+                type="button"
                 onClick={handleSkipQuickLogin}
                 disabled={loading}
                 style={{
