@@ -1,127 +1,144 @@
-'use client'
+"use client";
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from "react";
 
 export default function WorkerMenu() {
-  const [open, setOpen] = useState(false)
-  const [workerName, setWorkerName] = useState('')
-  const [updatingApp, setUpdatingApp] = useState(false)
-  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [open, setOpen] = useState(false);
+  const [workerName, setWorkerName] = useState("");
+  const [updatingApp, setUpdatingApp] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const savedWorkerName = localStorage.getItem('workerName') || ''
-    setWorkerName(savedWorkerName)
-  }, [])
+    const savedWorkerName = localStorage.getItem("workerName") || "";
+    setWorkerName(savedWorkerName);
+  }, []);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (!menuRef.current) return
+    function handlePointerDown(event: PointerEvent) {
+      if (!menuRef.current) return;
 
       if (!menuRef.current.contains(event.target as Node)) {
-        setOpen(false)
+        setOpen(false);
       }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setOpen(false)
+      if (event.key === "Escape") {
+        setOpen(false);
       }
     }
 
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleKeyDown)
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [])
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   function clearWorkerSession() {
-    localStorage.removeItem('workerId')
-    localStorage.removeItem('workerName')
-    localStorage.removeItem('workerAccessLevel')
+    localStorage.removeItem("workerId");
+    localStorage.removeItem("workerName");
+    localStorage.removeItem("workerAccessLevel");
   }
 
   function handleLogout() {
-    clearWorkerSession()
-    window.location.href = '/'
+    clearWorkerSession();
+    window.location.href = "/";
   }
 
   function handleSwitchWorker() {
-    clearWorkerSession()
-    window.location.href = '/'
+    clearWorkerSession();
+    window.location.href = "/";
   }
 
   async function handleUpdateApp() {
-    if (updatingApp) return
+    if (updatingApp) return;
 
     try {
-      setUpdatingApp(true)
-      setOpen(false)
+      setUpdatingApp(true);
+      setOpen(false);
 
-      window.alert('Updating app now. The app will restart if possible.')
+      window.alert("Updating app now. The app will restart if possible.");
 
-      if (typeof window !== 'undefined' && 'caches' in window) {
-        const cacheKeys = await caches.keys()
-        await Promise.all(cacheKeys.map((key) => caches.delete(key)))
+      if (typeof window !== "undefined" && "caches" in window) {
+        const cacheKeys = await caches.keys();
+        await Promise.all(cacheKeys.map((key) => caches.delete(key)));
       }
 
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations()
-        await Promise.all(registrations.map((registration) => registration.unregister()))
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(
+          registrations.map((registration) => registration.unregister())
+        );
       }
 
-      const url = new URL(window.location.href)
-      url.searchParams.set('updatedAt', String(Date.now()))
-      window.location.href = url.toString()
+      const url = new URL(window.location.href);
+      url.searchParams.set("updatedAt", String(Date.now()));
+      window.location.href = url.toString();
     } catch (error) {
-      console.error('Failed to update app:', error)
-      window.alert('Changes will apply next time you open the app.')
-      setUpdatingApp(false)
+      console.error("Failed to update app:", error);
+      window.alert("Changes will apply next time you open the app.");
+      setUpdatingApp(false);
     }
   }
 
   const linkStyle: React.CSSProperties = {
-    display: 'block',
-    padding: '12px 0',
-    textDecoration: 'none',
-    color: '#111',
+    display: "block",
+    width: "100%",
+    padding: "12px 0",
+    textDecoration: "none",
+    color: "#111",
     fontSize: 17,
-    borderBottom: '1px solid #eee'
-  }
+    borderBottom: "1px solid #eee",
+  };
+
+  const actionButtonStyle: React.CSSProperties = {
+    display: "block",
+    width: "100%",
+    padding: "12px 0",
+    background: "transparent",
+    border: "none",
+    borderBottom: "1px solid #eee",
+    textAlign: "left",
+    color: "#111",
+    fontSize: 17,
+    cursor: "pointer",
+  };
 
   const sectionLabelStyle: React.CSSProperties = {
     fontSize: 12,
     fontWeight: 800,
     letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: '#777',
+    textTransform: "uppercase",
+    color: "#777",
     marginTop: 14,
-    marginBottom: 4
-  }
+    marginBottom: 4,
+  };
 
   return (
     <div
       ref={menuRef}
       style={{
-        position: 'relative'
+        position: "relative",
       }}
     >
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-label="Open menu"
+        aria-expanded={open}
         style={{
           width: 54,
           height: 54,
           borderRadius: 12,
-          border: '1px solid #d8d8d8',
-          background: '#fff',
+          border: "1px solid #d8d8d8",
+          background: "#fff",
           fontSize: 28,
           lineHeight: 1,
-          cursor: 'pointer',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.06)'
+          cursor: "pointer",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
         }}
       >
         ☰
@@ -130,31 +147,31 @@ export default function WorkerMenu() {
       {open && (
         <div
           style={{
-            position: 'absolute',
+            position: "absolute",
             top: 64,
             right: 0,
             width: 280,
-            maxWidth: 'calc(100vw - 32px)',
-            background: '#fff',
-            border: '1px solid #ddd',
+            maxWidth: "calc(100vw - 24px)",
+            background: "#fff",
+            border: "1px solid #ddd",
             borderRadius: 16,
-            boxShadow: '0 14px 34px rgba(0,0,0,0.12)',
+            boxShadow: "0 14px 34px rgba(0,0,0,0.12)",
             padding: 16,
-            zIndex: 200
+            zIndex: 200,
           }}
         >
           <div
             style={{
               marginBottom: 12,
               paddingBottom: 12,
-              borderBottom: '1px solid #eee'
+              borderBottom: "1px solid #eee",
             }}
           >
             <div
               style={{
                 fontSize: 14,
-                color: '#666',
-                marginBottom: 4
+                color: "#666",
+                marginBottom: 4,
               }}
             >
               Logged in as
@@ -164,10 +181,12 @@ export default function WorkerMenu() {
               style={{
                 fontSize: 18,
                 fontWeight: 800,
-                color: '#111'
+                color: "#111",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
               }}
             >
-              {workerName || 'Worker'}
+              {workerName || "Worker"}
             </div>
           </div>
 
@@ -187,11 +206,19 @@ export default function WorkerMenu() {
 
           <div style={sectionLabelStyle}>Personal</div>
 
-          <a href="/worker/time-off" style={linkStyle} onClick={() => setOpen(false)}>
+          <a
+            href="/worker/time-off"
+            style={linkStyle}
+            onClick={() => setOpen(false)}
+          >
             My Time Off
           </a>
 
-          <a href="/menu/change-pin" style={linkStyle} onClick={() => setOpen(false)}>
+          <a
+            href="/menu/change-pin"
+            style={linkStyle}
+            onClick={() => setOpen(false)}
+          >
             Change PIN
           </a>
 
@@ -200,38 +227,19 @@ export default function WorkerMenu() {
             onClick={handleUpdateApp}
             disabled={updatingApp}
             style={{
-              display: 'block',
-              width: '100%',
-              padding: '12px 0',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: '1px solid #eee',
-              textAlign: 'left',
-              color: '#111',
-              fontSize: 17,
-              cursor: updatingApp ? 'not-allowed' : 'pointer',
+              ...actionButtonStyle,
+              cursor: updatingApp ? "not-allowed" : "pointer",
               opacity: updatingApp ? 0.6 : 1,
-              fontWeight: 700
+              fontWeight: 700,
             }}
           >
-            {updatingApp ? 'Updating app...' : 'Update App'}
+            {updatingApp ? "Updating app..." : "Update App"}
           </button>
 
           <button
             type="button"
             onClick={handleSwitchWorker}
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: '12px 0',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: '1px solid #eee',
-              textAlign: 'left',
-              color: '#111',
-              fontSize: 17,
-              cursor: 'pointer'
-            }}
+            style={actionButtonStyle}
           >
             Switch worker
           </button>
@@ -240,15 +248,15 @@ export default function WorkerMenu() {
             type="button"
             onClick={handleLogout}
             style={{
-              display: 'block',
-              width: '100%',
-              padding: '12px 0 0 0',
-              background: 'transparent',
-              border: 'none',
-              textAlign: 'left',
-              color: '#111',
+              display: "block",
+              width: "100%",
+              padding: "12px 0 0 0",
+              background: "transparent",
+              border: "none",
+              textAlign: "left",
+              color: "#111",
               fontSize: 17,
-              cursor: 'pointer'
+              cursor: "pointer",
             }}
           >
             Logout
@@ -256,5 +264,5 @@ export default function WorkerMenu() {
         </div>
       )}
     </div>
-  )
+  );
 }

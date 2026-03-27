@@ -10,7 +10,10 @@ const COMPANY_NAMES: Record<string, string> = {
   threecounties: "Three Counties Property Care",
 };
 
-const COMPANY_THEME: Record<CompanyKey, { accent: string; accentSoft: string; text: string }> = {
+const COMPANY_THEME: Record<
+  CompanyKey,
+  { accent: string; accentSoft: string; text: string }
+> = {
   furlads: {
     accent: "#FFD400",
     accentSoft: "rgba(255, 212, 0, 0.18)",
@@ -23,31 +26,34 @@ const COMPANY_THEME: Record<CompanyKey, { accent: string; accentSoft: string; te
   },
 };
 
-function titleCase(s: string) {
-  return (s || "")
+function titleCase(value: string) {
+  return (value || "")
     .split(" ")
     .filter(Boolean)
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
 
-export default function AppHeader(props: { title: string; onRefresh?: () => void }) {
+export default function AppHeader(props: {
+  title: string;
+  onRefresh?: () => void;
+}) {
   const pathname = usePathname();
   const router = useRouter();
 
   const [company, setCompany] = useState<string>("");
   const [worker, setWorker] = useState<string>("");
 
-  const isChooserPage = pathname === "/choose-company" || pathname === "/choose-worker";
+  const isChooserPage =
+    pathname === "/choose-company" || pathname === "/choose-worker";
 
-  // We don't want the global banner/header on /today (it has its own in-page header/buttons)
   const hideOnToday = pathname === "/today";
 
   useEffect(() => {
-    // Legacy migration (old key)
     const legacyWorkerName = localStorage.getItem("workerName") || "";
-    const w = localStorage.getItem("worker") || "";
-    if (!w && legacyWorkerName) {
+    const currentWorker = localStorage.getItem("worker") || "";
+
+    if (!currentWorker && legacyWorkerName) {
       localStorage.setItem("worker", legacyWorkerName.trim().toLowerCase());
       localStorage.removeItem("workerName");
     }
@@ -58,6 +64,7 @@ export default function AppHeader(props: { title: string; onRefresh?: () => void
 
   const theme = useMemo(() => {
     const key = (company || "") as CompanyKey;
+
     return (
       COMPANY_THEME[key] || {
         accent: "#ddd",
@@ -74,60 +81,135 @@ export default function AppHeader(props: { title: string; onRefresh?: () => void
     router.replace("/choose-company");
   }
 
-  // Hide header on chooser pages + today (today renders its own header/buttons)
   if (isChooserPage || hideOnToday) return null;
 
-  const companyLabel = COMPANY_NAMES[company as CompanyKey] || (company ? titleCase(company) : "—");
+  const companyLabel =
+    COMPANY_NAMES[company as CompanyKey] || (company ? titleCase(company) : "—");
+
   const workerLabel = worker ? titleCase(worker) : "—";
 
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-      <div>
-        <h1 style={{ marginBottom: 6, color: theme.text }}>
-          <span
+    <>
+      <div
+        className="app-header-shell"
+        style={{
+          marginBottom: 16,
+        }}
+      >
+        <div
+          className="app-header-main"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h1
+              style={{
+                margin: "0 0 6px 0",
+                color: theme.text,
+                fontSize: 28,
+                lineHeight: 1.1,
+              }}
+            >
+              <span
+                style={{
+                  boxShadow: `inset 0 -0.55em 0 ${theme.accentSoft}`,
+                  padding: "0 4px",
+                  borderRadius: 6,
+                }}
+              >
+                {props.title}
+              </span>
+            </h1>
+
+            <div
+              style={{
+                fontSize: 13,
+                lineHeight: 1.45,
+                color: "#444",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+              }}
+            >
+              <span style={{ color: theme.accent, fontWeight: 800 }}>●</span>{" "}
+              Company: <b>{companyLabel}</b> • Worker: <b>{workerLabel}</b>
+            </div>
+          </div>
+
+          <div
+            className="app-header-actions"
             style={{
-              boxShadow: `inset 0 -0.55em 0 ${theme.accentSoft}`,
-              padding: "0 4px",
-              borderRadius: 6,
+              display: "flex",
+              gap: 8,
+              alignItems: "stretch",
+              flexWrap: "wrap",
             }}
           >
-            {props.title}
-          </span>
-        </h1>
+            {props.onRefresh ? (
+              <button
+                type="button"
+                onClick={props.onRefresh}
+                style={{
+                  minHeight: 44,
+                  padding: "10px 14px",
+                  border: `1px solid ${theme.accent}`,
+                  borderRadius: 10,
+                  background: "#fff",
+                  color: "#111",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Refresh
+              </button>
+            ) : null}
 
-        <div style={{ fontSize: 12, opacity: 0.8 }}>
-          <span style={{ color: theme.accent, fontWeight: 800 }}>●</span> Company: <b>{companyLabel}</b> • Worker:{" "}
-          <b>{workerLabel}</b>
+            <button
+              type="button"
+              onClick={switchUser}
+              style={{
+                minHeight: 44,
+                padding: "10px 14px",
+                border: `1px solid ${theme.accent}`,
+                borderRadius: 10,
+                background: "#fff",
+                color: "#111",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Switch user
+            </button>
+          </div>
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "start" }}>
-        {props.onRefresh ? (
-          <button
-            onClick={props.onRefresh}
-            style={{
-              padding: "8px 10px",
-              border: `1px solid ${theme.accent}`,
-              borderRadius: 10,
-              background: "#fff",
-            }}
-          >
-            Refresh
-          </button>
-        ) : null}
+      <style jsx>{`
+        .app-header-main {
+          flex-direction: column;
+        }
 
-        <button
-          onClick={switchUser}
-          style={{
-            padding: "8px 10px",
-            border: `1px solid ${theme.accent}`,
-            borderRadius: 10,
-            background: "#fff",
-          }}
-        >
-          Switch user
-        </button>
-      </div>
-    </div>
+        .app-header-actions {
+          width: 100%;
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+
+        @media (min-width: 768px) {
+          .app-header-main {
+            flex-direction: row;
+          }
+
+          .app-header-actions {
+            width: auto;
+            display: flex;
+            justify-content: flex-end;
+          }
+        }
+      `}</style>
+    </>
   );
 }
