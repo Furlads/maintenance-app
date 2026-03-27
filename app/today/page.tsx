@@ -1176,13 +1176,59 @@ async function loadCustomers() {
   }
 }
 
-  useEffect(() => {
-    const savedWorkerId = localStorage.getItem('workerId')
-    const savedWorkerName = localStorage.getItem('workerName')
+    useEffect(() => {
+    const savedWorkerId =
+      localStorage.getItem('workerId') ||
+      localStorage.getItem('lastWorkerId')
+
+    const savedWorkerName =
+      localStorage.getItem('workerName') ||
+      localStorage.getItem('lastWorkerName')
+
     const savedWorkerPhotoUrl =
       localStorage.getItem('workerPhotoUrl') ||
       localStorage.getItem('photoUrl') ||
+      localStorage.getItem('selectedLoginWorkerPhotoUrl') ||
       ''
+
+    if (savedWorkerId) {
+      setWorkerId(Number(savedWorkerId))
+    }
+
+    if (savedWorkerName) {
+      setWorkerName(savedWorkerName)
+    }
+
+    if (savedWorkerPhotoUrl) {
+      setWorkerPhotoUrl(savedWorkerPhotoUrl)
+    }
+
+    const snapshot = getTodaySnapshot()
+
+    if (snapshot?.jobs?.length) {
+      setJobs(snapshot.jobs as unknown as Job[])
+      setShowingOfflineSnapshot(true)
+    }
+
+    if (snapshot?.customers?.length) {
+      setCustomers(snapshot.customers as unknown as Customer[])
+    }
+
+    const defaultToday = toDateKey(new Date())
+    const urlDate =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('date') || ''
+        : ''
+
+    const initialDate = urlDate || defaultToday
+
+    setSelectedDateKey(initialDate)
+    setTimeOffForm(DEFAULT_TIME_OFF_FORM(initialDate))
+
+    refreshQueuedActionCount()
+    loadJobs()
+    loadCustomers()
+  }, [])
 
     if (savedWorkerId) {
       setWorkerId(Number(savedWorkerId))

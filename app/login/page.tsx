@@ -15,6 +15,7 @@ type LoginResponse = {
     id: number;
     name: string;
     accessLevel: string;
+    photoUrl?: string | null;
   };
 };
 
@@ -35,36 +36,55 @@ function cleanupSelectedWorkerStorage() {
   localStorage.removeItem("selectedLoginWorkerPhotoUrl");
 }
 
-function saveLastLoggedInWorker(worker: {
+function saveWorkerSession(worker: {
   id: number;
   name: string;
   accessLevel?: string;
+  photoUrl?: string | null;
 }) {
-  localStorage.setItem("lastWorkerId", String(worker.id));
-  localStorage.setItem("lastWorkerName", worker.name);
+  const id = String(worker.id);
+  const name = String(worker.name || "").trim();
+  const accessLevel = String(worker.accessLevel || "worker").trim();
+  const photoUrl = String(worker.photoUrl || "").trim();
 
-  if (worker.accessLevel) {
-    localStorage.setItem("lastWorkerAccessLevel", worker.accessLevel);
+  localStorage.setItem("workerId", id);
+  localStorage.setItem("workerName", name);
+  localStorage.setItem("lastWorkerId", id);
+  localStorage.setItem("lastWorkerName", name);
+  localStorage.setItem("lastWorkerAccessLevel", accessLevel);
+
+  if (photoUrl) {
+    localStorage.setItem("workerPhotoUrl", photoUrl);
+    localStorage.setItem("photoUrl", photoUrl);
   }
 }
 
-function saveLastLoggedInWorkerFromSelectedWorkerFallback() {
+function saveWorkerSessionFromSelectedWorkerFallback() {
   const selectedWorkerId = localStorage.getItem("selectedLoginWorkerId");
   const selectedWorkerName = localStorage.getItem("selectedLoginWorkerName");
+  const selectedWorkerPhotoUrl =
+    localStorage.getItem("selectedLoginWorkerPhotoUrl") || "";
 
   if (selectedWorkerId && selectedWorkerName) {
+    localStorage.setItem("workerId", selectedWorkerId);
+    localStorage.setItem("workerName", selectedWorkerName);
     localStorage.setItem("lastWorkerId", selectedWorkerId);
     localStorage.setItem("lastWorkerName", selectedWorkerName);
+
+    if (selectedWorkerPhotoUrl) {
+      localStorage.setItem("workerPhotoUrl", selectedWorkerPhotoUrl);
+      localStorage.setItem("photoUrl", selectedWorkerPhotoUrl);
+    }
   }
 }
 
 function persistBestKnownWorker(worker: LoginResponse["worker"] | null) {
   if (worker) {
-    saveLastLoggedInWorker(worker);
+    saveWorkerSession(worker);
     return;
   }
 
-  saveLastLoggedInWorkerFromSelectedWorkerFallback();
+  saveWorkerSessionFromSelectedWorkerFallback();
 }
 
 function isAlreadyRegisteredPasskeyError(error: unknown) {
@@ -98,6 +118,7 @@ export default function LoginPage() {
     id: number;
     name: string;
     accessLevel: string;
+    photoUrl?: string | null;
   } | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
@@ -164,7 +185,6 @@ export default function LoginPage() {
       if (isOffline) return;
 
       autoStartedRef.current = true;
-
       void handleQuickLogin();
     } catch (err) {
       console.error(err);
@@ -348,7 +368,7 @@ export default function LoginPage() {
       >
         <div style={{ width: "100%", maxWidth: 400 }}>
           <h1 style={{ marginBottom: 20 }}>Furlads Login</h1>
-          <p style={{ color: "#555" }}>Loading login…</p>
+          <p style={{ color: "#555" }}>Loading login...</p>
         </div>
       </main>
     );
