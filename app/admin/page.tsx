@@ -403,6 +403,13 @@ export default async function AdminPage() {
             </Link>
 
             <Link
+              href="/admin/calendar"
+              className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              Month calendar
+            </Link>
+
+            <Link
               href="/kelly/time-off"
               className="inline-flex items-center justify-center rounded-xl bg-amber-400 px-4 py-3 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
             >
@@ -599,6 +606,13 @@ export default async function AdminPage() {
               </Link>
 
               <Link
+                href="/admin/calendar"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+              >
+                Open month calendar
+              </Link>
+
+              <Link
                 href="/jobs"
                 className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
               >
@@ -607,7 +621,7 @@ export default async function AdminPage() {
 
               <Link
                 href="/admin/inbox?source=worker-quote"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 sm:col-span-2"
               >
                 Worker quotes
               </Link>
