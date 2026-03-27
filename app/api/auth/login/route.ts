@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { createSessionForWorker } from "@/lib/auth";
 
 function normalise(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
@@ -144,7 +145,9 @@ export async function POST(req: Request) {
       mustChangePassword: worker.mustChangePassword,
     });
 
-    const res = NextResponse.json({
+    await createSessionForWorker(worker);
+
+    return NextResponse.json({
       ok: true,
       worker: {
         id: worker.id,
@@ -154,24 +157,6 @@ export async function POST(req: Request) {
       redirectTo,
       mustChangePassword: worker.mustChangePassword,
     });
-
-    res.cookies.set(
-      "furlads_session",
-      JSON.stringify({
-        workerId: worker.id,
-        workerName: `${worker.firstName} ${worker.lastName}`.trim(),
-        workerAccessLevel: accessLevel,
-      }),
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 30,
-      }
-    );
-
-    return res;
   } catch (error) {
     console.error("LOGIN_ROUTE_ERROR", error);
     return NextResponse.json(

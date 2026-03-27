@@ -2,6 +2,7 @@ import { verifyAuthenticationResponse } from "@simplewebauthn/server";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { createSessionForWorker } from "@/lib/auth";
 
 const rpID = process.env.WEBAUTHN_RP_ID!;
 const origin = process.env.WEBAUTHN_ORIGIN!;
@@ -97,7 +98,9 @@ export async function POST(req: Request) {
         publicKey: Uint8Array.from(Buffer.from(credential.publicKey, "base64")),
         counter: credential.counter,
         transports: credential.transports
-          ? (credential.transports.split(",").filter(Boolean) as AuthenticatorTransport[])
+          ? (credential.transports
+              .split(",")
+              .filter(Boolean) as AuthenticatorTransport[])
           : undefined,
       },
     });
@@ -118,37 +121,20 @@ export async function POST(req: Request) {
 
     cookieStore.set("furlads_webauthn_auth_challenge", "", {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: 0,
     });
 
-    const accessLevel = credential.worker.accessLevel || "worker";
     const redirectTo = getRedirectPath(credential.worker);
 
-    const res = NextResponse.json({
+    await createSessionForWorker(credential.worker);
+
+    return NextResponse.json({
       ok: true,
       redirectTo,
     });
-
-    res.cookies.set(
-      "furlads_session",
-      JSON.stringify({
-        workerId: credential.worker.id,
-        workerName: `${credential.worker.firstName} ${credential.worker.lastName}`.trim(),
-        workerAccessLevel: accessLevel,
-      }),
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 30,
-      }
-    );
-
-    return res;
   } catch (error) {
     console.error("WEBAUTHN_LOGIN_FINISH_ERROR", error);
     return NextResponse.json(
