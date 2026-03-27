@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import CustomerHistory from './CustomerHistory'
 import WorkerMenu from '@/app/components/WorkerMenu'
@@ -47,6 +48,86 @@ function formatStatus(value: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+function normaliseText(value: string | null | undefined) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function titleCase(value: string | null | undefined) {
+  const clean = normaliseText(value)
+  if (!clean) return ''
+
+  return clean
+    .toLowerCase()
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    function update() {
+      setIsMobile(window.innerWidth <= 768)
+    }
+
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+
+  return isMobile
+}
+
+function pageShellStyle(isMobile: boolean): React.CSSProperties {
+  return {
+    minHeight: '100vh',
+    background: '#f5f5f5',
+    padding: isMobile ? 12 : 20,
+    fontFamily: 'sans-serif',
+  }
+}
+
+function cardStyle(): React.CSSProperties {
+  return {
+    background: '#fff',
+    border: '1px solid #e7e7e7',
+    borderRadius: 18,
+    padding: 18,
+    boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+  }
+}
+
+function actionLinkStyle(): React.CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '12px 16px',
+    borderRadius: 12,
+    border: '1px solid #d8d8d8',
+    textDecoration: 'none',
+    color: '#111',
+    fontWeight: 700,
+    background: '#fff',
+    textAlign: 'center',
+    minHeight: 46,
+    boxSizing: 'border-box',
+    width: '100%',
+  }
+}
+
+function actionButtonStyle(): React.CSSProperties {
+  return {
+    padding: '12px 16px',
+    borderRadius: 12,
+    fontWeight: 800,
+    minHeight: 46,
+    width: '100%',
+    boxSizing: 'border-box',
+  }
+}
+
 export default function CustomerPage() {
   const params = useParams()
   const router = useRouter()
@@ -57,28 +138,50 @@ export default function CustomerPage() {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [showJobs, setShowJobs] = useState(true)
+
+  const isMobile = useIsMobile()
+
+  const customerId = useMemo(() => Number(id), [id])
 
   useEffect(() => {
     async function loadPageData() {
       try {
+        setLoading(true)
+        setMessage('')
+
         const [customerRes, jobsRes] = await Promise.all([
           fetch(`/api/customers/${id}`, { cache: 'no-store' }),
           fetch('/api/jobs', { cache: 'no-store' }),
         ])
+
+        if (!customerRes.ok) {
+          throw new Error('Failed to load customer')
+        }
+
+        if (!jobsRes.ok) {
+          throw new Error('Failed to load jobs')
+        }
 
         const customerData = await customerRes.json()
         const jobsData = await jobsRes.json()
 
         setCustomer(customerData)
 
-        const customerId = Number(id)
         const filteredJobs = Array.isArray(jobsData)
           ? jobsData.filter((job) => job.customerId === customerId)
           : []
 
+        filteredJobs.sort((a: Job, b: Job) => {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        })
+
         setJobs(filteredJobs)
       } catch (error) {
         console.error(error)
+        setMessage(
+          error instanceof Error ? error.message : 'Failed to load customer page'
+        )
       } finally {
         setLoading(false)
       }
@@ -87,7 +190,7 @@ export default function CustomerPage() {
     if (id) {
       loadPageData()
     }
-  }, [id])
+  }, [id, customerId])
 
   async function handleArchive() {
     if (!customer || actionLoading) return
@@ -163,27 +266,12 @@ export default function CustomerPage() {
     }
   }
 
-  if (loading) {
+  if (isMobile === null || loading) {
     return (
-      <main
-        style={{
-          minHeight: '100vh',
-          background: '#f5f5f5',
-          padding: 12,
-          fontFamily: 'sans-serif',
-        }}
-      >
+      <main style={pageShellStyle(true)}>
         <div style={{ maxWidth: 980, margin: '0 auto' }}>
-          <div
-            style={{
-              background: '#fff',
-              border: '1px solid #e6e6e6',
-              borderRadius: 18,
-              padding: 18,
-              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-            }}
-          >
-            <p style={{ margin: 0 }}>Loading...</p>
+          <div style={cardStyle()}>
+            <p style={{ margin: 0, fontWeight: 700 }}>Loading...</p>
           </div>
         </div>
       </main>
@@ -192,25 +280,26 @@ export default function CustomerPage() {
 
   if (!customer) {
     return (
-      <main
-        style={{
-          minHeight: '100vh',
-          background: '#f5f5f5',
-          padding: 12,
-          fontFamily: 'sans-serif',
-        }}
-      >
+      <main style={pageShellStyle(isMobile)}>
         <div style={{ maxWidth: 980, margin: '0 auto' }}>
-          <div
-            style={{
-              background: '#fff',
-              border: '1px solid #e6e6e6',
-              borderRadius: 18,
-              padding: 18,
-              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-            }}
-          >
-            <p style={{ margin: 0 }}>Customer not found</p>
+          <div style={cardStyle()}>
+            <p style={{ margin: 0, fontWeight: 700 }}>Customer not found</p>
+            {message && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: '12px 14px',
+                  borderRadius: 12,
+                  background: '#fff4f4',
+                  border: '1px solid #f0c9c9',
+                  color: '#333',
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {message}
+              </div>
+            )}
           </div>
         </div>
       </main>
@@ -220,14 +309,7 @@ export default function CustomerPage() {
   const navigationQuery = customer.postcode || customer.address || ''
 
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        background: '#f5f5f5',
-        padding: 12,
-        fontFamily: 'sans-serif',
-      }}
-    >
+    <main style={pageShellStyle(isMobile)}>
       <div
         style={{
           maxWidth: 980,
@@ -239,14 +321,14 @@ export default function CustomerPage() {
             background: 'linear-gradient(135deg, #111 0%, #1e1e1e 100%)',
             color: '#fff',
             borderRadius: 20,
-            padding: 18,
+            padding: isMobile ? 16 : 18,
             marginBottom: 16,
             boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
             border: '1px solid #222',
           }}
         >
           <div style={{ marginBottom: 14 }}>
-            <a
+            <Link
               href="/customers"
               style={{
                 display: 'inline-flex',
@@ -256,10 +338,11 @@ export default function CustomerPage() {
                 color: 'rgba(255,255,255,0.78)',
                 fontSize: 14,
                 fontWeight: 600,
+                minHeight: 44,
               }}
             >
               ← Back to customers
-            </a>
+            </Link>
           </div>
 
           <div
@@ -292,13 +375,14 @@ export default function CustomerPage() {
 
               <h1
                 style={{
-                  fontSize: 32,
+                  fontSize: isMobile ? 28 : 32,
                   lineHeight: 1.1,
                   margin: '0 0 8px 0',
+                  overflowWrap: 'anywhere',
                   wordBreak: 'break-word',
                 }}
               >
-                {customer.name}
+                {titleCase(customer.name) || customer.name}
               </h1>
 
               <p
@@ -318,6 +402,7 @@ export default function CustomerPage() {
                 alignItems: 'flex-start',
                 justifyContent: 'flex-end',
                 flex: '0 0 auto',
+                width: isMobile ? '100%' : 'auto',
               }}
             >
               <WorkerMenu />
@@ -327,53 +412,28 @@ export default function CustomerPage() {
 
         <section
           style={{
-            background: '#fff',
-            border: '1px solid #e7e7e7',
-            borderRadius: 18,
-            padding: 16,
+            ...cardStyle(),
             marginBottom: 16,
-            boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+            padding: isMobile ? 14 : 16,
           }}
         >
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gridTemplateColumns: isMobile
+                ? '1fr'
+                : 'repeat(auto-fit, minmax(160px, 1fr))',
               gap: 12,
             }}
           >
             {customer.phone && (
-              <a
-                href={`tel:${customer.phone}`}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #d8d8d8',
-                  textDecoration: 'none',
-                  color: '#111',
-                  fontWeight: 700,
-                  background: '#fff',
-                  textAlign: 'center',
-                }}
-              >
+              <a href={`tel:${customer.phone}`} style={actionLinkStyle()}>
                 Call Customer
               </a>
             )}
 
             {customer.email && (
-              <a
-                href={`mailto:${customer.email}`}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #d8d8d8',
-                  textDecoration: 'none',
-                  color: '#111',
-                  fontWeight: 700,
-                  background: '#fff',
-                  textAlign: 'center',
-                }}
-              >
+              <a href={`mailto:${customer.email}`} style={actionLinkStyle()}>
                 Email Customer
               </a>
             )}
@@ -383,115 +443,83 @@ export default function CustomerPage() {
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationQuery)}`}
                 target="_blank"
                 rel="noreferrer"
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #d8d8d8',
-                  textDecoration: 'none',
-                  color: '#111',
-                  fontWeight: 700,
-                  background: '#fff',
-                  textAlign: 'center',
-                }}
+                style={actionLinkStyle()}
               >
                 Navigate
               </a>
             )}
 
-            <a
+            <Link
               href={`/jobs/add?customerId=${customer.id}`}
               style={{
-                padding: '12px 16px',
-                borderRadius: 12,
+                ...actionLinkStyle(),
                 border: '1px solid #111',
-                textDecoration: 'none',
                 color: '#111',
                 fontWeight: 800,
                 background: '#ffcc00',
                 boxShadow: '0 6px 18px rgba(255, 204, 0, 0.18)',
-                textAlign: 'center',
               }}
             >
               + Add Job
-            </a>
+            </Link>
 
-            <a
+            <Link
               href={`/jobs/add?customerId=${customer.id}&jobType=Quote`}
               style={{
-                padding: '12px 16px',
-                borderRadius: 12,
+                ...actionLinkStyle(),
                 border: '1px solid #e4b700',
-                textDecoration: 'none',
                 color: '#111',
                 fontWeight: 800,
                 background: '#ffe37a',
-                textAlign: 'center',
               }}
             >
               + Add Quote
-            </a>
+            </Link>
 
-            <a
+            <Link
               href={`/jobs/add?customerId=${customer.id}&jobType=Maintenance`}
               style={{
-                padding: '12px 16px',
-                borderRadius: 12,
+                ...actionLinkStyle(),
                 border: '1px solid #15803d',
-                textDecoration: 'none',
                 color: '#fff',
                 fontWeight: 800,
                 background: '#16a34a',
-                textAlign: 'center',
               }}
             >
               + Add Maintenance
-            </a>
+            </Link>
 
-            <a
+            <Link
               href={`/jobs/add?customerId=${customer.id}&jobType=Landscaping`}
               style={{
-                padding: '12px 16px',
-                borderRadius: 12,
+                ...actionLinkStyle(),
                 border: '1px solid #1d4ed8',
-                textDecoration: 'none',
                 color: '#fff',
                 fontWeight: 800,
                 background: '#2563eb',
-                textAlign: 'center',
               }}
             >
               + Add Landscaping
-            </a>
+            </Link>
 
-            <a
+            <Link
               href={`/customers/${customer.id}/edit`}
-              style={{
-                padding: '12px 16px',
-                borderRadius: 12,
-                border: '1px solid #d8d8d8',
-                textDecoration: 'none',
-                color: '#111',
-                fontWeight: 800,
-                background: '#fff',
-                textAlign: 'center',
-              }}
+              style={actionLinkStyle()}
             >
               Edit Customer
-            </a>
+            </Link>
 
             <button
               type="button"
               onClick={handleArchive}
               disabled={actionLoading}
               style={{
-                padding: '12px 16px',
-                borderRadius: 12,
+                ...actionButtonStyle(),
                 border: '1px solid #d4a017',
                 background: '#fff4d6',
                 color: '#6b4f00',
-                fontWeight: 800,
                 cursor: actionLoading ? 'default' : 'pointer',
-                width: '100%',
+                opacity: actionLoading ? 0.7 : 1,
               }}
             >
               {actionLoading ? 'Working...' : 'Archive Customer'}
@@ -502,14 +530,12 @@ export default function CustomerPage() {
               onClick={handleDelete}
               disabled={actionLoading}
               style={{
-                padding: '12px 16px',
-                borderRadius: 12,
+                ...actionButtonStyle(),
                 border: '1px solid #dc2626',
                 background: '#fff1f2',
                 color: '#991b1b',
-                fontWeight: 800,
                 cursor: actionLoading ? 'default' : 'pointer',
-                width: '100%',
+                opacity: actionLoading ? 0.7 : 1,
               }}
             >
               {actionLoading ? 'Working...' : 'Delete Customer'}
@@ -525,6 +551,8 @@ export default function CustomerPage() {
                 background: '#fff4f4',
                 border: '1px solid #f0c9c9',
                 color: '#333',
+                overflowWrap: 'anywhere',
+                wordBreak: 'break-word',
               }}
             >
               {message}
@@ -541,11 +569,8 @@ export default function CustomerPage() {
         >
           <section
             style={{
-              border: '1px solid #e7e7e7',
-              padding: 18,
-              borderRadius: 18,
-              background: '#fff',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+              ...cardStyle(),
+              padding: isMobile ? 16 : 18,
             }}
           >
             <div
@@ -558,7 +583,9 @@ export default function CustomerPage() {
                 marginBottom: 16,
               }}
             >
-              <h2 style={{ fontSize: 22, margin: 0 }}>Customer Details</h2>
+              <h2 style={{ fontSize: isMobile ? 20 : 22, margin: 0 }}>
+                Customer Details
+              </h2>
 
               {customer.postcode && (
                 <div
@@ -571,6 +598,7 @@ export default function CustomerPage() {
                     fontWeight: 800,
                     color: '#6a5600',
                     maxWidth: '100%',
+                    overflowWrap: 'anywhere',
                     wordBreak: 'break-word',
                   }}
                 >
@@ -582,7 +610,9 @@ export default function CustomerPage() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gridTemplateColumns: isMobile
+                  ? '1fr'
+                  : 'repeat(auto-fit, minmax(220px, 1fr))',
                 gap: 12,
               }}
             >
@@ -607,7 +637,14 @@ export default function CustomerPage() {
                 >
                   Phone
                 </div>
-                <div style={{ fontSize: 15, color: '#222', wordBreak: 'break-word' }}>
+                <div
+                  style={{
+                    fontSize: 15,
+                    color: '#222',
+                    overflowWrap: 'anywhere',
+                    wordBreak: 'break-word',
+                  }}
+                >
                   {customer.phone || 'Not added'}
                 </div>
               </div>
@@ -637,6 +674,7 @@ export default function CustomerPage() {
                   style={{
                     fontSize: 15,
                     color: '#222',
+                    overflowWrap: 'anywhere',
                     wordBreak: 'break-word',
                   }}
                 >
@@ -671,6 +709,7 @@ export default function CustomerPage() {
                     fontSize: 15,
                     color: '#222',
                     whiteSpace: 'pre-line',
+                    overflowWrap: 'anywhere',
                     wordBreak: 'break-word',
                   }}
                 >
@@ -706,6 +745,7 @@ export default function CustomerPage() {
                     fontSize: 14,
                     color: '#3f3a22',
                     whiteSpace: 'pre-line',
+                    overflowWrap: 'anywhere',
                     wordBreak: 'break-word',
                   }}
                 >
@@ -727,12 +767,9 @@ export default function CustomerPage() {
 
           <section
             style={{
-              border: '1px solid #e7e7e7',
-              borderRadius: 18,
-              padding: 18,
-              background: '#fff',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+              ...cardStyle(),
               marginBottom: 4,
+              padding: isMobile ? 16 : 18,
             }}
           >
             <div
@@ -745,149 +782,210 @@ export default function CustomerPage() {
                 marginBottom: 16,
               }}
             >
-              <h2 style={{ fontSize: 22, margin: 0 }}>Jobs</h2>
-              <div style={{ fontSize: 14, color: '#666', fontWeight: 700 }}>
-                {jobs.length} job{jobs.length === 1 ? '' : 's'}
+              <h2 style={{ fontSize: isMobile ? 20 : 22, margin: 0 }}>Jobs</h2>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ fontSize: 14, color: '#666', fontWeight: 700 }}>
+                  {jobs.length} job{jobs.length === 1 ? '' : 's'}
+                </div>
+
+                {jobs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowJobs((current) => !current)}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: 10,
+                      border: '1px solid #d4d4d8',
+                      background: '#fff',
+                      color: '#111',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      minHeight: 42,
+                    }}
+                  >
+                    {showJobs ? 'Hide jobs' : 'Show jobs'}
+                  </button>
+                )}
               </div>
             </div>
 
             {jobs.length === 0 && <p style={{ margin: 0 }}>No jobs yet for this customer.</p>}
 
-            {jobs.map((job) => (
-              <div
-                key={job.id}
-                style={{
-                  border: '1px solid #e6e6e6',
-                  padding: 14,
-                  borderRadius: 14,
-                  marginBottom: 12,
-                  background: '#fafafa',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                    marginBottom: 8,
-                  }}
-                >
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontSize: 18,
-                      color: '#111',
-                      wordBreak: 'break-word',
-                      flex: '1 1 220px',
-                    }}
-                  >
-                    {job.title}
-                  </h3>
-
+            {jobs.length > 0 && showJobs && (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {jobs.map((job) => (
                   <div
+                    key={job.id}
                     style={{
-                      padding: '6px 10px',
-                      borderRadius: 999,
-                      background: '#fff',
-                      border: '1px solid #ddd',
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: '#444',
-                    }}
-                  >
-                    {formatStatus(job.status)}
-                  </div>
-                </div>
-
-                {job.address && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      border: '1px solid #ececec',
-                      borderRadius: 10,
-                      padding: 10,
-                      marginTop: 8,
+                      border: '1px solid #e6e6e6',
+                      padding: 14,
+                      borderRadius: 14,
+                      background: '#fafafa',
                     }}
                   >
                     <div
                       style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: '#777',
-                        marginBottom: 6,
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.3,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        marginBottom: 8,
                       }}
                     >
-                      Address
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: 18,
+                          color: '#111',
+                          overflowWrap: 'anywhere',
+                          wordBreak: 'break-word',
+                          flex: '1 1 220px',
+                        }}
+                      >
+                        {titleCase(job.title) || job.title}
+                      </h3>
+
+                      <div
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 999,
+                          background: '#fff',
+                          border: '1px solid #ddd',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: '#444',
+                          maxWidth: '100%',
+                          overflowWrap: 'anywhere',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {formatStatus(job.status)}
+                      </div>
                     </div>
+
+                    {job.address && (
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '1px solid #ececec',
+                          borderRadius: 10,
+                          padding: 10,
+                          marginTop: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: '#777',
+                            marginBottom: 6,
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.3,
+                          }}
+                        >
+                          Address
+                        </div>
+                        <div
+                          style={{
+                            whiteSpace: 'pre-line',
+                            fontSize: 14,
+                            color: '#222',
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {job.address}
+                        </div>
+                      </div>
+                    )}
+
+                    {job.notes && (
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '1px solid #ececec',
+                          borderRadius: 10,
+                          padding: 10,
+                          marginTop: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: '#777',
+                            marginBottom: 6,
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.3,
+                          }}
+                        >
+                          Notes
+                        </div>
+                        <div
+                          style={{
+                            whiteSpace: 'pre-line',
+                            fontSize: 14,
+                            color: '#444',
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {job.notes}
+                        </div>
+                      </div>
+                    )}
+
                     <div
                       style={{
-                        whiteSpace: 'pre-line',
-                        fontSize: 14,
-                        color: '#222',
-                        wordBreak: 'break-word',
+                        marginTop: 10,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
                       }}
                     >
-                      {job.address}
+                      <div style={{ fontSize: 13, color: '#666' }}>
+                        Created {formatDate(job.createdAt)}
+                      </div>
+
+                      <Link
+                        href={`/jobs/${job.id}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          minHeight: 42,
+                          padding: '10px 12px',
+                          borderRadius: 10,
+                          border: '1px solid #d4d4d8',
+                          background: '#fff',
+                          color: '#111',
+                          textDecoration: 'none',
+                          fontSize: 13,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Open Job
+                      </Link>
                     </div>
                   </div>
-                )}
-
-                {job.notes && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      border: '1px solid #ececec',
-                      borderRadius: 10,
-                      padding: 10,
-                      marginTop: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: '#777',
-                        marginBottom: 6,
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.3,
-                      }}
-                    >
-                      Notes
-                    </div>
-                    <div
-                      style={{
-                        whiteSpace: 'pre-line',
-                        fontSize: 14,
-                        color: '#444',
-                        wordBreak: 'break-word',
-                      }}
-                    >
-                      {job.notes}
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ marginTop: 10, fontSize: 13, color: '#666' }}>
-                  Created {formatDate(job.createdAt)}
-                </div>
+                ))}
               </div>
-            ))}
+            )}
           </section>
         </div>
 
-        <section
-          style={{
-            border: '1px solid #e7e7e7',
-            borderRadius: 18,
-            padding: 18,
-            background: '#fff',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-          }}
-        >
+        <section style={cardStyle()}>
           <CustomerHistory customerId={customer.id} />
         </section>
       </div>
