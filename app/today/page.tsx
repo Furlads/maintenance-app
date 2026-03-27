@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import WorkerMenu from '@/app/components/WorkerMenu'
 import { getTodaySnapshot, saveTodaySnapshot } from '@/lib/offline/store'
@@ -2221,13 +2222,14 @@ input, textarea, select {
 }
 
         .today-top-actions {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-left: auto;
-          flex-wrap: wrap;
-          justify-content: flex-end;
-        }
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  width: auto;
+}
 
         .today-worker-badge {
           display: flex;
@@ -2316,7 +2318,7 @@ input, textarea, select {
         .today-chas-shell {
   width: 100%;
   max-width: 820px;
-  height: 86vh;
+  height: min(86vh, 860px);
   overflow: hidden;
   background: #fff;
   border-radius: 20px;
@@ -2724,7 +2726,7 @@ input, textarea, select {
               <div
                 style={{
                   marginBottom: 12,
-                  padding: 12,
+                  padding: window.innerWidth <= 768 ? 0 : 12,
                   borderRadius: 14,
                   background: 'rgba(255,255,255,0.72)',
                   border: '1px solid rgba(0,0,0,0.06)'
@@ -2784,9 +2786,9 @@ input, textarea, select {
             {!prepCompleted && renderQuickActionBar(prepJob)}
 
             <div className="today-job-actions">
-              <a href={`/jobs/${prepJob.id}`} style={styles.actionButton}>
-                Open Prep
-              </a>
+              <Link href={`/jobs/${prepJob.id}`} style={styles.actionButton}>
+  Open Prep
+</Link>
             </div>
           </section>
         )}
@@ -2797,7 +2799,7 @@ input, textarea, select {
       ...styles.panel,
       marginBottom: 16,
       position: 'sticky',
-      top: 10,
+      top: 8,
       zIndex: 20,
       border: '1px solid #efcf72',
       background: 'linear-gradient(180deg, #fff7d6 0%, #fff2be 100%)',
@@ -2910,29 +2912,45 @@ input, textarea, select {
               </div>
 
               <div className="today-active-actions">
-                <a href={`/jobs/${filteredActiveJob.id}`} style={styles.actionButton}>
-                  {isQuoteJob(filteredActiveJob) ? 'See Notes' : 'View Job'}
-                </a>
+  <Link href={`/jobs/${filteredActiveJob.id}`} style={styles.actionButton}>
+    {isQuoteJob(filteredActiveJob) ? 'See Notes' : 'View Job'}
+  </Link>
 
-                {filteredActiveJob.customer?.phone && (
-                  <a href={`tel:${filteredActiveJob.customer.phone}`} style={styles.actionButton}>
-                    Call Customer
-                  </a>
-                )}
+  {!isQuoteJob(filteredActiveJob) && !filteredActiveJob.isDone && (
+    <button
+      type="button"
+      onClick={() => handleUndoStart(filteredActiveJob.id)}
+      disabled={busyJobId === filteredActiveJob.id}
+      style={{
+        ...styles.actionButton,
+        width: '100%',
+        opacity: busyJobId === filteredActiveJob.id ? 0.6 : 1,
+        cursor: busyJobId === filteredActiveJob.id ? 'not-allowed' : 'pointer'
+      }}
+    >
+      Undo Start
+    </button>
+  )}
 
-                {(filteredActiveJob.customer?.postcode || filteredActiveJob.address || filteredActiveJob.customer?.address) && (
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      filteredActiveJob.customer?.postcode || filteredActiveJob.address || filteredActiveJob.customer?.address || ''
-                    )}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={styles.actionButton}
-                  >
-                    Navigate
-                  </a>
-                )}
-              </div>
+  {filteredActiveJob.customer?.phone && (
+    <a href={`tel:${filteredActiveJob.customer.phone}`} style={styles.actionButton}>
+      Call Customer
+    </a>
+  )}
+
+  {(filteredActiveJob.customer?.postcode || filteredActiveJob.address || filteredActiveJob.customer?.address) && (
+    <a
+      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        filteredActiveJob.customer?.postcode || filteredActiveJob.address || filteredActiveJob.customer?.address || ''
+      )}`}
+      target="_blank"
+      rel="noreferrer"
+      style={styles.actionButton}
+    >
+      Navigate
+    </a>
+  )}
+</div>
             </div>
           </section>
         )}
@@ -2947,18 +2965,18 @@ input, textarea, select {
               }}
             >
               {upcomingJobs.map((job) => (
-                <a
-                  key={job.id}
-                  href={`/jobs/${job.id}`}
-                  style={{
-                    textDecoration: 'none',
-                    color: 'inherit',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 14,
-                    padding: 14,
-                    background: '#fafafa'
-                  }}
-                >
+                <Link
+  key={job.id}
+  href={`/jobs/${job.id}`}
+  style={{
+    textDecoration: 'none',
+    color: 'inherit',
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    padding: 14,
+    background: '#fafafa'
+  }}
+>
                   <div
                     style={{
                       display: 'flex',
@@ -2998,7 +3016,7 @@ input, textarea, select {
                       {formatShortDate(job.visitDate)}{job.startTime ? ` • ${job.startTime}` : ''}
                     </div>
                   </div>
-                </a>
+                </Link>
               ))}
             </div>
           </section>
@@ -3096,14 +3114,14 @@ input, textarea, select {
                       background: '#fafafa'
                     }}
                   >
-                    <a
-                      href={`/jobs/${job.id}`}
-                      style={{
-                        textDecoration: 'none',
-                        color: 'inherit',
-                        display: 'block'
-                      }}
-                    >
+                    <Link
+  href={`/jobs/${job.id}`}
+  style={{
+    textDecoration: 'none',
+    color: 'inherit',
+    display: 'block'
+  }}
+>
                       <div
                         style={{
                           display: 'flex',
@@ -3137,7 +3155,7 @@ input, textarea, select {
 
                         <div style={getStatusPill(job)}>{getStatusText(job)}</div>
                       </div>
-                    </a>
+                    </Link>
                   </div>
                 )
               }
@@ -3161,10 +3179,10 @@ input, textarea, select {
                     }}
                   >
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <a
-                        href={`/jobs/${job.id}`}
-                        style={{ textDecoration: 'none', color: 'inherit' }}
-                      >
+                      <Link
+  href={`/jobs/${job.id}`}
+  style={{ textDecoration: 'none', color: 'inherit' }}
+>
                         <h2
   style={{
     margin: 0,
@@ -3177,7 +3195,7 @@ input, textarea, select {
 >
                           {getJobPrimaryTitle(job)}
                         </h2>
-                      </a>
+                      </Link>
 
                       {getJobSecondaryTitle(job) && (
                         <div style={{ marginTop: 6, fontSize: 15 }}>
@@ -3291,28 +3309,78 @@ input, textarea, select {
                     </div>
                   )}
 
-                  <div className="today-job-actions">
-                    <a href={`/jobs/${job.id}`} style={styles.actionButton}>
-                      {isQuoteJob(job) ? 'See Notes' : 'View Job'}
-                    </a>
+                  <>
+  {renderQuickActionBar(job)}
 
-                    {job.customer?.phone && (
-                      <a href={`tel:${job.customer.phone}`} style={styles.actionButton}>
-                        Call Customer
-                      </a>
-                    )}
+  {!isQuoteJob(job) && !job.isDone && (
+    <div className="today-job-actions" style={{ marginBottom: 12 }}>
+      <button
+        type="button"
+        onClick={() => handleCannotComplete(job.id)}
+        disabled={busyJobId === job.id}
+        style={{
+          ...styles.actionButton,
+          width: '100%',
+          opacity: busyJobId === job.id ? 0.6 : 1,
+          cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+        }}
+      >
+        Couldn’t Complete
+      </button>
 
-                    {navigationQuery && (
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationQuery)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={styles.actionButton}
-                      >
-                        Navigate
-                      </a>
-                    )}
-                  </div>
+      <button
+        type="button"
+        onClick={() => handleExtendJob(job.id, 30)}
+        disabled={busyJobId === job.id}
+        style={{
+          ...styles.actionButton,
+          width: '100%',
+          opacity: busyJobId === job.id ? 0.6 : 1,
+          cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+        }}
+      >
+        Add 30 mins
+      </button>
+
+      <button
+        type="button"
+        onClick={() => handleOtherExtendJob(job.id)}
+        disabled={busyJobId === job.id}
+        style={{
+          ...styles.actionButton,
+          width: '100%',
+          opacity: busyJobId === job.id ? 0.6 : 1,
+          cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+        }}
+      >
+        Add Other Time
+      </button>
+    </div>
+  )}
+
+  <div className="today-job-actions">
+    <Link href={`/jobs/${job.id}`} style={styles.actionButton}>
+      {isQuoteJob(job) ? 'See Notes' : 'View Job'}
+    </Link>
+
+    {job.customer?.phone && (
+      <a href={`tel:${job.customer.phone}`} style={styles.actionButton}>
+        Call Customer
+      </a>
+    )}
+
+    {navigationQuery && (
+      <a
+        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationQuery)}`}
+        target="_blank"
+        rel="noreferrer"
+        style={styles.actionButton}
+      >
+        Navigate
+      </a>
+    )}
+  </div>
+</>
                 </div>
               )
             })}
@@ -3397,29 +3465,43 @@ input, textarea, select {
                     </div>
 
                     <div className="today-job-actions" style={{ minWidth: 160 }}>
-                      <a href={`/jobs/${job.id}`} style={styles.actionButton}>
-                        {isQuoteJob(job) ? 'See Notes' : 'View Job'}
-                      </a>
+  <Link href={`/jobs/${job.id}`} style={styles.actionButton}>
+    {isQuoteJob(job) ? 'See Notes' : 'View Job'}
+  </Link>
 
-                      {job.customer?.phone && (
-                        <a href={`tel:${job.customer.phone}`} style={styles.actionButton}>
-                          Call Customer
-                        </a>
-                      )}
+  <button
+    type="button"
+    onClick={() => handleUndoDone(job.id)}
+    disabled={busyJobId === job.id}
+    style={{
+      ...styles.actionButton,
+      width: '100%',
+      opacity: busyJobId === job.id ? 0.6 : 1,
+      cursor: busyJobId === job.id ? 'not-allowed' : 'pointer'
+    }}
+  >
+    Undo Done
+  </button>
 
-                      {(job.customer?.postcode || job.address || job.customer?.address) && (
-                        <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                            job.customer?.postcode || job.address || job.customer?.address || ''
-                          )}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={styles.actionButton}
-                        >
-                          Navigate
-                        </a>
-                      )}
-                    </div>
+  {job.customer?.phone && (
+    <a href={`tel:${job.customer.phone}`} style={styles.actionButton}>
+      Call Customer
+    </a>
+  )}
+
+  {(job.customer?.postcode || job.address || job.customer?.address) && (
+    <a
+      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        job.customer?.postcode || job.address || job.customer?.address || ''
+      )}`}
+      target="_blank"
+      rel="noreferrer"
+      style={styles.actionButton}
+    >
+      Navigate
+    </a>
+  )}
+</div>
                   </div>
                 </div>
               )
