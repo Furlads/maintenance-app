@@ -98,7 +98,7 @@ const PREP_START_MINUTES = 8 * 60 + 30;
 const WORK_START_MINUTES = 9 * 60;
 const DAY_END_MINUTES = 16 * 60 + 30;
 const TOTAL_DAY_MINUTES = DAY_END_MINUTES - PREP_START_MINUTES;
-const MOBILE_BREAKPOINT = 1024;
+const MOBILE_BREAKPOINT = 768;
 
 const TIMELINE_MARKERS = [
   { label: "08:30", minutes: PREP_START_MINUTES },
@@ -679,7 +679,7 @@ function getBlockEndMinutes(block: ScheduleAvailabilityBlock) {
 }
 
 function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
 
   useEffect(() => {
     function update() {
@@ -712,309 +712,314 @@ function WorkerTimeline({
   const timelineHeight = 38 + Math.max(timeline.laneCount, 1) * laneHeight + 14;
 
   return (
-  <div
-    style={{
-      position: "relative",
-      border: "1px solid #d4d4d8",
-      borderRadius: 12,
-      minHeight: timelineHeight,
-      background: "#fafafa",
-      overflowX: "hidden",
-      overflowY: "visible",
-    }}
-  >
+    <div
+      style={{
+        overflowX: "auto",
+        overflowY: "visible",
+        WebkitOverflowScrolling: "touch",
+      }}
+    >
       <div
         style={{
-          position: "absolute",
-          left: `${getTimelineLeft(PREP_START_MINUTES)}%`,
-          width: `${getTimelineWidth(PREP_START_MINUTES, WORK_START_MINUTES)}%`,
-          top: 0,
-          bottom: 0,
-          background: "rgba(250, 204, 21, 0.10)",
-          borderRight: "1px dashed #eab308",
-          pointerEvents: "none",
-        }}
-      />
-
-      {TIMELINE_MARKERS.map((marker) => {
-        const left = getTimelineLeft(marker.minutes);
-
-        return (
-          <div
-            key={marker.label}
-            style={{
-              position: "absolute",
-              left: `${left}%`,
-              top: 0,
-              bottom: 0,
-              width: 1,
-              background: marker.minutes === WORK_START_MINUTES ? "#d4d4d8" : "#e4e4e7",
-            }}
-          >
-            <div
-              style={{
-  position: "absolute",
-  top: 8,
-  left: 6,
-  fontSize: 11,
-  color: "#71717a",
-  whiteSpace: "nowrap",
-  maxWidth: "100%",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  fontWeight: marker.minutes === PREP_START_MINUTES ? 700 : 500,
-}}
-            >
-              {marker.label}
-            </div>
-          </div>
-        );
-      })}
-
-      <div
-        style={{
-          position: "absolute",
-          top: 8,
-          left: 10,
-          fontSize: 11,
-          fontWeight: 800,
-          color: "#a16207",
-          background: "#fef3c7",
-          border: "1px solid #fde68a",
-          borderRadius: 999,
-          padding: "3px 8px",
-          zIndex: 3,
+          position: "relative",
+          border: "1px solid #d4d4d8",
+          borderRadius: 12,
+          minHeight: timelineHeight,
+          minWidth: 860,
+          background: "#fafafa",
+          overflow: "hidden",
         }}
       >
-        Prep 08:30–09:00
-      </div>
+        <div
+          style={{
+            position: "absolute",
+            left: `${getTimelineLeft(PREP_START_MINUTES)}%`,
+            width: `${getTimelineWidth(PREP_START_MINUTES, WORK_START_MINUTES)}%`,
+            top: 0,
+            bottom: 0,
+            background: "rgba(250, 204, 21, 0.10)",
+            borderRight: "1px dashed #eab308",
+            pointerEvents: "none",
+          }}
+        />
 
-      {sortedBlocks.map((block) => {
-        const startMinutes = getBlockStartMinutes(block);
-        const endMinutes = getBlockEndMinutes(block);
-        const left = getTimelineLeft(startMinutes);
-        const width = getTimelineWidth(startMinutes, endMinutes);
-        const blockColor = getAvailabilityBlockColor(block);
-        const isPendingRequest =
-          block.source === "time_off_request" &&
-          block.status === "pending" &&
-          typeof block.timeOffRequestId === "number";
-        const isBusy = busyTimeOffId === block.timeOffRequestId;
+        {TIMELINE_MARKERS.map((marker) => {
+          const left = getTimelineLeft(marker.minutes);
 
-        return (
-          <div
-            key={`block-${block.id}`}
-            title={`${block.title} • ${formatBlockTimeRange(block)}${
-              block.notes ? ` • ${block.notes}` : ""
-            }`}
-            style={{
-              position: "absolute",
-              left: `${left}%`,
-              width: `${width}%`,
-              top: 38,
-              bottom: 12,
-              background: blockColor.background,
-              border: `1px dashed ${blockColor.border}`,
-              borderRadius: 10,
-              boxSizing: "border-box",
-              zIndex: 1,
-            }}
-          >
+          return (
             <div
+              key={marker.label}
               style={{
                 position: "absolute",
-                top: 8,
-                left: 8,
-                right: 8,
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 8,
-                alignItems: "start",
+                left: `${left}%`,
+                top: 0,
+                bottom: 0,
+                width: 1,
+                background: marker.minutes === WORK_START_MINUTES ? "#d4d4d8" : "#e4e4e7",
               }}
             >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: blockColor.text,
-                  overflow: "hidden",
-                  whiteSpace: "nowrap",
-                  textOverflow: "ellipsis",
-                  minWidth: 0,
-                }}
-              >
-                {block.title} • {formatBlockTimeRange(block)}
-              </div>
-
-              <div
-                style={{
-                  ...pillBase(),
-                  ...getBlockStatusBadgeStyle(block.status),
-                  fontSize: 10,
-                  padding: "3px 8px",
-                  flexShrink: 0,
-                }}
-              >
-                {block.status}
-              </div>
-            </div>
-
-            {isPendingRequest && (
               <div
                 style={{
                   position: "absolute",
-                  left: 8,
-                  right: 8,
-                  bottom: 8,
-                  display: "flex",
-                  gap: 6,
-                  zIndex: 3,
+                  top: 8,
+                  left: 6,
+                  fontSize: 12,
+                  color: "#71717a",
+                  whiteSpace: "nowrap",
+                  fontWeight: marker.minutes === PREP_START_MINUTES ? 800 : 600,
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => onApproveTimeOff(block)}
-                  disabled={isBusy}
-                  style={{
-                    flex: 1,
-                    borderRadius: 8,
-                    border: "1px solid #166534",
-                    background: "#166534",
-                    color: "#fff",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    padding: "6px 8px",
-                    cursor: isBusy ? "default" : "pointer",
-                    opacity: isBusy ? 0.7 : 1,
-                  }}
-                >
-                  {isBusy ? "Working..." : "Approve"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => onDeclineTimeOff(block)}
-                  disabled={isBusy}
-                  style={{
-                    flex: 1,
-                    borderRadius: 8,
-                    border: "1px solid #b91c1c",
-                    background: "#fff",
-                    color: "#b91c1c",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    padding: "6px 8px",
-                    cursor: isBusy ? "default" : "pointer",
-                    opacity: isBusy ? 0.7 : 1,
-                  }}
-                >
-                  {isBusy ? "Working..." : "Decline"}
-                </button>
+                {marker.label}
               </div>
-            )}
-          </div>
-        );
-      })}
+            </div>
+          );
+        })}
 
-      {timeline.jobs.map((job) => {
-        const left = getTimelineLeft(job.startMinutes);
-        const width = getTimelineWidth(job.startMinutes, job.endMinutes);
-        const top = 38 + job.lane * laneHeight;
-        const cardColor = getCardColor(job);
-        const offHours = isOffHours(job);
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            left: 10,
+            fontSize: 11,
+            fontWeight: 800,
+            color: "#a16207",
+            background: "#fef3c7",
+            border: "1px solid #fde68a",
+            borderRadius: 999,
+            padding: "3px 8px",
+            zIndex: 3,
+          }}
+        >
+          Prep 08:30–09:00
+        </div>
 
-        return (
-          <Link
-            key={job.id}
-            href={`/jobs/${job.id}?back=/admin/schedule`}
-            title={`${job.startTime ?? "TBD"} • ${job.title} • ${job.customerName} • ${
-              job.postcode ?? ""
-            }${
-              job.needsSchedulingAttention && job.schedulingAttentionReason
-                ? ` • ${job.schedulingAttentionReason}`
-                : ""
-            }`}
+        {sortedBlocks.map((block) => {
+          const startMinutes = getBlockStartMinutes(block);
+          const endMinutes = getBlockEndMinutes(block);
+          const left = getTimelineLeft(startMinutes);
+          const width = getTimelineWidth(startMinutes, endMinutes);
+          const blockColor = getAvailabilityBlockColor(block);
+          const isPendingRequest =
+            block.source === "time_off_request" &&
+            block.status === "pending" &&
+            typeof block.timeOffRequestId === "number";
+          const isBusy = busyTimeOffId === block.timeOffRequestId;
+
+          return (
+            <div
+              key={`block-${block.id}`}
+              title={`${block.title} • ${formatBlockTimeRange(block)}${
+                block.notes ? ` • ${block.notes}` : ""
+              }`}
+              style={{
+                position: "absolute",
+                left: `${left}%`,
+                width: `${width}%`,
+                top: 38,
+                bottom: 12,
+                background: blockColor.background,
+                border: `1px dashed ${blockColor.border}`,
+                borderRadius: 10,
+                boxSizing: "border-box",
+                zIndex: 1,
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  left: 8,
+                  right: 8,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  alignItems: "start",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: blockColor.text,
+                    overflow: "hidden",
+                    whiteSpace: "nowrap",
+                    textOverflow: "ellipsis",
+                    minWidth: 0,
+                  }}
+                >
+                  {block.title} • {formatBlockTimeRange(block)}
+                </div>
+
+                <div
+                  style={{
+                    ...pillBase(),
+                    ...getBlockStatusBadgeStyle(block.status),
+                    fontSize: 10,
+                    padding: "3px 8px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {block.status}
+                </div>
+              </div>
+
+              {isPendingRequest && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 8,
+                    right: 8,
+                    bottom: 8,
+                    display: "flex",
+                    gap: 6,
+                    zIndex: 3,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onApproveTimeOff(block)}
+                    disabled={isBusy}
+                    style={{
+                      flex: 1,
+                      borderRadius: 8,
+                      border: "1px solid #166534",
+                      background: "#166534",
+                      color: "#fff",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      padding: "6px 8px",
+                      cursor: isBusy ? "default" : "pointer",
+                      opacity: isBusy ? 0.7 : 1,
+                    }}
+                  >
+                    {isBusy ? "Working..." : "Approve"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onDeclineTimeOff(block)}
+                    disabled={isBusy}
+                    style={{
+                      flex: 1,
+                      borderRadius: 8,
+                      border: "1px solid #b91c1c",
+                      background: "#fff",
+                      color: "#b91c1c",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      padding: "6px 8px",
+                      cursor: isBusy ? "default" : "pointer",
+                      opacity: isBusy ? 0.7 : 1,
+                    }}
+                  >
+                    {isBusy ? "Working..." : "Decline"}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {timeline.jobs.map((job) => {
+          const left = getTimelineLeft(job.startMinutes);
+          const width = getTimelineWidth(job.startMinutes, job.endMinutes);
+          const top = 38 + job.lane * laneHeight;
+          const cardColor = getCardColor(job);
+          const offHours = isOffHours(job);
+
+          return (
+            <Link
+              key={job.id}
+              href={`/jobs/${job.id}?back=/admin/schedule`}
+              title={`${job.startTime ?? "TBD"} • ${job.title} • ${job.customerName} • ${
+                job.postcode ?? ""
+              }${
+                job.needsSchedulingAttention && job.schedulingAttentionReason
+                  ? ` • ${job.schedulingAttentionReason}`
+                  : ""
+              }`}
+              style={{
+                position: "absolute",
+                left: `${left}%`,
+                width: `${width}%`,
+                top,
+                height: 42,
+                background: offHours ? "#fee2e2" : cardColor.background,
+                border: `1px solid ${offHours ? "#fca5a5" : cardColor.border}`,
+                borderRadius: 8,
+                padding: "6px 8px",
+                overflow: "hidden",
+                fontSize: 12,
+                boxSizing: "border-box",
+                textDecoration: "none",
+                color: "#18181b",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                zIndex: 2,
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  marginBottom: 2,
+                }}
+              >
+                {job.startTime ?? "TBD"} • {titleCase(job.customerName) || "No customer"}
+              </div>
+
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#52525b",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {job.postcode ?? "No postcode"} • {job.durationMinutes ?? 60}m
+                {offHours ? " • Off-hours" : ""}
+                {job.needsSchedulingAttention ? " • Attention" : ""}
+              </div>
+            </Link>
+          );
+        })}
+
+        {sortedJobs.filter((job) => parseTimeToMinutes(job.startTime) === null).length > 0 && (
+          <div
             style={{
               position: "absolute",
-              left: `${left}%`,
-              width: `${width}%`,
-              top,
-              height: 42,
-              background: offHours ? "#fee2e2" : cardColor.background,
-              border: `1px solid ${offHours ? "#fca5a5" : cardColor.border}`,
-              borderRadius: 8,
-              padding: "6px 8px",
-              overflow: "hidden",
+              left: 14,
+              bottom: 10,
               fontSize: 12,
-              boxSizing: "border-box",
-              textDecoration: "none",
-              color: "#18181b",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              color: "#71717a",
+              background: "#fff",
+              border: "1px solid #e4e4e7",
+              borderRadius: 999,
+              padding: "6px 10px",
               zIndex: 2,
             }}
           >
-            <div
-              style={{
-                fontWeight: 800,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                marginBottom: 2,
-              }}
-            >
-              {job.startTime ?? "TBD"} • {titleCase(job.customerName) || "No customer"}
-            </div>
+            {sortedJobs.filter((job) => parseTimeToMinutes(job.startTime) === null).length} without a
+            time
+          </div>
+        )}
 
-            <div
-              style={{
-                fontSize: 11,
-                color: "#52525b",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {job.postcode ?? "No postcode"} • {job.durationMinutes ?? 60}m
-              {offHours ? " • Off-hours" : ""}
-              {job.needsSchedulingAttention ? " • Attention" : ""}
-            </div>
-          </Link>
-        );
-      })}
-
-      {sortedJobs.filter((job) => parseTimeToMinutes(job.startTime) === null).length > 0 && (
-        <div
-          style={{
-            position: "absolute",
-            left: 14,
-            bottom: 10,
-            fontSize: 12,
-            color: "#71717a",
-            background: "#fff",
-            border: "1px solid #e4e4e7",
-            borderRadius: 999,
-            padding: "6px 10px",
-            zIndex: 2,
-          }}
-        >
-          {sortedJobs.filter((job) => parseTimeToMinutes(job.startTime) === null).length} without a
-          time
-        </div>
-      )}
-
-      {worker.jobs.length === 0 && worker.availabilityBlocks.length === 0 && (
-        <div
-          style={{
-            position: "absolute",
-            left: 14,
-            top: 56,
-            fontSize: 13,
-            color: "#71717a",
-          }}
-        >
-          No jobs scheduled for this worker.
-        </div>
-      )}
+        {worker.jobs.length === 0 && worker.availabilityBlocks.length === 0 && (
+          <div
+            style={{
+              position: "absolute",
+              left: 14,
+              top: 56,
+              fontSize: 13,
+              color: "#71717a",
+            }}
+          >
+            No jobs scheduled for this worker.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1552,6 +1557,410 @@ function MobileWorkerCard({
   );
 }
 
+function DesktopWorkerCard({
+  worker,
+  remainingMinutes,
+  workerAttentionJobs,
+  refittingWorkerId,
+  optimisingWorkerId,
+  busyTimeOffId,
+  movingJobId,
+  jobsExpanded,
+  onToggleJobsExpanded,
+  onRefitWorkerDay,
+  onOptimiseWorkerDay,
+  onApproveTimeOff,
+  onDeclineTimeOff,
+  onOpenMoveJob,
+}: {
+  worker: ScheduleWorker;
+  remainingMinutes: number;
+  workerAttentionJobs: ScheduleJob[];
+  refittingWorkerId: number | null;
+  optimisingWorkerId: number | null;
+  busyTimeOffId: number | null;
+  movingJobId: number | null;
+  jobsExpanded: boolean;
+  onToggleJobsExpanded: () => void;
+  onRefitWorkerDay: (workerId: number) => void;
+  onOptimiseWorkerDay: (workerId: number) => void;
+  onApproveTimeOff: (block: ScheduleAvailabilityBlock) => void;
+  onDeclineTimeOff: (block: ScheduleAvailabilityBlock) => void;
+  onOpenMoveJob: (job: ScheduleJob, worker: ScheduleWorker) => void;
+}) {
+  return (
+    <div style={workerCard()}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 14,
+        }}
+      >
+        <div>
+          <h3 style={{ margin: 0, fontSize: 18 }}>
+            {worker.name}
+          </h3>
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 13,
+              color: "#71717a",
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <span>
+              {worker.jobs.length} job
+              {worker.jobs.length === 1 ? "" : "s"} scheduled
+            </span>
+
+            {(worker.availabilityBlocks?.length ?? 0) > 0 && (
+              <span style={{ color: "#7c3aed", fontWeight: 700 }}>
+                {worker.availabilityBlocks.length} blocked period
+                {worker.availabilityBlocks.length === 1 ? "" : "s"}
+              </span>
+            )}
+
+            {workerAttentionJobs.length > 0 && (
+              <span style={{ color: "#b91c1c", fontWeight: 700 }}>
+                {workerAttentionJobs.length} need attention
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: "#3f3f46",
+            }}
+          >
+            {formatRemaining(remainingMinutes)}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onOptimiseWorkerDay(worker.id)}
+            disabled={optimisingWorkerId === worker.id}
+            style={{
+              ...smallButton(),
+              background: "#facc15",
+              border: "1px solid #facc15",
+              color: "#18181b",
+              fontWeight: 800,
+              cursor: optimisingWorkerId === worker.id ? "default" : "pointer",
+              opacity: optimisingWorkerId === worker.id ? 0.7 : 1,
+            }}
+          >
+            {optimisingWorkerId === worker.id ? "Optimising..." : "Optimise day"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onRefitWorkerDay(worker.id)}
+            disabled={refittingWorkerId === worker.id}
+            style={{
+              ...smallPrimaryButton(),
+              cursor: refittingWorkerId === worker.id ? "default" : "pointer",
+              opacity: refittingWorkerId === worker.id ? 0.7 : 1,
+            }}
+          >
+            {refittingWorkerId === worker.id ? "Re-fitting day..." : "Re-fit this day"}
+          </button>
+        </div>
+      </div>
+
+      <WorkerTimeline
+        worker={worker}
+        busyTimeOffId={busyTimeOffId}
+        onApproveTimeOff={onApproveTimeOff}
+        onDeclineTimeOff={onDeclineTimeOff}
+      />
+
+      {(worker.availabilityBlocks?.length ?? 0) > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          {worker.availabilityBlocks.map((block) => {
+            const blockColor = getAvailabilityBlockColor(block);
+
+            return (
+              <div
+                key={`summary-block-${worker.id}-${block.id}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  borderRadius: 999,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  background: blockColor.background,
+                  color: blockColor.text,
+                  border: `1px solid ${blockColor.border}`,
+                }}
+                title={block.notes || undefined}
+              >
+                <span>{block.title}</span>
+                <span style={{ opacity: 0.8 }}>
+                  {formatBlockTimeRange(block)}
+                </span>
+                <span
+                  style={{
+                    ...pillBase(),
+                    ...getBlockStatusBadgeStyle(block.status),
+                    fontSize: 10,
+                    padding: "2px 7px",
+                  }}
+                >
+                  {block.status}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {workerAttentionJobs.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          {workerAttentionJobs.map((job) => (
+            <div
+              key={`attention-${worker.id}-${job.id}`}
+              style={{
+                borderRadius: 12,
+                border: "1px solid #fecaca",
+                background: "#fff1f2",
+                padding: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: "#9f1239",
+                  marginBottom: 4,
+                }}
+              >
+                ⚠️ {titleCase(job.customerName) || "No customer"} — {titleCase(job.title) || "General"}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#7f1d1d",
+                }}
+              >
+                {job.schedulingAttentionReason || "Needs scheduling attention"}
+                {job.schedulingLastAttemptAt
+                  ? ` • Last tried ${formatDateTime(job.schedulingLastAttemptAt)}`
+                  : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {worker.jobs.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <button
+            type="button"
+            onClick={onToggleJobsExpanded}
+            style={{
+              ...smallButton(),
+              minHeight: 44,
+              marginBottom: jobsExpanded ? 12 : 0,
+              cursor: "pointer",
+            }}
+          >
+            {jobsExpanded ? "Hide job list" : `Show job list (${worker.jobs.length})`}
+          </button>
+
+          {jobsExpanded && (
+            <div
+              style={{
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              {worker.jobs.map((job) => {
+                const displayAddress = getDisplayAddress(job);
+                const cleanCustomer = titleCase(job.customerName) || "No customer";
+                const cleanTitle = titleCase(job.title) || "General";
+                const postcode = normaliseDisplayText(job.postcode);
+
+                return (
+                  <div
+                    key={`list-${worker.id}-${job.id}`}
+                    style={jobRowCard()}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            ...pillBase(),
+                            ...getJobTypeBadgeStyle(job.jobType),
+                          }}
+                        >
+                          {formatJobType(job.jobType)}
+                        </span>
+
+                        <span
+                          style={{
+                            ...pillBase(),
+                            ...getStatusBadgeStyle(job.status),
+                          }}
+                        >
+                          {formatStatus(job.status)}
+                        </span>
+
+                        {job.needsSchedulingAttention && (
+                          <span
+                            style={{
+                              ...pillBase(),
+                              background: "#fff1f2",
+                              color: "#9f1239",
+                              border: "1px solid #fecaca",
+                            }}
+                          >
+                            Needs attention
+                          </span>
+                        )}
+
+                        {isOffHours(job) && (
+                          <span
+                            style={{
+                              ...pillBase(),
+                              background: "#fee2e2",
+                              color: "#991b1b",
+                              border: "1px solid #fecaca",
+                            }}
+                          >
+                            Off-hours
+                          </span>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          color: "#18181b",
+                        }}
+                      >
+                        {formatTimeRange(job.startTime, job.durationMinutes)}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        fontWeight: 800,
+                        marginBottom: 4,
+                      }}
+                    >
+                      {cleanCustomer} — {cleanTitle}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "#52525b",
+                      }}
+                    >
+                      {displayAddress || "No address"}
+                      {postcode ? ` • ${postcode}` : ""}
+                      {` • ${job.durationMinutes ?? 60} mins`}
+                    </div>
+
+                    {job.needsSchedulingAttention && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#9f1239",
+                        }}
+                      >
+                        ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Link
+                        href={`/jobs/${job.id}?back=/admin/schedule`}
+                        style={smallButton()}
+                      >
+                        Open job
+                      </Link>
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenMoveJob(job, worker)}
+                        disabled={movingJobId === job.id}
+                        style={{
+                          ...smallPrimaryButton(),
+                          cursor: movingJobId === job.id ? "default" : "pointer",
+                          opacity: movingJobId === job.id ? 0.7 : 1,
+                        }}
+                      >
+                        {movingJobId === job.id ? "Moving..." : "Move job"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SchedulePage() {
   const [date, setDate] = useState(getTodayDateString());
   const [scheduleData, setScheduleData] = useState<ScheduleResponse | null>(null);
@@ -1570,6 +1979,7 @@ export default function SchedulePage() {
   const [timeOffDecisionSheet, setTimeOffDecisionSheet] =
     useState<TimeOffDecisionSheetState>(null);
   const [timeOffReviewNotes, setTimeOffReviewNotes] = useState("");
+  const [expandedWorkerJobLists, setExpandedWorkerJobLists] = useState<Record<number, boolean>>({});
 
   const isMobile = useIsMobile();
 
@@ -2045,9 +2455,34 @@ export default function SchedulePage() {
     }
   }
 
+  function toggleWorkerJobList(workerId: number) {
+    setExpandedWorkerJobLists((current) => ({
+      ...current,
+      [workerId]: !current[workerId],
+    }));
+  }
+
   useEffect(() => {
     loadPage(date);
   }, [date]);
+
+  if (isMobile === null) {
+    return (
+      <main style={{ minHeight: "100vh", background: "#f5f5f5" }}>
+        <div
+          style={{
+            maxWidth: 1440,
+            margin: "0 auto",
+            padding: 16,
+          }}
+        >
+          <div style={messageCard()}>
+            <div style={{ fontWeight: 700 }}>Loading schedule...</div>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main style={{ minHeight: "100vh", background: "#f5f5f5", overflowX: "hidden" }}>
@@ -2462,359 +2897,23 @@ export default function SchedulePage() {
                   }
 
                   return (
-                    <div key={worker.id} style={workerCard()}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 12,
-                          flexWrap: "wrap",
-                          marginBottom: 14,
-                        }}
-                      >
-                        <div>
-                          <h3 style={{ margin: 0, fontSize: 18 }}>
-                            {worker.name}
-                          </h3>
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontSize: 13,
-                              color: "#71717a",
-                              display: "flex",
-                              gap: 12,
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <span>
-                              {worker.jobs.length} job
-                              {worker.jobs.length === 1 ? "" : "s"} scheduled
-                            </span>
-
-                            {(worker.availabilityBlocks?.length ?? 0) > 0 && (
-                              <span style={{ color: "#7c3aed", fontWeight: 700 }}>
-                                {worker.availabilityBlocks.length} blocked period
-                                {worker.availabilityBlocks.length === 1 ? "" : "s"}
-                              </span>
-                            )}
-
-                            {workerAttentionJobs.length > 0 && (
-                              <span style={{ color: "#b91c1c", fontWeight: 700 }}>
-                                {workerAttentionJobs.length} need attention
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 10,
-                            alignItems: "center",
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: 14,
-                              fontWeight: 700,
-                              color: "#3f3f46",
-                            }}
-                          >
-                            {formatRemaining(remainingMinutes)}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOptimiseWorkerDay(worker.id)}
-                            disabled={optimisingWorkerId === worker.id}
-                            style={{
-                              ...smallButton(),
-                              background: "#facc15",
-                              border: "1px solid #facc15",
-                              color: "#18181b",
-                              fontWeight: 800,
-                              cursor: optimisingWorkerId === worker.id ? "default" : "pointer",
-                              opacity: optimisingWorkerId === worker.id ? 0.7 : 1,
-                            }}
-                          >
-                            {optimisingWorkerId === worker.id ? "Optimising..." : "Optimise day"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleRefitWorkerDay(worker.id)}
-                            disabled={refittingWorkerId === worker.id}
-                            style={{
-                              ...smallPrimaryButton(),
-                              cursor: refittingWorkerId === worker.id ? "default" : "pointer",
-                              opacity: refittingWorkerId === worker.id ? 0.7 : 1,
-                            }}
-                          >
-                            {refittingWorkerId === worker.id ? "Re-fitting day..." : "Re-fit this day"}
-                          </button>
-                        </div>
-                      </div>
-
-                      <WorkerTimeline
-                        worker={worker}
-                        busyTimeOffId={busyTimeOffId}
-                        onApproveTimeOff={openApproveTimeOff}
-                        onDeclineTimeOff={openDeclineTimeOff}
-                      />
-
-                      {(worker.availabilityBlocks?.length ?? 0) > 0 && (
-                        <div
-                          style={{
-                            marginTop: 12,
-                            display: "flex",
-                            gap: 8,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          {worker.availabilityBlocks.map((block) => {
-                            const blockColor = getAvailabilityBlockColor(block);
-
-                            return (
-                              <div
-                                key={`summary-block-${worker.id}-${block.id}`}
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  borderRadius: 999,
-                                  padding: "6px 10px",
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  background: blockColor.background,
-                                  color: blockColor.text,
-                                  border: `1px solid ${blockColor.border}`,
-                                }}
-                                title={block.notes || undefined}
-                              >
-                                <span>{block.title}</span>
-                                <span style={{ opacity: 0.8 }}>
-                                  {formatBlockTimeRange(block)}
-                                </span>
-                                <span
-                                  style={{
-                                    ...pillBase(),
-                                    ...getBlockStatusBadgeStyle(block.status),
-                                    fontSize: 10,
-                                    padding: "2px 7px",
-                                  }}
-                                >
-                                  {block.status}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {workerAttentionJobs.length > 0 && (
-                        <div
-                          style={{
-                            marginTop: 12,
-                            display: "grid",
-                            gap: 8,
-                          }}
-                        >
-                          {workerAttentionJobs.map((job) => (
-                            <div
-                              key={`attention-${worker.id}-${job.id}`}
-                              style={{
-                                borderRadius: 12,
-                                border: "1px solid #fecaca",
-                                background: "#fff1f2",
-                                padding: 10,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  fontWeight: 800,
-                                  color: "#9f1239",
-                                  marginBottom: 4,
-                                }}
-                              >
-                                ⚠️ {titleCase(job.customerName) || "No customer"} — {titleCase(job.title) || "General"}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: "#7f1d1d",
-                                }}
-                              >
-                                {job.schedulingAttentionReason || "Needs scheduling attention"}
-                                {job.schedulingLastAttemptAt
-                                  ? ` • Last tried ${formatDateTime(job.schedulingLastAttemptAt)}`
-                                  : ""}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {worker.jobs.length > 0 && (
-                        <div
-                          style={{
-                            marginTop: 14,
-                            display: "grid",
-                            gap: 10,
-                          }}
-                        >
-                          {worker.jobs.map((job) => {
-                            const displayAddress = getDisplayAddress(job);
-                            const cleanCustomer = titleCase(job.customerName) || "No customer";
-                            const cleanTitle = titleCase(job.title) || "General";
-                            const postcode = normaliseDisplayText(job.postcode);
-
-                            return (
-                              <div
-                                key={`list-${worker.id}-${job.id}`}
-                                style={jobRowCard()}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    gap: 10,
-                                    flexWrap: "wrap",
-                                    marginBottom: 8,
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      gap: 8,
-                                      flexWrap: "wrap",
-                                      alignItems: "center",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        ...pillBase(),
-                                        ...getJobTypeBadgeStyle(job.jobType),
-                                      }}
-                                    >
-                                      {formatJobType(job.jobType)}
-                                    </span>
-
-                                    <span
-                                      style={{
-                                        ...pillBase(),
-                                        ...getStatusBadgeStyle(job.status),
-                                      }}
-                                    >
-                                      {formatStatus(job.status)}
-                                    </span>
-
-                                    {job.needsSchedulingAttention && (
-                                      <span
-                                        style={{
-                                          ...pillBase(),
-                                          background: "#fff1f2",
-                                          color: "#9f1239",
-                                          border: "1px solid #fecaca",
-                                        }}
-                                      >
-                                        Needs attention
-                                      </span>
-                                    )}
-
-                                    {isOffHours(job) && (
-                                      <span
-                                        style={{
-                                          ...pillBase(),
-                                          background: "#fee2e2",
-                                          color: "#991b1b",
-                                          border: "1px solid #fecaca",
-                                        }}
-                                      >
-                                        Off-hours
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  <div
-                                    style={{
-                                      fontWeight: 800,
-                                      color: "#18181b",
-                                    }}
-                                  >
-                                    {formatTimeRange(job.startTime, job.durationMinutes)}
-                                  </div>
-                                </div>
-
-                                <div
-                                  style={{
-                                    fontWeight: 800,
-                                    marginBottom: 4,
-                                  }}
-                                >
-                                  {cleanCustomer} — {cleanTitle}
-                                </div>
-
-                                <div
-                                  style={{
-                                    fontSize: 13,
-                                    color: "#52525b",
-                                  }}
-                                >
-                                  {displayAddress || "No address"}
-                                  {postcode ? ` • ${postcode}` : ""}
-                                  {` • ${job.durationMinutes ?? 60} mins`}
-                                </div>
-
-                                {job.needsSchedulingAttention && (
-                                  <div
-                                    style={{
-                                      marginTop: 8,
-                                      fontSize: 12,
-                                      fontWeight: 700,
-                                      color: "#9f1239",
-                                    }}
-                                  >
-                                    ⚠️ {job.schedulingAttentionReason || "Needs scheduling attention"}
-                                  </div>
-                                )}
-
-                                <div
-                                  style={{
-                                    marginTop: 10,
-                                    display: "flex",
-                                    gap: 8,
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <Link
-                                    href={`/jobs/${job.id}?back=/admin/schedule`}
-                                    style={smallButton()}
-                                  >
-                                    Open job
-                                  </Link>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => openMoveJob(job, worker)}
-                                    disabled={movingJobId === job.id}
-                                    style={{
-                                      ...smallPrimaryButton(),
-                                      cursor: movingJobId === job.id ? "default" : "pointer",
-                                      opacity: movingJobId === job.id ? 0.7 : 1,
-                                    }}
-                                  >
-                                    {movingJobId === job.id ? "Moving..." : "Move job"}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                    <DesktopWorkerCard
+                      key={worker.id}
+                      worker={worker}
+                      remainingMinutes={remainingMinutes}
+                      workerAttentionJobs={workerAttentionJobs}
+                      refittingWorkerId={refittingWorkerId}
+                      optimisingWorkerId={optimisingWorkerId}
+                      busyTimeOffId={busyTimeOffId}
+                      movingJobId={movingJobId}
+                      jobsExpanded={!!expandedWorkerJobLists[worker.id]}
+                      onToggleJobsExpanded={() => toggleWorkerJobList(worker.id)}
+                      onRefitWorkerDay={handleRefitWorkerDay}
+                      onOptimiseWorkerDay={handleOptimiseWorkerDay}
+                      onApproveTimeOff={openApproveTimeOff}
+                      onDeclineTimeOff={openDeclineTimeOff}
+                      onOpenMoveJob={openMoveJob}
+                    />
                   );
                 })}
               </div>
