@@ -4,34 +4,61 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 type Session = {
-  workerName: string;
-  role?: string;
+  authenticated?: boolean;
+  name?: string | null;
+  role?: string | null;
 };
+
+function clearClientAuthStorage() {
+  localStorage.removeItem("workerId");
+  localStorage.removeItem("workerName");
+  localStorage.removeItem("workerAccessLevel");
+  localStorage.removeItem("lastWorkerId");
+  localStorage.removeItem("lastWorkerName");
+  localStorage.removeItem("lastWorkerAccessLevel");
+  localStorage.removeItem("selectedLoginWorkerId");
+  localStorage.removeItem("selectedLoginWorkerName");
+  localStorage.removeItem("selectedLoginWorkerPhone");
+  localStorage.removeItem("selectedLoginWorkerPhotoUrl");
+}
 
 export default function UserMenu() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me")
+    fetch("/api/auth/me", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
-        if (data?.workerName) {
+        if (data?.authenticated && data?.name) {
           setSession(data);
+          return;
         }
+
+        setSession(null);
       })
       .catch((error) => {
         console.error("Failed to load session:", error);
+        setSession(null);
       });
   }, []);
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/");
-    router.refresh();
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        cache: "no-store",
+      });
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      clearClientAuthStorage();
+      router.push("/");
+      router.refresh();
+    }
   }
 
-  if (!session) return null;
+  if (!session?.name) return null;
 
   return (
     <>
@@ -61,7 +88,7 @@ export default function UserMenu() {
                 wordBreak: "break-word",
               }}
             >
-              {session.workerName}
+              {session.name}
             </div>
 
             {session.role && (
@@ -92,7 +119,7 @@ export default function UserMenu() {
               flexShrink: 0,
             }}
           >
-            {session.workerName.charAt(0)}
+            {session.name.charAt(0)}
           </div>
         </div>
 

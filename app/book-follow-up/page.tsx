@@ -10,6 +10,12 @@ type Job = {
   what3words?: string;
 };
 
+type AuthMeResponse = {
+  authenticated?: boolean;
+  name?: string | null;
+  role?: string | null;
+};
+
 type WhenMode = "specific" | "nextbest";
 
 function isoDateOnly(d: Date) {
@@ -48,6 +54,7 @@ export default function BookFollowUpPage() {
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [authLoading, setAuthLoading] = useState(true);
 
   const styles = useMemo(() => {
     const card: React.CSSProperties = {
@@ -113,13 +120,24 @@ export default function BookFollowUpPage() {
   async function loadJobs() {
     setJobsError("");
     try {
-      const res = await fetch("/api/jobs", { cache: "no-store" });
+      const res = await fetch("/api/jobs", {
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/login";
+        return;
+      }
+
       const data = await res.json();
+
       if (!Array.isArray(data)) {
         setJobs([]);
         setJobsError("Jobs API did not return an array.");
         return;
       }
+
       setJobs(data);
     } catch (e: any) {
       setJobs([]);
@@ -128,30 +146,45 @@ export default function BookFollowUpPage() {
   }
 
   useEffect(() => {
-    const savedWorker = localStorage.getItem("worker") || localStorage.getItem("workerName") || "";
-    const savedCompany = localStorage.getItem("company") || "furlads";
+    async function boot() {
+      try {
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
 
-    if (!savedWorker) {
-      window.location.href = "/choose-company";
-      return;
+        const data: AuthMeResponse | null = await res.json().catch(() => null);
+
+        if (!res.ok || !data?.authenticated || !data?.name) {
+          window.location.href = "/login";
+          return;
+        }
+
+        setWorker(data.name);
+        setCompany(localStorage.getItem("company") || "furlads");
+
+        const idRaw = getParam("jobId");
+        const id = Number(idRaw);
+        if (Number.isFinite(id)) setJobId(id);
+
+        if (getParam("preset") === "extra-visit") {
+          setWhat("Extra visit to complete job");
+        }
+
+        if (getParam("when") === "nextbest") {
+          setWhenMode("nextbest");
+        }
+
+        await loadJobs();
+      } catch (error) {
+        console.error("Failed to boot follow-up page:", error);
+        window.location.href = "/login";
+      } finally {
+        setAuthLoading(false);
+      }
     }
 
-    setWorker(savedWorker);
-    setCompany(savedCompany);
-
-    const idRaw = getParam("jobId");
-    const id = Number(idRaw);
-    if (Number.isFinite(id)) setJobId(id);
-
-    // Defaults from query params
-    if (getParam("preset") === "extra-visit") {
-      setWhat("Extra visit to complete job");
-    }
-    if (getParam("when") === "nextbest") {
-      setWhenMode("nextbest");
-    }
-
-    loadJobs();
+    void boot();
   }, []);
 
   const sourceJob = useMemo(() => {
@@ -168,8 +201,8 @@ export default function BookFollowUpPage() {
 
     if (whenMode === "specific") {
       if (!trim(visitDate)) return false;
-      // time can be blank, but we default it; leave flexible
     }
+
     return true;
   }, [worker, sourceJob, what, durationMins, whenMode, visitDate]);
 
@@ -179,7 +212,7 @@ export default function BookFollowUpPage() {
 
     const payload: any = {
       title: `Follow-up: ${trim(what)}`,
-      address: trim(sourceJob.address), // LOCKED to the job to prevent data mess
+      address: trim(sourceJob.address),
       assignedTo: worker.toLowerCase().trim(),
       durationMins,
       notes: `Follow-up from Job #${sourceJob.id} (${sourceJob.title})`,
@@ -201,13 +234,17 @@ export default function BookFollowUpPage() {
         body: JSON.stringify(payload),
       });
 
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/login";
+        return;
+      }
+
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         setMsg(`❌ Failed to save (${res.status}). ${text}`);
         return;
       }
 
-      // Optional: if Next best, try rebuild to slot it
       if (whenMode === "nextbest") {
         try {
           await fetch("/api/schedule/rebuild", {
@@ -227,12 +264,41 @@ export default function BookFollowUpPage() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <main style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
+        <div
+          style={{
+            border: "1px solid rgba(0,0,0,0.12)",
+            borderRadius: 16,
+            background: "#fff",
+            padding: 14,
+          }}
+        >
+          Loading…
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
         <div>
-          <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.7 }}>Book follow-up</div>
-          <div style={{ fontSize: 22, fontWeight: 1000, marginTop: 2 }}>Extra visit / follow-up</div>
+          <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.7 }}>
+            Book follow-up
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 1000, marginTop: 2 }}>
+            Extra visit / follow-up
+          </div>
           <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
             Worker <b>{worker}</b> • {company}
           </div>
@@ -263,11 +329,25 @@ export default function BookFollowUpPage() {
         </div>
       </div>
 
-      <hr style={{ margin: "14px 0", border: "none", borderTop: "1px solid rgba(0,0,0,0.10)" }} />
+      <hr
+        style={{
+          margin: "14px 0",
+          border: "none",
+          borderTop: "1px solid rgba(0,0,0,0.10)",
+        }}
+      />
 
       {jobsError ? (
-        <div style={{ ...styles.card, borderColor: "#f2c2c2", background: "#ffecec" }}>
-          <div style={{ fontWeight: 1000, marginBottom: 6 }}>Jobs failed to load</div>
+        <div
+          style={{
+            ...styles.card,
+            borderColor: "#f2c2c2",
+            background: "#ffecec",
+          }}
+        >
+          <div style={{ fontWeight: 1000, marginBottom: 6 }}>
+            Jobs failed to load
+          </div>
           <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{jobsError}</div>
         </div>
       ) : null}
@@ -276,7 +356,8 @@ export default function BookFollowUpPage() {
         <div style={styles.card}>
           <div style={{ fontWeight: 1000 }}>No job selected</div>
           <div style={{ marginTop: 8, fontSize: 13, opacity: 0.8 }}>
-            Go back to Today and use <b>Need extra visit ➕</b> so we can attach this to the correct job.
+            Go back to Today and use <b>Need extra visit ➕</b> so we can attach
+            this to the correct job.
           </div>
         </div>
       ) : !sourceJob ? (
@@ -288,11 +369,19 @@ export default function BookFollowUpPage() {
         </div>
       ) : (
         <>
-          {/* Attached job card */}
           <div style={styles.card}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
               <div>
-                <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.7 }}>Attached to</div>
+                <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.7 }}>
+                  Attached to
+                </div>
                 <div style={{ fontWeight: 1000, marginTop: 4 }}>
                   Job #{sourceJob.id} — {sourceJob.title}
                 </div>
@@ -310,7 +399,6 @@ export default function BookFollowUpPage() {
             </div>
           </div>
 
-          {/* What */}
           <div style={{ marginTop: 12, ...styles.card }}>
             <label style={styles.label}>What is needed? *</label>
             <input
@@ -321,19 +409,42 @@ export default function BookFollowUpPage() {
             />
           </div>
 
-          {/* When */}
           <div style={{ marginTop: 12, ...styles.card }}>
-            <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.75, marginBottom: 10 }}>When?</div>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 1000,
+                opacity: 0.75,
+                marginBottom: 10,
+              }}
+            >
+              When?
+            </div>
 
-            <label style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 900 }}>
-              <input type="radio" checked={whenMode === "specific"} onChange={() => setWhenMode("specific")} />
+            <label
+              style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 900 }}
+            >
+              <input
+                type="radio"
+                checked={whenMode === "specific"}
+                onChange={() => setWhenMode("specific")}
+              />
               Specific time
             </label>
 
             {whenMode === "specific" ? (
               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ flex: "1 1 180px" }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>Date</div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 900,
+                      opacity: 0.75,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Date
+                  </div>
                   <input
                     type="date"
                     value={visitDate}
@@ -343,7 +454,16 @@ export default function BookFollowUpPage() {
                 </div>
 
                 <div style={{ flex: "1 1 140px" }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>Time</div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 900,
+                      opacity: 0.75,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Time
+                  </div>
                   <input
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
@@ -351,10 +471,18 @@ export default function BookFollowUpPage() {
                     placeholder="13:00"
                   />
                   <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" onClick={() => setStartTime("09:00")} style={styles.btn}>
+                    <button
+                      type="button"
+                      onClick={() => setStartTime("09:00")}
+                      style={styles.btn}
+                    >
                       Morning
                     </button>
-                    <button type="button" onClick={() => setStartTime("13:00")} style={styles.btn}>
+                    <button
+                      type="button"
+                      onClick={() => setStartTime("13:00")}
+                      style={styles.btn}
+                    >
                       Afternoon
                     </button>
                   </div>
@@ -363,8 +491,14 @@ export default function BookFollowUpPage() {
             ) : null}
 
             <div style={{ marginTop: 12 }}>
-              <label style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 900 }}>
-                <input type="radio" checked={whenMode === "nextbest"} onChange={() => setWhenMode("nextbest")} />
+              <label
+                style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 900 }}
+              >
+                <input
+                  type="radio"
+                  checked={whenMode === "nextbest"}
+                  onChange={() => setWhenMode("nextbest")}
+                />
                 Next best day (you choose)
               </label>
               <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
@@ -373,9 +507,16 @@ export default function BookFollowUpPage() {
             </div>
           </div>
 
-          {/* Duration + Save */}
           <div style={{ marginTop: 12, ...styles.card }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+                alignItems: "end",
+              }}
+            >
               <div style={{ flex: "1 1 200px" }}>
                 <label style={styles.label}>Duration</label>
                 <select
@@ -403,7 +544,11 @@ export default function BookFollowUpPage() {
               </button>
             </div>
 
-            {msg ? <div style={{ marginTop: 12, fontSize: 13, whiteSpace: "pre-wrap" }}>{msg}</div> : null}
+            {msg ? (
+              <div style={{ marginTop: 12, fontSize: 13, whiteSpace: "pre-wrap" }}>
+                {msg}
+              </div>
+            ) : null}
 
             {!trim(sourceJob.address) ? (
               <div style={{ marginTop: 10, fontSize: 12, color: "crimson" }}>

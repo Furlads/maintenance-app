@@ -16,6 +16,12 @@ type Worker = {
   updatedAt?: string;
 };
 
+type AuthMeResponse = {
+  authenticated?: boolean;
+  name?: string | null;
+  role?: string | null;
+};
+
 const ROLE_OPTIONS = ["Worker", "Office", "Admin", "Manager", "Owner"] as const;
 type RoleOption = (typeof ROLE_OPTIONS)[number];
 
@@ -65,7 +71,10 @@ function getCompanyFromUrlOrStorage() {
   const q = url.searchParams.get("company");
   if (q) return norm(q);
 
-  const saved = localStorage.getItem("workerCompany") || localStorage.getItem("company") || "";
+  const saved =
+    localStorage.getItem("workerCompany") ||
+    localStorage.getItem("company") ||
+    "";
   if (saved) return norm(saved);
 
   return "furlads";
@@ -92,11 +101,31 @@ function whatsappUrlFromPhone(phoneRaw: string, displayName?: string) {
   return `https://wa.me/${digits}?text=${msg}`;
 }
 
+function isAdminLikeRole(role: string | null | undefined) {
+  const value = norm(role || "");
+  return (
+    value === "admin" ||
+    value === "office" ||
+    value === "manager" ||
+    value === "owner"
+  );
+}
+
 async function uploadPhoto(file: File): Promise<string> {
   const fd = new FormData();
   fd.append("file", file);
 
-  const res = await fetch("/api/uploads", { method: "POST", body: fd });
+  const res = await fetch("/api/uploads", {
+    method: "POST",
+    body: fd,
+    credentials: "include",
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    window.location.href = "/login";
+    throw new Error("Your session expired. Please log in again.");
+  }
+
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(`Upload failed (${res.status}). ${txt}`);
@@ -116,6 +145,7 @@ async function uploadPhoto(file: File): Promise<string> {
 
 export default function KellyWorkersPage() {
   const [company, setCompany] = useState<string>("furlads");
+  const [sessionName, setSessionName] = useState<string>("");
 
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(false);
@@ -152,10 +182,41 @@ export default function KellyWorkersPage() {
   }, [company]);
 
   useEffect(() => {
-    const c = getCompanyFromUrlOrStorage();
-    setCompany(c);
-    localStorage.setItem("company", c);
-    loadWorkers(c);
+    async function boot() {
+      try {
+        const authRes = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        const authData: AuthMeResponse | null = await authRes
+          .json()
+          .catch(() => null);
+
+        if (!authRes.ok || !authData?.authenticated || !authData?.name) {
+          window.location.href = "/login";
+          return;
+        }
+
+        if (!isAdminLikeRole(authData.role)) {
+          window.location.href = "/";
+          return;
+        }
+
+        setSessionName(authData.name);
+
+        const c = getCompanyFromUrlOrStorage();
+        setCompany(c);
+        localStorage.setItem("company", c);
+
+        await loadWorkers(c);
+      } catch (error) {
+        console.error("Failed to boot Kelly workers page:", error);
+        window.location.href = "/login";
+      }
+    }
+
+    void boot();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -263,18 +324,28 @@ export default function KellyWorkersPage() {
   }
 
   function backToDashboard() {
-    const as = norm(localStorage.getItem("workerName") || "");
+    const as = norm(sessionName);
     if (as) go(`/kelly/combined?as=${encodeURIComponent(as)}`);
-    else go("/");
+    else go("/kelly");
   }
 
   async function loadWorkers(c = company) {
     setErrorMsg("");
     setLoading(true);
     try {
-      const res = await fetch(`/api/workers?company=${encodeURIComponent(c)}&includeArchived=1`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/workers?company=${encodeURIComponent(c)}&includeArchived=1`,
+        {
+          cache: "no-store",
+          credentials: "include",
+        }
+      );
+
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/login";
+        return;
+      }
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || `Load failed (${res.status})`);
       setWorkers(safeWorkers(data));
@@ -298,7 +369,9 @@ export default function KellyWorkersPage() {
     if (!term) return list;
 
     return list.filter((w) => {
-      const hay = `${w.name} ${w.role} ${w.jobTitle || ""} ${w.key} ${w.phone || ""}`.toLowerCase();
+      const hay = `${w.name} ${w.role} ${w.jobTitle || ""} ${w.key} ${
+        w.phone || ""
+      }`.toLowerCase();
       return hay.includes(term);
     });
   }, [workers, q, showArchived]);
@@ -349,6 +422,7 @@ export default function KellyWorkersPage() {
       const res = await fetch("/api/workers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           company,
           key,
@@ -360,6 +434,11 @@ export default function KellyWorkersPage() {
           active: !!addActive,
         }),
       });
+
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/login";
+        return;
+      }
 
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
@@ -413,6 +492,7 @@ export default function KellyWorkersPage() {
       const res = await fetch(`/api/workers/${edit.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           name,
           role: editRole,
@@ -422,6 +502,11 @@ export default function KellyWorkersPage() {
           active: !!editActive,
         }),
       });
+
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/login";
+        return;
+      }
 
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
@@ -444,8 +529,14 @@ export default function KellyWorkersPage() {
       const res = await fetch(`/api/workers/${w.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ active: !w.active }),
       });
+
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/login";
+        return;
+      }
 
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
@@ -474,7 +565,11 @@ export default function KellyWorkersPage() {
       >
         <div style={container}>
           <div className="kw-topbar">
-            <button style={btn} className="kw-mobile-full-btn" onClick={backToDashboard}>
+            <button
+              style={btn}
+              className="kw-mobile-full-btn"
+              onClick={backToDashboard}
+            >
               ← Back to dashboard
             </button>
 
@@ -554,12 +649,18 @@ export default function KellyWorkersPage() {
 
       <div style={container}>
         <div style={{ ...card, marginTop: 14 }}>
-          <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 10 }}>Add worker</div>
+          <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 10 }}>
+            Add worker
+          </div>
 
           <form onSubmit={addWorker} style={{ display: "grid", gap: 10 }}>
             <div>
               <div style={label}>Name *</div>
-              <input value={addName} onChange={(e) => setAddName(e.target.value)} style={input} />
+              <input
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                style={input}
+              />
             </div>
 
             <div className="kw-two-col-grid">
@@ -577,7 +678,8 @@ export default function KellyWorkersPage() {
                   ))}
                 </select>
                 <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                  Office/Admin/Manager/Owner go to Kelly dashboard. Worker goes to Today.
+                  Office/Admin/Manager/Owner go to Kelly dashboard. Worker goes
+                  to Today.
                 </div>
               </div>
 
@@ -722,10 +824,22 @@ export default function KellyWorkersPage() {
 
                     <div className="kw-worker-main">
                       <div className="kw-worker-heading">
-                        <div style={{ fontWeight: 950, fontSize: 18, wordBreak: "break-word" }}>
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            fontSize: 18,
+                            wordBreak: "break-word",
+                          }}
+                        >
                           {w.name}
                         </div>
-                        <div style={{ fontSize: 12, opacity: 0.75, wordBreak: "break-word" }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            opacity: 0.75,
+                            wordBreak: "break-word",
+                          }}
+                        >
                           Key: <b>{w.key}</b>
                         </div>
                       </div>
@@ -814,7 +928,11 @@ export default function KellyWorkersPage() {
                 </div>
               </div>
 
-              <button style={btn} className="kw-mobile-full-btn" onClick={closeEdit}>
+              <button
+                style={btn}
+                className="kw-mobile-full-btn"
+                onClick={closeEdit}
+              >
                 Close ✕
               </button>
             </div>
@@ -932,7 +1050,11 @@ export default function KellyWorkersPage() {
               </label>
 
               <div className="kw-modal-actions">
-                <button style={btn} className="kw-mobile-full-btn" onClick={closeEdit}>
+                <button
+                  style={btn}
+                  className="kw-mobile-full-btn"
+                  onClick={closeEdit}
+                >
                   Cancel
                 </button>
                 <button

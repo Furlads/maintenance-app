@@ -20,11 +20,19 @@ export function getStoredWorker(): OfflineWorker {
     };
   }
 
-  const workerIdRaw = window.localStorage.getItem("workerId");
-  const workerName = window.localStorage.getItem("workerName") || "";
+  const workerIdRaw =
+    window.localStorage.getItem("lastWorkerId") ||
+    window.localStorage.getItem("workerId");
+
+  const workerName =
+    window.localStorage.getItem("lastWorkerName") ||
+    window.localStorage.getItem("workerName") ||
+    "";
+
   const workerPhotoUrl =
     window.localStorage.getItem("workerPhotoUrl") ||
     window.localStorage.getItem("photoUrl") ||
+    window.localStorage.getItem("selectedLoginWorkerPhotoUrl") ||
     "";
 
   const parsedWorkerId =

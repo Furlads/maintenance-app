@@ -6,6 +6,12 @@ import Image from "next/image";
 
 type CompanyKey = "furlads" | "threecounties";
 
+type AuthMeResponse = {
+  authenticated?: boolean;
+  name?: string | null;
+  role?: string | null;
+};
+
 const COMPANIES: {
   key: CompanyKey;
   name: string;
@@ -18,6 +24,26 @@ const COMPANIES: {
     logo: "/branding/threecounties-logo.png",
   },
 ];
+
+function normalise(value: string | null | undefined) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isTrevName(name: string | null | undefined) {
+  const value = normalise(name);
+  return value === "trevor fudger" || value === "trev fudger";
+}
+
+function isAdminLikeRole(role: string | null | undefined) {
+  const value = normalise(role);
+
+  return (
+    value === "admin" ||
+    value === "office" ||
+    value === "manager" ||
+    value === "owner"
+  );
+}
 
 export default function ChooseCompanyPage() {
   const router = useRouter();
@@ -32,30 +58,44 @@ export default function ChooseCompanyPage() {
   }, []);
 
   useEffect(() => {
-    // Legacy migration
-    const legacyWorkerName = localStorage.getItem("workerName") || "";
-    const w = localStorage.getItem("worker") || "";
-    if (!w && legacyWorkerName) {
-      localStorage.setItem("worker", legacyWorkerName.trim().toLowerCase());
-      localStorage.removeItem("workerName");
+    async function checkExistingSession() {
+      try {
+        const company = localStorage.getItem("company") || "";
+
+        if (!company) return;
+
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        const data: AuthMeResponse | null = await res.json().catch(() => null);
+
+        if (!res.ok || !data?.authenticated) {
+          return;
+        }
+
+        if (isTrevName(data.name)) {
+          router.replace("/trev");
+          return;
+        }
+
+        if (isAdminLikeRole(data.role)) {
+          router.replace("/admin");
+          return;
+        }
+
+        router.replace("/today");
+      } catch (error) {
+        console.error("Failed to check existing session:", error);
+      }
     }
 
-    const company = localStorage.getItem("company") || "";
-    const worker = (localStorage.getItem("worker") || "").trim().toLowerCase();
-
-    if (company && worker) {
-      // Kelly should land on /kelly, everyone else on /today
-      router.replace(worker === "kelly" ? "/kelly" : "/today");
-    }
+    void checkExistingSession();
   }, [router]);
 
   function chooseCompany(key: CompanyKey) {
     localStorage.setItem("company", key);
-
-    // Force re-pick worker whenever company changes
-    localStorage.removeItem("worker");
-    localStorage.removeItem("workerName");
-
     router.replace("/choose-worker");
   }
 

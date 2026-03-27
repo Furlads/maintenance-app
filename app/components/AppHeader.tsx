@@ -5,6 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 
 type CompanyKey = "furlads" | "threecounties";
 
+type AuthMeResponse = {
+  authenticated?: boolean;
+  name?: string | null;
+  role?: string | null;
+};
+
 const COMPANY_NAMES: Record<string, string> = {
   furlads: "Furlads",
   threecounties: "Three Counties Property Care",
@@ -34,6 +40,24 @@ function titleCase(value: string) {
     .join(" ");
 }
 
+function workerToSlug(value: string) {
+  return (value || "").trim().toLowerCase();
+}
+
+function clearClientAuthStorage() {
+  localStorage.removeItem("worker");
+  localStorage.removeItem("workerName");
+  localStorage.removeItem("workerId");
+  localStorage.removeItem("workerAccessLevel");
+  localStorage.removeItem("lastWorkerId");
+  localStorage.removeItem("lastWorkerName");
+  localStorage.removeItem("lastWorkerAccessLevel");
+  localStorage.removeItem("selectedLoginWorkerId");
+  localStorage.removeItem("selectedLoginWorkerName");
+  localStorage.removeItem("selectedLoginWorkerPhone");
+  localStorage.removeItem("selectedLoginWorkerPhotoUrl");
+}
+
 export default function AppHeader(props: {
   title: string;
   onRefresh?: () => void;
@@ -50,16 +74,31 @@ export default function AppHeader(props: {
   const hideOnToday = pathname === "/today";
 
   useEffect(() => {
-    const legacyWorkerName = localStorage.getItem("workerName") || "";
-    const currentWorker = localStorage.getItem("worker") || "";
+    async function loadHeaderState() {
+      try {
+        const savedCompany = localStorage.getItem("company") || "";
+        setCompany(savedCompany);
 
-    if (!currentWorker && legacyWorkerName) {
-      localStorage.setItem("worker", legacyWorkerName.trim().toLowerCase());
-      localStorage.removeItem("workerName");
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        const data: AuthMeResponse | null = await res.json().catch(() => null);
+
+        if (res.ok && data?.authenticated && data?.name) {
+          setWorker(workerToSlug(data.name));
+          return;
+        }
+
+        setWorker("");
+      } catch (error) {
+        console.error("Failed to load header session:", error);
+        setWorker("");
+      }
     }
 
-    setCompany(localStorage.getItem("company") || "");
-    setWorker(localStorage.getItem("worker") || "");
+    void loadHeaderState();
   }, []);
 
   const theme = useMemo(() => {
@@ -74,11 +113,22 @@ export default function AppHeader(props: {
     );
   }, [company]);
 
-  function switchUser() {
-    localStorage.removeItem("company");
-    localStorage.removeItem("worker");
-    localStorage.removeItem("workerName");
-    router.replace("/choose-company");
+  async function switchUser() {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        cache: "no-store",
+      });
+    } catch (error) {
+      console.error("Failed to log out while switching user:", error);
+    } finally {
+      clearClientAuthStorage();
+      localStorage.removeItem("company");
+      setWorker("");
+      setCompany("");
+      router.replace("/choose-company");
+      router.refresh();
+    }
   }
 
   if (isChooserPage || hideOnToday) return null;

@@ -2,20 +2,58 @@
 
 import { useEffect } from "react";
 
+type AuthMeResponse = {
+  authenticated?: boolean;
+  name?: string | null;
+  role?: string | null;
+};
+
 function norm(value: string) {
   return (value || "").trim().toLowerCase();
 }
 
+function isAdminLikeRole(role: string | null | undefined) {
+  const value = norm(role || "");
+
+  return (
+    value === "admin" ||
+    value === "office" ||
+    value === "manager" ||
+    value === "owner"
+  );
+}
+
 export default function KellyEntryPage() {
   useEffect(() => {
-    const workerName = norm(localStorage.getItem("workerName") || "");
+    async function boot() {
+      try {
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
 
-    if (!workerName) {
-      window.location.href = "/";
-      return;
+        const data: AuthMeResponse | null = await res.json().catch(() => null);
+
+        if (!res.ok || !data?.authenticated || !data?.name) {
+          window.location.href = "/login";
+          return;
+        }
+
+        if (!isAdminLikeRole(data.role)) {
+          window.location.href = "/";
+          return;
+        }
+
+        window.location.href = `/kelly/combined?as=${encodeURIComponent(
+          norm(data.name)
+        )}`;
+      } catch (error) {
+        console.error("Failed to load Kelly session:", error);
+        window.location.href = "/login";
+      }
     }
 
-    window.location.href = `/kelly/combined?as=${encodeURIComponent(workerName)}`;
+    void boot();
   }, []);
 
   return (

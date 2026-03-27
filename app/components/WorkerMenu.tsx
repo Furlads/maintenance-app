@@ -2,6 +2,26 @@
 
 import { useEffect, useRef, useState } from "react";
 
+type AuthMeResponse = {
+  authenticated?: boolean;
+  name?: string | null;
+  role?: string | null;
+};
+
+function clearClientAuthStorage() {
+  localStorage.removeItem("worker");
+  localStorage.removeItem("workerId");
+  localStorage.removeItem("workerName");
+  localStorage.removeItem("workerAccessLevel");
+  localStorage.removeItem("lastWorkerId");
+  localStorage.removeItem("lastWorkerName");
+  localStorage.removeItem("lastWorkerAccessLevel");
+  localStorage.removeItem("selectedLoginWorkerId");
+  localStorage.removeItem("selectedLoginWorkerName");
+  localStorage.removeItem("selectedLoginWorkerPhone");
+  localStorage.removeItem("selectedLoginWorkerPhotoUrl");
+}
+
 export default function WorkerMenu() {
   const [open, setOpen] = useState(false);
   const [workerName, setWorkerName] = useState("");
@@ -9,8 +29,28 @@ export default function WorkerMenu() {
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const savedWorkerName = localStorage.getItem("workerName") || "";
-    setWorkerName(savedWorkerName);
+    async function loadWorker() {
+      try {
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        const data: AuthMeResponse | null = await res.json().catch(() => null);
+
+        if (res.ok && data?.authenticated && data?.name) {
+          setWorkerName(data.name);
+          return;
+        }
+
+        setWorkerName("");
+      } catch (error) {
+        console.error("Failed to load worker session:", error);
+        setWorkerName("");
+      }
+    }
+
+    void loadWorker();
   }, []);
 
   useEffect(() => {
@@ -37,20 +77,26 @@ export default function WorkerMenu() {
     };
   }, []);
 
-  function clearWorkerSession() {
-    localStorage.removeItem("workerId");
-    localStorage.removeItem("workerName");
-    localStorage.removeItem("workerAccessLevel");
+  async function logoutAndGoHome() {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        cache: "no-store",
+      });
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      clearClientAuthStorage();
+      window.location.href = "/";
+    }
   }
 
-  function handleLogout() {
-    clearWorkerSession();
-    window.location.href = "/";
+  async function handleLogout() {
+    await logoutAndGoHome();
   }
 
-  function handleSwitchWorker() {
-    clearWorkerSession();
-    window.location.href = "/";
+  async function handleSwitchWorker() {
+    await logoutAndGoHome();
   }
 
   async function handleUpdateApp() {
