@@ -322,7 +322,7 @@ export default async function AdminPage() {
       return aTime.localeCompare(bTime)
     }
 
-    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    return new Date(a.createdAt).getTime() - new Date(a.createdAt).getTime()
   })
 
   const maintenanceToday = jobsToday.filter((job: any) =>
@@ -375,8 +375,8 @@ export default async function AdminPage() {
               Office control for today
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-300">
-              One dashboard for maintenance visits, landscaping jobs, worker activity,
-              inbox pressure, quote follow-up and office control.
+              One dashboard for today&apos;s jobs, inbox pressure, quote follow-up and Kelly&apos;s
+              main diary view.
             </p>
           </div>
 
@@ -396,17 +396,10 @@ export default async function AdminPage() {
             </Link>
 
             <Link
-              href="/admin/schedule"
-              className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-            >
-              Schedule board
-            </Link>
-
-            <Link
               href="/admin/calendar"
               className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
             >
-              Month calendar
+              Open calendar
             </Link>
 
             <Link
@@ -585,31 +578,24 @@ export default async function AdminPage() {
               <div>
                 <h3 className="text-base font-bold text-zinc-900">Kelly quick actions</h3>
                 <p className="text-xs text-zinc-500">
-                  Office shortcuts for absences, diary pressure and forward planning
+                  Main diary, absences, quote follow-up and office shortcuts
                 </p>
               </div>
             </div>
 
             <div className="grid gap-3 p-4 sm:grid-cols-2">
               <Link
-                href="/kelly/time-off"
+                href="/admin/calendar"
                 className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
               >
+                Open calendar
+              </Link>
+
+              <Link
+                href="/kelly/time-off"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+              >
                 Manage time off
-              </Link>
-
-              <Link
-                href="/admin/schedule"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-              >
-                Open schedule board
-              </Link>
-
-              <Link
-                href="/admin/calendar"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-              >
-                Open month calendar
               </Link>
 
               <Link
@@ -621,7 +607,7 @@ export default async function AdminPage() {
 
               <Link
                 href="/admin/inbox?source=worker-quote"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 sm:col-span-2"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
               >
                 Worker quotes
               </Link>
