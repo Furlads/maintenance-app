@@ -31,6 +31,15 @@ type WorkerColour = {
   border: string;
 };
 
+type GroupedDayEntry = {
+  workerName: string;
+  count: number;
+  hasTimeOff: boolean;
+  hasPendingTimeOff: boolean;
+};
+
+type ViewMode = "month" | "week" | "day";
+
 const MOBILE_BREAKPOINT = 900;
 
 const WORKER_COLOURS: WorkerColour[] = [
@@ -44,19 +53,27 @@ const WORKER_COLOURS: WorkerColour[] = [
   { bg: "#e2e8f0", text: "#334155", border: "#cbd5e1" },
 ];
 
-function getTodayDateString() {
+function getTodayDate() {
   const today = new Date();
-  return toMonthDayString(today);
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+}
+
+function getTodayDateString() {
+  return toMonthDayString(getTodayDate());
 }
 
 function getTodayMonthString() {
-  const today = new Date();
-  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  return toMonthString(getTodayDate());
 }
 
 function parseMonthString(month: string) {
   const [year, monthIndex] = month.split("-").map(Number);
   return new Date(year, monthIndex - 1, 1, 12, 0, 0, 0);
+}
+
+function parseDateString(dateString: string) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
 }
 
 function toMonthString(date: Date) {
@@ -78,16 +95,70 @@ function formatMonthHeading(month: string) {
   }).format(date);
 }
 
+function formatDateHeading(dateString: string) {
+  const date = parseDateString(dateString);
+
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatShortDateHeading(dateString: string) {
+  const date = parseDateString(dateString);
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+  }).format(date);
+}
+
+function formatWeekHeading(startDateString: string, endDateString: string) {
+  const start = parseDateString(startDateString);
+  const end = parseDateString(endDateString);
+
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+
+  if (sameMonth) {
+    return `${new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+    }).format(start)}–${new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(end)}`;
+  }
+
+  return `${new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+  }).format(start)} – ${new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(end)}`;
+}
+
 function formatDayNumber(dateString: string) {
-  const date = new Date(`${dateString}T12:00:00`);
+  const date = parseDateString(dateString);
   return date.getDate();
 }
 
 function formatDayNameShort(dateString: string) {
-  const date = new Date(`${dateString}T12:00:00`);
+  const date = parseDateString(dateString);
 
   return new Intl.DateTimeFormat("en-GB", {
     weekday: "short",
+  }).format(date);
+}
+
+function formatDayNameLong(dateString: string) {
+  const date = parseDateString(dateString);
+
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
   }).format(date);
 }
 
@@ -95,6 +166,36 @@ function addMonths(month: string, amount: number) {
   const date = parseMonthString(month);
   date.setMonth(date.getMonth() + amount);
   return toMonthString(date);
+}
+
+function addDays(dateString: string, amount: number) {
+  const date = parseDateString(dateString);
+  date.setDate(date.getDate() + amount);
+  return toMonthDayString(date);
+}
+
+function startOfWeek(dateString: string) {
+  const date = parseDateString(dateString);
+  const day = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - day);
+  return toMonthDayString(date);
+}
+
+function endOfWeek(dateString: string) {
+  return addDays(startOfWeek(dateString), 6);
+}
+
+function eachDateInRange(startDateString: string, endDateString: string) {
+  const result: string[] = [];
+  let current = parseDateString(startDateString);
+  const end = parseDateString(endDateString);
+
+  while (current <= end) {
+    result.push(toMonthDayString(current));
+    current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1, 12, 0, 0, 0);
+  }
+
+  return result;
 }
 
 function buildMonthGrid(month: string, days: MonthDay[]) {
@@ -178,24 +279,55 @@ function getWorkerColour(workerName: string): WorkerColour {
   return WORKER_COLOURS[index];
 }
 
-function getEntryStyle(entry: MonthEntry): WorkerColour {
-  if (entry.type === "timeOff") {
-    if (entry.status === "pending") {
-      return {
-        bg: "#fef3c7",
-        text: "#92400e",
-        border: "#fcd34d",
-      };
+function normaliseFilterValue(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function groupEntriesByWorker(entries: MonthEntry[]): GroupedDayEntry[] {
+  const map = new Map<string, GroupedDayEntry>();
+
+  for (const entry of entries) {
+    const key = entry.workerName.trim() || "Unknown";
+
+    if (!map.has(key)) {
+      map.set(key, {
+        workerName: key,
+        count: 0,
+        hasTimeOff: false,
+        hasPendingTimeOff: false,
+      });
     }
 
-    if (entry.status === "declined") {
-      return {
-        bg: "#f4f4f5",
-        text: "#52525b",
-        border: "#d4d4d8",
-      };
-    }
+    const current = map.get(key)!;
 
+    if (entry.type === "timeOff") {
+      current.hasTimeOff = true;
+      if (entry.status === "pending") {
+        current.hasPendingTimeOff = true;
+      }
+    } else {
+      current.count += 1;
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => {
+    if (a.hasTimeOff && !b.hasTimeOff) return -1;
+    if (!a.hasTimeOff && b.hasTimeOff) return 1;
+    if (a.count !== b.count) return b.count - a.count;
+    return a.workerName.localeCompare(b.workerName);
+  });
+}
+
+function getGroupedEntryStyle(entry: GroupedDayEntry): WorkerColour {
+  if (entry.hasPendingTimeOff) {
+    return {
+      bg: "#fef3c7",
+      text: "#92400e",
+      border: "#fcd34d",
+    };
+  }
+
+  if (entry.hasTimeOff) {
     return {
       bg: "#fee2e2",
       text: "#991b1b",
@@ -207,21 +339,54 @@ function getEntryStyle(entry: MonthEntry): WorkerColour {
 }
 
 function getVisibleCount(isMobile: boolean) {
-  return isMobile ? 3 : 5;
+  return isMobile ? 3 : 4;
 }
 
-function formatEntryTime(entry: MonthEntry) {
-  if (entry.type === "timeOff" && entry.isFullDay) return "All day";
-  if (!entry.startTime) return "";
-  return entry.startTime;
-}
-
-function buildEntryText(entry: MonthEntry) {
-  if (entry.type === "timeOff") {
-    return `${entry.workerName} • ${entry.title}`;
+function buildGroupedLabel(entry: GroupedDayEntry) {
+  if (entry.hasPendingTimeOff) {
+    return `${entry.workerName} pending`;
   }
 
-  return `${entry.workerName} • ${entry.title}`;
+  if (entry.hasTimeOff) {
+    return `${entry.workerName} off`;
+  }
+
+  if (entry.count <= 1) {
+    return entry.workerName;
+  }
+
+  return `${entry.workerName} • ${entry.count}`;
+}
+
+function getDayItemCountText(entries: MonthEntry[]) {
+  return `${entries.length} item${entries.length === 1 ? "" : "s"}`;
+}
+
+function buildDayMap(days: MonthDay[]) {
+  return new Map(days.map((day) => [day.date, day]));
+}
+
+function getWeekDays(selectedDate: string, dayMap: Map<string, MonthDay>) {
+  const start = startOfWeek(selectedDate);
+  const end = endOfWeek(selectedDate);
+
+  return eachDateInRange(start, end).map((date) => {
+    return (
+      dayMap.get(date) || {
+        date,
+        entries: [],
+      }
+    );
+  });
+}
+
+function getDayData(selectedDate: string, dayMap: Map<string, MonthDay>) {
+  return (
+    dayMap.get(selectedDate) || {
+      date: selectedDate,
+      entries: [],
+    }
+  );
 }
 
 function DayCell({
@@ -235,9 +400,10 @@ function DayCell({
   isToday: boolean;
   inCurrentMonth: boolean;
 }) {
+  const groupedEntries = groupEntriesByWorker(day.entries);
   const visibleCount = getVisibleCount(isMobile);
-  const visibleEntries = day.entries.slice(0, visibleCount);
-  const hiddenCount = Math.max(0, day.entries.length - visibleEntries.length);
+  const visibleEntries = groupedEntries.slice(0, visibleCount);
+  const hiddenCount = Math.max(0, groupedEntries.length - visibleEntries.length);
 
   return (
     <Link
@@ -250,13 +416,12 @@ function DayCell({
     >
       <div
         style={{
-          border: isToday ? "2px solid #facc15" : "1px solid #e5e7eb",
-          borderRadius: isMobile ? 16 : 18,
+          border: isToday ? "2px solid #facc15" : "1px solid #ececec",
+          borderRadius: 14,
           background: inCurrentMonth ? "#fff" : "#fafafa",
-          padding: isMobile ? 12 : 14,
-          minHeight: isMobile ? 150 : 180,
-          boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-          opacity: inCurrentMonth ? 1 : 0.6,
+          padding: 10,
+          minHeight: isMobile ? 128 : 150,
+          opacity: inCurrentMonth ? 1 : 0.55,
         }}
       >
         <div
@@ -265,18 +430,18 @@ function DayCell({
             alignItems: "start",
             justifyContent: "space-between",
             gap: 8,
-            marginBottom: 10,
+            marginBottom: 8,
           }}
         >
           <div>
             <div
               style={{
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "0.06em",
+                fontSize: 10,
+                fontWeight: 700,
                 textTransform: "uppercase",
-                color: "#71717a",
-                marginBottom: 4,
+                letterSpacing: "0.06em",
+                color: "#8a8a8a",
+                marginBottom: 2,
               }}
             >
               {formatDayNameShort(day.date)}
@@ -284,8 +449,8 @@ function DayCell({
 
             <div
               style={{
-                fontSize: isMobile ? 22 : 24,
-                fontWeight: 900,
+                fontSize: 18,
+                fontWeight: 800,
                 lineHeight: 1,
                 color: "#18181b",
               }}
@@ -297,78 +462,55 @@ function DayCell({
           <div
             style={{
               borderRadius: 999,
-              padding: "6px 9px",
-              fontSize: 11,
-              fontWeight: 800,
+              padding: "4px 8px",
+              fontSize: 10,
+              fontWeight: 700,
               background: day.entries.length > 0 ? "#18181b" : "#f4f4f5",
-              color: day.entries.length > 0 ? "#fff" : "#52525b",
+              color: day.entries.length > 0 ? "#fff" : "#666",
               border: day.entries.length > 0 ? "1px solid #18181b" : "1px solid #e4e4e7",
               whiteSpace: "nowrap",
             }}
           >
-            {day.entries.length} item{day.entries.length === 1 ? "" : "s"}
+            {getDayItemCountText(day.entries)}
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 8 }}>
+        <div style={{ display: "grid", gap: 5 }}>
           {visibleEntries.length === 0 ? (
             <div
               style={{
-                borderRadius: 12,
-                border: "1px dashed #d4d4d8",
+                borderRadius: 8,
+                border: "1px dashed #d7d7d7",
                 background: "#fafafa",
-                padding: "10px 12px",
-                fontSize: 12,
-                color: "#71717a",
+                padding: "7px 8px",
+                fontSize: 11,
+                color: "#8a8a8a",
               }}
             >
               Free day
             </div>
           ) : (
             visibleEntries.map((entry) => {
-              const colour = getEntryStyle(entry);
+              const colour = getGroupedEntryStyle(entry);
 
               return (
                 <div
-                  key={entry.id}
+                  key={`${day.date}-${entry.workerName}`}
                   style={{
-                    borderRadius: 12,
-                    border: `1px solid ${colour.border}`,
+                    borderRadius: 7,
                     background: colour.bg,
-                    padding: "9px 10px",
+                    color: colour.text,
+                    border: `1px solid ${colour.border}`,
+                    padding: "4px 7px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    lineHeight: 1.2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: colour.text,
-                      lineHeight: 1.25,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                    }}
-                  >
-                    {buildEntryText(entry)}
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 11,
-                      color: colour.text,
-                      opacity: 0.85,
-                      lineHeight: 1.25,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {formatEntryTime(entry)}
-                    {entry.subtitle ? ` • ${entry.subtitle}` : ""}
-                  </div>
+                  {buildGroupedLabel(entry)}
                 </div>
               );
             })
@@ -377,10 +519,10 @@ function DayCell({
           {hiddenCount > 0 && (
             <div
               style={{
-                fontSize: 12,
-                fontWeight: 800,
-                color: "#52525b",
-                padding: "2px 2px 0 2px",
+                fontSize: 10,
+                fontWeight: 700,
+                color: "#7a7a7a",
+                paddingLeft: 2,
               }}
             >
               +{hiddenCount} more
@@ -392,41 +534,43 @@ function DayCell({
   );
 }
 
-function MobileAgendaDay({
+function WeekDayColumn({
   day,
   isToday,
 }: {
   day: MonthDay;
   isToday: boolean;
 }) {
+  const groupedEntries = groupEntriesByWorker(day.entries);
+
   return (
     <div
       style={{
-        border: isToday ? "2px solid #facc15" : "1px solid #e5e7eb",
-        borderRadius: 18,
+        border: isToday ? "2px solid #facc15" : "1px solid #ececec",
+        borderRadius: 14,
         background: "#fff",
-        padding: 14,
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+        padding: 12,
+        minHeight: 220,
       }}
     >
       <div
         style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: "start",
           justifyContent: "space-between",
-          gap: 10,
+          gap: 8,
           marginBottom: 10,
         }}
       >
         <div>
           <div
             style={{
-              fontSize: 12,
-              fontWeight: 800,
+              fontSize: 10,
+              fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.06em",
-              color: "#71717a",
-              marginBottom: 4,
+              color: "#8a8a8a",
+              marginBottom: 3,
             }}
           >
             {formatDayNameShort(day.date)}
@@ -434,7 +578,7 @@ function MobileAgendaDay({
 
           <div
             style={{
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: 900,
               color: "#18181b",
               lineHeight: 1,
@@ -447,97 +591,192 @@ function MobileAgendaDay({
         <Link
           href={`/admin/schedule?date=${day.date}`}
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
             textDecoration: "none",
-            borderRadius: 10,
-            border: "1px solid #18181b",
+            borderRadius: 999,
+            padding: "5px 8px",
+            fontSize: 10,
+            fontWeight: 700,
             background: "#18181b",
             color: "#fff",
-            padding: "10px 12px",
-            fontSize: 13,
-            fontWeight: 800,
-            minHeight: 42,
+            border: "1px solid #18181b",
           }}
         >
-          Open day
+          Open
         </Link>
       </div>
 
-      {day.entries.length === 0 ? (
-        <div
-          style={{
-            borderRadius: 12,
-            border: "1px dashed #d4d4d8",
-            background: "#fafafa",
-            padding: 12,
-            fontSize: 13,
-            color: "#71717a",
-          }}
-        >
-          Free day
-        </div>
-      ) : (
-        <div style={{ display: "grid", gap: 8 }}>
-          {day.entries.map((entry) => {
-            const colour = getEntryStyle(entry);
+      <div style={{ display: "grid", gap: 6 }}>
+        {groupedEntries.length === 0 ? (
+          <div
+            style={{
+              borderRadius: 8,
+              border: "1px dashed #d7d7d7",
+              background: "#fafafa",
+              padding: 10,
+              fontSize: 12,
+              color: "#8a8a8a",
+            }}
+          >
+            Free day
+          </div>
+        ) : (
+          groupedEntries.map((entry) => {
+            const colour = getGroupedEntryStyle(entry);
 
             return (
               <div
-                key={entry.id}
+                key={`${day.date}-${entry.workerName}`}
                 style={{
-                  borderRadius: 12,
-                  border: `1px solid ${colour.border}`,
+                  borderRadius: 8,
                   background: colour.bg,
-                  padding: 11,
+                  color: colour.text,
+                  border: `1px solid ${colour.border}`,
+                  padding: "7px 8px",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  lineHeight: 1.2,
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: colour.text,
-                    lineHeight: 1.3,
-                    overflowWrap: "anywhere",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {buildEntryText(entry)}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 4,
-                    fontSize: 12,
-                    color: colour.text,
-                    opacity: 0.9,
-                    lineHeight: 1.3,
-                    overflowWrap: "anywhere",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {formatEntryTime(entry)}
-                  {entry.subtitle ? ` • ${entry.subtitle}` : ""}
-                </div>
+                {buildGroupedLabel(entry)}
               </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
     </div>
+  );
+}
+
+function DayViewCard({
+  day,
+  isToday,
+}: {
+  day: MonthDay;
+  isToday: boolean;
+}) {
+  const groupedEntries = groupEntriesByWorker(day.entries);
+
+  return (
+    <section
+      style={{
+        border: isToday ? "2px solid #facc15" : "1px solid #ececec",
+        borderRadius: 16,
+        background: "#fff",
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          marginBottom: 14,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "#8a8a8a",
+              marginBottom: 4,
+            }}
+          >
+            {formatDayNameLong(day.date)}
+          </div>
+
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 28,
+              lineHeight: 1.05,
+              fontWeight: 900,
+              color: "#18181b",
+            }}
+          >
+            {formatDateHeading(day.date)}
+          </h2>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <Link
+            href={`/admin/schedule?date=${day.date}`}
+            style={headerPrimaryButton()}
+          >
+            Open advanced schedule board
+          </Link>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {groupedEntries.length === 0 ? (
+          <div
+            style={{
+              borderRadius: 10,
+              border: "1px dashed #d7d7d7",
+              background: "#fafafa",
+              padding: 12,
+              fontSize: 14,
+              color: "#8a8a8a",
+            }}
+          >
+            Free day
+          </div>
+        ) : (
+          groupedEntries.map((entry) => {
+            const colour = getGroupedEntryStyle(entry);
+
+            return (
+              <div
+                key={`${day.date}-${entry.workerName}`}
+                style={{
+                  borderRadius: 10,
+                  background: colour.bg,
+                  color: colour.text,
+                  border: `1px solid ${colour.border}`,
+                  padding: "10px 12px",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  lineHeight: 1.2,
+                }}
+              >
+                {buildGroupedLabel(entry)}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </section>
   );
 }
 
 export default function AdminCalendarPage() {
   const [month, setMonth] = useState(getTodayMonthString());
+  const [selectedDate, setSelectedDate] = useState(getTodayDateString());
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [data, setData] = useState<ScheduleMonthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [selectedWorker, setSelectedWorker] = useState<string>("all");
 
   const isMobile = useIsMobile();
   const todayString = getTodayDateString();
+
+  useEffect(() => {
+    const dateMonth = toMonthString(parseDateString(selectedDate));
+    if (dateMonth !== month) {
+      setMonth(dateMonth);
+    }
+  }, [selectedDate, month]);
 
   async function loadMonth(selectedMonth: string, manual = false) {
     if (manual) {
@@ -556,13 +795,13 @@ export default function AdminCalendarPage() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(json?.error || "Failed to load month calendar");
+        throw new Error(json?.error || "Failed to load calendar");
       }
 
       setData(json);
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : "Failed to load month calendar");
+      setError(err instanceof Error ? err.message : "Failed to load calendar");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -573,16 +812,95 @@ export default function AdminCalendarPage() {
     loadMonth(month);
   }, [month]);
 
-  const monthDays = useMemo(() => data?.days ?? [], [data]);
-  const monthGrid = useMemo(() => buildMonthGrid(month, monthDays), [month, monthDays]);
-  const mobileAgendaDays = useMemo(
-    () => monthDays.filter((day) => day.entries.length > 0 || day.date.startsWith(month)),
-    [month, monthDays]
-  );
+  const allWorkerNames = useMemo(() => {
+    const names = new Set<string>();
+
+    for (const day of data?.days ?? []) {
+      for (const entry of day.entries) {
+        names.add(entry.workerName);
+      }
+    }
+
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [data]);
+
+  const filteredMonthDays = useMemo(() => {
+    const filter = normaliseFilterValue(selectedWorker);
+
+    return (data?.days ?? []).map((day) => {
+      if (filter === "all") {
+        return day;
+      }
+
+      return {
+        ...day,
+        entries: day.entries.filter(
+          (entry) => normaliseFilterValue(entry.workerName) === filter
+        ),
+      };
+    });
+  }, [data, selectedWorker]);
+
+  const dayMap = useMemo(() => buildDayMap(filteredMonthDays), [filteredMonthDays]);
+  const monthGrid = useMemo(() => buildMonthGrid(month, filteredMonthDays), [month, filteredMonthDays]);
+  const weekDays = useMemo(() => getWeekDays(selectedDate, dayMap), [selectedDate, dayMap]);
+  const selectedDay = useMemo(() => getDayData(selectedDate, dayMap), [selectedDate, dayMap]);
+
+  const weekStart = startOfWeek(selectedDate);
+  const weekEnd = endOfWeek(selectedDate);
+
+  function goPrev() {
+    if (viewMode === "month") {
+      const nextMonth = addMonths(month, -1);
+      setMonth(nextMonth);
+      setSelectedDate(toMonthDayString(parseMonthString(nextMonth)));
+      return;
+    }
+
+    if (viewMode === "week") {
+      setSelectedDate((current) => addDays(current, -7));
+      return;
+    }
+
+    setSelectedDate((current) => addDays(current, -1));
+  }
+
+  function goNext() {
+    if (viewMode === "month") {
+      const nextMonth = addMonths(month, 1);
+      setMonth(nextMonth);
+      setSelectedDate(toMonthDayString(parseMonthString(nextMonth)));
+      return;
+    }
+
+    if (viewMode === "week") {
+      setSelectedDate((current) => addDays(current, 7));
+      return;
+    }
+
+    setSelectedDate((current) => addDays(current, 1));
+  }
+
+  function goToday() {
+    setSelectedDate(todayString);
+    setMonth(getTodayMonthString());
+  }
+
+  function currentHeading() {
+    if (viewMode === "month") {
+      return formatMonthHeading(month);
+    }
+
+    if (viewMode === "week") {
+      return formatWeekHeading(weekStart, weekEnd);
+    }
+
+    return formatDateHeading(selectedDate);
+  }
 
   if (isMobile === null) {
     return (
-      <main style={{ minHeight: "100vh", background: "#f5f5f5" }}>
+      <main style={{ minHeight: "100vh", background: "#f6f6f6" }}>
         <div style={{ maxWidth: 1440, margin: "0 auto", padding: 16 }}>
           <div style={messageCard()}>
             <div style={{ fontWeight: 700 }}>Loading calendar...</div>
@@ -593,29 +911,29 @@ export default function AdminCalendarPage() {
   }
 
   return (
-    <main style={{ minHeight: "100vh", background: "#f5f5f5", overflowX: "hidden" }}>
+    <main style={{ minHeight: "100vh", background: "#f6f6f6", overflowX: "hidden" }}>
       <div
         style={{
           maxWidth: 1440,
           margin: "0 auto",
-          padding: isMobile ? 10 : 24,
+          padding: isMobile ? 10 : 20,
         }}
       >
         <section
           style={{
             overflow: "hidden",
-            borderRadius: isMobile ? 16 : 24,
-            border: "1px solid #e5e7eb",
+            borderRadius: isMobile ? 16 : 20,
+            border: "1px solid #e8e8e8",
             background: "#fff",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
             marginBottom: 12,
           }}
         >
           <div
             style={{
-              background: "#18181b",
-              color: "#fff",
-              padding: isMobile ? 12 : 24,
+              background: "#fff",
+              color: "#18181b",
+              padding: isMobile ? 12 : 18,
+              borderBottom: "1px solid #eeeeee",
             }}
           >
             <div
@@ -625,52 +943,51 @@ export default function AdminCalendarPage() {
                 justifyContent: "space-between",
                 gap: 12,
                 flexWrap: "wrap",
-                alignItems: isMobile ? "stretch" : "end",
+                alignItems: isMobile ? "stretch" : "center",
               }}
             >
               <div>
                 <div
                   style={{
-                    fontSize: 11,
-                    fontWeight: 900,
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
-                    color: "#facc15",
-                    marginBottom: 6,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#8a8a8a",
+                    marginBottom: 4,
                   }}
                 >
-                  Furlads Calendar
+                  Furlads
                 </div>
 
                 <h1
                   style={{
-                    fontSize: isMobile ? 24 : 34,
+                    fontSize: isMobile ? 24 : 30,
                     lineHeight: 1.08,
                     margin: 0,
-                    marginBottom: 8,
+                    marginBottom: 6,
+                    fontWeight: 900,
                   }}
                 >
-                  {isMobile ? "Month calendar" : "Kelly month calendar"}
+                  {currentHeading()}
                 </h1>
 
                 <p
                   style={{
                     margin: 0,
                     maxWidth: 760,
-                    color: "#d4d4d8",
-                    fontSize: isMobile ? 13 : 15,
+                    color: "#7a7a7a",
+                    fontSize: isMobile ? 13 : 14,
                     lineHeight: 1.4,
                   }}
                 >
-                  Mobile-first month view for quickly seeing who is doing what and when. Tap any
-                  day to open the detailed schedule board.
+                  Main diary view for Kelly. Use Month for planning, Week for forward booking, Day
+                  for detail. Advanced changes still live in the schedule board.
                 </p>
               </div>
 
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, auto)",
+                  gridTemplateColumns: isMobile ? "1fr" : "repeat(2, auto)",
                   gap: 8,
                   width: isMobile ? "100%" : "auto",
                 }}
@@ -683,28 +1000,19 @@ export default function AdminCalendarPage() {
                 </Link>
 
                 <Link
-                  href="/admin/schedule"
-                  style={{ ...headerSecondaryButton(), width: isMobile ? "100%" : "auto" }}
-                >
-                  Open day board
-                </Link>
-
-                <button
-                  type="button"
-                  onClick={() => setMonth(getTodayMonthString())}
+                  href={`/admin/schedule?date=${selectedDate}`}
                   style={{ ...headerPrimaryButton(), width: isMobile ? "100%" : "auto" }}
                 >
-                  This month
-                </button>
+                  Open advanced schedule board
+                </Link>
               </div>
             </div>
           </div>
 
           <div
             style={{
-              borderTop: "1px solid #e5e7eb",
-              background: "#fafafa",
-              padding: isMobile ? 10 : 16,
+              background: "#fff",
+              padding: isMobile ? 10 : 14,
               display: "grid",
               gap: 10,
             }}
@@ -712,14 +1020,28 @@ export default function AdminCalendarPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: isMobile ? "1fr 1fr" : "auto auto 1fr auto",
+                gridTemplateColumns: isMobile ? "1fr 1fr" : "auto auto auto auto 1fr auto",
                 gap: 8,
                 alignItems: "center",
               }}
             >
+              <select
+                value={viewMode}
+                onChange={(e) => setViewMode(e.target.value as ViewMode)}
+                style={{
+                  ...toolbarInput(),
+                  width: "100%",
+                  gridColumn: isMobile ? "1 / -1" : "auto",
+                }}
+              >
+                <option value="month">Month view</option>
+                <option value="week">Week view</option>
+                <option value="day">Day view</option>
+              </select>
+
               <button
                 type="button"
-                onClick={() => setMonth((current) => addMonths(current, -1))}
+                onClick={goPrev}
                 style={{ ...toolbarButton(), width: "100%" }}
               >
                 ← Prev
@@ -727,21 +1049,29 @@ export default function AdminCalendarPage() {
 
               <button
                 type="button"
-                onClick={() => setMonth((current) => addMonths(current, 1))}
+                onClick={goNext}
                 style={{ ...toolbarButton(), width: "100%" }}
               >
                 Next →
               </button>
 
+              <button
+                type="button"
+                onClick={goToday}
+                style={{ ...toolbarButton(), width: "100%" }}
+              >
+                Today
+              </button>
+
               <div
                 style={{
-                  fontSize: isMobile ? 18 : 24,
+                  fontSize: isMobile ? 18 : 22,
                   fontWeight: 900,
                   color: "#18181b",
                   gridColumn: isMobile ? "1 / -1" : "auto",
                 }}
               >
-                {formatMonthHeading(month)}
+                {currentHeading()}
               </div>
 
               <button
@@ -767,27 +1097,50 @@ export default function AdminCalendarPage() {
                 flexWrap: "wrap",
               }}
             >
-              {["Stephen", "Jacob", "Trevor", "Will", "Kelly"].map((name) => {
+              <button
+                type="button"
+                onClick={() => setSelectedWorker("all")}
+                style={{
+                  borderRadius: 999,
+                  padding: "7px 11px",
+                  border:
+                    selectedWorker === "all" ? "2px solid #18181b" : "1px solid #dddddd",
+                  background: selectedWorker === "all" ? "#18181b" : "#fff",
+                  color: selectedWorker === "all" ? "#fff" : "#18181b",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                All workers
+              </button>
+
+              {allWorkerNames.map((name) => {
                 const colour = getWorkerColour(name);
+                const active = normaliseFilterValue(selectedWorker) === normaliseFilterValue(name);
 
                 return (
-                  <div
+                  <button
                     key={name}
+                    type="button"
+                    onClick={() =>
+                      setSelectedWorker((current) =>
+                        normaliseFilterValue(current) === normaliseFilterValue(name) ? "all" : name
+                      )
+                    }
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
                       borderRadius: 999,
-                      padding: "7px 10px",
-                      border: `1px solid ${colour.border}`,
+                      padding: "7px 11px",
+                      border: active ? `2px solid ${colour.text}` : `1px solid ${colour.border}`,
                       background: colour.bg,
                       color: colour.text,
                       fontSize: 12,
                       fontWeight: 800,
+                      cursor: "pointer",
                     }}
                   >
                     {name}
-                  </div>
+                  </button>
                 );
               })}
 
@@ -795,9 +1148,8 @@ export default function AdminCalendarPage() {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 8,
                   borderRadius: 999,
-                  padding: "7px 10px",
+                  padding: "7px 11px",
                   border: "1px solid #fca5a5",
                   background: "#fee2e2",
                   color: "#991b1b",
@@ -833,78 +1185,145 @@ export default function AdminCalendarPage() {
 
         {!loading && !error && (
           <>
-            {isMobile ? (
-              <section style={{ display: "grid", gap: 12 }}>
-                {mobileAgendaDays.map((day) => (
-                  <MobileAgendaDay
-                    key={day.date}
-                    day={day}
-                    isToday={day.date === todayString}
-                  />
-                ))}
-              </section>
-            ) : (
-              <section>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                    gap: 10,
-                    marginBottom: 10,
-                  }}
-                >
-                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((dayName) => (
+            {viewMode === "month" && (
+              <>
+                {isMobile ? (
+                  <section style={{ display: "grid", gap: 12 }}>
+                    {filteredMonthDays
+                      .filter((day) => day.entries.length > 0 || day.date.startsWith(month))
+                      .map((day) => (
+                        <div key={day.date}>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 800,
+                              color: "#7a7a7a",
+                              marginBottom: 6,
+                              paddingLeft: 2,
+                            }}
+                          >
+                            {formatDayNameLong(day.date)} {formatShortDateHeading(day.date)}
+                          </div>
+                          <DayCell
+                            day={day}
+                            isMobile={true}
+                            isToday={day.date === todayString}
+                            inCurrentMonth={true}
+                          />
+                        </div>
+                      ))}
+                  </section>
+                ) : (
+                  <section>
                     <div
-                      key={dayName}
                       style={{
-                        padding: "6px 8px",
-                        fontSize: 12,
-                        fontWeight: 900,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                        color: "#71717a",
+                        display: "grid",
+                        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                        gap: 8,
+                        marginBottom: 8,
                       }}
                     >
-                      {dayName}
-                    </div>
-                  ))}
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                    gap: 10,
-                  }}
-                >
-                  {monthGrid.map((cell, index) => {
-                    if (cell.kind === "empty") {
-                      return (
+                      {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((dayName) => (
                         <div
-                          key={`${cell.date}-${index}`}
+                          key={dayName}
                           style={{
-                            border: "1px solid #e5e7eb",
-                            borderRadius: 18,
-                            background: "#fafafa",
-                            minHeight: 180,
-                            opacity: 0.6,
+                            padding: "4px 6px",
+                            fontSize: 11,
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                            color: "#8a8a8a",
                           }}
-                        />
-                      );
-                    }
+                        >
+                          {dayName}
+                        </div>
+                      ))}
+                    </div>
 
-                    return (
-                      <DayCell
-                        key={cell.day.date}
-                        day={cell.day}
-                        isMobile={false}
-                        isToday={cell.day.date === todayString}
-                        inCurrentMonth={cell.inCurrentMonth}
-                      />
-                    );
-                  })}
-                </div>
-              </section>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                        gap: 8,
+                      }}
+                    >
+                      {monthGrid.map((cell, index) => {
+                        if (cell.kind === "empty") {
+                          return (
+                            <div
+                              key={`${cell.date}-${index}`}
+                              style={{
+                                border: "1px solid #eeeeee",
+                                borderRadius: 14,
+                                background: "#fafafa",
+                                minHeight: 150,
+                                opacity: 0.5,
+                              }}
+                            />
+                          );
+                        }
+
+                        return (
+                          <DayCell
+                            key={cell.day.date}
+                            day={cell.day}
+                            isMobile={false}
+                            isToday={cell.day.date === todayString}
+                            inCurrentMonth={cell.inCurrentMonth}
+                          />
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
+
+            {viewMode === "week" && (
+              <>
+                {isMobile ? (
+                  <section style={{ display: "grid", gap: 12 }}>
+                    {weekDays.map((day) => (
+                      <section key={day.date}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: "#7a7a7a",
+                            marginBottom: 6,
+                            paddingLeft: 2,
+                          }}
+                        >
+                          {formatDayNameLong(day.date)} {formatShortDateHeading(day.date)}
+                        </div>
+                        <WeekDayColumn day={day} isToday={day.date === todayString} />
+                      </section>
+                    ))}
+                  </section>
+                ) : (
+                  <section>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                        gap: 10,
+                      }}
+                    >
+                      {weekDays.map((day) => (
+                        <WeekDayColumn
+                          key={day.date}
+                          day={day}
+                          isToday={day.date === todayString}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
+
+            {viewMode === "day" && (
+              <DayViewCard day={selectedDay} isToday={selectedDay.date === todayString} />
             )}
           </>
         )}
@@ -919,9 +1338,9 @@ function headerSecondaryButton(): React.CSSProperties {
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 12,
-    border: "1px solid #3f3f46",
-    background: "#27272a",
-    color: "#fff",
+    border: "1px solid #dddddd",
+    background: "#fff",
+    color: "#18181b",
     textDecoration: "none",
     fontSize: 14,
     fontWeight: 700,
@@ -936,9 +1355,10 @@ function headerPrimaryButton(): React.CSSProperties {
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 12,
-    border: "1px solid #facc15",
-    background: "#facc15",
-    color: "#18181b",
+    border: "1px solid #18181b",
+    background: "#18181b",
+    color: "#fff",
+    textDecoration: "none",
     fontSize: 14,
     fontWeight: 800,
     padding: "12px 14px",
@@ -950,12 +1370,26 @@ function toolbarButton(): React.CSSProperties {
   return {
     padding: "10px 12px",
     fontSize: 14,
-    border: "1px solid #d4d4d8",
+    border: "1px solid #dddddd",
     borderRadius: 10,
     background: "#fff",
     cursor: "pointer",
     fontWeight: 700,
     minHeight: 44,
+    color: "#18181b",
+  };
+}
+
+function toolbarInput(): React.CSSProperties {
+  return {
+    padding: "10px 12px",
+    fontSize: 14,
+    border: "1px solid #dddddd",
+    borderRadius: 10,
+    background: "#fff",
+    fontWeight: 700,
+    minHeight: 44,
+    color: "#18181b",
   };
 }
 
@@ -965,7 +1399,6 @@ function messageCard(): React.CSSProperties {
     border: "1px solid #e5e7eb",
     borderRadius: 16,
     background: "#fff",
-    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
     marginBottom: 20,
   };
 }
