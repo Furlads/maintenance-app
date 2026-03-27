@@ -40,6 +40,25 @@ type GroupedDayEntry = {
 
 type ViewMode = "month" | "week" | "day";
 
+type MultiDayBar = {
+  key: string;
+  title: string;
+  workerName: string;
+  type: "job" | "timeOff";
+  startDate: string;
+  endDate: string;
+  dates: string[];
+};
+
+type MultiDayBarForDate = {
+  key: string;
+  title: string;
+  workerName: string;
+  type: "job" | "timeOff";
+  isStart: boolean;
+  isEnd: boolean;
+};
+
 const MOBILE_BREAKPOINT = 900;
 
 const WORKER_COLOURS: WorkerColour[] = [
@@ -192,7 +211,15 @@ function eachDateInRange(startDateString: string, endDateString: string) {
 
   while (current <= end) {
     result.push(toMonthDayString(current));
-    current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1, 12, 0, 0, 0);
+    current = new Date(
+      current.getFullYear(),
+      current.getMonth(),
+      current.getDate() + 1,
+      12,
+      0,
+      0,
+      0
+    );
   }
 
   return result;
@@ -283,10 +310,22 @@ function normaliseFilterValue(value: string) {
   return value.trim().toLowerCase();
 }
 
-function groupEntriesByWorker(entries: MonthEntry[]): GroupedDayEntry[] {
+function entrySpanKey(entry: MonthEntry) {
+  return [
+    entry.type,
+    normaliseFilterValue(entry.workerName),
+    normaliseFilterValue(entry.title || ""),
+  ].join("::");
+}
+
+function groupEntriesByWorker(entries: MonthEntry[], excludedKeys: Set<string> = new Set()): GroupedDayEntry[] {
   const map = new Map<string, GroupedDayEntry>();
 
   for (const entry of entries) {
+    if (excludedKeys.has(entrySpanKey(entry))) {
+      continue;
+    }
+
     const key = entry.workerName.trim() || "Unknown";
 
     if (!map.has(key)) {
@@ -389,18 +428,159 @@ function getDayData(selectedDate: string, dayMap: Map<string, MonthDay>) {
   );
 }
 
+function buildMultiDayBars(days: MonthDay[]): MultiDayBar[] {
+  const sortedDates = [...days.map((day) => day.date)].sort((a, b) => a.localeCompare(b));
+  const dayEntryMaps = new Map<string, Map<string, MonthEntry>>();
+
+  for (const day of days) {
+    const map = new Map<string, MonthEntry>();
+
+    for (const entry of day.entries) {
+      map.set(entrySpanKey(entry), entry);
+    }
+
+    dayEntryMaps.set(day.date, map);
+  }
+
+  const uniqueKeys = new Set<string>();
+  for (const day of days) {
+    for (const entry of day.entries) {
+      uniqueKeys.add(entrySpanKey(entry));
+    }
+  }
+
+  const bars: MultiDayBar[] = [];
+
+  for (const key of uniqueKeys) {
+    let index = 0;
+
+    while (index < sortedDates.length) {
+      const startDate = sortedDates[index];
+      const startEntry = dayEntryMaps.get(startDate)?.get(key);
+
+      if (!startEntry) {
+        index += 1;
+        continue;
+      }
+
+      let endIndex = index;
+
+      while (endIndex + 1 < sortedDates.length) {
+        const nextDate = sortedDates[endIndex + 1];
+        const nextEntry = dayEntryMaps.get(nextDate)?.get(key);
+
+        if (!nextEntry) {
+          break;
+        }
+
+        const expectedNextDate = addDays(sortedDates[endIndex], 1);
+        if (nextDate !== expectedNextDate) {
+          break;
+        }
+
+        endIndex += 1;
+      }
+
+      if (endIndex > index) {
+        const dates = sortedDates.slice(index, endIndex + 1);
+
+        bars.push({
+          key,
+          title: startEntry.title || "Multi-day job",
+          workerName: startEntry.workerName,
+          type: startEntry.type,
+          startDate: dates[0],
+          endDate: dates[dates.length - 1],
+          dates,
+        });
+      }
+
+      index = endIndex + 1;
+    }
+  }
+
+  return bars.sort((a, b) => {
+    if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function buildMultiDayBarsByDate(bars: MultiDayBar[]) {
+  const map = new Map<string, MultiDayBarForDate[]>();
+
+  for (const bar of bars) {
+    for (const date of bar.dates) {
+      if (!map.has(date)) {
+        map.set(date, []);
+      }
+
+      map.get(date)!.push({
+        key: bar.key,
+        title: bar.title,
+        workerName: bar.workerName,
+        type: bar.type,
+        isStart: date === bar.startDate,
+        isEnd: date === bar.endDate,
+      });
+    }
+  }
+
+  for (const [date, dateBars] of map.entries()) {
+    map.set(
+      date,
+      [...dateBars].sort((a, b) => {
+        if (a.workerName !== b.workerName) return a.workerName.localeCompare(b.workerName);
+        return a.title.localeCompare(b.title);
+      })
+    );
+  }
+
+  return map;
+}
+
+function getBarStyle(bar: MultiDayBarForDate): React.CSSProperties {
+  if (bar.type === "timeOff") {
+    return {
+      background: "#fee2e2",
+      color: "#991b1b",
+      border: "1px solid #fca5a5",
+      borderRadius: 0,
+      borderTopLeftRadius: bar.isStart ? 8 : 0,
+      borderBottomLeftRadius: bar.isStart ? 8 : 0,
+      borderTopRightRadius: bar.isEnd ? 8 : 0,
+      borderBottomRightRadius: bar.isEnd ? 8 : 0,
+    };
+  }
+
+  const colour = getWorkerColour(bar.workerName);
+
+  return {
+    background: colour.bg,
+    color: colour.text,
+    border: `1px solid ${colour.border}`,
+    borderRadius: 0,
+    borderTopLeftRadius: bar.isStart ? 8 : 0,
+    borderBottomLeftRadius: bar.isStart ? 8 : 0,
+    borderTopRightRadius: bar.isEnd ? 8 : 0,
+    borderBottomRightRadius: bar.isEnd ? 8 : 0,
+  };
+}
+
 function DayCell({
   day,
   isMobile,
   isToday,
   inCurrentMonth,
+  multiDayBars = [],
 }: {
   day: MonthDay;
   isMobile: boolean;
   isToday: boolean;
   inCurrentMonth: boolean;
+  multiDayBars?: MultiDayBarForDate[];
 }) {
-  const groupedEntries = groupEntriesByWorker(day.entries);
+  const excludedKeys = new Set(multiDayBars.map((bar) => bar.key));
+  const groupedEntries = groupEntriesByWorker(day.entries, excludedKeys);
   const visibleCount = getVisibleCount(isMobile);
   const visibleEntries = groupedEntries.slice(0, visibleCount);
   const hiddenCount = Math.max(0, groupedEntries.length - visibleEntries.length);
@@ -417,11 +597,12 @@ function DayCell({
       <div
         style={{
           border: isToday ? "2px solid #facc15" : "1px solid #ececec",
-          borderRadius: 14,
-          background: inCurrentMonth ? "#fff" : "#fafafa",
+          borderRadius: 16,
+          background: inCurrentMonth ? "#ffffff" : "#fafafa",
           padding: 10,
-          minHeight: isMobile ? 128 : 150,
-          opacity: inCurrentMonth ? 1 : 0.55,
+          minHeight: isMobile ? 132 : 160,
+          opacity: inCurrentMonth ? 1 : 0.58,
+          boxShadow: inCurrentMonth ? "0 1px 2px rgba(0,0,0,0.02)" : "none",
         }}
       >
         <div
@@ -430,7 +611,7 @@ function DayCell({
             alignItems: "start",
             justifyContent: "space-between",
             gap: 8,
-            marginBottom: 8,
+            marginBottom: 10,
           }}
         >
           <div>
@@ -439,7 +620,7 @@ function DayCell({
                 fontSize: 10,
                 fontWeight: 700,
                 textTransform: "uppercase",
-                letterSpacing: "0.06em",
+                letterSpacing: "0.08em",
                 color: "#8a8a8a",
                 marginBottom: 2,
               }}
@@ -449,7 +630,7 @@ function DayCell({
 
             <div
               style={{
-                fontSize: 18,
+                fontSize: 19,
                 fontWeight: 800,
                 lineHeight: 1,
                 color: "#18181b",
@@ -475,14 +656,49 @@ function DayCell({
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 5 }}>
+        {multiDayBars.length > 0 && (
+          <div style={{ display: "grid", gap: 4, marginBottom: 8 }}>
+            {multiDayBars.slice(0, 2).map((bar) => (
+              <div
+                key={`${day.date}-${bar.key}`}
+                style={{
+                  ...getBarStyle(bar),
+                  padding: "5px 8px",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  lineHeight: 1.2,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {bar.isStart ? bar.title : "\u00A0"}
+              </div>
+            ))}
+
+            {multiDayBars.length > 2 && (
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: "#7a7a7a",
+                  paddingLeft: 2,
+                }}
+              >
+                +{multiDayBars.length - 2} more bars
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: "grid", gap: 6 }}>
           {visibleEntries.length === 0 ? (
             <div
               style={{
-                borderRadius: 8,
+                borderRadius: 10,
                 border: "1px dashed #d7d7d7",
                 background: "#fafafa",
-                padding: "7px 8px",
+                padding: "8px 9px",
                 fontSize: 11,
                 color: "#8a8a8a",
               }}
@@ -497,11 +713,11 @@ function DayCell({
                 <div
                   key={`${day.date}-${entry.workerName}`}
                   style={{
-                    borderRadius: 7,
+                    borderRadius: 8,
                     background: colour.bg,
                     color: colour.text,
                     border: `1px solid ${colour.border}`,
-                    padding: "4px 7px",
+                    padding: "5px 8px",
                     fontSize: 11,
                     fontWeight: 700,
                     lineHeight: 1.2,
@@ -523,6 +739,7 @@ function DayCell({
                 fontWeight: 700,
                 color: "#7a7a7a",
                 paddingLeft: 2,
+                paddingTop: 1,
               }}
             >
               +{hiddenCount} more
@@ -537,20 +754,24 @@ function DayCell({
 function WeekDayColumn({
   day,
   isToday,
+  multiDayBars = [],
 }: {
   day: MonthDay;
   isToday: boolean;
+  multiDayBars?: MultiDayBarForDate[];
 }) {
-  const groupedEntries = groupEntriesByWorker(day.entries);
+  const excludedKeys = new Set(multiDayBars.map((bar) => bar.key));
+  const groupedEntries = groupEntriesByWorker(day.entries, excludedKeys);
 
   return (
     <div
       style={{
         border: isToday ? "2px solid #facc15" : "1px solid #ececec",
-        borderRadius: 14,
+        borderRadius: 16,
         background: "#fff",
         padding: 12,
-        minHeight: 220,
+        minHeight: 240,
+        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
       }}
     >
       <div
@@ -559,7 +780,7 @@ function WeekDayColumn({
           alignItems: "start",
           justifyContent: "space-between",
           gap: 8,
-          marginBottom: 10,
+          marginBottom: 12,
         }}
       >
         <div>
@@ -568,7 +789,7 @@ function WeekDayColumn({
               fontSize: 10,
               fontWeight: 700,
               textTransform: "uppercase",
-              letterSpacing: "0.06em",
+              letterSpacing: "0.08em",
               color: "#8a8a8a",
               marginBottom: 3,
             }}
@@ -578,7 +799,7 @@ function WeekDayColumn({
 
           <div
             style={{
-              fontSize: 20,
+              fontSize: 21,
               fontWeight: 900,
               color: "#18181b",
               lineHeight: 1,
@@ -593,7 +814,7 @@ function WeekDayColumn({
           style={{
             textDecoration: "none",
             borderRadius: 999,
-            padding: "5px 8px",
+            padding: "5px 9px",
             fontSize: 10,
             fontWeight: 700,
             background: "#18181b",
@@ -605,11 +826,33 @@ function WeekDayColumn({
         </Link>
       </div>
 
-      <div style={{ display: "grid", gap: 6 }}>
+      {multiDayBars.length > 0 && (
+        <div style={{ display: "grid", gap: 5, marginBottom: 10 }}>
+          {multiDayBars.map((bar) => (
+            <div
+              key={`${day.date}-${bar.key}`}
+              style={{
+                ...getBarStyle(bar),
+                padding: "6px 8px",
+                fontSize: 11,
+                fontWeight: 800,
+                lineHeight: 1.2,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {bar.isStart ? bar.title : "\u00A0"}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "grid", gap: 7 }}>
         {groupedEntries.length === 0 ? (
           <div
             style={{
-              borderRadius: 8,
+              borderRadius: 10,
               border: "1px dashed #d7d7d7",
               background: "#fafafa",
               padding: 10,
@@ -627,11 +870,11 @@ function WeekDayColumn({
               <div
                 key={`${day.date}-${entry.workerName}`}
                 style={{
-                  borderRadius: 8,
+                  borderRadius: 10,
                   background: colour.bg,
                   color: colour.text,
                   border: `1px solid ${colour.border}`,
-                  padding: "7px 8px",
+                  padding: "8px 9px",
                   fontSize: 12,
                   fontWeight: 800,
                   lineHeight: 1.2,
@@ -660,9 +903,10 @@ function DayViewCard({
     <section
       style={{
         border: isToday ? "2px solid #facc15" : "1px solid #ececec",
-        borderRadius: 16,
+        borderRadius: 18,
         background: "#fff",
-        padding: 16,
+        padding: 18,
+        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
       }}
     >
       <div
@@ -670,7 +914,7 @@ function DayViewCard({
           display: "flex",
           flexDirection: "column",
           gap: 10,
-          marginBottom: 14,
+          marginBottom: 16,
         }}
       >
         <div>
@@ -679,7 +923,7 @@ function DayViewCard({
               fontSize: 11,
               fontWeight: 700,
               textTransform: "uppercase",
-              letterSpacing: "0.06em",
+              letterSpacing: "0.08em",
               color: "#8a8a8a",
               marginBottom: 4,
             }}
@@ -690,7 +934,7 @@ function DayViewCard({
           <h2
             style={{
               margin: 0,
-              fontSize: 28,
+              fontSize: 30,
               lineHeight: 1.05,
               fontWeight: 900,
               color: "#18181b",
@@ -707,16 +951,13 @@ function DayViewCard({
             flexWrap: "wrap",
           }}
         >
-          <Link
-            href={`/admin/schedule?date=${day.date}`}
-            style={headerPrimaryButton()}
-          >
+          <Link href={`/admin/schedule?date=${day.date}`} style={headerPrimaryButton()}>
             Open advanced schedule board
           </Link>
         </div>
       </div>
 
-      <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "grid", gap: 9 }}>
         {groupedEntries.length === 0 ? (
           <div
             style={{
@@ -846,6 +1087,9 @@ export default function AdminCalendarPage() {
   const weekDays = useMemo(() => getWeekDays(selectedDate, dayMap), [selectedDate, dayMap]);
   const selectedDay = useMemo(() => getDayData(selectedDate, dayMap), [selectedDate, dayMap]);
 
+  const multiDayBars = useMemo(() => buildMultiDayBars(filteredMonthDays), [filteredMonthDays]);
+  const multiDayBarsByDate = useMemo(() => buildMultiDayBarsByDate(multiDayBars), [multiDayBars]);
+
   const weekStart = startOfWeek(selectedDate);
   const weekEnd = endOfWeek(selectedDate);
 
@@ -922,10 +1166,11 @@ export default function AdminCalendarPage() {
         <section
           style={{
             overflow: "hidden",
-            borderRadius: isMobile ? 16 : 20,
+            borderRadius: isMobile ? 18 : 22,
             border: "1px solid #e8e8e8",
             background: "#fff",
             marginBottom: 12,
+            boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
           }}
         >
           <div
@@ -976,7 +1221,7 @@ export default function AdminCalendarPage() {
                     maxWidth: 760,
                     color: "#7a7a7a",
                     fontSize: isMobile ? 13 : 14,
-                    lineHeight: 1.4,
+                    lineHeight: 1.45,
                   }}
                 >
                   Main diary view for Kelly. Use Month for planning, Week for forward booking, Day
@@ -1003,7 +1248,7 @@ export default function AdminCalendarPage() {
                   href={`/admin/schedule?date=${selectedDate}`}
                   style={{ ...headerPrimaryButton(), width: isMobile ? "100%" : "auto" }}
                 >
-                  Open advanced schedule board
+                  Advanced scheduler
                 </Link>
               </div>
             </div>
@@ -1209,6 +1454,7 @@ export default function AdminCalendarPage() {
                             isMobile={true}
                             isToday={day.date === todayString}
                             inCurrentMonth={true}
+                            multiDayBars={multiDayBarsByDate.get(day.date) || []}
                           />
                         </div>
                       ))}
@@ -1254,9 +1500,9 @@ export default function AdminCalendarPage() {
                               key={`${cell.date}-${index}`}
                               style={{
                                 border: "1px solid #eeeeee",
-                                borderRadius: 14,
+                                borderRadius: 16,
                                 background: "#fafafa",
-                                minHeight: 150,
+                                minHeight: 160,
                                 opacity: 0.5,
                               }}
                             />
@@ -1270,6 +1516,7 @@ export default function AdminCalendarPage() {
                             isMobile={false}
                             isToday={cell.day.date === todayString}
                             inCurrentMonth={cell.inCurrentMonth}
+                            multiDayBars={multiDayBarsByDate.get(cell.day.date) || []}
                           />
                         );
                       })}
@@ -1296,7 +1543,11 @@ export default function AdminCalendarPage() {
                         >
                           {formatDayNameLong(day.date)} {formatShortDateHeading(day.date)}
                         </div>
-                        <WeekDayColumn day={day} isToday={day.date === todayString} />
+                        <WeekDayColumn
+                          day={day}
+                          isToday={day.date === todayString}
+                          multiDayBars={multiDayBarsByDate.get(day.date) || []}
+                        />
                       </section>
                     ))}
                   </section>
@@ -1314,6 +1565,7 @@ export default function AdminCalendarPage() {
                           key={day.date}
                           day={day}
                           isToday={day.date === todayString}
+                          multiDayBars={multiDayBarsByDate.get(day.date) || []}
                         />
                       ))}
                     </div>
@@ -1400,5 +1652,6 @@ function messageCard(): React.CSSProperties {
     borderRadius: 16,
     background: "#fff",
     marginBottom: 20,
+    boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
   };
 }
