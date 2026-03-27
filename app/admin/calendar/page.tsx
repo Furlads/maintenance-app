@@ -13,6 +13,8 @@ type MonthEntry = {
   startTime: string | null;
   isFullDay: boolean;
   status: string;
+  startDate?: string;
+  endDate?: string;
 };
 
 type MonthDay = {
@@ -47,7 +49,6 @@ type MultiDayBar = {
   type: "job" | "timeOff";
   startDate: string;
   endDate: string;
-  dates: string[];
 };
 
 type MultiDayBarForDate = {
@@ -211,15 +212,7 @@ function eachDateInRange(startDateString: string, endDateString: string) {
 
   while (current <= end) {
     result.push(toMonthDayString(current));
-    current = new Date(
-      current.getFullYear(),
-      current.getMonth(),
-      current.getDate() + 1,
-      12,
-      0,
-      0,
-      0
-    );
+    current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1, 12, 0, 0, 0);
   }
 
   return result;
@@ -310,11 +303,14 @@ function normaliseFilterValue(value: string) {
   return value.trim().toLowerCase();
 }
 
-function entrySpanKey(entry: MonthEntry) {
+function buildSpanKey(entry: MonthEntry) {
   return [
     entry.type,
+    String(entry.workerId),
     normaliseFilterValue(entry.workerName),
-    normaliseFilterValue(entry.title || ""),
+    normaliseFilterValue(entry.title),
+    normaliseFilterValue(entry.startDate || ""),
+    normaliseFilterValue(entry.endDate || ""),
   ].join("::");
 }
 
@@ -322,8 +318,11 @@ function groupEntriesByWorker(entries: MonthEntry[], excludedKeys: Set<string> =
   const map = new Map<string, GroupedDayEntry>();
 
   for (const entry of entries) {
-    if (excludedKeys.has(entrySpanKey(entry))) {
-      continue;
+    if (entry.startDate && entry.endDate && entry.startDate !== entry.endDate) {
+      const spanKey = buildSpanKey(entry);
+      if (excludedKeys.has(spanKey)) {
+        continue;
+      }
     }
 
     const key = entry.workerName.trim() || "Unknown";
@@ -429,78 +428,31 @@ function getDayData(selectedDate: string, dayMap: Map<string, MonthDay>) {
 }
 
 function buildMultiDayBars(days: MonthDay[]): MultiDayBar[] {
-  const sortedDates = [...days.map((day) => day.date)].sort((a, b) => a.localeCompare(b));
-  const dayEntryMaps = new Map<string, Map<string, MonthEntry>>();
+  const map = new Map<string, MultiDayBar>();
 
   for (const day of days) {
-    const map = new Map<string, MonthEntry>();
-
     for (const entry of day.entries) {
-      map.set(entrySpanKey(entry), entry);
-    }
+      if (!entry.startDate || !entry.endDate) continue;
+      if (entry.startDate === entry.endDate) continue;
 
-    dayEntryMaps.set(day.date, map);
-  }
+      const key = buildSpanKey(entry);
 
-  const uniqueKeys = new Set<string>();
-  for (const day of days) {
-    for (const entry of day.entries) {
-      uniqueKeys.add(entrySpanKey(entry));
-    }
-  }
-
-  const bars: MultiDayBar[] = [];
-
-  for (const key of uniqueKeys) {
-    let index = 0;
-
-    while (index < sortedDates.length) {
-      const startDate = sortedDates[index];
-      const startEntry = dayEntryMaps.get(startDate)?.get(key);
-
-      if (!startEntry) {
-        index += 1;
-        continue;
-      }
-
-      let endIndex = index;
-
-      while (endIndex + 1 < sortedDates.length) {
-        const nextDate = sortedDates[endIndex + 1];
-        const nextEntry = dayEntryMaps.get(nextDate)?.get(key);
-
-        if (!nextEntry) {
-          break;
-        }
-
-        const expectedNextDate = addDays(sortedDates[endIndex], 1);
-        if (nextDate !== expectedNextDate) {
-          break;
-        }
-
-        endIndex += 1;
-      }
-
-      if (endIndex > index) {
-        const dates = sortedDates.slice(index, endIndex + 1);
-
-        bars.push({
+      if (!map.has(key)) {
+        map.set(key, {
           key,
-          title: startEntry.title || "Multi-day job",
-          workerName: startEntry.workerName,
-          type: startEntry.type,
-          startDate: dates[0],
-          endDate: dates[dates.length - 1],
-          dates,
+          title: entry.title,
+          workerName: entry.workerName,
+          type: entry.type,
+          startDate: entry.startDate,
+          endDate: entry.endDate,
         });
       }
-
-      index = endIndex + 1;
     }
   }
 
-  return bars.sort((a, b) => {
+  return Array.from(map.values()).sort((a, b) => {
     if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
+    if (a.workerName !== b.workerName) return a.workerName.localeCompare(b.workerName);
     return a.title.localeCompare(b.title);
   });
 }
@@ -509,7 +461,7 @@ function buildMultiDayBarsByDate(bars: MultiDayBar[]) {
   const map = new Map<string, MultiDayBarForDate[]>();
 
   for (const bar of bars) {
-    for (const date of bar.dates) {
+    for (const date of eachDateInRange(bar.startDate, bar.endDate)) {
       if (!map.has(date)) {
         map.set(date, []);
       }
