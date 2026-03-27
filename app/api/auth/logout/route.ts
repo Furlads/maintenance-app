@@ -1,17 +1,13 @@
-// app/api/auth/logout/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { clearSessionCookie } from "@/lib/auth";
 
 export async function POST() {
-  const res = NextResponse.json({ ok: true });
+  await clearSessionCookie();
 
-  // Clear cookie (host-only)
-  res.headers.set(
-    "Set-Cookie",
-    ["ma_session=", "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=0"].join("; ")
-  );
+  const res = NextResponse.json({ ok: true });
   res.headers.set("Cache-Control", "no-store");
 
   return res;

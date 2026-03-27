@@ -18,20 +18,6 @@ type LoginResponse = {
   };
 };
 
-function getRedirectPath(accessLevel: string) {
-  return accessLevel.toLowerCase() === "admin" ? "/admin" : "/today";
-}
-
-function saveWorkerSession(worker: {
-  id: number;
-  name: string;
-  accessLevel: string;
-}) {
-  localStorage.setItem("workerId", String(worker.id));
-  localStorage.setItem("workerName", worker.name);
-  localStorage.setItem("workerAccessLevel", worker.accessLevel);
-}
-
 function saveQuickLoginSettings(phone: string) {
   localStorage.setItem("quickLoginEnabled", "true");
   localStorage.setItem("quickLoginPhone", phone.trim());
@@ -61,21 +47,6 @@ export default function LoginPage() {
 
   useEffect(() => {
     try {
-      const savedWorkerId = localStorage.getItem("workerId");
-      const savedWorkerName = localStorage.getItem("workerName");
-      const savedWorkerAccessLevel = localStorage.getItem("workerAccessLevel");
-
-      if (
-        typeof navigator !== "undefined" &&
-        !navigator.onLine &&
-        savedWorkerId &&
-        savedWorkerName &&
-        savedWorkerAccessLevel
-      ) {
-        window.location.href = getRedirectPath(savedWorkerAccessLevel);
-        return;
-      }
-
       const params = new URLSearchParams(window.location.search);
       const phoneFromQuery = params.get("phone");
       const phoneFromStorage = localStorage.getItem("selectedLoginWorkerPhone");
@@ -101,20 +72,6 @@ export default function LoginPage() {
 
   useEffect(() => {
     try {
-      const savedWorkerId = localStorage.getItem("workerId");
-      const savedWorkerName = localStorage.getItem("workerName");
-      const savedWorkerAccessLevel = localStorage.getItem("workerAccessLevel");
-
-      if (
-        typeof navigator !== "undefined" &&
-        !navigator.onLine &&
-        savedWorkerId &&
-        savedWorkerName &&
-        savedWorkerAccessLevel
-      ) {
-        return;
-      }
-
       const params = new URLSearchParams(window.location.search);
       const shouldAutostart = params.get("autostart") === "1";
 
@@ -135,6 +92,17 @@ export default function LoginPage() {
     localStorage.removeItem("selectedLoginWorkerId");
     localStorage.removeItem("selectedLoginWorkerName");
     localStorage.removeItem("selectedLoginWorkerPhone");
+    localStorage.removeItem("selectedLoginWorkerPhotoUrl");
+  }
+
+  function saveLastLoggedInWorker(worker: {
+    id: number;
+    name: string;
+    accessLevel: string;
+  }) {
+    localStorage.setItem("lastWorkerId", String(worker.id));
+    localStorage.setItem("lastWorkerName", worker.name);
+    localStorage.setItem("lastWorkerAccessLevel", worker.accessLevel);
   }
 
   async function handlePasswordLogin(e: React.FormEvent) {
@@ -158,7 +126,7 @@ export default function LoginPage() {
       const redirectTo = data?.redirectTo || "/today";
 
       if (data?.worker) {
-        saveWorkerSession(data.worker);
+        saveLastLoggedInWorker(data.worker);
       }
 
       if (data?.mustChangePassword) {
@@ -185,19 +153,6 @@ export default function LoginPage() {
     try {
       if (!phone.trim()) {
         throw new Error("Enter your phone number first");
-      }
-
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
-        const savedWorkerId = localStorage.getItem("workerId");
-        const savedWorkerName = localStorage.getItem("workerName");
-        const savedWorkerAccessLevel = localStorage.getItem("workerAccessLevel");
-
-        if (savedWorkerId && savedWorkerName && savedWorkerAccessLevel) {
-          window.location.href = getRedirectPath(savedWorkerAccessLevel);
-          return;
-        }
-
-        throw new Error("No signal. Use a phone that has already logged in before.");
       }
 
       const startRes = await fetch("/api/auth/webauthn/login/start", {
@@ -232,18 +187,16 @@ export default function LoginPage() {
         throw new Error(finishData?.error || "Face ID failed");
       }
 
-      const selectedWorkerId = localStorage.getItem("selectedLoginWorkerId");
-      const selectedWorkerName = localStorage.getItem("selectedLoginWorkerName");
+      if (postLoginWorker) {
+        saveLastLoggedInWorker(postLoginWorker);
+      } else {
+        const selectedWorkerId = localStorage.getItem("selectedLoginWorkerId");
+        const selectedWorkerName = localStorage.getItem("selectedLoginWorkerName");
 
-      if (selectedWorkerId && selectedWorkerName) {
-        localStorage.setItem("workerId", selectedWorkerId);
-        localStorage.setItem("workerName", selectedWorkerName);
-      }
-
-      if (finishData?.redirectTo) {
-        const accessLevel =
-          finishData.redirectTo === "/admin" ? "admin" : "worker";
-        localStorage.setItem("workerAccessLevel", accessLevel);
+        if (selectedWorkerId && selectedWorkerName) {
+          localStorage.setItem("lastWorkerId", selectedWorkerId);
+          localStorage.setItem("lastWorkerName", selectedWorkerName);
+        }
       }
 
       saveQuickLoginSettings(phone.trim());
@@ -303,7 +256,7 @@ export default function LoginPage() {
       }
 
       if (postLoginWorker) {
-        saveWorkerSession(postLoginWorker);
+        saveLastLoggedInWorker(postLoginWorker);
       }
 
       saveQuickLoginSettings(postLoginWorkerPhone);
@@ -319,7 +272,7 @@ export default function LoginPage() {
 
   function handleSkipQuickLogin() {
     if (postLoginWorker) {
-      saveWorkerSession(postLoginWorker);
+      saveLastLoggedInWorker(postLoginWorker);
     }
 
     clearQuickLoginSettings();
@@ -352,13 +305,13 @@ export default function LoginPage() {
               lineHeight: 1.45,
             }}
           >
-            No signal. If this phone has logged in before, quick login should send you back into the app automatically.
+            No signal. Quick login needs a live connection for now.
           </div>
         )}
 
         <button
           onClick={handleQuickLogin}
-          disabled={loading}
+          disabled={loading || (typeof navigator !== "undefined" && !navigator.onLine)}
           style={{
             width: "100%",
             padding: "14px",
@@ -369,6 +322,8 @@ export default function LoginPage() {
             color: "yellow",
             border: "none",
             borderRadius: 8,
+            opacity:
+              typeof navigator !== "undefined" && !navigator.onLine ? 0.6 : 1,
           }}
         >
           {loading ? "Please wait..." : "Quick Login (Face ID / Fingerprint)"}

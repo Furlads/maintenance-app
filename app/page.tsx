@@ -1,436 +1,493 @@
-'use client'
+"use client";
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from "react";
+import {
+  startAuthentication,
+  startRegistration,
+} from "@simplewebauthn/browser";
 
-type Worker = {
-  id: number
-  firstName: string
-  lastName: string
-  active?: boolean
-  photoUrl?: string | null
-  phone?: string | null
+type LoginResponse = {
+  ok?: boolean;
+  error?: string;
+  redirectTo?: string;
+  mustChangePassword?: boolean;
+  worker?: {
+    id: number;
+    name: string;
+    accessLevel: string;
+  };
+};
+
+function saveQuickLoginSettings(phone: string) {
+  localStorage.setItem("quickLoginEnabled", "true");
+  localStorage.setItem("quickLoginPhone", phone.trim());
 }
 
-const WORKERS_SNAPSHOT_KEY = 'furlads:workers-snapshot'
-
-function getRedirectPath(accessLevel: string) {
-  return accessLevel.toLowerCase() === 'admin' ? '/admin' : '/today'
+function clearQuickLoginSettings() {
+  localStorage.removeItem("quickLoginEnabled");
+  localStorage.removeItem("quickLoginPhone");
 }
 
-function getWorkersSnapshot(): Worker[] {
-  if (typeof window === 'undefined') return []
+export default function LoginPage() {
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
+  const [postLoginWorkerPhone, setPostLoginWorkerPhone] = useState("");
+  const [postLoginRedirectTo, setPostLoginRedirectTo] = useState("/today");
+  const [postLoginWorker, setPostLoginWorker] = useState<{
+    id: number;
+    name: string;
+    accessLevel: string;
+  } | null>(null);
 
-  const raw = window.localStorage.getItem(WORKERS_SNAPSHOT_KEY)
-
-  if (!raw) return []
-
-  try {
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch (error) {
-    console.error('Failed to parse workers snapshot:', error)
-    return []
-  }
-}
-
-function saveWorkersSnapshot(workers: Worker[]) {
-  if (typeof window === 'undefined') return
-
-  try {
-    window.localStorage.setItem(WORKERS_SNAPSHOT_KEY, JSON.stringify(workers))
-  } catch (error) {
-    console.error('Failed to save workers snapshot:', error)
-  }
-}
-
-export default function Page() {
-  const [workers, setWorkers] = useState<Worker[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [showingOfflineWorkers, setShowingOfflineWorkers] = useState(false)
+  const autoStartedRef = useRef(false);
 
   useEffect(() => {
-    const savedWorkerId = localStorage.getItem('workerId')
-    const savedWorkerName = localStorage.getItem('workerName')
-    const savedWorkerAccessLevel = localStorage.getItem('workerAccessLevel')
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const phoneFromQuery = params.get("phone");
+      const phoneFromStorage = localStorage.getItem("selectedLoginWorkerPhone");
+      const quickLoginPhone = localStorage.getItem("quickLoginPhone");
 
-    const quickLoginEnabled = localStorage.getItem('quickLoginEnabled') === 'true'
-    const quickLoginPhone = localStorage.getItem('quickLoginPhone') || ''
-
-    if (savedWorkerId && savedWorkerName && savedWorkerAccessLevel) {
-      window.location.href = getRedirectPath(savedWorkerAccessLevel)
-      return
-    }
-
-    if (quickLoginEnabled && quickLoginPhone.trim()) {
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
-        window.location.href = `/login?phone=${encodeURIComponent(
-          quickLoginPhone.trim()
-        )}&autostart=1`
-        return
+      if (phoneFromQuery && phoneFromQuery.trim()) {
+        setPhone(phoneFromQuery.trim());
+        return;
       }
-    }
 
-    const cachedWorkers = getWorkersSnapshot()
-
-    if (cachedWorkers.length > 0) {
-      setWorkers(cachedWorkers)
-      setShowingOfflineWorkers(true)
-      setLoading(false)
-    }
-
-    async function loadWorkers() {
-      try {
-        setLoading(true)
-        setError('')
-
-        const res = await fetch('/api/workers', { cache: 'no-store' })
-
-        if (!res.ok) {
-          throw new Error('Failed to load workers')
-        }
-
-        const data = await res.json()
-        const nextWorkers = Array.isArray(data) ? data : []
-
-        setWorkers(nextWorkers)
-        saveWorkersSnapshot(nextWorkers)
-        setShowingOfflineWorkers(false)
-      } catch (err) {
-        console.error(err)
-
-        const fallbackWorkers = getWorkersSnapshot()
-
-        if (fallbackWorkers.length > 0) {
-          setWorkers(fallbackWorkers)
-          setShowingOfflineWorkers(true)
-          setError('')
-        } else {
-          setWorkers([])
-          setShowingOfflineWorkers(false)
-          setError('Failed to load workers.')
-        }
-      } finally {
-        setLoading(false)
+      if (phoneFromStorage && phoneFromStorage.trim()) {
+        setPhone(phoneFromStorage.trim());
+        return;
       }
+
+      if (quickLoginPhone && quickLoginPhone.trim()) {
+        setPhone(quickLoginPhone.trim());
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const shouldAutostart = params.get("autostart") === "1";
+
+      if (!shouldAutostart) return;
+      if (!phone.trim()) return;
+      if (autoStartedRef.current) return;
+
+      autoStartedRef.current = true;
+
+      void handleQuickLogin();
+    } catch (err) {
+      console.error(err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone]);
+
+  function cleanupSelectedWorkerStorage() {
+    localStorage.removeItem("selectedLoginWorkerId");
+    localStorage.removeItem("selectedLoginWorkerName");
+    localStorage.removeItem("selectedLoginWorkerPhone");
+    localStorage.removeItem("selectedLoginWorkerPhotoUrl");
+  }
+
+  function saveLastLoggedInWorker(worker: {
+    id: number;
+    name: string;
+    accessLevel: string;
+  }) {
+    localStorage.setItem("lastWorkerId", String(worker.id));
+    localStorage.setItem("lastWorkerName", worker.name);
+    localStorage.setItem("lastWorkerAccessLevel", worker.accessLevel);
+  }
+
+  async function handlePasswordLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, password }),
+      });
+
+      const data: LoginResponse | null = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Invalid login details");
+      }
+
+      const redirectTo = data?.redirectTo || "/today";
+
+      if (data?.worker) {
+        saveLastLoggedInWorker(data.worker);
+      }
+
+      if (data?.mustChangePassword) {
+        cleanupSelectedWorkerStorage();
+        window.location.href = "/change-password";
+        return;
+      }
+
+      setPostLoginWorkerPhone(phone.trim());
+      setPostLoginRedirectTo(redirectTo);
+      setPostLoginWorker(data?.worker || null);
+      setShowPasskeyPrompt(true);
+    } catch (err: any) {
+      setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleQuickLogin() {
+    setLoading(true);
+    setError("");
+
+    try {
+      if (!phone.trim()) {
+        throw new Error("Enter your phone number first");
+      }
+
+      const startRes = await fetch("/api/auth/webauthn/login/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: phone.trim() }),
+      });
+
+      const startData = await startRes.json().catch(() => null);
+
+      if (!startRes.ok || !startData?.ok || !startData?.options) {
+        throw new Error(startData?.error || "Quick login not available");
+      }
+
+      const authenticationResponse = await startAuthentication({
+        optionsJSON: startData.options,
+      });
+
+      const finishRes = await fetch("/api/auth/webauthn/login/finish", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(authenticationResponse),
+      });
+
+      const finishData = await finishRes.json().catch(() => null);
+
+      if (!finishRes.ok || !finishData?.ok) {
+        throw new Error(finishData?.error || "Face ID failed");
+      }
+
+      if (postLoginWorker) {
+        saveLastLoggedInWorker(postLoginWorker);
+      } else {
+        const selectedWorkerId = localStorage.getItem("selectedLoginWorkerId");
+        const selectedWorkerName = localStorage.getItem("selectedLoginWorkerName");
+
+        if (selectedWorkerId && selectedWorkerName) {
+          localStorage.setItem("lastWorkerId", selectedWorkerId);
+          localStorage.setItem("lastWorkerName", selectedWorkerName);
+        }
+      }
+
+      saveQuickLoginSettings(phone.trim());
+      cleanupSelectedWorkerStorage();
+
+      if (finishData?.redirectTo) {
+        window.location.href = finishData.redirectTo;
+        return;
+      }
+
+      window.location.href = "/today";
+    } catch (err: any) {
+      setError(err.message || "Quick login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleEnableQuickLogin() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const startRes = await fetch("/api/auth/webauthn/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: postLoginWorkerPhone }),
+      });
+
+      const startData = await startRes.json().catch(() => null);
+
+      if (!startRes.ok || !startData?.ok || !startData?.options) {
+        throw new Error(startData?.error || "Could not start Face ID setup");
+      }
+
+      const registrationResponse = await startRegistration({
+        optionsJSON: startData.options,
+      });
+
+      const finishRes = await fetch("/api/auth/webauthn/register", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          phone: postLoginWorkerPhone,
+          credential: registrationResponse,
+        }),
+      });
+
+      const finishData = await finishRes.json().catch(() => null);
+
+      if (!finishRes.ok || !finishData?.ok) {
+        throw new Error(finishData?.error || "Could not save Face ID");
+      }
+
+      if (postLoginWorker) {
+        saveLastLoggedInWorker(postLoginWorker);
+      }
+
+      saveQuickLoginSettings(postLoginWorkerPhone);
+      cleanupSelectedWorkerStorage();
+      window.location.href = postLoginRedirectTo;
+    } catch (err: any) {
+      setError(err.message || "Failed to enable quick login");
+      setShowPasskeyPrompt(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleSkipQuickLogin() {
+    if (postLoginWorker) {
+      saveLastLoggedInWorker(postLoginWorker);
     }
 
-    loadWorkers()
-  }, [])
-
-  const sortedWorkers = useMemo(() => {
-    return [...workers].sort((a, b) => {
-      const aName = `${a.firstName || ''} ${a.lastName || ''}`.trim()
-      const bName = `${b.firstName || ''} ${b.lastName || ''}`.trim()
-      return aName.localeCompare(bName)
-    })
-  }, [workers])
-
-  function openLoginForWorker(worker: Worker) {
-    const workerName = `${worker.firstName || ''} ${worker.lastName || ''}`.trim()
-
-    localStorage.setItem('selectedLoginWorkerId', String(worker.id))
-    localStorage.setItem('selectedLoginWorkerName', workerName)
-
-    if (worker.photoUrl && worker.photoUrl.trim()) {
-      localStorage.setItem('selectedLoginWorkerPhotoUrl', worker.photoUrl.trim())
-    } else {
-      localStorage.removeItem('selectedLoginWorkerPhotoUrl')
-    }
-
-    if (worker.phone && worker.phone.trim()) {
-      localStorage.setItem('selectedLoginWorkerPhone', worker.phone.trim())
-      window.location.href = `/login?phone=${encodeURIComponent(worker.phone.trim())}`
-      return
-    }
-
-    localStorage.removeItem('selectedLoginWorkerPhone')
-    window.location.href = '/login'
+    clearQuickLoginSettings();
+    cleanupSelectedWorkerStorage();
+    window.location.href = postLoginRedirectTo;
   }
 
   return (
     <main
       style={{
-        minHeight: '100vh',
-        padding: '20px 14px 40px',
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        background:
-          'linear-gradient(180deg, #f7f5ef 0%, #f2f4ef 48%, #f8f8f6 100%)',
-        color: '#111'
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
       }}
     >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 580,
-          margin: '0 auto'
-        }}
-      >
-        <section
+      <div style={{ width: "100%", maxWidth: 400 }}>
+        <h1 style={{ marginBottom: 20 }}>Furlads Login</h1>
+
+        {typeof navigator !== "undefined" && !navigator.onLine && (
+          <div
+            style={{
+              marginBottom: 14,
+              padding: 12,
+              borderRadius: 8,
+              border: "1px solid #efcf72",
+              background: "#fff7d6",
+              color: "#5f4a00",
+              lineHeight: 1.45,
+            }}
+          >
+            No signal. Quick login needs a live connection for now.
+          </div>
+        )}
+
+        <button
+          onClick={handleQuickLogin}
+          disabled={loading || (typeof navigator !== "undefined" && !navigator.onLine)}
           style={{
-            textAlign: 'center',
-            marginBottom: 18,
-            padding: '10px 14px 0'
+            width: "100%",
+            padding: "14px",
+            fontSize: 16,
+            fontWeight: "bold",
+            marginBottom: 16,
+            background: "black",
+            color: "yellow",
+            border: "none",
+            borderRadius: 8,
+            opacity:
+              typeof navigator !== "undefined" && !navigator.onLine ? 0.6 : 1,
+          }}
+        >
+          {loading ? "Please wait..." : "Quick Login (Face ID / Fingerprint)"}
+        </button>
+
+        <div style={{ textAlign: "center", margin: "10px 0" }}>
+          <small>or use phone &amp; password</small>
+        </div>
+
+        <form onSubmit={handlePasswordLogin}>
+          <input
+            type="tel"
+            placeholder="Phone number"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            required
+            style={{
+              width: "100%",
+              padding: 12,
+              marginBottom: 10,
+              borderRadius: 6,
+              border: "1px solid #ccc",
+              boxSizing: "border-box",
+            }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              marginBottom: 10,
+              gap: 8,
+            }}
+          >
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{
+                flex: 1,
+                padding: 12,
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                boxSizing: "border-box",
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              style={{
+                padding: "0 14px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: "#f3f3f3",
+                color: "#111",
+                fontWeight: 700,
+                minWidth: 72,
+              }}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: 12,
+              background: "black",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+            }}
+          >
+            {loading ? "Logging in..." : "Login"}
+          </button>
+        </form>
+
+        {error && <p style={{ color: "red", marginTop: 10 }}>{error}</p>}
+      </div>
+
+      {showPasskeyPrompt && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 1000,
           }}
         >
           <div
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              flexWrap: 'wrap',
-              marginBottom: 12
+              width: "100%",
+              maxWidth: 420,
+              background: "#fff",
+              borderRadius: 16,
+              padding: 20,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
             }}
           >
-            <span
+            <h2
               style={{
-                fontSize: 34,
-                fontWeight: 900,
-                letterSpacing: '-0.03em',
-                color: '#c69214'
+                margin: "0 0 10px 0",
+                fontSize: 22,
+                lineHeight: 1.2,
               }}
             >
-              Furlads
-            </span>
+              Use Face ID / fingerprint on this phone next time?
+            </h2>
 
-            <span
+            <p
               style={{
-                fontSize: 20,
-                fontWeight: 800,
-                color: '#7a7a7a'
+                margin: "0 0 18px 0",
+                color: "#555",
+                lineHeight: 1.5,
               }}
             >
-              ×
-            </span>
+              This makes login much faster when you&apos;re out in the field.
+            </p>
 
-            <span
-              style={{
-                fontSize: 30,
-                fontWeight: 900,
-                letterSpacing: '-0.03em',
-                color: '#245c3b'
-              }}
-            >
-              Three Counties
-            </span>
+            <div style={{ display: "grid", gap: 10 }}>
+              <button
+                onClick={handleEnableQuickLogin}
+                disabled={loading}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  background: "black",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                }}
+              >
+                {loading ? "Setting up..." : "Yes, enable quick login"}
+              </button>
+
+              <button
+                onClick={handleSkipQuickLogin}
+                disabled={loading}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  background: "#f3f3f3",
+                  color: "#111",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                }}
+              >
+                Not now
+              </button>
+            </div>
           </div>
-
-          <h1
-            style={{
-              margin: '0 0 8px 0',
-              fontSize: 30,
-              lineHeight: 1.08,
-              fontWeight: 900,
-              letterSpacing: '-0.02em'
-            }}
-          >
-            Who&apos;s using the app?
-          </h1>
-
-          <p
-            style={{
-              margin: 0,
-              fontSize: 15,
-              lineHeight: 1.5,
-              color: '#575757',
-              maxWidth: 390,
-              marginInline: 'auto'
-            }}
-          >
-            Tap your name to go straight to secure login.
-          </p>
-        </section>
-
-        {!loading && showingOfflineWorkers && (
-          <div
-            style={{
-              padding: 16,
-              borderRadius: 18,
-              border: '1px solid #efcf72',
-              background: '#fff7d6',
-              color: '#5f4a00',
-              lineHeight: 1.45,
-              marginBottom: 14,
-              boxShadow: '0 8px 20px rgba(0,0,0,0.04)'
-            }}
-          >
-            Showing the last saved worker list from this phone because signal looks weak.
-          </div>
-        )}
-
-        {loading && (
-          <div
-            style={{
-              padding: 18,
-              borderRadius: 20,
-              border: '1px solid rgba(0,0,0,0.08)',
-              background: '#fff',
-              boxShadow: '0 12px 30px rgba(0,0,0,0.05)',
-              textAlign: 'center',
-              fontSize: 15,
-              fontWeight: 600,
-              color: '#555'
-            }}
-          >
-            Loading workers...
-          </div>
-        )}
-
-        {!loading && error && (
-          <div
-            style={{
-              padding: 16,
-              borderRadius: 18,
-              border: '1px solid #e2b7b7',
-              background: '#fff5f5',
-              color: '#8d1f1f',
-              lineHeight: 1.45
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {!loading && !error && sortedWorkers.length === 0 && (
-          <div
-            style={{
-              padding: 18,
-              borderRadius: 20,
-              border: '1px solid rgba(0,0,0,0.08)',
-              background: '#fff',
-              boxShadow: '0 12px 30px rgba(0,0,0,0.05)',
-              textAlign: 'center',
-              fontSize: 15,
-              color: '#555'
-            }}
-          >
-            No workers found.
-          </div>
-        )}
-
-        {!loading && !error && sortedWorkers.length > 0 && (
-          <div
-            style={{
-              display: 'grid',
-              gap: 14
-            }}
-          >
-            {sortedWorkers.map((worker, index) => {
-              const initials =
-                `${worker.firstName?.[0] || ''}${worker.lastName?.[0] || ''}` || 'W'
-              const useGold = index % 2 === 0
-              const hasPhoto =
-                typeof worker.photoUrl === 'string' && worker.photoUrl.trim().length > 0
-
-              return (
-                <button
-                  key={worker.id}
-                  type="button"
-                  onClick={() => openLoginForWorker(worker)}
-                  style={{
-                    width: '100%',
-                    padding: 0,
-                    border: 'none',
-                    background: 'transparent',
-                    textAlign: 'left',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 14,
-                      padding: '18px 16px',
-                      borderRadius: 22,
-                      border: '1px solid rgba(0,0,0,0.10)',
-                      background: '#fff',
-                      boxShadow: '0 14px 30px rgba(0,0,0,0.06)',
-                      minHeight: 88
-                    }}
-                  >
-                    {hasPhoto ? (
-                      <img
-                        src={worker.photoUrl as string}
-                        alt={`${worker.firstName} ${worker.lastName}`}
-                        style={{
-                          width: 58,
-                          height: 58,
-                          borderRadius: 18,
-                          objectFit: 'cover',
-                          flexShrink: 0,
-                          border: useGold
-                            ? '1px solid rgba(198,146,20,0.22)'
-                            : '1px solid rgba(36,92,59,0.18)',
-                          background: '#f3f3f3'
-                        }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: 58,
-                          height: 58,
-                          borderRadius: 18,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                          fontSize: 19,
-                          fontWeight: 900,
-                          background: useGold ? '#f5deb0' : '#d9e9de',
-                          color: useGold ? '#8a5a00' : '#245c3b',
-                          border: useGold
-                            ? '1px solid rgba(198,146,20,0.22)'
-                            : '1px solid rgba(36,92,59,0.18)'
-                        }}
-                      >
-                        {initials}
-                      </div>
-                    )}
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: 20,
-                          fontWeight: 900,
-                          color: '#171717',
-                          marginBottom: 4,
-                          letterSpacing: '-0.01em',
-                          overflowWrap: 'anywhere',
-                          wordBreak: 'break-word'
-                        }}
-                      >
-                        {worker.firstName} {worker.lastName}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 14,
-                          color: '#666'
-                        }}
-                      >
-                        Tap to log in
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 800,
-                        color: useGold ? '#b17e07' : '#245c3b',
-                        flexShrink: 0
-                      }}
-                    >
-                      Open
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </main>
-  )
+  );
 }
