@@ -38,11 +38,33 @@ function cleanupSelectedWorkerStorage() {
 function saveLastLoggedInWorker(worker: {
   id: number;
   name: string;
-  accessLevel: string;
+  accessLevel?: string;
 }) {
   localStorage.setItem("lastWorkerId", String(worker.id));
   localStorage.setItem("lastWorkerName", worker.name);
-  localStorage.setItem("lastWorkerAccessLevel", worker.accessLevel);
+
+  if (worker.accessLevel) {
+    localStorage.setItem("lastWorkerAccessLevel", worker.accessLevel);
+  }
+}
+
+function saveLastLoggedInWorkerFromSelectedWorkerFallback() {
+  const selectedWorkerId = localStorage.getItem("selectedLoginWorkerId");
+  const selectedWorkerName = localStorage.getItem("selectedLoginWorkerName");
+
+  if (selectedWorkerId && selectedWorkerName) {
+    localStorage.setItem("lastWorkerId", selectedWorkerId);
+    localStorage.setItem("lastWorkerName", selectedWorkerName);
+  }
+}
+
+function persistBestKnownWorker(worker: LoginResponse["worker"] | null) {
+  if (worker) {
+    saveLastLoggedInWorker(worker);
+    return;
+  }
+
+  saveLastLoggedInWorkerFromSelectedWorkerFallback();
 }
 
 function isAlreadyRegisteredPasskeyError(error: unknown) {
@@ -170,9 +192,7 @@ export default function LoginPage() {
 
       const redirectTo = data?.redirectTo || "/today";
 
-      if (data?.worker) {
-        saveLastLoggedInWorker(data.worker);
-      }
+      persistBestKnownWorker(data?.worker || null);
 
       if (data?.mustChangePassword) {
         cleanupSelectedWorkerStorage();
@@ -232,17 +252,7 @@ export default function LoginPage() {
         throw new Error(finishData?.error || "Face ID failed");
       }
 
-      if (postLoginWorker) {
-        saveLastLoggedInWorker(postLoginWorker);
-      } else {
-        const selectedWorkerId = localStorage.getItem("selectedLoginWorkerId");
-        const selectedWorkerName = localStorage.getItem("selectedLoginWorkerName");
-
-        if (selectedWorkerId && selectedWorkerName) {
-          localStorage.setItem("lastWorkerId", selectedWorkerId);
-          localStorage.setItem("lastWorkerName", selectedWorkerName);
-        }
-      }
+      persistBestKnownWorker(postLoginWorker);
 
       saveQuickLoginSettings(phone.trim());
       cleanupSelectedWorkerStorage();
@@ -306,10 +316,7 @@ export default function LoginPage() {
         }
       }
 
-      if (postLoginWorker) {
-        saveLastLoggedInWorker(postLoginWorker);
-      }
-
+      persistBestKnownWorker(postLoginWorker);
       saveQuickLoginSettings(postLoginWorkerPhone);
       cleanupSelectedWorkerStorage();
       window.location.href = postLoginRedirectTo;
@@ -322,10 +329,7 @@ export default function LoginPage() {
   }
 
   function handleSkipQuickLogin() {
-    if (postLoginWorker) {
-      saveLastLoggedInWorker(postLoginWorker);
-    }
-
+    persistBestKnownWorker(postLoginWorker);
     clearQuickLoginSettings();
     cleanupSelectedWorkerStorage();
     window.location.href = postLoginRedirectTo;
