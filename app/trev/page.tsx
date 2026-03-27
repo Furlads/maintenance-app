@@ -1,7 +1,7 @@
 import Link from "next/link"
-import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import * as prismaModule from "@/lib/prisma"
+import { getSession } from "@/lib/auth"
 
 export const dynamic = "force-dynamic"
 
@@ -390,7 +390,8 @@ function buildTeamLiveCards(workers: any[]): TeamLiveCard[] {
     if (!currentJob) {
       cards.push({
         workerId: worker.id,
-        workerName: `${worker.firstName || ""} ${worker.lastName || ""}`.trim() || `Worker #${worker.id}`,
+        workerName:
+          `${worker.firstName || ""} ${worker.lastName || ""}`.trim() || `Worker #${worker.id}`,
         job: null,
         statusLabel: "Free / no job showing",
         statusTone: "zinc",
@@ -425,7 +426,8 @@ function buildTeamLiveCards(workers: any[]): TeamLiveCard[] {
 
     cards.push({
       workerId: worker.id,
-      workerName: `${worker.firstName || ""} ${worker.lastName || ""}`.trim() || `Worker #${worker.id}`,
+      workerName:
+        `${worker.firstName || ""} ${worker.lastName || ""}`.trim() || `Worker #${worker.id}`,
       job: currentJob,
       statusLabel,
       statusTone,
@@ -580,21 +582,22 @@ function JobSection({
   )
 }
 
+async function readSession(): Promise<SessionData | null> {
+  const session = await getSession()
+
+  if (!session?.workerId) {
+    return null
+  }
+
+  return {
+    workerId: Number(session.workerId),
+    workerName: session.workerName,
+    workerAccessLevel: session.role,
+  }
+}
+
 export default async function TrevPage() {
-  const cookieStore = await cookies()
-  const rawSession = cookieStore.get("furlads_session")?.value
-
-  if (!rawSession) {
-    redirect("/login")
-  }
-
-  let session: SessionData | null = null
-
-  try {
-    session = JSON.parse(rawSession)
-  } catch {
-    session = null
-  }
+  const session = await readSession()
 
   if (!session?.workerId) {
     redirect("/login")
