@@ -3,14 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 
 type Worker = {
-  id: string;
+  id: number;
   name: string;
   role: string;
+  jobTitle?: string | null;
   phone?: string | null;
-  photoUrl?: string | null;
-  note?: string | null;
   active: boolean;
+  createdAt?: string;
 };
+
+const ROLE_OPTIONS = ["Worker", "Office", "Admin", "Manager", "Owner"] as const;
+
+type RoleOption = (typeof ROLE_OPTIONS)[number];
+
+function safeRole(role: string): RoleOption {
+  const match = ROLE_OPTIONS.find(
+    (option) => option.toLowerCase() === String(role || "").trim().toLowerCase()
+  );
+  return match ?? "Worker";
+}
 
 export default function WorkerEditPage({
   params,
@@ -26,18 +37,20 @@ export default function WorkerEditPage({
   const [worker, setWorker] = useState<Worker | null>(null);
 
   const [name, setName] = useState("");
-  const [role, setRole] = useState("worker");
+  const [role, setRole] = useState<RoleOption>("Worker");
+  const [jobTitle, setJobTitle] = useState("");
   const [phone, setPhone] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
-  const [note, setNote] = useState("");
+  const [active, setActive] = useState(true);
 
   const whatsappLink = useMemo(() => {
-    // WhatsApp "click to chat" works best with digits only
     const digits = (phone || "").replace(/[^\d]/g, "");
     if (!digits) return "";
-    // UK numbers often start 07..., we want 44...
-    const normalized =
-      digits.startsWith("44") ? digits : digits.startsWith("0") ? `44${digits.slice(1)}` : digits;
+
+    const normalized = digits.startsWith("44")
+      ? digits
+      : digits.startsWith("0")
+      ? `44${digits.slice(1)}`
+      : digits;
 
     return `https://wa.me/${normalized}`;
   }, [phone]);
@@ -51,29 +64,41 @@ export default function WorkerEditPage({
 
   async function load() {
     if (!workerId) return;
+
     setLoading(true);
     setMsg("");
-    try {
-      // We don't have a GET /api/workers/[id] yet, so we fetch list and find by id.
-      const res = await fetch("/api/workers", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Failed to load workers");
 
-      const list: Worker[] = Array.isArray(data?.workers) ? data.workers : [];
-      const found = list.find((w) => w.id === workerId) ?? null;
+    try {
+      const res = await fetch(`/api/workers/${workerId}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Failed to load worker");
+      }
+
+      const found = data?.worker ?? null;
 
       if (!found) {
         setWorker(null);
-        setMsg("Worker not found (maybe archived).");
+        setMsg("Worker not found.");
         return;
       }
 
       setWorker(found);
       setName(found.name ?? "");
-      setRole(found.role ?? "worker");
+      setRole(safeRole(found.role));
+      setJobTitle(found.jobTitle ?? "");
       setPhone(found.phone ?? "");
-      setPhotoUrl(found.photoUrl ?? "");
-      setNote(found.note ?? "");
+      setActive(!!found.active);
     } catch (e: any) {
       setMsg(e?.message ?? "Failed to load worker");
     } finally {
@@ -82,29 +107,41 @@ export default function WorkerEditPage({
   }
 
   useEffect(() => {
-    load();
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
   async function save() {
     if (!workerId) return;
+
     setSaving(true);
     setMsg("");
+
     try {
       const res = await fetch(`/api/workers/${workerId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           name: name.trim(),
           role,
+          jobTitle: jobTitle.trim(),
           phone: phone.trim() || null,
-          photoUrl: photoUrl.trim() || null,
-          note: note.trim() || null,
+          active,
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Failed to save");
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Failed to save");
+      }
+
       setMsg("✅ Saved");
       await load();
     } catch (e: any) {
@@ -116,28 +153,45 @@ export default function WorkerEditPage({
 
   async function archive() {
     if (!workerId || !worker) return;
-    const ok = confirm(`Archive ${worker.name}? They will disappear from the live system.`);
+
+    const ok = confirm(
+      `${worker.active ? "Archive" : "Unarchive"} ${worker.name}?`
+    );
     if (!ok) return;
 
     setSaving(true);
     setMsg("");
+
     try {
       const res = await fetch(`/api/workers/${workerId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: false }),
+        credentials: "include",
+        body: JSON.stringify({ active: !worker.active }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Failed to archive");
+      const data = await res.json().catch(() => ({}));
 
-      setMsg(`🗄️ Archived ${worker.name}`);
-      // send back after a moment
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Failed to update worker");
+      }
+
+      setMsg(
+        worker.active
+          ? `🗄️ Archived ${worker.name}`
+          : `✅ Reactivated ${worker.name}`
+      );
+
       setTimeout(() => {
         window.location.href = "/admin/workers";
       }, 400);
     } catch (e: any) {
-      setMsg(e?.message ?? "Failed to archive");
+      setMsg(e?.message ?? "Failed to update worker");
     } finally {
       setSaving(false);
     }
@@ -161,7 +215,14 @@ export default function WorkerEditPage({
         <div style={emptyStyle}>Worker not found.</div>
       ) : (
         <div style={cardStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <div>
               <div style={{ fontWeight: 950, fontSize: 18 }}>{worker.name}</div>
               <div style={{ fontSize: 12, opacity: 0.7 }}>
@@ -169,24 +230,41 @@ export default function WorkerEditPage({
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               {whatsappLink ? (
                 <a
                   href={whatsappLink}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ ...btnSmallStyle, textDecoration: "none", display: "inline-block" }}
+                  style={{
+                    ...btnSmallStyle,
+                    textDecoration: "none",
+                    display: "inline-block",
+                  }}
                 >
                   💬 WhatsApp
                 </a>
               ) : (
-                <span style={{ fontSize: 12, opacity: 0.6 }}>Add phone for WhatsApp</span>
+                <span style={{ fontSize: 12, opacity: 0.6 }}>
+                  Add phone for WhatsApp
+                </span>
               )}
 
               {phone ? (
                 <a
                   href={`tel:${phone}`}
-                  style={{ ...btnSmallStyle, textDecoration: "none", display: "inline-block" }}
+                  style={{
+                    ...btnSmallStyle,
+                    textDecoration: "none",
+                    display: "inline-block",
+                  }}
                 >
                   📞 Call
                 </a>
@@ -198,26 +276,61 @@ export default function WorkerEditPage({
 
           <div style={gridStyle}>
             <Field label="Name">
-              <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={inputStyle}
+              />
             </Field>
 
             <Field label="Role">
-              <select value={role} onChange={(e) => setRole(e.target.value)} style={inputStyle}>
-                <option value="worker">worker</option>
-                <option value="admin">admin</option>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as RoleOption)}
+                style={inputStyle}
+              >
+                {ROLE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
               </select>
             </Field>
 
+            <Field label="Job title">
+              <input
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                style={inputStyle}
+                placeholder="Office Manager"
+              />
+            </Field>
+
             <Field label="Phone (recommended: +4479...)">
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} placeholder="+4479..." />
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                style={inputStyle}
+                placeholder="+4479..."
+              />
             </Field>
 
-            <Field label="Photo URL (optional)">
-              <input value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} style={inputStyle} placeholder="/images/kelly.png" />
-            </Field>
-
-            <Field label="Note (optional)">
-              <input value={note} onChange={(e) => setNote(e.target.value)} style={inputStyle} placeholder="Any helpful info" />
+            <Field label="Active">
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  minHeight: 44,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={(e) => setActive(e.target.checked)}
+                />
+                <span>{active ? "Active" : "Archived"}</span>
+              </label>
             </Field>
           </div>
 
@@ -227,7 +340,7 @@ export default function WorkerEditPage({
             </button>
 
             <button onClick={archive} style={btnDangerStyle} disabled={saving}>
-              🗄️ Archive worker
+              {worker.active ? "🗄️ Archive worker" : "✅ Unarchive worker"}
             </button>
           </div>
 
@@ -243,7 +356,14 @@ export default function WorkerEditPage({
 function Field({ label, children }: { label: string; children: any }) {
   return (
     <label style={{ display: "block" }}>
-      <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6, opacity: 0.75 }}>
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 900,
+          marginBottom: 6,
+          opacity: 0.75,
+        }}
+      >
         {label}
       </div>
       {children}
