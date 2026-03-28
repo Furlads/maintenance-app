@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { verifyPassword } from "@/lib/password";
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { createSessionForWorker } from "@/lib/auth";
 
@@ -69,6 +70,72 @@ function getRemainingLockMinutes(worker: {
   return Math.ceil(diffMs / 60000);
 }
 
+async function verifyLegacyScryptPassword(password: string, stored: string) {
+  try {
+    const parts = String(stored || "").split("$");
+    if (parts.length !== 6) return false;
+
+    const [algo, nStr, rStr, pStr, saltB64, hashB64] = parts;
+    if (algo !== "scrypt") return false;
+
+    const N = Number(nStr);
+    const r = Number(rStr);
+    const p = Number(pStr);
+
+    if (!Number.isInteger(N) || !Number.isInteger(r) || !Number.isInteger(p)) {
+      return false;
+    }
+
+    const salt = Buffer.from(saltB64, "base64");
+    const expected = Buffer.from(hashB64, "base64");
+
+    if (!salt.length || !expected.length) {
+      return false;
+    }
+
+    const derived = await new Promise<Buffer>((resolve, reject) => {
+      crypto.scrypt(
+        password,
+        salt,
+        expected.length,
+        { N, r, p },
+        (err, key) => {
+          if (err) reject(err);
+          else resolve(key as Buffer);
+        }
+      );
+    });
+
+    if (derived.length !== expected.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(derived, expected);
+  } catch {
+    return false;
+  }
+}
+
+async function verifyAnyPassword(password: string, stored: string) {
+  const hash = String(stored || "");
+
+  if (!hash) return false;
+
+  if (hash.startsWith("$2a$") || hash.startsWith("$2b$") || hash.startsWith("$2y$")) {
+    return bcrypt.compare(password, hash);
+  }
+
+  if (hash.startsWith("scrypt$")) {
+    return verifyLegacyScryptPassword(password, hash);
+  }
+
+  try {
+    return await bcrypt.compare(password, hash);
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -134,7 +201,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const valid = await verifyPassword(password, worker.passwordHash);
+    const valid = await verifyAnyPassword(password, worker.passwordHash);
 
     if (!valid) {
       const nextFailedAttempts = (worker.failedLoginAttempts || 0) + 1;
