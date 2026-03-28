@@ -275,6 +275,40 @@ function formatWorkers(
     .join(", ");
 }
 
+function normalisePostcode(value: string | null | undefined) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function getPostcodeArea(value: string | null | undefined) {
+  const postcode = normalisePostcode(value);
+  const match = postcode.match(/^[A-Z]{1,2}\d{1,2}[A-Z]?/);
+  return match ? match[0] : "";
+}
+
+function getPostcodeDistrict(value: string | null | undefined) {
+  const postcode = normalisePostcode(value);
+  const match = postcode.match(/^[A-Z]{1,2}\d{1,2}[A-Z]?/);
+  return match ? match[0] : "";
+}
+
+function estimateTravelScore(fromPostcode: string | null | undefined, toPostcode: string | null | undefined) {
+  const fromDistrict = getPostcodeDistrict(fromPostcode);
+  const toDistrict = getPostcodeDistrict(toPostcode);
+
+  if (!fromDistrict || !toDistrict) return 0;
+  if (fromDistrict === toDistrict) return 220;
+
+  const fromArea = getPostcodeArea(fromPostcode);
+  const toArea = getPostcodeArea(toPostcode);
+
+  if (fromArea && toArea && fromArea === toArea) return 120;
+
+  return -80;
+}
+
 function normaliseDisplayText(value: string | null | undefined) {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -665,12 +699,65 @@ function getBestGapWindow(worker: ScheduleWorker) {
   })[0];
 }
 
-function scoreGapFillJob(job: JobsApiJob, worker: ScheduleWorker, freeMinutes: number) {
+function getScheduledJobsForWorker(worker: ScheduleWorker) {
+  return [...worker.jobs]
+    .filter((job) => parseTimeToMinutes(job.startTime) !== null)
+    .sort(sortWorkerJobs);
+}
+
+function getGapContextForWindow(
+  worker: ScheduleWorker,
+  gapStartMinutes: number,
+  gapEndMinutes: number
+) {
+  const scheduledJobs = getScheduledJobsForWorker(worker);
+
+  let previousJob: ScheduleJob | null = null;
+  let nextJob: ScheduleJob | null = null;
+
+  for (const job of scheduledJobs) {
+    const start = parseTimeToMinutes(job.startTime);
+    if (start === null) continue;
+
+    const duration = Math.max(job.durationMinutes ?? 60, 15);
+    const end = start + duration;
+
+    if (end <= gapStartMinutes) {
+      previousJob = job;
+      continue;
+    }
+
+    if (start >= gapEndMinutes) {
+      nextJob = job;
+      break;
+    }
+  }
+
+  return {
+    previousJob,
+    nextJob,
+  };
+}
+
+function scoreGapFillJob(
+  job: JobsApiJob,
+  worker: ScheduleWorker,
+  freeMinutes: number,
+  gapStartMinutes: number,
+  gapEndMinutes: number
+) {
   let score = 0;
 
   const duration = job.durationMinutes ?? 60;
   const jobType = String(job.jobType || "").toLowerCase();
   const status = String(job.status || "").toLowerCase();
+  const jobPostcode = job.customer?.postcode || null;
+
+  const { previousJob, nextJob } = getGapContextForWindow(
+    worker,
+    gapStartMinutes,
+    gapEndMinutes
+  );
 
   if (status === "unscheduled") score += 200;
   if (status === "todo" || status === "scheduled") score += 100;
@@ -686,12 +773,22 @@ function scoreGapFillJob(job: JobsApiJob, worker: ScheduleWorker, freeMinutes: n
     score += 250;
   }
 
-  if (jobType.includes("maint")) {
-    if (freeMinutes <= 120) {
-      score += 180;
-    } else {
-      score += 80;
-    }
+  // Small-gap prioritisation
+  if (freeMinutes <= 60) {
+    if (duration <= 60) score += 220;
+    if (duration > 60) score -= 220;
+
+    if (jobType.includes("maint")) score += 260;
+    if (jobType.includes("quote")) score -= 120;
+    if (jobType.includes("land")) score -= 80;
+  } else if (freeMinutes <= 120) {
+    if (duration <= 90) score += 160;
+    if (duration > 120) score -= 160;
+
+    if (jobType.includes("maint")) score += 180;
+    if (jobType.includes("quote")) score += 40;
+  } else {
+    if (jobType.includes("maint")) score += 80;
   }
 
   if (job.needsSchedulingAttention) {
@@ -700,6 +797,19 @@ function scoreGapFillJob(job: JobsApiJob, worker: ScheduleWorker, freeMinutes: n
 
   if (!job.visitDate) {
     score += 40;
+  }
+
+  // Travel / postcode-aware scoring
+  if (previousJob) {
+    score += estimateTravelScore(previousJob.postcode, jobPostcode);
+  }
+
+  if (nextJob) {
+    score += estimateTravelScore(jobPostcode, nextJob.postcode);
+  }
+
+  if (!previousJob && !nextJob) {
+    score += estimateTravelScore("TF9 4BQ", jobPostcode);
   }
 
   return score;
@@ -747,8 +857,20 @@ function buildGapFillSuggestions(
       const suggestedJobs = [...unscheduledJobs]
         .filter((job) => (job.durationMinutes ?? 60) <= freeMinutes)
         .sort((a, b) => {
-          const scoreA = scoreGapFillJob(a, worker, freeMinutes);
-          const scoreB = scoreGapFillJob(b, worker, freeMinutes);
+          const scoreA = scoreGapFillJob(
+            a,
+            worker,
+            freeMinutes,
+            bestGap.start,
+            bestGap.end
+          );
+          const scoreB = scoreGapFillJob(
+            b,
+            worker,
+            freeMinutes,
+            bestGap.start,
+            bestGap.end
+          );
 
           if (scoreA !== scoreB) return scoreB - scoreA;
 
@@ -3237,7 +3359,7 @@ export default function SchedulePage() {
                           >
                             {entry.workerName}
                           </div>
-                          <div
+                                                    <div
                             style={{
                               marginTop: 4,
                               fontSize: 13,
