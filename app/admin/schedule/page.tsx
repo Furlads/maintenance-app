@@ -85,6 +85,10 @@ type GapFillSuggestion = {
   workerId: number;
   workerName: string;
   freeMinutes: number;
+  gapStartMinutes: number;
+  gapEndMinutes: number;
+  gapStartTime: string;
+  gapEndTime: string;
   suggestedJobs: JobsApiJob[];
 };
 
@@ -647,10 +651,14 @@ function buildGapFillSuggestions(
 ): GapFillSuggestion[] {
   return workers
     .map((worker) => {
-      const freeMinutes = getWorkerRemainingMinutes(worker);
+      const bestGap = getBestGapWindow(worker);
+
+      if (!bestGap) return null;
+
+      const freeMinutes = bestGap.duration;
 
       const suggestedJobs = [...unscheduledJobs]
-        .filter((job) => (job.durationMinutes ?? 60) <= Math.max(freeMinutes, 0))
+        .filter((job) => (job.durationMinutes ?? 60) <= freeMinutes)
         .sort((a, b) => {
           const scoreA = scoreGapFillJob(a, worker, freeMinutes);
           const scoreB = scoreGapFillJob(b, worker, freeMinutes);
@@ -665,11 +673,18 @@ function buildGapFillSuggestions(
         workerId: worker.id,
         workerName: worker.name,
         freeMinutes,
+        gapStartMinutes: bestGap.start,
+        gapEndMinutes: bestGap.end,
+        gapStartTime: minutesToTime(bestGap.start),
+        gapEndTime: minutesToTime(bestGap.end),
         suggestedJobs,
       };
     })
-    .filter((entry) => entry.freeMinutes >= 30)
-    .sort((a, b) => b.freeMinutes - a.freeMinutes);
+    .filter((entry): entry is GapFillSuggestion => entry !== null)
+    .sort((a, b) => {
+      if (b.freeMinutes !== a.freeMinutes) return b.freeMinutes - a.freeMinutes;
+      return a.gapStartMinutes - b.gapStartMinutes;
+    });
 }
 
 function sortUnscheduledJobs(a: JobsApiJob, b: JobsApiJob) {
@@ -2413,13 +2428,18 @@ export default function SchedulePage() {
     }
   }
 
-  function openPlaceIntoGap(job: JobsApiJob, worker: ScheduleWorker, freeMinutes: number) {
+  function openPlaceIntoGap(
+    job: JobsApiJob,
+    worker: ScheduleWorker,
+    freeMinutes: number,
+    gapStartTime: string
+  ) {
     setPlaceIntoGapSheet({
       jobId: job.id,
       jobLabel: `${titleCase(job.customer?.name) || "No customer"} — ${titleCase(job.title) || "General"}`,
       workerId: worker.id,
       workerName: worker.name,
-      selectedStartTime: getWorkerSuggestedGapStartTime(worker),
+      selectedStartTime: gapStartTime,
       freeMinutes,
     });
   }
@@ -3137,7 +3157,7 @@ export default function SchedulePage() {
                               color: "#52525b",
                             }}
                           >
-                            {formatRemaining(entry.freeMinutes)}
+                            {entry.gapStartTime} → {entry.gapEndTime} • {formatRemaining(entry.freeMinutes)}
                           </div>
                         </div>
 
@@ -3282,7 +3302,14 @@ export default function SchedulePage() {
                                 >
                                   <button
                                     type="button"
-                                    onClick={() => openPlaceIntoGap(job, workers.find((w) => w.id === entry.workerId)!, entry.freeMinutes)}
+onClick={() =>
+  openPlaceIntoGap(
+    job,
+    workers.find((w) => w.id === entry.workerId)!,
+    entry.freeMinutes,
+    entry.gapStartTime
+  )
+}
                                     disabled={placingJobId === job.id}
                                     style={{
                                       ...smallPrimaryButton(),
@@ -3711,7 +3738,7 @@ export default function SchedulePage() {
                     lineHeight: 1.45,
                   }}
                 >
-                  Place with {placeIntoGapSheet.workerName} on {formatDate(date)}.
+                  Place with {placeIntoGapSheet.workerName} on {formatDate(date)} in the selected free gap.
                 </div>
               </div>
 
