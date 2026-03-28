@@ -37,6 +37,12 @@ model Worker {
   webauthnCredentials WebAuthnCredential[]
   availabilityBlocks  WorkerAvailabilityBlock[]
   companies           WorkerCompany[]
+  chasMessages        ChasMessage[]
+  jobAuditLogs        JobAuditLog[]
+
+  @@index([active, accessLevel])
+  @@index([lastName, firstName])
+  @@index([email])
 }
 
 model WebAuthnCredential {
@@ -58,6 +64,9 @@ model WorkerCompany {
   companyId Int
   company   Company @relation(fields: [companyId], references: [id])
   worker    Worker  @relation(fields: [workerId], references: [id])
+
+  @@unique([workerId, companyId])
+  @@index([companyId])
 }
 
 model Customer {
@@ -72,6 +81,10 @@ model Customer {
   archived      Boolean        @default(false)
   inboxMessages InboxMessage[]
   jobs          Job[]
+
+  @@index([archived, createdAt])
+  @@index([name])
+  @@index([postcode])
 }
 
 model Job {
@@ -101,12 +114,25 @@ model Job {
   preferredTimeBand         String?
   timePreferenceMode        String?
   visitPattern              String?
+  archivedAt                DateTime?
+  archivedByWorkerId        Int?
+  cancelledAt               DateTime?
+  cancelledByWorkerId       Int?
+  cancellationReason        String?
   chasMessages              ChasMessage[]
   inboxMessages             InboxMessage[]
   customer                  Customer        @relation(fields: [customerId], references: [id])
   assignments               JobAssignment[]
   jobNotes                  JobNote[]
   photos                    JobPhoto[]
+  auditLogs                 JobAuditLog[]
+
+  @@index([customerId])
+  @@index([status, createdAt])
+  @@index([visitDate, status])
+  @@index([customerId, visitDate])
+  @@index([jobType, visitDate])
+  @@index([createdAt])
 }
 
 model JobAssignment {
@@ -118,6 +144,8 @@ model JobAssignment {
   worker    Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
   @@unique([jobId, workerId])
+  @@index([workerId, createdAt])
+  @@index([jobId, createdAt])
 }
 
 model JobNote {
@@ -128,6 +156,9 @@ model JobNote {
   createdByWorkerId Int?
   worker            Worker?  @relation(fields: [createdByWorkerId], references: [id])
   job               Job      @relation(fields: [jobId], references: [id])
+
+  @@index([jobId, createdAt])
+  @@index([createdByWorkerId, createdAt])
 }
 
 model JobPhoto {
@@ -139,12 +170,16 @@ model JobPhoto {
   createdAt          DateTime @default(now())
   job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
   uploadedByWorker   Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
+
+  @@index([jobId, createdAt])
+  @@index([uploadedByWorkerId, createdAt])
 }
 
 model ChasMessage {
   id                   Int      @id @default(autoincrement())
   company              String
   worker               String
+  workerId             Int?
   jobId                Int?
   question             String
   answer               String
@@ -168,10 +203,12 @@ model ChasMessage {
   workSummary          String?
   sessionId            String?
   job                  Job?     @relation(fields: [jobId], references: [id])
+  workerRecord         Worker?  @relation(fields: [workerId], references: [id])
 
   @@index([company, worker, createdAt])
   @@index([company, worker, sessionId, createdAt])
   @@index([jobId])
+  @@index([workerId, createdAt])
   @@index([enquiryReadyForKelly, createdAt])
   @@index([conversationId])
 }
@@ -186,10 +223,11 @@ model Conversation {
   messages    InboxMessage[]
 
   @@index([archived])
+  @@index([source, createdAt])
 }
 
 model InboxMessage {
-  id                Int           @id @default(autoincrement())
+  id                Int      @id @default(autoincrement())
   source            String
   senderName        String?
   senderEmail       String?
@@ -197,8 +235,8 @@ model InboxMessage {
   preview           String?
   body              String?
   assignedTo        String?
-  status            String        @default("unread")
-  createdAt         DateTime      @default(now())
+  status            String   @default("unread")
+  createdAt         DateTime @default(now())
   conversationId    String?
   customerId        Int?
   jobId             Int?
@@ -217,12 +255,12 @@ model InboxMessage {
 }
 
 model InboxConnection {
-  id                String    @id @default(cuid())
-  service           String    @unique
+  id                String   @id @default(cuid())
+  service           String   @unique
   account           String?
   lastSync          DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
   accessToken       String?
   externalAccountId String?
   refreshToken      String?
@@ -231,15 +269,15 @@ model InboxConnection {
 }
 
 model TimeOffRequest {
-  id                Int                      @id @default(autoincrement())
+  id                Int      @id @default(autoincrement())
   workerId          Int
   requestType       String
-  status            String                   @default("pending")
+  status            String   @default("pending")
   startDate         DateTime
   endDate           DateTime
   startTime         String?
   endTime           String?
-  isFullDay         Boolean                  @default(true)
+  isFullDay         Boolean  @default(true)
   reason            String?
   requestedByName   String?
   reviewedByName    String?
@@ -247,9 +285,9 @@ model TimeOffRequest {
   reviewedAt        DateTime?
   cancelledAt       DateTime?
   cancellationNote  String?
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
-  worker            Worker                   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  worker            Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
   availabilityBlock WorkerAvailabilityBlock?
 
   @@index([workerId, status, startDate])
@@ -258,23 +296,39 @@ model TimeOffRequest {
 }
 
 model WorkerAvailabilityBlock {
-  id        Int             @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   workerId  Int
-  requestId Int?            @unique
-  source    String          @default("time_off_request")
+  requestId Int?     @unique
+  source    String   @default("time_off_request")
   title     String
   startDate DateTime
   endDate   DateTime
   startTime String?
   endTime   String?
-  isFullDay Boolean         @default(true)
+  isFullDay Boolean  @default(true)
   notes     String?
-  active    Boolean         @default(true)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   request   TimeOffRequest? @relation(fields: [requestId], references: [id])
   worker    Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
   @@index([workerId, active, startDate, endDate])
   @@index([startDate, endDate])
+}
+
+model JobAuditLog {
+  id            Int      @id @default(autoincrement())
+  jobId         Int
+  actorWorkerId Int?
+  action        String
+  beforeJson    String?
+  afterJson     String?
+  createdAt     DateTime @default(now())
+  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  actorWorker   Worker?  @relation(fields: [actorWorkerId], references: [id])
+
+  @@index([jobId, createdAt])
+  @@index([actorWorkerId, createdAt])
+  @@index([action, createdAt])
 }

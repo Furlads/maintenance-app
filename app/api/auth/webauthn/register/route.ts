@@ -7,8 +7,28 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 const rpName = "Furlads";
-const rpID = process.env.WEBAUTHN_RP_ID || "";
-const origin = process.env.WEBAUTHN_ORIGIN || "";
+const rpID = process.env.WEBAUTHN_RP_ID;
+const origin = process.env.WEBAUTHN_ORIGIN;
+const REG_CHALLENGE_COOKIE = "furlads_webauthn_reg_challenge";
+
+function normalisePhone(value: string) {
+  return String(value || "").replace(/\s+/g, "").trim();
+}
+
+function isLocked(worker: { lockedUntil?: Date | null }) {
+  return !!worker.lockedUntil && worker.lockedUntil.getTime() > Date.now();
+}
+
+function getRemainingLockMinutes(worker: { lockedUntil?: Date | null }) {
+  if (!worker.lockedUntil) return 0;
+  const diffMs = worker.lockedUntil.getTime() - Date.now();
+  if (diffMs <= 0) return 0;
+  return Math.ceil(diffMs / 60000);
+}
+
+function getSecureCookieFlag() {
+  return process.env.NODE_ENV === "production";
+}
 
 export async function POST(req: Request) {
   try {
@@ -22,8 +42,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
-    const phone = String(body?.phone || "").trim();
+    const body = await req.json().catch(() => null);
+    const phone = normalisePhone(String(body?.phone || ""));
 
     if (!phone) {
       return NextResponse.json(
@@ -49,12 +69,27 @@ export async function POST(req: Request) {
       );
     }
 
+    if (isLocked(worker)) {
+      const minutesRemaining = getRemainingLockMinutes(worker);
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            minutesRemaining > 0
+              ? `Account locked. Try again in about ${minutesRemaining} minute${minutesRemaining === 1 ? "" : "s"}.`
+              : "Account locked. Try again shortly.",
+        },
+        { status: 423 }
+      );
+    }
+
     const options = await generateRegistrationOptions({
       rpName,
       rpID,
-      userID: Uint8Array.from(Buffer.from(String(worker.id), "utf8")),
+      userID: new TextEncoder().encode(String(worker.id)),
       userName: worker.phone || `${worker.firstName} ${worker.lastName}`.trim(),
-      userDisplayName: `${worker.firstName} ${worker.lastName}`.trim(),
+      userDisplayName: `${worker.firstName || ""} ${worker.lastName || ""}`.trim(),
       attestationType: "none",
       authenticatorSelection: {
         residentKey: "preferred",
@@ -70,21 +105,26 @@ export async function POST(req: Request) {
       })),
     });
 
-    cookies().set("furlads_webauthn_reg_challenge", options.challenge, {
+    const cookieStore = await cookies();
+    cookieStore.set(REG_CHALLENGE_COOKIE, options.challenge, {
       httpOnly: true,
-      secure: true,
+      secure: getSecureCookieFlag(),
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 10,
     });
 
     return NextResponse.json({ ok: true, options });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WEBAUTHN_REGISTER_START_ERROR", error);
+
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Could not start Face ID setup.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not start Face ID setup.",
       },
       { status: 500 }
     );
@@ -103,10 +143,12 @@ export async function PUT(req: Request) {
       );
     }
 
-    const body = await req.json();
-    const phone = String(body?.phone || "").trim();
+    const body = await req.json().catch(() => null);
+    const phone = normalisePhone(String(body?.phone || ""));
     const credential = body?.credential;
-    const challenge = cookies().get("furlads_webauthn_reg_challenge")?.value;
+
+    const cookieStore = await cookies();
+    const challenge = cookieStore.get(REG_CHALLENGE_COOKIE)?.value;
 
     if (!phone || !credential) {
       return NextResponse.json(
@@ -127,12 +169,31 @@ export async function PUT(req: Request) {
         phone,
         active: true,
       },
+      select: {
+        id: true,
+        lockedUntil: true,
+      },
     });
 
     if (!worker) {
       return NextResponse.json(
         { ok: false, error: "Worker not found." },
         { status: 404 }
+      );
+    }
+
+    if (isLocked(worker)) {
+      const minutesRemaining = getRemainingLockMinutes(worker);
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            minutesRemaining > 0
+              ? `Account locked. Try again in about ${minutesRemaining} minute${minutesRemaining === 1 ? "" : "s"}.`
+              : "Account locked. Try again shortly.",
+        },
+        { status: 423 }
       );
     }
 
@@ -155,6 +216,26 @@ export async function PUT(req: Request) {
       credentialDeviceType,
       credentialBackedUp,
     } = verification.registrationInfo;
+
+    const existingCredential = await prisma.webAuthnCredential.findUnique({
+      where: {
+        id: newCredential.id,
+      },
+      select: {
+        id: true,
+        workerId: true,
+      },
+    });
+
+    if (existingCredential && existingCredential.workerId !== worker.id) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "This passkey is already registered to another worker.",
+        },
+        { status: 409 }
+      );
+    }
 
     await prisma.webAuthnCredential.upsert({
       where: {
@@ -182,21 +263,25 @@ export async function PUT(req: Request) {
       },
     });
 
-    cookies().set("furlads_webauthn_reg_challenge", "", {
+    cookieStore.set(REG_CHALLENGE_COOKIE, "", {
       httpOnly: true,
-      secure: true,
+      secure: getSecureCookieFlag(),
       sameSite: "lax",
       path: "/",
       maxAge: 0,
     });
 
     return NextResponse.json({ ok: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WEBAUTHN_REGISTER_FINISH_ERROR", error);
+
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Could not save Face ID setup.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not save Face ID setup.",
       },
       { status: 500 }
     );

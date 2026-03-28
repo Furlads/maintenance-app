@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
+import { verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
 import { createSessionForWorker } from "@/lib/auth";
 
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
+
 function normalise(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalisePhone(value: string) {
+  return String(value || "").replace(/\s+/g, "").trim();
 }
 
 function isTrevLogin(worker: {
@@ -47,25 +54,30 @@ function getRedirectPath(worker: {
   return "/today";
 }
 
-function normalisePhone(value: string) {
-  return String(value || "").replace(/\s+/g, "").trim();
+function isLocked(worker: {
+  lockedUntil?: Date | null;
+}) {
+  return !!worker.lockedUntil && worker.lockedUntil.getTime() > Date.now();
+}
+
+function getRemainingLockMinutes(worker: {
+  lockedUntil?: Date | null;
+}) {
+  if (!worker.lockedUntil) return 0;
+  const diffMs = worker.lockedUntil.getTime() - Date.now();
+  if (diffMs <= 0) return 0;
+  return Math.ceil(diffMs / 60000);
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+
     const rawPhone = String(body?.phone || "");
     const password = String(body?.password || "");
     const phone = normalisePhone(rawPhone);
 
-    console.log("LOGIN_ATTEMPT", {
-      rawPhone,
-      normalisedPhone: phone,
-      passwordLength: password.length,
-    });
-
     if (!phone || !password) {
-      console.log("LOGIN_FAIL_MISSING_FIELDS");
       return NextResponse.json(
         { ok: false, error: "Phone and password are required." },
         { status: 400 }
@@ -79,86 +91,115 @@ export async function POST(req: Request) {
           equals: phone,
         },
       },
-    });
-
-    console.log("LOGIN_WORKER_LOOKUP", {
-      found: !!worker,
-      workerId: worker?.id ?? null,
-      workerPhone: worker?.phone ?? null,
-      hasPasswordHash: !!worker?.passwordHash,
-      mustChangePassword: !!worker?.mustChangePassword,
-      accessLevel: worker?.accessLevel ?? null,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        accessLevel: true,
+        passwordHash: true,
+        mustChangePassword: true,
+        failedLoginAttempts: true,
+        lockedUntil: true,
+      },
     });
 
     if (!worker) {
-      console.log("LOGIN_FAIL_NO_WORKER");
       return NextResponse.json(
         { ok: false, error: "Invalid login details." },
         { status: 401 }
+      );
+    }
+
+    if (isLocked(worker)) {
+      const minutesRemaining = getRemainingLockMinutes(worker);
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            minutesRemaining > 0
+              ? `Account locked. Try again in about ${minutesRemaining} minute${minutesRemaining === 1 ? "" : "s"}.`
+              : "Account locked. Try again shortly.",
+        },
+        { status: 423 }
       );
     }
 
     if (!worker.passwordHash) {
-      console.log("LOGIN_FAIL_NO_PASSWORD_HASH", {
-        workerId: worker.id,
-      });
       return NextResponse.json(
         { ok: false, error: "Invalid login details." },
         { status: 401 }
       );
     }
 
-    const valid = await bcrypt.compare(password, worker.passwordHash);
-
-    console.log("LOGIN_PASSWORD_CHECK", {
-      workerId: worker.id,
-      valid,
-    });
+    const valid = await verifyPassword(password, worker.passwordHash);
 
     if (!valid) {
-      console.log("LOGIN_FAIL_BAD_PASSWORD", {
-        workerId: worker.id,
+      const nextFailedAttempts = (worker.failedLoginAttempts || 0) + 1;
+      const shouldLock = nextFailedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS;
+
+      await prisma.worker.update({
+        where: { id: worker.id },
+        data: {
+          failedLoginAttempts: nextFailedAttempts,
+          lockedUntil: shouldLock
+            ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000)
+            : null,
+        },
       });
+
       return NextResponse.json(
-        { ok: false, error: "Invalid login details." },
+        {
+          ok: false,
+          error: shouldLock
+            ? `Too many failed attempts. Account locked for ${LOCKOUT_MINUTES} minutes.`
+            : "Invalid login details.",
+        },
         { status: 401 }
       );
     }
 
-    await prisma.worker.update({
+    const updatedWorker = await prisma.worker.update({
       where: { id: worker.id },
       data: {
         failedLoginAttempts: 0,
         lockedUntil: null,
         lastLoginAt: new Date(),
       },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        accessLevel: true,
+        mustChangePassword: true,
+      },
     });
 
-    const accessLevel = worker.accessLevel || "worker";
-    const redirectTo = worker.mustChangePassword
+    const accessLevel = updatedWorker.accessLevel || "worker";
+    const redirectTo = updatedWorker.mustChangePassword
       ? "/change-password"
-      : getRedirectPath(worker);
+      : getRedirectPath(updatedWorker);
 
-    console.log("LOGIN_SUCCESS", {
-      workerId: worker.id,
-      redirectTo,
-      mustChangePassword: worker.mustChangePassword,
+    await createSessionForWorker({
+      ...updatedWorker,
     });
-
-    await createSessionForWorker(worker);
 
     return NextResponse.json({
       ok: true,
       worker: {
-        id: worker.id,
-        name: `${worker.firstName} ${worker.lastName}`.trim(),
+        id: updatedWorker.id,
+        name: `${updatedWorker.firstName} ${updatedWorker.lastName}`.trim(),
         accessLevel,
       },
       redirectTo,
-      mustChangePassword: worker.mustChangePassword,
+      mustChangePassword: updatedWorker.mustChangePassword,
     });
   } catch (error) {
     console.error("LOGIN_ROUTE_ERROR", error);
+
     return NextResponse.json(
       { ok: false, error: "Server error." },
       { status: 500 }

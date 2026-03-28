@@ -21,6 +21,16 @@ const PREFERRED_DAYS = new Set([
   'Friday',
 ])
 const PREFERRED_TIME_BANDS = new Set(['Morning', 'Midday', 'Afternoon', 'Anytime'])
+const ALLOWED_PAYMENT_STATUSES = new Set(['cash_paid', 'invoice_needed'])
+const ALLOWED_JOB_STATUSES = new Set([
+  'unscheduled',
+  'todo',
+  'in_progress',
+  'paused',
+  'done',
+  'cancelled',
+  'archived',
+])
 
 function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
@@ -90,6 +100,10 @@ function parseDateValue(value: unknown): Date | null | undefined {
     if (!Number.isNaN(parsed.getTime())) return parsed
   }
 
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value
+  }
+
   return undefined
 }
 
@@ -110,7 +124,7 @@ function parseNonNegativeInt(value: unknown): number | undefined {
 function parseAssignedWorkerIds(input: unknown): number[] {
   if (!Array.isArray(input)) return []
 
-  const cleaned: number[] = input
+  const cleanedIds: number[] = input
     .map((value): number | null => {
       if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
         return value
@@ -127,17 +141,21 @@ function parseAssignedWorkerIds(input: unknown): number[] {
     })
     .filter((value): value is number => value !== null)
 
-  return [...new Set(cleaned)]
+  return [...new Set(cleanedIds)]
+}
+
+function getAssignedWorkerIdsFromBody(body: Record<string, unknown>) {
+  return parseAssignedWorkerIds(body.assignedWorkerIds ?? body.assignedTo)
 }
 
 function parseMaintenanceFrequency(value: unknown) {
-  const cleaned = clean(value)
-  return MAINTENANCE_FREQUENCY_VALUES.has(cleaned) ? cleaned : null
+  const cleanedValue = clean(value)
+  return MAINTENANCE_FREQUENCY_VALUES.has(cleanedValue) ? cleanedValue : null
 }
 
 function parseMaintenanceFrequencyUnit(value: unknown) {
-  const cleaned = clean(value).toLowerCase()
-  if (cleaned === 'weeks' || cleaned === 'monthly') return cleaned
+  const cleanedValue = clean(value).toLowerCase()
+  if (cleanedValue === 'weeks' || cleanedValue === 'monthly') return cleanedValue
   return null
 }
 
@@ -184,9 +202,7 @@ function normaliseMaintenanceSettings(input: {
   const maintenanceFrequency = parseMaintenanceFrequency(input.maintenanceFrequency)
 
   if (!maintenanceFrequency) {
-    throw new Error(
-      'Regular maintenance jobs must have a valid maintenance frequency.'
-    )
+    throw new Error('Regular maintenance jobs must have a valid maintenance frequency.')
   }
 
   const parsedWeeks = parsePositiveInt(input.maintenanceFrequencyWeeks)
@@ -340,10 +356,7 @@ async function resolveTrevQuoteVisitSchedule(params: {
 
   const existingTrevQuoteJobs = await prisma.job.findMany({
     where: {
-      jobType: {
-        equals: 'Quote',
-        mode: 'insensitive',
-      },
+      jobType: 'Quote',
       visitDate: {
         gte: dayStart,
         lt: dayEnd,
@@ -369,8 +382,7 @@ async function resolveTrevQuoteVisitSchedule(params: {
     return {
       error: NextResponse.json(
         {
-          error:
-            'Trev already has 3 quote visits booked for that day. Maximum reached.',
+          error: 'Trev already has 3 quote visits booked for that day. Maximum reached.',
         },
         { status: 400 }
       ),
@@ -486,6 +498,22 @@ function getRequestedDate(searchParams: URLSearchParams) {
   return parsed
 }
 
+function parsePageSize(searchParams: URLSearchParams) {
+  const value = parsePositiveInt(searchParams.get('pageSize'))
+  if (!value) return 50
+  return Math.min(value, 200)
+}
+
+function parsePage(searchParams: URLSearchParams) {
+  const value = parsePositiveInt(searchParams.get('page'))
+  return value ?? 1
+}
+
+function getIncludeMode(searchParams: URLSearchParams) {
+  const detailed = isTrue(searchParams.get('detailed'))
+  return detailed ? 'detailed' : 'list'
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
@@ -498,21 +526,20 @@ export async function GET(req: Request) {
     const status = clean(searchParams.get('status'))
     const q = clean(searchParams.get('q'))
     const requestedDate = getRequestedDate(searchParams)
+    const pageSize = parsePageSize(searchParams)
+    const page = parsePage(searchParams)
+    const skip = (page - 1) * pageSize
+    const includeMode = getIncludeMode(searchParams)
 
-    const where: any = {}
+    const where: Record<string, unknown> = {}
 
     if (status) {
       where.status = status
     } else {
       const excludedStatuses: string[] = []
 
-      if (!includeArchived) {
-        excludedStatuses.push('archived')
-      }
-
-      if (!includeCancelled) {
-        excludedStatuses.push('cancelled')
-      }
+      if (!includeArchived) excludedStatuses.push('archived')
+      if (!includeCancelled) excludedStatuses.push('cancelled')
 
       if (excludedStatuses.length > 0) {
         where.status = {
@@ -546,36 +573,11 @@ export async function GET(req: Request) {
 
     if (q) {
       where.OR = [
-        {
-          title: {
-            contains: q,
-            mode: 'insensitive',
-          },
-        },
-        {
-          address: {
-            contains: q,
-            mode: 'insensitive',
-          },
-        },
-        {
-          jobType: {
-            contains: q,
-            mode: 'insensitive',
-          },
-        },
-        {
-          notes: {
-            contains: q,
-            mode: 'insensitive',
-          },
-        },
-        {
-          paymentNotes: {
-            contains: q,
-            mode: 'insensitive',
-          },
-        },
+        { title: { contains: q, mode: 'insensitive' } },
+        { address: { contains: q, mode: 'insensitive' } },
+        { jobType: { contains: q, mode: 'insensitive' } },
+        { notes: { contains: q, mode: 'insensitive' } },
+        { paymentNotes: { contains: q, mode: 'insensitive' } },
         {
           customer: {
             name: {
@@ -595,26 +597,58 @@ export async function GET(req: Request) {
       ]
     }
 
-    const jobs = await prisma.job.findMany({
-      where,
-      orderBy: [
-        { visitDate: 'asc' },
-        { startTime: 'asc' },
-        { createdAt: 'desc' },
-      ],
-      include: {
-        customer: true,
-        assignments: {
-          include: {
-            worker: true,
-          },
-        },
-        photos: true,
-        chasMessages: true,
+    const [jobs, total] = await Promise.all([
+      prisma.job.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: [
+          { visitDate: 'asc' },
+          { startTime: 'asc' },
+          { createdAt: 'desc' },
+        ],
+        include:
+          includeMode === 'detailed'
+            ? {
+                customer: true,
+                assignments: {
+                  include: {
+                    worker: true,
+                  },
+                },
+                photos: true,
+                chasMessages: true,
+                jobNotes: {
+                  orderBy: {
+                    createdAt: 'desc',
+                  },
+                  take: 20,
+                  include: {
+                    worker: true,
+                  },
+                },
+              }
+            : {
+                customer: true,
+                assignments: {
+                  include: {
+                    worker: true,
+                  },
+                },
+              },
+      }),
+      prisma.job.count({ where }),
+    ])
+
+    return NextResponse.json({
+      items: jobs,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
       },
     })
-
-    return NextResponse.json(jobs)
   } catch (error) {
     console.error('GET /api/jobs failed:', error)
 
@@ -655,7 +689,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const assignedWorkerIds = parseAssignedWorkerIds(body.assignedTo)
+    const assignedWorkerIds = getAssignedWorkerIdsFromBody(body)
 
     if (assignedWorkerIds.length > 0) {
       const existingWorkers = await prisma.worker.findMany({
@@ -699,6 +733,11 @@ export async function POST(req: Request) {
         }
 
         startTime = trimmedStartTime
+      } else {
+        return NextResponse.json(
+          { error: 'startTime must be a string in HH:MM format' },
+          { status: 400 }
+        )
       }
     }
 
@@ -719,6 +758,14 @@ export async function POST(req: Request) {
     }
 
     const requestedStatus = clean(body.status).toLowerCase()
+
+    if (requestedStatus && !ALLOWED_JOB_STATUSES.has(requestedStatus)) {
+      return NextResponse.json(
+        { error: 'Invalid job status' },
+        { status: 400 }
+      )
+    }
+
     const isTrevQuoteJob =
       isQuoteJobType(jobType) && resolvedQuoteSchedule.visitDate !== null
 
@@ -741,12 +788,11 @@ export async function POST(req: Request) {
     }
 
     const paymentStatusRaw = clean(body.paymentStatus).toLowerCase()
-    const allowedPaymentStatuses = new Set(['cash_paid', 'invoice_needed'])
 
     const paymentStatus =
       paymentStatusRaw === ''
         ? null
-        : allowedPaymentStatuses.has(paymentStatusRaw)
+        : ALLOWED_PAYMENT_STATUSES.has(paymentStatusRaw)
           ? paymentStatusRaw
           : null
 
@@ -835,6 +881,24 @@ export async function POST(req: Request) {
         },
         photos: true,
         chasMessages: true,
+      },
+    })
+
+    await prisma.jobAuditLog.create({
+      data: {
+        jobId: created.id,
+        action: 'created',
+        afterJson: JSON.stringify({
+          id: created.id,
+          title: created.title,
+          customerId: created.customerId,
+          address: created.address,
+          visitDate: created.visitDate,
+          startTime: created.startTime,
+          status: created.status,
+          jobType: created.jobType,
+          assignedWorkerIds,
+        }),
       },
     })
 

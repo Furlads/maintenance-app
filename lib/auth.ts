@@ -5,6 +5,20 @@ import crypto from "crypto";
 export const COOKIE_NAME = "ma_session";
 const DEFAULT_SECRET = "dev-secret-change-me";
 
+function getSessionSecret() {
+  const secret = process.env.SESSION_SECRET?.trim();
+
+  if (secret) {
+    return secret;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET is missing in production.");
+  }
+
+  return DEFAULT_SECRET;
+}
+
 export async function getBaseUrl() {
   const h = await headers();
   const host = h.get("host") || "localhost:3000";
@@ -25,8 +39,30 @@ function base64urlJson(obj: unknown) {
   return base64url(JSON.stringify(obj));
 }
 
+function base64urlToBuffer(value: string) {
+  const normalised = String(value || "")
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+
+  const paddingLength = (4 - (normalised.length % 4)) % 4;
+  const padded = normalised + "=".repeat(paddingLength);
+
+  return Buffer.from(padded, "base64");
+}
+
 function sign(data: string, secret: string) {
   return base64url(crypto.createHmac("sha256", secret).update(data).digest());
+}
+
+function safeEqual(a: string, b: string) {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
 export type SessionPayload = {
@@ -41,7 +77,7 @@ export function signSession(
   payload: Omit<SessionPayload, "iat" | "exp">,
   ttlSeconds = 60 * 60 * 24 * 30
 ) {
-  const secret = process.env.SESSION_SECRET || DEFAULT_SECRET;
+  const secret = getSessionSecret();
   const now = Math.floor(Date.now() / 1000);
 
   const header = { alg: "HS256", typ: "JWT" };
@@ -60,23 +96,31 @@ export function signSession(
 
 export function verifySessionToken(token: string): SessionPayload | null {
   try {
-    const secret = process.env.SESSION_SECRET || DEFAULT_SECRET;
+    const secret = getSessionSecret();
     const parts = String(token || "").split(".");
     if (parts.length !== 3) return null;
 
     const [h, p, sig] = parts;
+    if (!h || !p || !sig) return null;
+
     const expected = sign(`${h}.${p}`, secret);
-    if (sig !== expected) return null;
+    if (!safeEqual(sig, expected)) return null;
 
-    const json = Buffer.from(
-      p.replace(/-/g, "+").replace(/_/g, "/"),
-      "base64"
-    ).toString("utf8");
-
+    const json = base64urlToBuffer(p).toString("utf8");
     const payload = JSON.parse(json) as SessionPayload;
     const now = Math.floor(Date.now() / 1000);
 
-    if (!payload?.exp || payload.exp < now) return null;
+    if (!payload || typeof payload !== "object") return null;
+    if (!payload.exp || typeof payload.exp !== "number") return null;
+    if (payload.exp < now) return null;
+    if (!payload.iat || typeof payload.iat !== "number") return null;
+    if (typeof payload.workerName !== "string") return null;
+    if (payload.workerId !== undefined && typeof payload.workerId !== "string") {
+      return null;
+    }
+    if (payload.role !== undefined && typeof payload.role !== "string") {
+      return null;
+    }
 
     return payload;
   } catch {

@@ -7,8 +7,18 @@ import { runLocalRepairForJob } from '@/lib/auto-scheduler'
 type Ctx = { params: Promise<{ id: string }> }
 
 const DEFAULT_JOB_DURATION_MINUTES = 60
-const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00']
+const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00'] as const
 const RECURRING_HORIZON_DAYS = 42
+const ALLOWED_JOB_STATUSES = new Set([
+  'unscheduled',
+  'todo',
+  'in_progress',
+  'paused',
+  'done',
+  'cancelled',
+  'archived',
+])
+const ALLOWED_PAYMENT_STATUSES = new Set(['cash_paid', 'invoice_needed'])
 
 function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
@@ -68,12 +78,18 @@ function parseDateValue(value: unknown): Date | null | undefined {
   if (value === null || value === '' || value === 'null') return null
 
   if (typeof value === 'string') {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-      return new Date(`${value.trim()}T00:00:00.000Z`)
+    const trimmed = value.trim()
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return new Date(`${trimmed}T00:00:00.000Z`)
     }
 
-    const parsed = new Date(value)
+    const parsed = new Date(trimmed)
     if (!Number.isNaN(parsed.getTime())) return parsed
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value
   }
 
   return undefined
@@ -114,6 +130,10 @@ function parseAssignedWorkerIds(input: unknown): number[] {
     .filter((value): value is number => value !== null)
 
   return [...new Set(cleaned)]
+}
+
+function getAssignedWorkerIdsFromBody(body: Record<string, unknown>) {
+  return parseAssignedWorkerIds(body.assignedWorkerIds ?? body.assignedTo)
 }
 
 function isMaintenanceJob(jobType: string | null | undefined) {
@@ -283,25 +303,11 @@ function calculateNextMaintenanceVisitDate(args: {
     return addMonthsToDate(args.baseDate, 1)
   }
 
-  if (frequency === 'weekly') {
-    return addDaysToDate(args.baseDate, 7)
-  }
-
-  if (frequency === 'fortnightly') {
-    return addDaysToDate(args.baseDate, 14)
-  }
-
-  if (frequency === 'every_3_weeks') {
-    return addDaysToDate(args.baseDate, 21)
-  }
-
-  if (frequency === '4-weekly') {
-    return addDaysToDate(args.baseDate, 28)
-  }
-
-  if (weeks) {
-    return addDaysToDate(args.baseDate, weeks * 7)
-  }
+  if (frequency === 'weekly') return addDaysToDate(args.baseDate, 7)
+  if (frequency === 'fortnightly') return addDaysToDate(args.baseDate, 14)
+  if (frequency === 'every_3_weeks') return addDaysToDate(args.baseDate, 21)
+  if (frequency === '4-weekly') return addDaysToDate(args.baseDate, 28)
+  if (weeks) return addDaysToDate(args.baseDate, weeks * 7)
 
   return null
 }
@@ -380,13 +386,8 @@ async function ensureFutureRecurringMaintenanceJobs(args: {
       maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
     })
 
-    if (!nextVisitDate) {
-      break
-    }
-
-    if (nextVisitDate > horizonEnd) {
-      break
-    }
+    if (!nextVisitDate) break
+    if (nextVisitDate > horizonEnd) break
 
     const nextVisitKey = londonDateOnlyString(nextVisitDate)
 
@@ -404,7 +405,6 @@ async function ensureFutureRecurringMaintenanceJobs(args: {
           overrunMins: 0,
           pausedMinutes: 0,
           status: 'unscheduled',
-
           visitPattern: job.visitPattern,
           isRegularMaintenance: true,
           maintenanceFrequency: job.maintenanceFrequency,
@@ -413,7 +413,6 @@ async function ensureFutureRecurringMaintenanceJobs(args: {
           timePreferenceMode: job.timePreferenceMode,
           preferredDay: job.preferredDay,
           preferredTimeBand: job.preferredTimeBand,
-
           assignments:
             job.assignments.length > 0
               ? {
@@ -589,11 +588,14 @@ async function resolveTrevQuoteVisitSchedule(params: {
       id: true,
       jobType: true,
       startTime: true,
+      status: true,
     },
   })
 
   const existingTrevQuoteJobs = existingJobsForTrevThatDay.filter(
-    (job) => clean(job.jobType).toLowerCase() === 'quote'
+    (job) =>
+      clean(job.jobType).toLowerCase() === 'quote' &&
+      !['cancelled', 'archived'].includes(clean(job.status).toLowerCase())
   )
 
   if (existingTrevQuoteJobs.length >= 3) {
@@ -636,7 +638,9 @@ async function resolveTrevQuoteVisitSchedule(params: {
 
   if (
     !allowQuoteTimeOverride &&
-    !TREV_QUOTE_DEFAULT_SLOTS.includes(resolvedStartTime)
+    !TREV_QUOTE_DEFAULT_SLOTS.includes(
+      resolvedStartTime as (typeof TREV_QUOTE_DEFAULT_SLOTS)[number]
+    )
   ) {
     return {
       error: NextResponse.json(
@@ -673,7 +677,7 @@ function normaliseScheduleState(params: {
   startTime: string | null
   isTrevQuoteJob: boolean
 }) {
-  const { requestedStatus, visitDate, startTime, isTrevQuoteJob } = params
+  const { requestedStatus, visitDate, startTime } = params
   const cleanStatus = clean(requestedStatus).toLowerCase()
 
   if (startTime && !visitDate) {
@@ -720,8 +724,67 @@ function shouldTriggerSchedulerRepair(
     'durationMinutes' in body ||
     'durationMins' in body ||
     'assignedTo' in body ||
+    'assignedWorkerIds' in body ||
     changedAssignedWorkers
   )
+}
+
+function buildJobAuditSnapshot(job: {
+  id: number
+  title: string
+  customerId: number
+  address: string
+  notes: string | null
+  visitDate: Date | null
+  startTime: string | null
+  durationMinutes: number | null
+  status: string
+  jobType: string
+  arrivedAt?: Date | null
+  finishedAt?: Date | null
+  pausedAt?: Date | null
+  pausedMinutes?: number | null
+  overrunMins?: number | null
+  paymentStatus?: string | null
+  paymentNotes?: string | null
+  visitPattern?: string | null
+  isRegularMaintenance?: boolean | null
+  maintenanceFrequency?: string | null
+  maintenanceFrequencyUnit?: string | null
+  maintenanceFrequencyWeeks?: number | null
+  timePreferenceMode?: string | null
+  preferredDay?: string | null
+  preferredTimeBand?: string | null
+  assignments?: Array<{ workerId: number }>
+}) {
+  return {
+    id: job.id,
+    title: job.title,
+    customerId: job.customerId,
+    address: job.address,
+    notes: job.notes,
+    visitDate: job.visitDate,
+    startTime: job.startTime,
+    durationMinutes: job.durationMinutes,
+    status: job.status,
+    jobType: job.jobType,
+    arrivedAt: job.arrivedAt ?? null,
+    finishedAt: job.finishedAt ?? null,
+    pausedAt: job.pausedAt ?? null,
+    pausedMinutes: job.pausedMinutes ?? 0,
+    overrunMins: job.overrunMins ?? 0,
+    paymentStatus: job.paymentStatus ?? null,
+    paymentNotes: job.paymentNotes ?? null,
+    visitPattern: job.visitPattern ?? null,
+    isRegularMaintenance: job.isRegularMaintenance ?? false,
+    maintenanceFrequency: job.maintenanceFrequency ?? null,
+    maintenanceFrequencyUnit: job.maintenanceFrequencyUnit ?? null,
+    maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks ?? null,
+    timePreferenceMode: job.timePreferenceMode ?? null,
+    preferredDay: job.preferredDay ?? null,
+    preferredTimeBand: job.preferredTimeBand ?? null,
+    assignedWorkerIds: (job.assignments ?? []).map((assignment) => assignment.workerId),
+  }
 }
 
 export async function GET(_: Request, ctx: Ctx) {
@@ -802,6 +865,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
     }
 
+    const existingSnapshot = buildJobAuditSnapshot(existing)
+
     const action = clean(body.action).toLowerCase()
     const requestedStatus = clean(body.status).toLowerCase()
     const appendNote = clean(body.appendNote)
@@ -822,6 +887,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
     let pausedMinutesUpdate: number | undefined = undefined
 
     if (requestedStatus) {
+      if (!ALLOWED_JOB_STATUSES.has(requestedStatus)) {
+        return NextResponse.json(
+          { error: 'Invalid job status' },
+          { status: 400 }
+        )
+      }
+
       statusUpdate = requestedStatus
     }
 
@@ -939,6 +1011,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
         }
 
         startTimeUpdate = trimmedStartTime
+      } else {
+        return NextResponse.json(
+          { error: 'startTime must be a string in HH:MM format' },
+          { status: 400 }
+        )
       }
     }
 
@@ -953,12 +1030,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
         ? undefined
         : parsePositiveInt(body.customerId)
 
-    let assignedWorkerIdsForResponse: number[] | undefined = undefined
     let proposedAssignedWorkerIds =
       existing.assignments.map((assignment) => assignment.workerId)
+    let assignedWorkerIdsForResponse: number[] | undefined = undefined
 
-    if (body.assignedTo !== undefined) {
-      const cleanedWorkerIds = parseAssignedWorkerIds(body.assignedTo)
+    if (body.assignedTo !== undefined || body.assignedWorkerIds !== undefined) {
+      const cleanedWorkerIds = getAssignedWorkerIdsFromBody(body)
 
       const existingWorkers = cleanedWorkerIds.length
         ? await prisma.worker.findMany({
@@ -991,92 +1068,80 @@ export async function PATCH(req: Request, ctx: Ctx) {
       assignedWorkerIdsForResponse = cleanedWorkerIds
     }
 
-    if (body.assignedTo !== undefined) {
-      await prisma.$transaction([
-        prisma.jobAssignment.deleteMany({
-          where: { jobId },
-        }),
-        ...(proposedAssignedWorkerIds.length > 0
-          ? [
-              prisma.jobAssignment.createMany({
-                data: proposedAssignedWorkerIds.map((workerId) => ({
-                  jobId,
-                  workerId,
-                })),
-                skipDuplicates: true,
-              }),
-            ]
-          : []),
-      ])
-    }
-
-    if (isCancelAction) {
-      const updated = await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'cancelled',
-          visitDate: null,
-          startTime: null,
-          arrivedAt: null,
-          finishedAt: null,
-          pausedAt: null,
-          pausedMinutes: 0,
-        },
-        include: {
-          customer: true,
-          assignments: {
-            include: {
-              worker: true,
-            },
-          },
-          photos: true,
-          chasMessages: true,
-        },
-      })
-
-      const { notes, notesLog } = await buildNotesLog(jobId)
-
-      try {
-        await runLocalRepairForJob({
-          jobId,
-          reason: 'cancel',
-        })
-      } catch (schedulerError) {
-        console.error('Local scheduler repair failed after job cancel:', schedulerError)
+    if ('paymentStatus' in body && body.paymentStatus !== null) {
+      const paymentStatusRaw = clean(body.paymentStatus).toLowerCase()
+      if (paymentStatusRaw && !ALLOWED_PAYMENT_STATUSES.has(paymentStatusRaw)) {
+        return NextResponse.json(
+          { error: 'paymentStatus must be cash_paid or invoice_needed' },
+          { status: 400 }
+        )
       }
-
-      return NextResponse.json({
-        ...updated,
-        jobNotes: notes,
-        notesLog,
-        assignedWorkerIds:
-          assignedWorkerIdsForResponse ??
-          updated.assignments.map((assignment) => assignment.workerId),
-      })
     }
 
-    if (isArchiveAction) {
-      const updated = await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'archived',
-          visitDate: null,
-          startTime: null,
-          arrivedAt: null,
-          finishedAt: null,
-          pausedAt: null,
-          pausedMinutes: 0,
-        },
-        include: {
-          customer: true,
-          assignments: {
-            include: {
-              worker: true,
-            },
+    if (isCancelAction || isArchiveAction) {
+      const finalStatus = isCancelAction ? 'cancelled' : 'archived'
+
+      const updated = await prisma.$transaction(async (tx) => {
+        if (body.assignedTo !== undefined || body.assignedWorkerIds !== undefined) {
+          await tx.jobAssignment.deleteMany({
+            where: { jobId },
+          })
+
+          if (proposedAssignedWorkerIds.length > 0) {
+            await tx.jobAssignment.createMany({
+              data: proposedAssignedWorkerIds.map((workerId) => ({
+                jobId,
+                workerId,
+              })),
+              skipDuplicates: true,
+            })
+          }
+        }
+
+        const result = await tx.job.update({
+          where: { id: jobId },
+          data: {
+            status: finalStatus,
+            visitDate: null,
+            startTime: null,
+            arrivedAt: null,
+            finishedAt: null,
+            pausedAt: null,
+            pausedMinutes: 0,
+            ...(isCancelAction
+              ? {
+                  cancelledAt: now,
+                  cancellationReason:
+                    typeof body.cancellationReason === 'string'
+                      ? body.cancellationReason.trim() || null
+                      : null,
+                }
+              : {
+                  archivedAt: now,
+                }),
           },
-          photos: true,
-          chasMessages: true,
-        },
+          include: {
+            customer: true,
+            assignments: {
+              include: {
+                worker: true,
+              },
+            },
+            photos: true,
+            chasMessages: true,
+          },
+        })
+
+        await tx.jobAuditLog.create({
+          data: {
+            jobId,
+            action: finalStatus,
+            beforeJson: JSON.stringify(existingSnapshot),
+            afterJson: JSON.stringify(buildJobAuditSnapshot(result)),
+          },
+        })
+
+        return result
       })
 
       const { notes, notesLog } = await buildNotesLog(jobId)
@@ -1087,7 +1152,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
           reason: 'cancel',
         })
       } catch (schedulerError) {
-        console.error('Local scheduler repair failed after job archive:', schedulerError)
+        console.error(
+          `Local scheduler repair failed after job ${finalStatus}:`,
+          schedulerError
+        )
       }
 
       return NextResponse.json({
@@ -1195,132 +1263,160 @@ export async function PATCH(req: Request, ctx: Ctx) {
       maintenanceFrequency: nextMaintenanceFrequency,
     })
 
-    const updated = await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        title: titleUpdate,
-        address: typeof body.address === 'string' ? body.address : undefined,
-        notes:
-          body.notes === null
-            ? null
-            : typeof body.notes === 'string'
-              ? body.notes
-              : undefined,
-        jobType: typeof body.jobType === 'string' ? body.jobType : undefined,
-        customerId: customerIdUpdate,
-        visitDate: scheduleState.visitDate,
-        startTime: scheduleState.startTime,
-        durationMinutes: durationMinutesUpdate,
-        overrunMins: overrunMinsUpdate,
-        status: scheduleState.status,
-        arrivedAt: arrivedAtUpdate,
-        finishedAt: finishedAtUpdate,
-        pausedAt: pausedAtUpdate,
-        pausedMinutes: pausedMinutesUpdate,
-        paymentStatus:
-          body.paymentStatus === null
-            ? null
-            : typeof body.paymentStatus === 'string'
-              ? clean(body.paymentStatus) || null
-              : undefined,
-        paymentNotes:
-          body.paymentNotes === null
-            ? null
-            : typeof body.paymentNotes === 'string'
-              ? body.paymentNotes
-              : undefined,
+    const updated = await prisma.$transaction(async (tx) => {
+      if (body.assignedTo !== undefined || body.assignedWorkerIds !== undefined) {
+        await tx.jobAssignment.deleteMany({
+          where: { jobId },
+        })
 
-        isRegularMaintenance: regularMaintenanceInputProvided
-          ? isMaintenanceJob(proposedJobType)
-            ? nextIsRegularMaintenance
-            : false
-          : undefined,
-        maintenanceFrequency: regularMaintenanceInputProvided
-          ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
-            ? nextMaintenanceFrequency
-            : null
-          : undefined,
-        preferredDay: regularMaintenanceInputProvided
-          ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
-            ? nextPreferredDay
-            : null
-          : undefined,
-        preferredTimeBand: regularMaintenanceInputProvided
-          ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
-            ? nextPreferredTimeBand
-            : null
-          : undefined,
-        visitPattern: regularMaintenanceInputProvided
-          ? maintenanceMeta.visitPattern
-          : undefined,
-        maintenanceFrequencyUnit: regularMaintenanceInputProvided
-          ? maintenanceMeta.maintenanceFrequencyUnit
-          : undefined,
-        maintenanceFrequencyWeeks: regularMaintenanceInputProvided
-          ? maintenanceMeta.maintenanceFrequencyWeeks
-          : undefined,
-        timePreferenceMode: regularMaintenanceInputProvided
-          ? maintenanceMeta.timePreferenceMode
-          : undefined,
-      },
-      include: {
-        customer: true,
-        assignments: {
-          include: {
-            worker: true,
-          },
-        },
-        photos: true,
-        chasMessages: true,
-      },
-    })
-
-    if (appendNote) {
-      let createdByWorkerId: number | null = null
-
-      if (noteAuthor) {
-        const authorParts = noteAuthor.trim().split(/\s+/).filter(Boolean)
-
-        if (authorParts.length > 0) {
-          const possibleWorkers = await prisma.worker.findMany({
-            select: { id: true, firstName: true, lastName: true },
+        if (proposedAssignedWorkerIds.length > 0) {
+          await tx.jobAssignment.createMany({
+            data: proposedAssignedWorkerIds.map((workerId) => ({
+              jobId,
+              workerId,
+            })),
+            skipDuplicates: true,
           })
-
-          const authorLower = noteAuthor.trim().toLowerCase()
-
-          const match = possibleWorkers.find((worker) => {
-            const fullName = `${worker.firstName} ${worker.lastName}`.trim().toLowerCase()
-            const firstName = worker.firstName.trim().toLowerCase()
-            const lastName = worker.lastName.trim().toLowerCase()
-
-            if (fullName === authorLower) return true
-            if (firstName === authorLower) return true
-            if (lastName === authorLower) return true
-
-            if (authorParts.length >= 2) {
-              return (
-                firstName === authorParts[0].toLowerCase() &&
-                lastName === authorParts.slice(1).join(' ').toLowerCase()
-              )
-            }
-
-            return false
-          })
-
-          if (match) {
-            createdByWorkerId = match.id
-          }
         }
       }
 
-      await prisma.jobNote.create({
+      const result = await tx.job.update({
+        where: { id: jobId },
         data: {
-          jobId,
-          note: appendNote,
-          createdByWorkerId,
+          title: titleUpdate,
+          address: typeof body.address === 'string' ? body.address : undefined,
+          notes:
+            body.notes === null
+              ? null
+              : typeof body.notes === 'string'
+                ? body.notes
+                : undefined,
+          jobType: typeof body.jobType === 'string' ? body.jobType : undefined,
+          customerId: customerIdUpdate,
+          visitDate: scheduleState.visitDate,
+          startTime: scheduleState.startTime,
+          durationMinutes: durationMinutesUpdate,
+          overrunMins: overrunMinsUpdate,
+          status: scheduleState.status,
+          arrivedAt: arrivedAtUpdate,
+          finishedAt: finishedAtUpdate,
+          pausedAt: pausedAtUpdate,
+          pausedMinutes: pausedMinutesUpdate,
+          paymentStatus:
+            body.paymentStatus === null
+              ? null
+              : typeof body.paymentStatus === 'string'
+                ? clean(body.paymentStatus).toLowerCase() || null
+                : undefined,
+          paymentNotes:
+            body.paymentNotes === null
+              ? null
+              : typeof body.paymentNotes === 'string'
+                ? body.paymentNotes
+                : undefined,
+          isRegularMaintenance: regularMaintenanceInputProvided
+            ? isMaintenanceJob(proposedJobType)
+              ? nextIsRegularMaintenance
+              : false
+            : undefined,
+          maintenanceFrequency: regularMaintenanceInputProvided
+            ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
+              ? nextMaintenanceFrequency
+              : null
+            : undefined,
+          preferredDay: regularMaintenanceInputProvided
+            ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
+              ? nextPreferredDay
+              : null
+            : undefined,
+          preferredTimeBand: regularMaintenanceInputProvided
+            ? isMaintenanceJob(proposedJobType) && nextIsRegularMaintenance
+              ? nextPreferredTimeBand
+              : null
+            : undefined,
+          visitPattern: regularMaintenanceInputProvided
+            ? maintenanceMeta.visitPattern
+            : undefined,
+          maintenanceFrequencyUnit: regularMaintenanceInputProvided
+            ? maintenanceMeta.maintenanceFrequencyUnit
+            : undefined,
+          maintenanceFrequencyWeeks: regularMaintenanceInputProvided
+            ? maintenanceMeta.maintenanceFrequencyWeeks
+            : undefined,
+          timePreferenceMode: regularMaintenanceInputProvided
+            ? maintenanceMeta.timePreferenceMode
+            : undefined,
+        },
+        include: {
+          customer: true,
+          assignments: {
+            include: {
+              worker: true,
+            },
+          },
+          photos: true,
+          chasMessages: true,
         },
       })
-    }
+
+      if (appendNote) {
+        let createdByWorkerId: number | null = null
+
+        if (noteAuthor) {
+          const authorParts = noteAuthor.trim().split(/\s+/).filter(Boolean)
+
+          if (authorParts.length > 0) {
+            const possibleWorkers = await tx.worker.findMany({
+              select: { id: true, firstName: true, lastName: true },
+            })
+
+            const authorLower = noteAuthor.trim().toLowerCase()
+
+            const match = possibleWorkers.find((worker) => {
+              const fullName = `${worker.firstName} ${worker.lastName}`.trim().toLowerCase()
+              const firstName = worker.firstName.trim().toLowerCase()
+              const lastName = worker.lastName.trim().toLowerCase()
+
+              if (fullName === authorLower) return true
+              if (firstName === authorLower) return true
+              if (lastName === authorLower) return true
+
+              if (authorParts.length >= 2) {
+                return (
+                  firstName === authorParts[0].toLowerCase() &&
+                  lastName === authorParts.slice(1).join(' ').toLowerCase()
+                )
+              }
+
+              return false
+            })
+
+            if (match) {
+              createdByWorkerId = match.id
+            }
+          }
+        }
+
+        await tx.jobNote.create({
+          data: {
+            jobId,
+            note: appendNote,
+            createdByWorkerId,
+          },
+        })
+      }
+
+      await tx.jobAuditLog.create({
+        data: {
+          jobId,
+          action: 'updated',
+          beforeJson: JSON.stringify(existingSnapshot),
+          afterJson: JSON.stringify(buildJobAuditSnapshot(result)),
+        },
+      })
+
+      return result
+    })
 
     let nextRecurringJobs: unknown[] = []
 
@@ -1374,7 +1470,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
         .slice()
         .sort((a, b) => a - b)
 
-      if (shouldTriggerSchedulerRepair(body, existingAssignedWorkerIds, nextAssignedWorkerIds)) {
+      if (
+        shouldTriggerSchedulerRepair(body, existingAssignedWorkerIds, nextAssignedWorkerIds)
+      ) {
         await runLocalRepairForJob({
           jobId,
           reason: 'edit',

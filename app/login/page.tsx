@@ -6,17 +6,19 @@ import {
   startRegistration,
 } from "@simplewebauthn/browser";
 
+type WorkerSummary = {
+  id: number;
+  name: string;
+  accessLevel: string;
+  photoUrl?: string | null;
+};
+
 type LoginResponse = {
   ok?: boolean;
   error?: string;
   redirectTo?: string;
   mustChangePassword?: boolean;
-  worker?: {
-    id: number;
-    name: string;
-    accessLevel: string;
-    photoUrl?: string | null;
-  };
+  worker?: WorkerSummary;
 };
 
 function saveQuickLoginSettings(phone: string) {
@@ -36,12 +38,7 @@ function cleanupSelectedWorkerStorage() {
   localStorage.removeItem("selectedLoginWorkerPhotoUrl");
 }
 
-function saveWorkerSession(worker: {
-  id: number;
-  name: string;
-  accessLevel?: string;
-  photoUrl?: string | null;
-}) {
+function saveWorkerSession(worker: WorkerSummary) {
   const id = String(worker.id);
   const name = String(worker.name || "").trim();
   const accessLevel = String(worker.accessLevel || "worker").trim();
@@ -56,6 +53,9 @@ function saveWorkerSession(worker: {
   if (photoUrl) {
     localStorage.setItem("workerPhotoUrl", photoUrl);
     localStorage.setItem("photoUrl", photoUrl);
+  } else {
+    localStorage.removeItem("workerPhotoUrl");
+    localStorage.removeItem("photoUrl");
   }
 }
 
@@ -78,7 +78,7 @@ function saveWorkerSessionFromSelectedWorkerFallback() {
   }
 }
 
-function persistBestKnownWorker(worker: LoginResponse["worker"] | null) {
+function persistBestKnownWorker(worker: WorkerSummary | null) {
   if (worker) {
     saveWorkerSession(worker);
     return;
@@ -114,12 +114,9 @@ export default function LoginPage() {
   const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
   const [postLoginWorkerPhone, setPostLoginWorkerPhone] = useState("");
   const [postLoginRedirectTo, setPostLoginRedirectTo] = useState("/today");
-  const [postLoginWorker, setPostLoginWorker] = useState<{
-    id: number;
-    name: string;
-    accessLevel: string;
-    photoUrl?: string | null;
-  } | null>(null);
+  const [postLoginWorker, setPostLoginWorker] = useState<WorkerSummary | null>(
+    null
+  );
   const [isOffline, setIsOffline] = useState(false);
 
   const autoStartedRef = useRef(false);
@@ -201,7 +198,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify({ phone: phone.trim(), password }),
       });
 
       const data: LoginResponse | null = await res.json().catch(() => null);
@@ -224,8 +221,8 @@ export default function LoginPage() {
       setPostLoginRedirectTo(redirectTo);
       setPostLoginWorker(data?.worker || null);
       setShowPasskeyPrompt(true);
-    } catch (err: any) {
-      setError(err.message || "Login failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
@@ -236,7 +233,9 @@ export default function LoginPage() {
     setError("");
 
     try {
-      if (!phone.trim()) {
+      const trimmedPhone = phone.trim();
+
+      if (!trimmedPhone) {
         throw new Error("Enter your phone number first");
       }
 
@@ -245,7 +244,7 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ phone: phone.trim() }),
+        body: JSON.stringify({ phone: trimmedPhone }),
       });
 
       const startData = await startRes.json().catch(() => null);
@@ -266,16 +265,23 @@ export default function LoginPage() {
         body: JSON.stringify(authenticationResponse),
       });
 
-      const finishData = await finishRes.json().catch(() => null);
+      const finishData: LoginResponse | null = await finishRes
+        .json()
+        .catch(() => null);
 
       if (!finishRes.ok || !finishData?.ok) {
         throw new Error(finishData?.error || "Face ID failed");
       }
 
-      persistBestKnownWorker(postLoginWorker);
+      persistBestKnownWorker(finishData?.worker || null);
 
-      saveQuickLoginSettings(phone.trim());
+      saveQuickLoginSettings(trimmedPhone);
       cleanupSelectedWorkerStorage();
+
+      if (finishData?.mustChangePassword) {
+        window.location.href = "/change-password";
+        return;
+      }
 
       if (finishData?.redirectTo) {
         window.location.href = finishData.redirectTo;
@@ -283,8 +289,8 @@ export default function LoginPage() {
       }
 
       window.location.href = "/today";
-    } catch (err: any) {
-      setError(err.message || "Quick login failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Quick login failed");
     } finally {
       setLoading(false);
     }
@@ -340,8 +346,10 @@ export default function LoginPage() {
       saveQuickLoginSettings(postLoginWorkerPhone);
       cleanupSelectedWorkerStorage();
       window.location.href = postLoginRedirectTo;
-    } catch (err: any) {
-      setError(err.message || "Failed to enable quick login");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to enable quick login"
+      );
       setShowPasskeyPrompt(false);
     } finally {
       setLoading(false);

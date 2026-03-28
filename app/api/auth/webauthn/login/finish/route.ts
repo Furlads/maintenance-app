@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSessionForWorker } from "@/lib/auth";
 
-const rpID = process.env.WEBAUTHN_RP_ID!;
-const origin = process.env.WEBAUTHN_ORIGIN!;
+const rpID = process.env.WEBAUTHN_RP_ID;
+const origin = process.env.WEBAUTHN_ORIGIN;
 
 function normalise(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
@@ -51,16 +51,45 @@ function getRedirectPath(worker: {
   return "/today";
 }
 
+function getWorkerDisplayName(worker: {
+  firstName?: string | null;
+  lastName?: string | null;
+}) {
+  return `${worker.firstName || ""} ${worker.lastName || ""}`.trim();
+}
+
+function isLocked(worker: {
+  lockedUntil?: Date | null;
+}) {
+  return !!worker.lockedUntil && worker.lockedUntil.getTime() > Date.now();
+}
+
+function getRemainingLockMinutes(worker: {
+  lockedUntil?: Date | null;
+}) {
+  if (!worker.lockedUntil) return 0;
+  const diffMs = worker.lockedUntil.getTime() - Date.now();
+  if (diffMs <= 0) return 0;
+  return Math.ceil(diffMs / 60000);
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    if (!rpID || !origin) {
+      return NextResponse.json(
+        { ok: false, error: "WebAuthn is not configured correctly." },
+        { status: 500 }
+      );
+    }
+
+    const body = await req.json().catch(() => null);
     const cookieStore = await cookies();
     const challenge = cookieStore.get("furlads_webauthn_auth_challenge")?.value;
     const credentialID = String(body?.id || "").trim();
 
     if (!credentialID) {
       return NextResponse.json(
-        { ok: false, error: "Missing credential ID" },
+        { ok: false, error: "Missing credential ID." },
         { status: 400 }
       );
     }
@@ -83,8 +112,30 @@ export async function POST(req: Request) {
 
     if (!credential || !credential.worker) {
       return NextResponse.json(
-        { ok: false, error: "Credential not found" },
+        { ok: false, error: "Credential not found." },
         { status: 404 }
+      );
+    }
+
+    if (!credential.worker.active) {
+      return NextResponse.json(
+        { ok: false, error: "This account is inactive." },
+        { status: 403 }
+      );
+    }
+
+    if (isLocked(credential.worker)) {
+      const minutesRemaining = getRemainingLockMinutes(credential.worker);
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            minutesRemaining > 0
+              ? `Account locked. Try again in about ${minutesRemaining} minute${minutesRemaining === 1 ? "" : "s"}.`
+              : "Account locked. Try again shortly.",
+        },
+        { status: 423 }
       );
     }
 
@@ -107,17 +158,27 @@ export async function POST(req: Request) {
 
     if (!verification.verified) {
       return NextResponse.json(
-        { ok: false, error: "Face ID verification failed" },
+        { ok: false, error: "Face ID verification failed." },
         { status: 401 }
       );
     }
 
-    await prisma.webAuthnCredential.update({
-      where: { id: credential.id },
-      data: {
-        counter: verification.authenticationInfo.newCounter,
-      },
-    });
+    await prisma.$transaction([
+      prisma.webAuthnCredential.update({
+        where: { id: credential.id },
+        data: {
+          counter: verification.authenticationInfo.newCounter,
+        },
+      }),
+      prisma.worker.update({
+        where: { id: credential.worker.id },
+        data: {
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          lastLoginAt: new Date(),
+        },
+      }),
+    ]);
 
     cookieStore.set("furlads_webauthn_auth_challenge", "", {
       httpOnly: true,
@@ -134,11 +195,18 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       redirectTo,
+      worker: {
+        id: credential.worker.id,
+        name: getWorkerDisplayName(credential.worker),
+        accessLevel: String(credential.worker.accessLevel || "worker"),
+      },
+      mustChangePassword: Boolean(credential.worker.mustChangePassword),
     });
   } catch (error) {
     console.error("WEBAUTHN_LOGIN_FINISH_ERROR", error);
+
     return NextResponse.json(
-      { ok: false, error: "Face ID login failed" },
+      { ok: false, error: "Face ID login failed." },
       { status: 500 }
     );
   }
