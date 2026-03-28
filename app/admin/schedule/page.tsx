@@ -75,6 +75,12 @@ type TimelinePlacedJob = ScheduleJob & {
   lane: number;
 };
 
+type FeedbackMessage = {
+  tone: "success" | "error" | "info";
+  title: string;
+  text: string;
+} | null;
+
 type GapFillSuggestion = {
   workerId: number;
   workerName: string;
