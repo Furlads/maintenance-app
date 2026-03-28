@@ -101,6 +101,15 @@ type MoveJobSheetState = {
   jobLabel: string;
 } | null;
 
+type PlaceIntoGapSheetState = {
+  jobId: number;
+  jobLabel: string;
+  workerId: number;
+  workerName: string;
+  selectedStartTime: string;
+  freeMinutes: number;
+} | null;
+
 const PREP_START_MINUTES = 8 * 60 + 30;
 const WORK_START_MINUTES = 9 * 60;
 const DAY_END_MINUTES = 16 * 60 + 30;
@@ -603,6 +612,33 @@ function scoreGapFillJob(job: JobsApiJob, worker: ScheduleWorker, freeMinutes: n
   }
 
   return score;
+}
+
+function getWorkerSuggestedGapStartTime(worker: ScheduleWorker) {
+  const sortedJobs = [...worker.jobs].sort(sortWorkerJobs);
+
+  const timedJobs = sortedJobs.filter((job) => parseTimeToMinutes(job.startTime) !== null);
+
+  if (timedJobs.length === 0) {
+    return minutesToTime(WORK_START_MINUTES);
+  }
+
+  let latestEnd = WORK_START_MINUTES;
+
+  for (const job of timedJobs) {
+    const start = parseTimeToMinutes(job.startTime);
+    if (start === null) continue;
+
+    const duration = Math.max(job.durationMinutes ?? 60, 15);
+    const end = start + duration;
+
+    if (end > latestEnd) {
+      latestEnd = end;
+    }
+  }
+
+  const clamped = Math.max(WORK_START_MINUTES, Math.min(latestEnd, DAY_END_MINUTES - 15));
+  return minutesToTime(clamped);
 }
 
 function buildGapFillSuggestions(
@@ -2073,7 +2109,9 @@ export default function SchedulePage() {
   const [optimisingWorkerId, setOptimisingWorkerId] = useState<number | null>(null);
   const [busyTimeOffId, setBusyTimeOffId] = useState<number | null>(null);
   const [movingJobId, setMovingJobId] = useState<number | null>(null);
+  const [placingJobId, setPlacingJobId] = useState<number | null>(null);
   const [moveJobSheet, setMoveJobSheet] = useState<MoveJobSheetState>(null);
+  const [placeIntoGapSheet, setPlaceIntoGapSheet] = useState<PlaceIntoGapSheetState>(null);
   const [error, setError] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState<FeedbackMessage>(null);
   const [timeOffDecisionSheet, setTimeOffDecisionSheet] =
@@ -2372,6 +2410,73 @@ export default function SchedulePage() {
       });
     } finally {
       setOptimisingWorkerId(null);
+    }
+  }
+
+  function openPlaceIntoGap(job: JobsApiJob, worker: ScheduleWorker, freeMinutes: number) {
+    setPlaceIntoGapSheet({
+      jobId: job.id,
+      jobLabel: `${titleCase(job.customer?.name) || "No customer"} — ${titleCase(job.title) || "General"}`,
+      workerId: worker.id,
+      workerName: worker.name,
+      selectedStartTime: getWorkerSuggestedGapStartTime(worker),
+      freeMinutes,
+    });
+  }
+
+  function closePlaceIntoGapSheet() {
+    if (placingJobId !== null) return;
+    setPlaceIntoGapSheet(null);
+  }
+
+  async function submitPlaceIntoGap() {
+    if (!placeIntoGapSheet || placingJobId !== null) return;
+
+    try {
+      setPlacingJobId(placeIntoGapSheet.jobId);
+      setError("");
+      setFeedbackMessage(null);
+
+      const res = await fetch(`/api/jobs/${placeIntoGapSheet.jobId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          assignedTo: [placeIntoGapSheet.workerId],
+          visitDate: date,
+          startTime: placeIntoGapSheet.selectedStartTime,
+          status: "todo",
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to place job into gap");
+      }
+
+      await loadPage(date, true);
+
+      setFeedbackMessage({
+        tone: "success",
+        title: "Job placed into gap",
+        text: `${placeIntoGapSheet.jobLabel} placed with ${placeIntoGapSheet.workerName} at ${placeIntoGapSheet.selectedStartTime}.`,
+      });
+
+      setPlaceIntoGapSheet(null);
+    } catch (err) {
+      console.error(err);
+      const message =
+        err instanceof Error ? err.message : "Failed to place job into gap.";
+      setError(message);
+      setFeedbackMessage({
+        tone: "error",
+        title: "Place into gap failed",
+        text: message,
+      });
+    } finally {
+      setPlacingJobId(null);
     }
   }
 
@@ -3175,6 +3280,20 @@ export default function SchedulePage() {
                                     width: isMobile ? "100%" : "auto",
                                   }}
                                 >
+                                  <button
+                                    type="button"
+                                    onClick={() => openPlaceIntoGap(job, workers.find((w) => w.id === entry.workerId)!, entry.freeMinutes)}
+                                    disabled={placingJobId === job.id}
+                                    style={{
+                                      ...smallPrimaryButton(),
+                                      width: isMobile ? "100%" : "auto",
+                                      cursor: placingJobId === job.id ? "default" : "pointer",
+                                      opacity: placingJobId === job.id ? 0.7 : 1,
+                                    }}
+                                  >
+                                    {placingJobId === job.id ? "Placing..." : "Place into gap"}
+                                  </button>
+
                                   <Link
                                     href={`/jobs/${job.id}?back=/admin/schedule`}
                                     style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}
@@ -3517,6 +3636,207 @@ export default function SchedulePage() {
           </>
         )}
       </div>
+
+      {placeIntoGapSheet && (
+        <div
+          onClick={closePlaceIntoGapSheet}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 1185,
+            display: "flex",
+            alignItems: isMobile ? "flex-end" : "center",
+            justifyContent: "center",
+            padding: isMobile ? 0 : 16,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              maxHeight: isMobile ? "88vh" : "calc(100vh - 32px)",
+              overflowY: "auto",
+              WebkitOverflowScrolling: "touch",
+              background: "#fff",
+              borderRadius: isMobile ? "22px 22px 0 0" : 22,
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.2)",
+              padding: 18,
+              paddingBottom: isMobile ? "calc(env(safe-area-inset-bottom) + 18px)" : 18,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "start",
+                marginBottom: 14,
+              }}
+            >
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: "#1d4ed8",
+                    marginBottom: 6,
+                  }}
+                >
+                  Place into gap
+                </div>
+
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 22,
+                    lineHeight: 1.15,
+                    color: "#18181b",
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {placeIntoGapSheet.jobLabel}
+                </h3>
+
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 14,
+                    color: "#52525b",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Place with {placeIntoGapSheet.workerName} on {formatDate(date)}.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closePlaceIntoGapSheet}
+                disabled={placingJobId !== null}
+                style={{
+                  border: "1px solid #e4e4e7",
+                  background: "#fff",
+                  color: "#3f3f46",
+                  borderRadius: 999,
+                  width: 38,
+                  height: 38,
+                  fontSize: 20,
+                  cursor: placingJobId !== null ? "default" : "pointer",
+                  opacity: placingJobId !== null ? 0.7 : 1,
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label
+                htmlFor="gap-start-time"
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#27272a",
+                  marginBottom: 6,
+                }}
+              >
+                Suggested start time
+              </label>
+
+              <input
+                id="gap-start-time"
+                type="time"
+                value={placeIntoGapSheet.selectedStartTime}
+                onChange={(e) =>
+                  setPlaceIntoGapSheet((current) =>
+                    current
+                      ? {
+                          ...current,
+                          selectedStartTime: e.target.value,
+                        }
+                      : current
+                  )
+                }
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #d4d4d8",
+                  background: "#fff",
+                  color: "#18181b",
+                  fontSize: 14,
+                  minHeight: 46,
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                marginBottom: 14,
+                fontSize: 13,
+                color: "#52525b",
+              }}
+            >
+              Free time available: {formatRemaining(placeIntoGapSheet.freeMinutes)}
+            </div>
+
+            <div
+              style={{
+                position: "sticky",
+                bottom: -18,
+                background: "#fff",
+                paddingTop: 8,
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                onClick={closePlaceIntoGapSheet}
+                disabled={placingJobId !== null}
+                style={{
+                  ...smallButton(),
+                  width: "100%",
+                  minHeight: 46,
+                  cursor: placingJobId !== null ? "default" : "pointer",
+                  opacity: placingJobId !== null ? 0.7 : 1,
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={submitPlaceIntoGap}
+                disabled={placingJobId !== null}
+                style={{
+                  width: "100%",
+                  minHeight: 46,
+                  borderRadius: 10,
+                  border: "1px solid #18181b",
+                  background: "#18181b",
+                  color: "#fff",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  cursor: placingJobId !== null ? "default" : "pointer",
+                  opacity: placingJobId !== null ? 0.7 : 1,
+                }}
+              >
+                {placingJobId !== null ? "Placing..." : "Place job"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {moveJobSheet && (
         <div
