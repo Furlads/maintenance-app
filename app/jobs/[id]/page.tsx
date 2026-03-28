@@ -3,6 +3,11 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
+const [showEarlyFinishCheck, setShowEarlyFinishCheck] = useState(false)
+const [earlyFinishData, setEarlyFinishData] = useState<{
+  remainingMinutes: number
+  suggestions: Job[]
+} | null>(null)
 
 type Worker = {
   id: number
@@ -839,13 +844,28 @@ export default function JobPage() {
   }
 
   async function handleFinishJob() {
-    if (isPrepJob(job)) {
-      await patchJob({ action: 'finish' }, 'finish job')
+  if (!job) return
+
+  if (isPrepJob(job)) {
+    await patchJob({ action: 'finish' }, 'finish job')
+    return
+  }
+
+  try {
+    const res = await fetch(`/api/jobs/${job.id}/early-finish-check`)
+    const data = await res.json()
+
+    if (data?.shouldCheck) {
+      setEarlyFinishData(data)
+      setShowEarlyFinishCheck(true)
       return
     }
-
-    setShowFinishReport(true)
+  } catch (err) {
+    console.error('Early finish check failed', err)
   }
+
+  setShowFinishReport(true)
+}
 
   async function handlePrepComplete() {
     if (!job) return
@@ -1983,6 +2003,73 @@ Heavy rain made it unsafe`,
           </div>
         </div>
       </div>
+
+{showEarlyFinishCheck && earlyFinishData && (
+  <div className="fixed inset-0 z-[1002] bg-black/50 flex items-center justify-center p-4">
+    <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
+      
+      <h2 className="text-xl font-bold text-zinc-900 mb-2">
+        You’re finishing early 👀
+      </h2>
+
+      <p className="text-sm text-zinc-600 mb-4">
+        You’ve still got about{' '}
+        <strong>{earlyFinishData.remainingMinutes} minutes</strong> left on this job.
+      </p>
+
+      {earlyFinishData.suggestions.length > 0 ? (
+        <>
+          <p className="text-sm font-semibold text-zinc-800 mb-2">
+            Nearby jobs you could jump onto:
+          </p>
+
+          <div className="space-y-2 mb-4">
+            {earlyFinishData.suggestions.map((j) => (
+              <button
+                key={j.id}
+                onClick={() => {
+                  window.location.href = `/jobs/${j.id}`
+                }}
+                className="w-full text-left rounded-xl border border-zinc-200 p-3 hover:bg-zinc-50"
+              >
+                <div className="font-semibold text-zinc-900">
+                  {j.title}
+                </div>
+                <div className="text-xs text-zinc-500">
+                  {j.address}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-zinc-600 mb-4">
+          No nearby jobs available right now 👍
+        </p>
+      )}
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => setShowEarlyFinishCheck(false)}
+          className="flex-1 rounded-xl border border-zinc-300 px-4 py-3 text-sm font-semibold"
+        >
+          Stay on job
+        </button>
+
+        <button
+          onClick={() => {
+            setShowEarlyFinishCheck(false)
+            setShowFinishReport(true)
+          }}
+          className="flex-1 rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white"
+        >
+          Finish anyway
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
 
       {showFinishReport && (
         <div className="fixed inset-0 z-[1001] bg-black/50 sm:flex sm:items-center sm:justify-center sm:p-4">
