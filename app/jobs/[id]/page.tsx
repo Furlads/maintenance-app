@@ -87,9 +87,14 @@ type SuggestedJob = {
   id: number
   title: string
   address: string
+  status: string
   startTime?: string | null
   durationMinutes?: number | null
-  status: string
+  jobType?: string | null
+  visitDate?: string | null
+  assignments?: Array<{
+    workerId?: number | null
+  }>
 }
 
 type CompletionReview = {
@@ -98,6 +103,7 @@ type CompletionReview = {
   deltaMinutes: number | null
   nextFittingJob: SuggestedJob | null
   nextScheduledJob: SuggestedJob | null
+  rankedJobs: SuggestedJob[]
 }
 
 function fullName(firstName?: string | null, lastName?: string | null) {
@@ -377,23 +383,112 @@ function sameDayDateParam(value?: string | null) {
   return date.toISOString().slice(0, 10)
 }
 
-function compareJobs(a: SuggestedJob, b: SuggestedJob) {
-  const aStart = String(a.startTime || '')
-  const bStart = String(b.startTime || '')
-
-  if (aStart && bStart) {
-    return aStart.localeCompare(bStart)
-  }
-
-  if (aStart) return -1
-  if (bStart) return 1
-
-  return a.id - b.id
-}
-
 function isActiveSuggestionStatus(status: string) {
   const value = String(status || '').toLowerCase()
   return value !== 'done' && value !== 'completed' && value !== 'cancelled' && value !== 'archived'
+}
+
+function hhmmToMinutes(value?: string | null) {
+  if (!value || !/^\d{2}:\d{2}$/.test(value)) return null
+
+  const [hours, minutes] = value.split(':').map(Number)
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+
+  return hours * 60 + minutes
+}
+
+function scoreSuggestedJob(params: {
+  candidate: SuggestedJob
+  currentJob: Job
+  spareMinutes: number | null
+  workerIds: number[]
+}) {
+  const { candidate, currentJob, spareMinutes, workerIds } = params
+
+  let score = 0
+
+  const candidateStart = hhmmToMinutes(candidate.startTime)
+  const currentStart = hhmmToMinutes(currentJob.startTime)
+  const candidateDuration = candidate.durationMinutes ?? 0
+
+  if (candidate.startTime) {
+    score += 1000
+  }
+
+  const assignedWorkerIds = Array.isArray(candidate.assignments)
+    ? candidate.assignments
+        .map((assignment) => Number(assignment.workerId))
+        .filter((value) => Number.isFinite(value))
+    : []
+
+  if (assignedWorkerIds.some((workerId) => workerIds.includes(workerId))) {
+    score += 500
+  }
+
+  if (candidateStart !== null && currentStart !== null && candidateStart >= currentStart) {
+    score += 200
+    score += Math.max(0, 200 - Math.abs(candidateStart - currentStart))
+  }
+
+  if (spareMinutes !== null && spareMinutes > 0) {
+    if (candidateDuration > 0 && candidateDuration <= spareMinutes) {
+      score += 400
+      score += Math.max(0, 120 - Math.abs(spareMinutes - candidateDuration))
+    } else if (candidateDuration > spareMinutes) {
+      score -= 200
+    }
+  }
+
+  const statusValue = String(candidate.status || '').toLowerCase()
+  if (statusValue === 'todo' || statusValue === 'scheduled') {
+    score += 50
+  }
+
+  if (String(candidate.title || '').trim().toLowerCase() === 'morning prep') {
+    score -= 1000
+  }
+
+  return score
+}
+
+function rankSuggestedJobs(params: {
+  jobs: SuggestedJob[]
+  currentJob: Job
+  spareMinutes: number | null
+  workerIds: number[]
+}) {
+  return [...params.jobs].sort((a, b) => {
+    const scoreA = scoreSuggestedJob({
+      candidate: a,
+      currentJob: params.currentJob,
+      spareMinutes: params.spareMinutes,
+      workerIds: params.workerIds,
+    })
+
+    const scoreB = scoreSuggestedJob({
+      candidate: b,
+      currentJob: params.currentJob,
+      spareMinutes: params.spareMinutes,
+      workerIds: params.workerIds,
+    })
+
+    if (scoreA !== scoreB) {
+      return scoreB - scoreA
+    }
+
+    const aStart = hhmmToMinutes(a.startTime)
+    const bStart = hhmmToMinutes(b.startTime)
+
+    if (aStart !== null && bStart !== null && aStart !== bStart) {
+      return aStart - bStart
+    }
+
+    if (aStart !== null) return -1
+    if (bStart !== null) return 1
+
+    return a.id - b.id
+  })
 }
 
 export default function JobPage() {
@@ -806,12 +901,22 @@ export default function JobPage() {
             durationMinutes:
               typeof item.durationMinutes === 'number' ? item.durationMinutes : null,
             status: String(item.status || ''),
+            jobType: typeof item.jobType === 'string' ? item.jobType : null,
+            visitDate: typeof item.visitDate === 'string' ? item.visitDate : null,
+            assignments: Array.isArray(item.assignments)
+              ? item.assignments.map((assignment: any) => ({
+                  workerId:
+                    typeof assignment?.workerId === 'number'
+                      ? assignment.workerId
+                      : null,
+                }))
+              : [],
           })
         }
       }
     }
 
-    return Array.from(merged.values()).sort(compareJobs)
+    return Array.from(merged.values())
   }
 
   async function openCompletionReview(updatedJob: Job) {
@@ -823,14 +928,40 @@ export default function JobPage() {
         ? plannedMinutes - actualMinutes
         : null
 
+    const workerIds = updatedJob.assignments.map((assignment) => assignment.workerId)
+
     setCheckingNextJob(true)
 
     try {
       const suggestedJobs = await fetchSuggestedJobs(updatedJob)
-      const nextScheduledJob = suggestedJobs[0] || null
+
+      const rankedJobs = rankSuggestedJobs({
+        jobs: suggestedJobs,
+        currentJob: updatedJob,
+        spareMinutes: deltaMinutes,
+        workerIds,
+      })
+
+      const nextScheduledJob =
+        [...suggestedJobs]
+          .filter((item) => !!item.startTime)
+          .sort((a, b) => {
+            const aStart = hhmmToMinutes(a.startTime)
+            const bStart = hhmmToMinutes(b.startTime)
+
+            if (aStart !== null && bStart !== null) {
+              return aStart - bStart
+            }
+
+            if (aStart !== null) return -1
+            if (bStart !== null) return 1
+
+            return a.id - b.id
+          })[0] || null
+
       const nextFittingJob =
         deltaMinutes && deltaMinutes > 0
-          ? suggestedJobs.find((item) => {
+          ? rankedJobs.find((item) => {
               if (!item.durationMinutes) return false
               return item.durationMinutes <= deltaMinutes
             }) || null
@@ -842,6 +973,7 @@ export default function JobPage() {
         deltaMinutes,
         nextFittingJob,
         nextScheduledJob,
+        rankedJobs,
       })
       setShowCompletionReview(true)
     } finally {
@@ -1979,7 +2111,7 @@ Heavy rain made it unsafe`,
               <div className="border-b border-zinc-200 px-5 py-4">
                 <h2 className="text-xl font-bold text-zinc-900">Job complete</h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  Time summary and what to do next.
+                  Time summary and best next move.
                 </p>
               </div>
 
@@ -2018,7 +2150,7 @@ Heavy rain made it unsafe`,
                     {completionReview.nextFittingJob ? (
                       <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
                         <div className="text-sm font-bold text-green-900">
-                          There is another task that fits this spare time.
+                          Best next job
                         </div>
                         <div className="mt-2 text-sm text-green-900">
                           <strong>{completionReview.nextFittingJob.title}</strong>
@@ -2033,7 +2165,7 @@ Heavy rain made it unsafe`,
                       </div>
                     ) : (
                       <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-                        You finished early, but no obvious extra task fits this spare time.
+                        You finished early, but no suitable same-day job fits the spare time.
                       </div>
                     )}
 
@@ -2051,6 +2183,33 @@ Heavy rain made it unsafe`,
                         <div className="mt-1 text-sm text-zinc-600">
                           Start: {completionReview.nextScheduledJob.startTime || 'No set time'} •
                           Duration: {formatMinutes(completionReview.nextScheduledJob.durationMinutes)}
+                        </div>
+                      </div>
+                    )}
+
+                    {completionReview.rankedJobs.length > 1 && (
+                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                        <div className="mb-3 text-sm font-bold text-zinc-900">
+                          Other possible jobs today
+                        </div>
+                        <div className="space-y-2">
+                          {completionReview.rankedJobs.slice(0, 3).map((rankedJob) => (
+                            <div
+                              key={rankedJob.id}
+                              className="rounded-xl border border-zinc-200 bg-white p-3"
+                            >
+                              <div className="text-sm font-semibold text-zinc-900">
+                                {rankedJob.title}
+                              </div>
+                              <div className="mt-1 text-xs text-zinc-600">
+                                {rankedJob.address || 'No address'}
+                              </div>
+                              <div className="mt-1 text-xs text-zinc-600">
+                                Start: {rankedJob.startTime || 'No set time'} •
+                                Duration: {formatMinutes(rankedJob.durationMinutes)}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
