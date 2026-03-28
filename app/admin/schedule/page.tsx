@@ -739,6 +739,59 @@ function getGapContextForWindow(
   };
 }
 
+function getGapFillReasons(
+  job: JobsApiJob,
+  worker: ScheduleWorker,
+  freeMinutes: number,
+  gapStartMinutes: number,
+  gapEndMinutes: number
+) {
+  const reasons: string[] = [];
+  const duration = job.durationMinutes ?? 60;
+  const jobType = String(job.jobType || "").toLowerCase();
+  const jobPostcode = job.customer?.postcode || null;
+
+  const { previousJob, nextJob } = getGapContextForWindow(
+    worker,
+    gapStartMinutes,
+    gapEndMinutes
+  );
+
+  if (duration <= freeMinutes) {
+    reasons.push(`Fits ${freeMinutes}m gap`);
+  }
+
+  if (jobLooksAssignedToWorker(job, worker.name)) {
+    reasons.push("Already assigned");
+  }
+
+  if (freeMinutes <= 60 && jobType.includes("maint")) {
+    reasons.push("Good short maintenance fit");
+  } else if (freeMinutes <= 120 && jobType.includes("maint")) {
+    reasons.push("Good maintenance fit");
+  }
+
+  if (job.needsSchedulingAttention) {
+    reasons.push("Needs attention");
+  }
+
+  const previousTravelScore = previousJob
+    ? estimateTravelScore(previousJob.postcode, jobPostcode)
+    : 0;
+
+  const nextTravelScore = nextJob
+    ? estimateTravelScore(jobPostcode, nextJob.postcode)
+    : 0;
+
+  if (previousTravelScore >= 120 || nextTravelScore >= 120) {
+    reasons.push("Same area");
+  } else if (previousTravelScore > 0 || nextTravelScore > 0) {
+    reasons.push("Route-friendly");
+  }
+
+  return reasons.slice(0, 3);
+}
+
 function scoreGapFillJob(
   job: JobsApiJob,
   worker: ScheduleWorker,
@@ -2334,6 +2387,7 @@ export default function SchedulePage() {
   const [busyTimeOffId, setBusyTimeOffId] = useState<number | null>(null);
   const [movingJobId, setMovingJobId] = useState<number | null>(null);
   const [placingJobId, setPlacingJobId] = useState<number | null>(null);
+  const [tidyingRouteAfterPlace, setTidyingRouteAfterPlace] = useState(false);
   const [moveJobSheet, setMoveJobSheet] = useState<MoveJobSheetState>(null);
   const [placeIntoGapSheet, setPlaceIntoGapSheet] = useState<PlaceIntoGapSheetState>(null);
   const [error, setError] = useState("");
@@ -2658,11 +2712,12 @@ export default function SchedulePage() {
     setPlaceIntoGapSheet(null);
   }
 
-  async function submitPlaceIntoGap() {
+  async function submitPlaceIntoGap(runRouteTidy = false) {
     if (!placeIntoGapSheet || placingJobId !== null) return;
 
     try {
       setPlacingJobId(placeIntoGapSheet.jobId);
+      setTidyingRouteAfterPlace(runRouteTidy);
       setError("");
       setFeedbackMessage(null);
 
@@ -2685,12 +2740,33 @@ export default function SchedulePage() {
         throw new Error(data?.error || "Failed to place job into gap");
       }
 
+      if (runRouteTidy) {
+        const optimiseRes = await fetch("/api/scheduler/optimise-day", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            workerId: placeIntoGapSheet.workerId,
+            date,
+          }),
+        });
+
+        const optimiseData = await optimiseRes.json().catch(() => null);
+
+        if (!optimiseRes.ok) {
+          throw new Error(optimiseData?.error || "Job placed, but route tidy-up failed");
+        }
+      }
+
       await loadPage(date, true);
 
       setFeedbackMessage({
         tone: "success",
-        title: "Job placed into gap",
-        text: `${placeIntoGapSheet.jobLabel} placed with ${placeIntoGapSheet.workerName} at ${placeIntoGapSheet.selectedStartTime}.`,
+        title: runRouteTidy ? "Job placed and route tidied" : "Job placed into gap",
+        text: runRouteTidy
+          ? `${placeIntoGapSheet.jobLabel} placed with ${placeIntoGapSheet.workerName} at ${placeIntoGapSheet.selectedStartTime}, then the day was re-optimised.`
+          : `${placeIntoGapSheet.jobLabel} placed with ${placeIntoGapSheet.workerName} at ${placeIntoGapSheet.selectedStartTime}.`,
       });
 
       setPlaceIntoGapSheet(null);
@@ -2706,6 +2782,7 @@ export default function SchedulePage() {
       });
     } finally {
       setPlacingJobId(null);
+      setTidyingRouteAfterPlace(false);
     }
   }
 
@@ -3499,6 +3576,37 @@ export default function SchedulePage() {
                                     Expected: {job.durationMinutes ?? 60} mins • Assigned:{" "}
                                     {formatWorkers(job.assignments)}
                                   </div>
+
+                                  <div
+                                    style={{
+                                      marginTop: 8,
+                                      display: "flex",
+                                      gap: 6,
+                                      flexWrap: "wrap",
+                                    }}
+                                  >
+                                    {getGapFillReasons(
+                                      job,
+                                      workers.find((w) => w.id === entry.workerId)!,
+                                      entry.freeMinutes,
+                                      entry.gapStartMinutes,
+                                      entry.gapEndMinutes
+                                    ).map((reason) => (
+                                      <span
+                                        key={`${job.id}-${reason}`}
+                                        style={{
+                                          ...pillBase(),
+                                          background: "#f4f4f5",
+                                          color: "#3f3f46",
+                                          border: "1px solid #e4e4e7",
+                                          fontSize: 11,
+                                          padding: "4px 8px",
+                                        }}
+                                      >
+                                        {reason}
+                                      </span>
+                                    ))}
+                                  </div>
                                 </div>
 
                                 <div
@@ -4050,25 +4158,57 @@ onClick={() =>
                 Cancel
               </button>
 
-              <button
-                type="button"
-                onClick={submitPlaceIntoGap}
-                disabled={placingJobId !== null}
+              <div
                 style={{
-                  width: "100%",
-                  minHeight: 46,
-                  borderRadius: 10,
-                  border: "1px solid #18181b",
-                  background: "#18181b",
-                  color: "#fff",
-                  fontSize: 14,
-                  fontWeight: 800,
-                  cursor: placingJobId !== null ? "default" : "pointer",
-                  opacity: placingJobId !== null ? 0.7 : 1,
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: 10,
                 }}
               >
-                {placingJobId !== null ? "Placing..." : "Place job"}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => submitPlaceIntoGap(false)}
+                  disabled={placingJobId !== null}
+                  style={{
+                    width: "100%",
+                    minHeight: 46,
+                    borderRadius: 10,
+                    border: "1px solid #18181b",
+                    background: "#18181b",
+                    color: "#fff",
+                    fontSize: 14,
+                    fontWeight: 800,
+                    cursor: placingJobId !== null ? "default" : "pointer",
+                    opacity: placingJobId !== null ? 0.7 : 1,
+                  }}
+                >
+                  {placingJobId !== null && !tidyingRouteAfterPlace
+                    ? "Placing..."
+                    : "Place job"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => submitPlaceIntoGap(true)}
+                  disabled={placingJobId !== null}
+                  style={{
+                    width: "100%",
+                    minHeight: 46,
+                    borderRadius: 10,
+                    border: "1px solid #facc15",
+                    background: "#facc15",
+                    color: "#18181b",
+                    fontSize: 14,
+                    fontWeight: 800,
+                    cursor: placingJobId !== null ? "default" : "pointer",
+                    opacity: placingJobId !== null ? 0.7 : 1,
+                  }}
+                >
+                  {placingJobId !== null && tidyingRouteAfterPlace
+                    ? "Placing + tidying..."
+                    : "Place job + tidy route"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
