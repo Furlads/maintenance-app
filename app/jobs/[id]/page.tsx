@@ -1,8 +1,15 @@
+# Furlads worker job flow build
+
+Replace this file:
+
+`app/jobs/[id]/page.tsx`
+
+```tsx
 'use client'
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useSearchParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 
 type Worker = {
   id: number
@@ -51,8 +58,6 @@ type Job = {
   arrivedAt?: string | null
   pausedAt?: string | null
   finishedAt?: string | null
-  paymentStatus?: string | null
-  paymentNotes?: string | null
 }
 
 type JobPhoto = {
@@ -64,115 +69,25 @@ type JobPhoto = {
   createdAt: string
 }
 
-type CannotCompleteInfo = {
-  reason: string
-  details: string
-  reportedBy: string
-  recordedAt: string
-  rawLine: string
+type SuggestedJob = {
+  id: number
+  title: string
+  address: string
+  startTime?: string | null
+  durationMinutes?: number | null
+  status: string
 }
 
-type ParsedEndOfJobReport = {
-  workSummary: string
-  followUpRequired: string
-  followUpDetails: string
-  payment: string
-  paymentNotes: string
-  notesForKelly: string
-  reportedBy: string
-  recordedAt: string
+type CompletionReview = {
+  plannedMinutes: number | null
+  actualMinutes: number | null
+  deltaMinutes: number | null
+  nextFittingJob: SuggestedJob | null
+  nextScheduledJob: SuggestedJob | null
 }
 
 function fullName(firstName?: string | null, lastName?: string | null) {
   return `${firstName ?? ''} ${lastName ?? ''}`.trim() || 'Unknown worker'
-}
-function extractCannotCompleteInfo(notes: string | null): CannotCompleteInfo | null {
-  if (!notes) return null
-
-  const lines = notes
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  const matchingLine = [...lines]
-    .reverse()
-    .find((line) => line.toLowerCase().startsWith('job could not be completed:'))
-
-  if (!matchingLine) return null
-
-  const parts = matchingLine.split(' | ').map((part) => part.trim())
-
-  const reasonPart =
-    parts.find((part) =>
-      part.toLowerCase().startsWith('job could not be completed:')
-    ) || ''
-
-  const detailsPart =
-    parts.find((part) => part.toLowerCase().startsWith('details:')) || ''
-
-  const reportedByPart =
-    parts.find((part) => part.toLowerCase().startsWith('reported by:')) || ''
-
-  const recordedAtPart =
-    parts.find((part) => part.toLowerCase().startsWith('recorded at:')) || ''
-
-  return {
-    reason: reasonPart.replace(/^job could not be completed:\s*/i, '').trim(),
-    details: detailsPart.replace(/^details:\s*/i, '').trim(),
-    reportedBy: reportedByPart.replace(/^reported by:\s*/i, '').trim(),
-    recordedAt: recordedAtPart.replace(/^recorded at:\s*/i, '').trim(),
-    rawLine: matchingLine,
-  }
-}
-
-function parseEndOfJobReport(note: string | null): ParsedEndOfJobReport | null {
-  if (!note) return null
-
-  const parts = note
-    .split(' | ')
-    .map((part) => part.trim())
-    .filter(Boolean)
-
-  const hasReportPrefix = parts.some((part) =>
-    part.toLowerCase().startsWith('end of job report:')
-  )
-
-  if (!hasReportPrefix) return null
-
-  const getValue = (prefix: string) => {
-    const match = parts.find((part) =>
-      part.toLowerCase().startsWith(prefix.toLowerCase())
-    )
-
-    if (!match) return ''
-
-    return match.slice(prefix.length).trim()
-  }
-
-  return {
-    workSummary: getValue('Work summary:'),
-    followUpRequired: getValue('Follow-up required:'),
-    followUpDetails: getValue('Follow-up details:'),
-    payment: getValue('Payment:'),
-    paymentNotes: getValue('Payment notes:'),
-    notesForKelly: getValue('Notes for Kelly:'),
-    reportedBy: getValue('Reported by:'),
-    recordedAt: getValue('Recorded at:'),
-  }
-}
-
-function stripCannotCompleteLines(notes: string | null) {
-  if (!notes) return ''
-
-  return notes
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(
-      (line) =>
-        line &&
-        !line.toLowerCase().startsWith('job could not be completed:')
-    )
-    .join('\n')
 }
 
 function formatTime(value?: string | null) {
@@ -209,7 +124,9 @@ function formatDateTime(value?: string | null) {
 }
 
 function formatMinutes(totalMinutes?: number | null) {
-  if (!totalMinutes || totalMinutes <= 0) return '0m'
+  if (totalMinutes === null || totalMinutes === undefined || totalMinutes <= 0) {
+    return '0m'
+  }
 
   const hours = Math.floor(totalMinutes / 60)
   const mins = totalMinutes % 60
@@ -269,14 +186,6 @@ function typeBadgeClass(jobType: string) {
   return 'bg-zinc-100 text-zinc-700 ring-zinc-200'
 }
 
-function formatPaymentStatus(value?: string | null) {
-  const normalised = String(value || '').toLowerCase()
-
-  if (normalised === 'cash_paid') return 'Cash paid'
-  if (normalised === 'invoice_needed') return 'Needs invoice'
-  return 'Not recorded'
-}
-
 function Pill({
   children,
   className,
@@ -319,6 +228,79 @@ function isPrepJob(job: Job | null) {
   return title === 'morning prep' || jobType === 'prep'
 }
 
+function normalisePhotoLabel(value?: string | null) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function isBeforePhoto(photo: JobPhoto) {
+  return normalisePhotoLabel(photo.label) === 'before'
+}
+
+function isAfterPhoto(photo: JobPhoto) {
+  return normalisePhotoLabel(photo.label) === 'after'
+}
+
+function calculateActualMinutes(job: Pick<Job, 'arrivedAt' | 'finishedAt' | 'pausedMinutes'>) {
+  if (!job.arrivedAt || !job.finishedAt) return null
+
+  const arrivedAt = new Date(job.arrivedAt)
+  const finishedAt = new Date(job.finishedAt)
+
+  if (Number.isNaN(arrivedAt.getTime()) || Number.isNaN(finishedAt.getTime())) {
+    return null
+  }
+
+  const rawMinutes = Math.max(
+    0,
+    Math.round((finishedAt.getTime() - arrivedAt.getTime()) / 60000)
+  )
+
+  const pausedMinutes = Math.max(0, Number(job.pausedMinutes || 0))
+
+  return Math.max(0, rawMinutes - pausedMinutes)
+}
+
+function sameDayDateParam(value?: string | null) {
+  if (!value) {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  return date.toISOString().slice(0, 10)
+}
+
+function compareJobs(a: SuggestedJob, b: SuggestedJob) {
+  const aStart = String(a.startTime || '')
+  const bStart = String(b.startTime || '')
+
+  if (aStart && bStart) {
+    return aStart.localeCompare(bStart)
+  }
+
+  if (aStart) return -1
+  if (bStart) return 1
+
+  return a.id - b.id
+}
+
+function isActiveSuggestionStatus(status: string) {
+  const value = String(status || '').toLowerCase()
+  return value !== 'done' && value !== 'completed' && value !== 'cancelled' && value !== 'archived'
+}
+
+function extractVisibleNotes(note: string) {
+  return note
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n')
+}
+
 export default function JobPage() {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -335,6 +317,7 @@ export default function JobPage() {
   const [photoMessage, setPhotoMessage] = useState('')
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   const [busyAction, setBusyAction] = useState('')
+  const [checkingNextJob, setCheckingNextJob] = useState(false)
 
   const [showQuoteForm, setShowQuoteForm] = useState(false)
   const [quoteBusy, setQuoteBusy] = useState(false)
@@ -353,9 +336,10 @@ export default function JobPage() {
   const [finishSummary, setFinishSummary] = useState('')
   const [finishFollowUpRequired, setFinishFollowUpRequired] = useState<'no' | 'yes'>('no')
   const [finishFollowUpDetails, setFinishFollowUpDetails] = useState('')
-  const [finishPaymentStatus, setFinishPaymentStatus] = useState<'not_recorded' | 'cash_paid' | 'invoice_needed'>('not_recorded')
-  const [finishPaymentNotes, setFinishPaymentNotes] = useState('')
   const [finishKellyNotes, setFinishKellyNotes] = useState('')
+
+  const [showCompletionReview, setShowCompletionReview] = useState(false)
+  const [completionReview, setCompletionReview] = useState<CompletionReview | null>(null)
 
   async function loadPhotos() {
     const res = await fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
@@ -389,7 +373,7 @@ export default function JobPage() {
       setJob(jobData || null)
 
       const photoData = await photoRes.json()
-      setPhotos(Array.isArray(photoData) ? photoData : [])
+      setPhotos(Array.isArray(photoData) ? data : [])
     } catch (err) {
       console.error(err)
       setError('Failed to load job.')
@@ -447,6 +431,28 @@ export default function JobPage() {
     setQuoteMessage('')
   }, [showQuoteForm, job])
 
+  useEffect(() => {
+    if (!showFinishReport) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [showFinishReport])
+
+  useEffect(() => {
+    if (!showCompletionReview) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [showCompletionReview])
+
   const finishQueryParam = searchParams.get('finish')
 
   useEffect(() => {
@@ -459,16 +465,20 @@ export default function JobPage() {
     setHasAutoOpenedFinishReport(true)
   }, [job, finishQueryParam, hasAutoOpenedFinishReport])
 
-  useEffect(() => {
-    if (!showFinishReport) return
+  const beforePhotos = useMemo(
+    () => photos.filter((photo) => isBeforePhoto(photo)),
+    [photos]
+  )
 
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+  const afterPhotos = useMemo(
+    () => photos.filter((photo) => isAfterPhoto(photo)),
+    [photos]
+  )
 
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [showFinishReport])
+  const visibleNotes = useMemo(
+    () => (job?.notes ? extractVisibleNotes(job.notes) : ''),
+    [job?.notes]
+  )
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -505,10 +515,10 @@ export default function JobPage() {
         await loadPhotos()
       }
 
-      setPhotoMessage('Photo uploaded successfully.')
+      setPhotoMessage(`${label} photo uploaded successfully.`)
       event.target.value = ''
-    } catch (error) {
-      console.error(error)
+    } catch (uploadError) {
+      console.error(uploadError)
       setPhotoMessage('Failed to upload photo.')
     } finally {
       setUploading(false)
@@ -535,26 +545,18 @@ export default function JobPage() {
 
       setPhotos((current) => current.filter((photo) => photo.id !== photoId))
       setPhotoMessage('Photo deleted successfully.')
-      setViewerIndex((current) => {
-        if (current === null) return current
-
-        const deletedIndex = photos.findIndex((photo) => photo.id === photoId)
-
-        if (deletedIndex === -1) return current
-        if (current === deletedIndex) return null
-        if (current > deletedIndex) return current - 1
-
-        return current
-      })
-    } catch (error) {
-      console.error(error)
+    } catch (deleteError) {
+      console.error(deleteError)
       setPhotoMessage('Failed to delete photo.')
     } finally {
       setDeletingPhotoId(null)
     }
   }
 
-  async function patchJob(payload: Record<string, unknown>, actionLabel: string) {
+  async function patchJob(
+    payload: Record<string, unknown>,
+    actionLabel: string
+  ): Promise<Job | null> {
     try {
       setBusyAction(actionLabel)
       setError('')
@@ -575,17 +577,18 @@ export default function JobPage() {
 
       if (data && typeof data === 'object') {
         setJob(data as Job)
+        await loadPhotos()
+        router.refresh()
+        return data as Job
       }
 
-      await loadPhotos()
+      await loadJob()
       router.refresh()
-      window.location.reload()
-
-      return true
+      return null
     } catch (err) {
       console.error(err)
       setError(`Failed to ${actionLabel}.`)
-      return false
+      return null
     } finally {
       setBusyAction('')
     }
@@ -638,6 +641,14 @@ export default function JobPage() {
   }
 
   async function handleStartJob() {
+    if (!isPrepJob(job) && beforePhotos.length === 0) {
+      const confirmed = window.confirm(
+        'There are no before photos yet. Start this job anyway?'
+      )
+
+      if (!confirmed) return
+    }
+
     await patchJob({ action: 'start' }, 'start job')
   }
 
@@ -654,14 +665,108 @@ export default function JobPage() {
     if (!job) return
 
     if (!job.arrivedAt) {
-      const startOk = await patchJob({ action: 'start' }, 'start job')
-      if (!startOk) return
+      const started = await patchJob({ action: 'start' }, 'start job')
+      if (!started) return
     }
 
     await patchJob({ action: 'finish' }, 'finish job')
   }
 
+  async function fetchSuggestedJobs(currentJob: Job) {
+    const workerIds = currentJob.assignments.map((assignment) => assignment.workerId)
+
+    if (workerIds.length === 0) {
+      return []
+    }
+
+    const dateParam = sameDayDateParam(currentJob.visitDate)
+
+    const results = await Promise.all(
+      workerIds.map(async (workerId) => {
+        const res = await fetch(`/api/jobs?workerId=${workerId}&date=${dateParam}`, {
+          cache: 'no-store',
+        })
+
+        if (!res.ok) {
+          return []
+        }
+
+        const data = await res.json().catch(() => [])
+        return Array.isArray(data) ? data : []
+      })
+    )
+
+    const merged = new Map<number, SuggestedJob>()
+
+    for (const items of results) {
+      for (const item of items) {
+        if (
+          item &&
+          typeof item === 'object' &&
+          typeof item.id === 'number' &&
+          item.id !== currentJob.id &&
+          isActiveSuggestionStatus(String(item.status || ''))
+        ) {
+          merged.set(item.id, {
+            id: item.id,
+            title: String(item.title || 'Untitled job'),
+            address: String(item.address || ''),
+            startTime: typeof item.startTime === 'string' ? item.startTime : null,
+            durationMinutes:
+              typeof item.durationMinutes === 'number' ? item.durationMinutes : null,
+            status: String(item.status || ''),
+          })
+        }
+      }
+    }
+
+    return Array.from(merged.values()).sort(compareJobs)
+  }
+
+  async function openCompletionReview(updatedJob: Job) {
+    const actualMinutes = calculateActualMinutes(updatedJob)
+    const plannedMinutes =
+      typeof updatedJob.durationMinutes === 'number' ? updatedJob.durationMinutes : null
+    const deltaMinutes =
+      plannedMinutes !== null && actualMinutes !== null
+        ? plannedMinutes - actualMinutes
+        : null
+
+    setCheckingNextJob(true)
+
+    try {
+      const suggestedJobs = await fetchSuggestedJobs(updatedJob)
+      const nextScheduledJob = suggestedJobs[0] || null
+      const nextFittingJob =
+        deltaMinutes && deltaMinutes > 0
+          ? suggestedJobs.find((item) => {
+              if (!item.durationMinutes) return false
+              return item.durationMinutes <= deltaMinutes
+            }) || null
+          : null
+
+      setCompletionReview({
+        plannedMinutes,
+        actualMinutes,
+        deltaMinutes,
+        nextFittingJob,
+        nextScheduledJob,
+      })
+      setShowCompletionReview(true)
+    } finally {
+      setCheckingNextJob(false)
+    }
+  }
+
   async function submitFinishReport() {
+    if (afterPhotos.length === 0) {
+      const confirmed = window.confirm(
+        'There are no after photos yet. Finish this job anyway?'
+      )
+
+      if (!confirmed) return
+    }
+
     const workerName = localStorage.getItem('workerName') || 'Unknown worker'
     const recordedAt = new Date().toLocaleString('en-GB')
 
@@ -674,34 +779,26 @@ export default function JobPage() {
           ? finishFollowUpDetails.trim() || 'Not provided'
           : 'None'
       }`,
-      `Payment: ${
-        finishPaymentStatus === 'cash_paid'
-          ? 'Cash paid'
-          : finishPaymentStatus === 'invoice_needed'
-            ? 'Needs invoice'
-            : 'Not recorded'
-      }`,
-      `Payment notes: ${finishPaymentNotes.trim() || 'None'}`,
+      `Before photos: ${beforePhotos.length}`,
+      `After photos: ${afterPhotos.length}`,
       `Notes for Kelly: ${finishKellyNotes.trim() || 'None'}`,
       `Reported by: ${workerName}`,
       `Recorded at: ${recordedAt}`,
     ]
 
-    const success = await patchJob(
+    const updatedJob = await patchJob(
       {
         action: 'finish',
-        paymentStatus:
-          finishPaymentStatus === 'not_recorded' ? '' : finishPaymentStatus,
-        paymentNotes: finishPaymentNotes.trim(),
         appendNote: reportLines.join(' | '),
         noteAuthor: workerName,
       },
       'finish job'
     )
 
-    if (success) {
-      setShowFinishReport(false)
-    }
+    if (!updatedJob) return
+
+    setShowFinishReport(false)
+    await openCompletionReview(updatedJob)
   }
 
   async function handlePauseJob() {
@@ -815,16 +912,6 @@ Heavy rain made it unsafe`,
     })
   }
 
-  const cannotCompleteInfo = useMemo(
-    () => extractCannotCompleteInfo(job?.notes ?? null),
-    [job?.notes]
-  )
-
-  const visibleNotes = useMemo(
-    () => stripCannotCompleteLines(job?.notes ?? null),
-    [job?.notes]
-  )
-
   const isDone =
     job ? String(job.status || '').toLowerCase() === 'done' || !!job.finishedAt : false
 
@@ -929,7 +1016,7 @@ Heavy rain made it unsafe`,
                 value={job.visitDate ? formatDateTime(job.visitDate) : '—'}
               />
               <InfoRow label="Start time" value={job.startTime || '—'} />
-              <InfoRow label="Duration" value={formatMinutes(job.durationMinutes)} />
+              <InfoRow label="Planned time" value={formatMinutes(job.durationMinutes)} />
               <InfoRow
                 label="Assigned workers"
                 value={
@@ -949,38 +1036,6 @@ Heavy rain made it unsafe`,
           {error && (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
               {error}
-            </div>
-          )}
-
-          {cannotCompleteInfo && (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
-              <h2 className="mb-3 text-lg font-bold text-amber-900">
-                Job could not be completed
-              </h2>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="text-sm text-amber-900">
-                  <strong>Reason:</strong> {cannotCompleteInfo.reason || 'Not provided'}
-                </div>
-
-                {cannotCompleteInfo.reportedBy && (
-                  <div className="text-sm text-amber-900">
-                    <strong>Reported by:</strong> {cannotCompleteInfo.reportedBy}
-                  </div>
-                )}
-
-                {cannotCompleteInfo.details && (
-                  <div className="text-sm text-amber-900 md:col-span-2">
-                    <strong>Details:</strong> {cannotCompleteInfo.details}
-                  </div>
-                )}
-
-                {cannotCompleteInfo.recordedAt && (
-                  <div className="text-sm text-amber-900 md:col-span-2">
-                    <strong>Recorded at:</strong> {cannotCompleteInfo.recordedAt}
-                  </div>
-                )}
-              </div>
             </div>
           )}
 
@@ -1120,226 +1175,6 @@ Heavy rain made it unsafe`,
                   </div>
                 )}
 
-                <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                        End of job reports
-                      </div>
-                      <div className="mt-1 text-sm text-zinc-500">
-                        Previous visit reports, work summary and office notes.
-                      </div>
-                    </div>
-
-                    <div className="rounded-full bg-white px-3 py-1 text-xs font-bold text-zinc-700 ring-1 ring-inset ring-zinc-200">
-                      {job.jobNotes?.length || 0} note{job.jobNotes?.length === 1 ? '' : 's'}
-                    </div>
-                  </div>
-
-                  {!job.jobNotes || job.jobNotes.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-500">
-                      No end of job reports saved yet.
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {job.jobNotes.map((note) => {
-                        const parsedReport = parseEndOfJobReport(note.note)
-                        const cleanedNote = stripCannotCompleteLines(note.note)
-
-                        return (
-                          <div
-                            key={note.id}
-                            className="rounded-2xl border border-zinc-200 bg-white p-4"
-                          >
-                            <div className="text-xs text-zinc-500">
-                              {formatDateTime(note.createdAt)} •{' '}
-                              {fullName(note.worker?.firstName, note.worker?.lastName)}
-                            </div>
-
-                            {parsedReport ? (
-                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
-                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                                    Work summary
-                                  </div>
-                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
-                                    {parsedReport.workSummary || 'Not provided'}
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                                    Follow-up required
-                                  </div>
-                                  <div className="mt-2 text-sm text-zinc-700">
-                                    {parsedReport.followUpRequired || 'Not provided'}
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                                    Payment
-                                  </div>
-                                  <div className="mt-2 text-sm text-zinc-700">
-                                    {parsedReport.payment || 'Not provided'}
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
-                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                                    Follow-up details
-                                  </div>
-                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
-                                    {parsedReport.followUpDetails || 'None'}
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
-                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                                    Notes for Kelly
-                                  </div>
-                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
-                                    {parsedReport.notesForKelly || 'None'}
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                                    Payment notes
-                                  </div>
-                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
-                                    {parsedReport.paymentNotes || 'None'}
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                                    Reported by
-                                  </div>
-                                  <div className="mt-2 text-sm text-zinc-700">
-                                    {parsedReport.reportedBy || fullName(note.worker?.firstName, note.worker?.lastName)}
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
-                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                                    Recorded at
-                                  </div>
-                                  <div className="mt-2 text-sm text-zinc-700">
-                                    {parsedReport.recordedAt || formatDateTime(note.createdAt)}
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
-                                {cleanedNote || 'No note text'}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {showQuoteForm && !prepJob && (
-                  <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <div className="mb-3 text-lg font-extrabold text-zinc-900">
-                      New Quote
-                    </div>
-
-                    <div className="grid gap-3">
-                      <input
-                        value={quoteCustomerName}
-                        onChange={(e) => setQuoteCustomerName(e.target.value)}
-                        placeholder="Customer name"
-                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                      />
-
-                      <input
-                        value={quoteCustomerPhone}
-                        onChange={(e) => setQuoteCustomerPhone(e.target.value)}
-                        placeholder="Customer phone"
-                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                      />
-
-                      <input
-                        value={quoteCustomerEmail}
-                        onChange={(e) => setQuoteCustomerEmail(e.target.value)}
-                        placeholder="Customer email (optional)"
-                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                      />
-
-                      <input
-                        value={quoteCustomerAddress}
-                        onChange={(e) => setQuoteCustomerAddress(e.target.value)}
-                        placeholder="Customer address"
-                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                      />
-
-                      <input
-                        value={quoteCustomerPostcode}
-                        onChange={(e) => setQuoteCustomerPostcode(e.target.value)}
-                        placeholder="Customer postcode"
-                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                      />
-
-                      <textarea
-                        value={quoteWorkSummary}
-                        onChange={(e) => setQuoteWorkSummary(e.target.value)}
-                        placeholder="What work is needed?"
-                        className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                      />
-
-                      <input
-                        value={quoteEstimatedTime}
-                        onChange={(e) => setQuoteEstimatedTime(e.target.value)}
-                        placeholder="How long do you think it will take conservatively?"
-                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                      />
-
-                      <textarea
-                        value={quoteNotes}
-                        onChange={(e) => setQuoteNotes(e.target.value)}
-                        placeholder="Extra notes for the office (optional)"
-                        className="min-h-[80px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                      />
-                    </div>
-
-                    {quoteMessage && (
-                      <div
-                        className={`mt-3 text-sm font-medium ${
-                          quoteMessage.includes('successfully')
-                            ? 'text-green-700'
-                            : 'text-red-700'
-                        }`}
-                      >
-                        {quoteMessage}
-                      </div>
-                    )}
-
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={handleSendQuoteRequest}
-                        disabled={quoteBusy}
-                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {quoteBusy ? 'Saving...' : 'Save New Quote'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowQuoteForm(false)}
-                        disabled={quoteBusy}
-                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 {(isStarted || isPaused) && !prepJob && (
                   <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                     <div className="mb-3 text-sm font-bold text-zinc-800">
@@ -1347,41 +1182,17 @@ Heavy rain made it unsafe`,
                     </div>
 
                     <div className="flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={() => handleExtendJob(15)}
-                        disabled={busyAction !== ''}
-                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {busyAction === 'extend job' ? 'Updating...' : '+15'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleExtendJob(30)}
-                        disabled={busyAction !== ''}
-                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {busyAction === 'extend job' ? 'Updating...' : '+30'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleExtendJob(45)}
-                        disabled={busyAction !== ''}
-                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {busyAction === 'extend job' ? 'Updating...' : '+45'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleExtendJob(60)}
-                        disabled={busyAction !== ''}
-                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {busyAction === 'extend job' ? 'Updating...' : '+60'}
-                      </button>
+                      {[15, 30, 45, 60].map((minutes) => (
+                        <button
+                          key={minutes}
+                          type="button"
+                          onClick={() => handleExtendJob(minutes)}
+                          disabled={busyAction !== ''}
+                          className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {busyAction === 'extend job' ? 'Updating...' : `+${minutes}`}
+                        </button>
+                      ))}
 
                       <button
                         type="button"
@@ -1397,9 +1208,7 @@ Heavy rain made it unsafe`,
               </section>
 
               <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-zinc-900">Job details</h2>
-                </div>
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Job details</h2>
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <InfoRow
@@ -1420,7 +1229,7 @@ Heavy rain made it unsafe`,
 
                   <InfoRow label="Start time" value={job.startTime || '—'} />
 
-                  <InfoRow label="Duration" value={formatMinutes(job.durationMinutes)} />
+                  <InfoRow label="Planned time" value={formatMinutes(job.durationMinutes)} />
 
                   <InfoRow label="Overrun" value={formatMinutes(job.overrunMins)} />
 
@@ -1433,14 +1242,13 @@ Heavy rain made it unsafe`,
                   <InfoRow label="Finished at" value={formatTime(job.finishedAt)} />
 
                   <InfoRow
-                    label="Payment"
-                    value={formatPaymentStatus(job.paymentStatus)}
+                    label="Actual on-site time"
+                    value={formatMinutes(calculateActualMinutes(job))}
                   />
 
-                  <InfoRow
-                    label="Payment notes"
-                    value={job.paymentNotes || '—'}
-                  />
+                  <InfoRow label="Before photos" value={`${beforePhotos.length} uploaded`} />
+
+                  <InfoRow label="After photos" value={`${afterPhotos.length} uploaded`} />
 
                   <div className="sm:col-span-2">
                     <InfoRow
@@ -1461,12 +1269,23 @@ Heavy rain made it unsafe`,
               </section>
 
               <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-lg font-bold text-zinc-900">Photos</h2>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-bold text-zinc-900">Photos</h2>
+
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700">
+                      Before: {beforePhotos.length}
+                    </span>
+                    <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700">
+                      After: {afterPhotos.length}
+                    </span>
+                  </div>
+                </div>
 
                 <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                   <div className="mb-3">
                     <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                      Photo Label
+                      Photo label
                     </label>
                     <select
                       value={label}
@@ -1488,53 +1307,13 @@ Heavy rain made it unsafe`,
                     className="block w-full text-sm"
                   />
 
+                  <p className="mt-3 text-xs text-zinc-500">
+                    Take before photos when you arrive, then after photos before finishing.
+                  </p>
+
                   {photoMessage && (
                     <p className="mt-3 text-sm text-zinc-600">{photoMessage}</p>
                   )}
-                </div>
-
-                {photos.length === 0 && (
-                  <p className="text-sm text-zinc-500">No photos uploaded yet.</p>
-                )}
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {photos.map((photo, index) => (
-                    <div
-                      key={photo.id}
-                      className="overflow-hidden rounded-2xl border border-zinc-200 bg-white"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => openViewer(index)}
-                        className="block w-full text-left"
-                      >
-                        <img
-                          src={photo.imageUrl}
-                          alt={photo.label || 'Job photo'}
-                          className="h-[220px] w-full object-cover"
-                        />
-
-                        <div className="p-3">
-                          <p className="mb-1 text-sm text-zinc-700">
-                            <strong>Label:</strong> {photo.label || 'None'}
-                          </p>
-
-                          <p className="text-sm text-zinc-500">Tap to open full size</p>
-                        </div>
-                      </button>
-
-                      <div className="p-3 pt-0">
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePhoto(photo.id)}
-                          disabled={deletingPhotoId === photo.id}
-                          className="w-full rounded-xl border border-red-300 bg-white px-3 py-2.5 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {deletingPhotoId === photo.id ? 'Deleting...' : 'Delete Photo'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </section>
             </div>
@@ -1565,74 +1344,6 @@ Heavy rain made it unsafe`,
                   )}
                 </div>
               </section>
-
-              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-lg font-bold text-zinc-900">Assigned workers</h2>
-
-                <div className="space-y-3">
-                  {job.assignments.length === 0 && (
-                    <p className="text-sm text-zinc-500">No workers assigned</p>
-                  )}
-
-                  {job.assignments.map((a) => (
-                    <div
-                      key={a.id}
-                      className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700"
-                    >
-                      <div className="font-semibold text-zinc-900">
-                        {a.worker.firstName} {a.worker.lastName}
-                      </div>
-                      {a.worker.phone ? (
-                        <div className="mt-1 text-zinc-500">{a.worker.phone}</div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {!prepJob && (
-                <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                  <h2 className="mb-4 text-lg font-bold text-zinc-900">Customer</h2>
-
-                  <div className="space-y-3">
-                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                        Name
-                      </div>
-                      <div className="mt-2 text-sm font-medium text-zinc-900">
-                        {job.customer?.name || 'Unknown customer'}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                        Phone
-                      </div>
-                      <div className="mt-2 text-sm font-medium text-zinc-900">
-                        {job.customer?.phone || '—'}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                        Address
-                      </div>
-                      <div className="mt-2 text-sm font-medium text-zinc-900">
-                        {job.customer?.address || '—'}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                        Postcode
-                      </div>
-                      <div className="mt-2 text-sm font-medium text-zinc-900">
-                        {job.customer?.postcode || '—'}
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              )}
             </div>
           </div>
         </div>
@@ -1645,148 +1356,28 @@ Heavy rain made it unsafe`,
               <div className="border-b border-zinc-200 px-5 py-4">
                 <h2 className="text-xl font-bold text-zinc-900">Finish job report</h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  Quick end-of-job report for Kelly before you finish this job.
+                  Add your work summary, check the after photos, then finish the job.
                 </p>
               </div>
 
-              <div
-                className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 pb-32"
-                style={{ WebkitOverflowScrolling: 'touch' }}
-              >
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 pb-32">
                 <div className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                      Work summary
-                    </label>
-                    <textarea
-                      value={finishSummary}
-                      onChange={(e) => setFinishSummary(e.target.value)}
-                      placeholder="What was done today?"
-                      className="min-h-[100px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                      Follow-up required?
-                    </label>
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setFinishFollowUpRequired('no')}
-                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                          finishFollowUpRequired === 'no'
-                            ? 'bg-zinc-900 text-white'
-                            : 'border border-zinc-300 bg-white text-zinc-800'
-                        }`}
-                      >
-                        No
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setFinishFollowUpRequired('yes')}
-                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                          finishFollowUpRequired === 'yes'
-                            ? 'bg-zinc-900 text-white'
-                            : 'border border-zinc-300 bg-white text-zinc-800'
-                        }`}
-                      >
-                        Yes
-                      </button>
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <InfoRow label="Before photos" value={`${beforePhotos.length} uploaded`} />
+                      <InfoRow label="After photos" value={`${afterPhotos.length} uploaded`} />
                     </div>
-                  </div>
-
-                  {finishFollowUpRequired === 'yes' && (
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                        Follow-up details
-                      </label>
-                      <textarea
-                        value={finishFollowUpDetails}
-                        onChange={(e) => setFinishFollowUpDetails(e.target.value)}
-                        placeholder="What still needs doing, returning for, or chasing?"
-                        className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                      Payment
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <button
-                        type="button"
-                        onClick={() => setFinishPaymentStatus('not_recorded')}
-                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                          finishPaymentStatus === 'not_recorded'
-                            ? 'bg-zinc-900 text-white'
-                            : 'border border-zinc-300 bg-white text-zinc-800'
-                        }`}
-                      >
-                        Not recorded
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setFinishPaymentStatus('cash_paid')}
-                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                          finishPaymentStatus === 'cash_paid'
-                            ? 'bg-zinc-900 text-white'
-                            : 'border border-zinc-300 bg-white text-zinc-800'
-                        }`}
-                      >
-                        Cash paid
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setFinishPaymentStatus('invoice_needed')}
-                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                          finishPaymentStatus === 'invoice_needed'
-                            ? 'bg-zinc-900 text-white'
-                            : 'border border-zinc-300 bg-white text-zinc-800'
-                        }`}
-                      >
-                        Needs invoice
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                      Payment notes
-                    </label>
-                    <input
-                      value={finishPaymentNotes}
-                      onChange={(e) => setFinishPaymentNotes(e.target.value)}
-                      placeholder="Amount paid, part paid, cash details, anything useful"
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                      Extra notes for Kelly
-                    </label>
-                    <textarea
-                      value={finishKellyNotes}
-                      onChange={(e) => setFinishKellyNotes(e.target.value)}
-                      placeholder="Anything Kelly should know?"
-                      className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                    />
                   </div>
                 </div>
               </div>
 
-              <div className="border-t border-zinc-200 bg-white px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+              <div className="border-t border-zinc-200 bg-white px-5 py-4">
                 <div className="flex flex-wrap justify-end gap-3">
                   <button
                     type="button"
                     onClick={() => setShowFinishReport(false)}
                     disabled={busyAction !== ''}
-                    className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
                   >
                     Cancel
                   </button>
@@ -1795,7 +1386,7 @@ Heavy rain made it unsafe`,
                     type="button"
                     onClick={submitFinishReport}
                     disabled={busyAction !== ''}
-                    className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white"
                   >
                     {busyAction === 'finish job' ? 'Saving...' : 'Save report & finish job'}
                   </button>
@@ -1806,67 +1397,55 @@ Heavy rain made it unsafe`,
         </div>
       )}
 
-      {activePhoto && (
-        <div
-          onClick={closeViewer}
-          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-5"
-        >
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              closeViewer()
-            }}
-            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl text-white"
-          >
-            ×
-          </button>
+      {showCompletionReview && completionReview && (
+        <div className="fixed inset-0 z-[1002] bg-black/50 sm:flex sm:items-center sm:justify-center sm:p-4">
+          <div className="flex h-[100dvh] w-full items-end justify-center sm:h-auto sm:items-center">
+            <div className="w-full max-w-2xl rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+              <div className="border-b border-zinc-200 px-5 py-4">
+                <h2 className="text-xl font-bold text-zinc-900">Job complete</h2>
+              </div>
 
-          {viewerIndex !== null && viewerIndex > 0 && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                showPreviousPhoto()
-              }}
-              className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl text-white"
-            >
-              ‹
-            </button>
-          )}
+              <div className="space-y-4 p-5">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <InfoRow label="Planned time" value={formatMinutes(completionReview.plannedMinutes)} />
+                  <InfoRow label="Actual time" value={formatMinutes(completionReview.actualMinutes)} />
+                  <InfoRow
+                    label={completionReview.deltaMinutes !== null && completionReview.deltaMinutes >= 0 ? 'Time saved' : 'Overrun'}
+                    value={formatMinutes(completionReview.deltaMinutes !== null ? Math.abs(completionReview.deltaMinutes) : null)}
+                  />
+                </div>
 
-          <div
-            onClick={(event) => event.stopPropagation()}
-            className="flex w-full max-w-[1100px] flex-col items-center gap-3"
-          >
-            <img
-              src={activePhoto.imageUrl}
-              alt={activePhoto.label || 'Job photo'}
-              className="max-h-[80vh] max-w-full rounded-xl object-contain"
-            />
+                {checkingNextJob ? (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+                    Checking whether there is anything else that fits before moving on...
+                  </div>
+                ) : completionReview.deltaMinutes !== null && completionReview.deltaMinutes > 0 && completionReview.nextFittingJob ? (
+                  <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
+                    <div className="text-sm font-bold text-green-900">
+                      There is another task that fits this spare time.
+                    </div>
+                    <div className="mt-2 text-sm text-green-900">
+                      <strong>{completionReview.nextFittingJob.title}</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+                    No obvious extra task fits this spare time.
+                  </div>
+                )}
+              </div>
 
-            <div className="text-center text-white">
-              <p className="mb-1">
-                <strong>{activePhoto.label || 'Job photo'}</strong>
-              </p>
-              <p className="opacity-80">
-                Photo {viewerIndex !== null ? viewerIndex + 1 : 1} of {photos.length}
-              </p>
+              <div className="flex flex-wrap justify-end gap-3 border-t border-zinc-200 px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCompletionReview(false)}
+                  className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-
-          {viewerIndex !== null && viewerIndex < photos.length - 1 && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                showNextPhoto()
-              }}
-              className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl text-white"
-            >
-              ›
-            </button>
-          )}
         </div>
       )}
     </main>
