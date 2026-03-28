@@ -75,11 +75,12 @@ type TimelinePlacedJob = ScheduleJob & {
   lane: number;
 };
 
-type FeedbackMessage = {
-  tone: "success" | "error" | "info";
-  title: string;
-  text: string;
-} | null;
+type GapFillSuggestion = {
+  workerId: number;
+  workerName: string;
+  freeMinutes: number;
+  suggestedJobs: JobsApiJob[];
+};
 
 type TimeOffDecisionSheetState = {
   mode: "approve" | "decline";
@@ -534,6 +535,99 @@ function getBlockStatusBadgeStyle(status: ScheduleAvailabilityBlock["status"]): 
     color: "#166534",
     border: "1px solid #bbf7d0",
   };
+}
+
+function getWorkerRemainingMinutes(worker: ScheduleWorker) {
+  const scheduledMinutes = worker.jobs.reduce(
+    (total, job) => total + (job.durationMinutes ?? 60),
+    0
+  );
+
+  const breakMinutes = scheduledMinutes >= 360 ? 20 : 0;
+  const bufferMinutes = Math.round(scheduledMinutes * 0.15);
+  const realisticUsedMinutes = scheduledMinutes + breakMinutes + bufferMinutes;
+
+  return DAY_END_MINUTES - WORK_START_MINUTES - realisticUsedMinutes;
+}
+
+function getAssignedWorkerNames(job: JobsApiJob) {
+  return formatWorkers(job.assignments);
+}
+
+function jobLooksAssignedToWorker(job: JobsApiJob, workerName: string) {
+  const assigned = getAssignedWorkerNames(job).toLowerCase();
+  return assigned.includes(workerName.toLowerCase());
+}
+
+function scoreGapFillJob(job: JobsApiJob, worker: ScheduleWorker, freeMinutes: number) {
+  let score = 0;
+
+  const duration = job.durationMinutes ?? 60;
+  const jobType = String(job.jobType || "").toLowerCase();
+  const status = String(job.status || "").toLowerCase();
+
+  if (status === "unscheduled") score += 200;
+  if (status === "todo" || status === "scheduled") score += 100;
+
+  if (duration <= freeMinutes) {
+    score += 400;
+    score += Math.max(0, 120 - Math.abs(freeMinutes - duration));
+  } else {
+    score -= 300;
+  }
+
+  if (jobLooksAssignedToWorker(job, worker.name)) {
+    score += 250;
+  }
+
+  if (jobType.includes("maint")) {
+    if (freeMinutes <= 120) {
+      score += 180;
+    } else {
+      score += 80;
+    }
+  }
+
+  if (job.needsSchedulingAttention) {
+    score += 120;
+  }
+
+  if (!job.visitDate) {
+    score += 40;
+  }
+
+  return score;
+}
+
+function buildGapFillSuggestions(
+  workers: ScheduleWorker[],
+  unscheduledJobs: JobsApiJob[]
+): GapFillSuggestion[] {
+  return workers
+    .map((worker) => {
+      const freeMinutes = getWorkerRemainingMinutes(worker);
+
+      const suggestedJobs = [...unscheduledJobs]
+        .filter((job) => (job.durationMinutes ?? 60) <= Math.max(freeMinutes, 0))
+        .sort((a, b) => {
+          const scoreA = scoreGapFillJob(a, worker, freeMinutes);
+          const scoreB = scoreGapFillJob(b, worker, freeMinutes);
+
+          if (scoreA !== scoreB) return scoreB - scoreA;
+
+          return sortUnscheduledJobs(a, b);
+        })
+        .slice(0, 3);
+
+      return {
+        workerId: worker.id,
+        workerName: worker.name,
+        freeMinutes,
+        suggestedJobs,
+      };
+    })
+    .filter((entry) => entry.freeMinutes >= 30)
+    .sort((a, b) => b.freeMinutes - a.freeMinutes);
 }
 
 function sortUnscheduledJobs(a: JobsApiJob, b: JobsApiJob) {
@@ -2030,6 +2124,10 @@ export default function SchedulePage() {
     );
   }, [workers]);
 
+    const gapFillSuggestions = useMemo(() => {
+    return buildGapFillSuggestions(workers, unscheduledJobs);
+  }, [workers, unscheduledJobs]);
+
   async function loadPage(selectedDate: string, isManualRefresh = false) {
     if (isManualRefresh) {
       setRefreshing(true);
@@ -2829,6 +2927,272 @@ export default function SchedulePage() {
 
         {!loading && !error && (
           <>
+                      <section
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: isMobile ? 16 : 18,
+                background: "#fff",
+                padding: isMobile ? 12 : 18,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  alignItems: isMobile ? "start" : "center",
+                  flexDirection: isMobile ? "column" : "row",
+                  marginBottom: 14,
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0, fontSize: isMobile ? 20 : 22 }}>
+                    Gap Fill Opportunities
+                  </h2>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      color: "#71717a",
+                      fontSize: 14,
+                    }}
+                  >
+                    Best-fit unscheduled jobs for spare worker time today
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: "#155e75",
+                  }}
+                >
+                  {gapFillSuggestions.length} worker
+                  {gapFillSuggestions.length === 1 ? "" : "s"} with usable gaps
+                </div>
+              </div>
+
+              {gapFillSuggestions.length === 0 ? (
+                <div
+                  style={{
+                    border: "1px dashed #d4d4d8",
+                    borderRadius: 12,
+                    padding: 18,
+                    color: "#71717a",
+                    background: "#fafafa",
+                  }}
+                >
+                  No obvious gap-fill opportunities right now.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {gapFillSuggestions.map((entry) => (
+                    <div
+                      key={entry.workerId}
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 14,
+                        background: "#fafafa",
+                        padding: isMobile ? 12 : 14,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              fontWeight: 800,
+                              fontSize: 16,
+                              color: "#18181b",
+                            }}
+                          >
+                            {entry.workerName}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 13,
+                              color: "#52525b",
+                            }}
+                          >
+                            {formatRemaining(entry.freeMinutes)}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            ...pillBase(),
+                            background: "#ecfeff",
+                            color: "#155e75",
+                            border: "1px solid #a5f3fc",
+                          }}
+                        >
+                          {entry.suggestedJobs.length} suggestion
+                          {entry.suggestedJobs.length === 1 ? "" : "s"}
+                        </div>
+                      </div>
+
+                      {entry.suggestedJobs.length === 0 ? (
+                        <div
+                          style={{
+                            borderRadius: 12,
+                            border: "1px dashed #d4d4d8",
+                            background: "#fff",
+                            padding: 14,
+                            color: "#71717a",
+                            fontSize: 13,
+                          }}
+                        >
+                          Nothing suitable fits this worker’s spare time.
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {entry.suggestedJobs.map((job) => (
+                            <div
+                              key={`gap-fill-${entry.workerId}-${job.id}`}
+                              style={{
+                                border: job.needsSchedulingAttention
+                                  ? "1px solid #fecaca"
+                                  : "1px solid #e5e7eb",
+                                borderRadius: 12,
+                                background: job.needsSchedulingAttention ? "#fff7f7" : "#fff",
+                                padding: 12,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 12,
+                                  flexWrap: "wrap",
+                                  alignItems: "start",
+                                  flexDirection: isMobile ? "column" : "row",
+                                }}
+                              >
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      gap: 8,
+                                      flexWrap: "wrap",
+                                      alignItems: "center",
+                                      marginBottom: 8,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        ...pillBase(),
+                                        ...getJobTypeBadgeStyle(job.jobType),
+                                      }}
+                                    >
+                                      {formatJobType(job.jobType)}
+                                    </span>
+
+                                    <span
+                                      style={{
+                                        ...pillBase(),
+                                        ...getStatusBadgeStyle(job.status),
+                                      }}
+                                    >
+                                      {formatStatus(job.status)}
+                                    </span>
+
+                                    {job.needsSchedulingAttention && (
+                                      <span
+                                        style={{
+                                          ...pillBase(),
+                                          background: "#fff1f2",
+                                          color: "#9f1239",
+                                          border: "1px solid #fecaca",
+                                        }}
+                                      >
+                                        Needs attention
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      fontWeight: 800,
+                                      marginBottom: 4,
+                                      fontSize: 15,
+                                      overflowWrap: "anywhere",
+                                      wordBreak: "break-word",
+                                    }}
+                                  >
+                                    {titleCase(job.customer?.name) || "No customer"} —{" "}
+                                    {titleCase(job.title) || "General"}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      color: "#52525b",
+                                      fontSize: 13,
+                                      marginBottom: 6,
+                                      overflowWrap: "anywhere",
+                                      wordBreak: "break-word",
+                                    }}
+                                  >
+                                    {titleCase(job.address) || "No address"}
+                                    {job.customer?.postcode ? ` • ${job.customer.postcode}` : ""}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      color: "#71717a",
+                                      fontSize: 12,
+                                      overflowWrap: "anywhere",
+                                      wordBreak: "break-word",
+                                    }}
+                                  >
+                                    Expected: {job.durationMinutes ?? 60} mins • Assigned:{" "}
+                                    {formatWorkers(job.assignments)}
+                                  </div>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, auto)",
+                                    gap: 8,
+                                    width: isMobile ? "100%" : "auto",
+                                  }}
+                                >
+                                  <Link
+                                    href={`/jobs/${job.id}?back=/admin/schedule`}
+                                    style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}
+                                  >
+                                    Open job
+                                  </Link>
+
+                                  <Link
+                                    href={`/jobs/edit/${job.id}`}
+                                    style={{ ...smallButton(), width: isMobile ? "100%" : "auto" }}
+                                  >
+                                    Edit / place
+                                  </Link>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
             <section style={{ marginBottom: 16 }}>
               <div
                 style={{
