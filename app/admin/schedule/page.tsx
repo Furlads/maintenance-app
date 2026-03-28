@@ -578,6 +578,93 @@ function jobLooksAssignedToWorker(job: JobsApiJob, workerName: string) {
   return assigned.includes(workerName.toLowerCase());
 }
 
+function getWorkerBusyRanges(worker: ScheduleWorker) {
+  const jobRanges = worker.jobs
+    .map((job) => {
+      const start = parseTimeToMinutes(job.startTime);
+      if (start === null) return null;
+
+      const duration = Math.max(job.durationMinutes ?? 60, 15);
+      return {
+        start: Math.max(WORK_START_MINUTES, start),
+        end: Math.min(DAY_END_MINUTES, start + duration),
+      };
+    })
+    .filter((range): range is { start: number; end: number } => range !== null);
+
+  const blockRanges = (worker.availabilityBlocks ?? [])
+    .filter((block) => String(block.status || "").toLowerCase() !== "declined")
+    .map((block) => {
+      const start = Math.max(WORK_START_MINUTES, getBlockStartMinutes(block));
+      const end = Math.min(DAY_END_MINUTES, getBlockEndMinutes(block));
+
+      if (end <= start) return null;
+
+      return { start, end };
+    })
+    .filter((range): range is { start: number; end: number } => range !== null);
+
+  const combined = [...jobRanges, ...blockRanges].sort((a, b) => a.start - b.start);
+
+  if (combined.length === 0) {
+    return [{ start: WORK_START_MINUTES, end: DAY_END_MINUTES }];
+  }
+
+  const merged: Array<{ start: number; end: number }> = [];
+
+  for (const range of combined) {
+    const last = merged[merged.length - 1];
+
+    if (!last || range.start > last.end) {
+      merged.push({ ...range });
+    } else {
+      last.end = Math.max(last.end, range.end);
+    }
+  }
+
+  return merged;
+}
+
+function getWorkerFreeWindows(worker: ScheduleWorker) {
+  const busyRanges = getWorkerBusyRanges(worker);
+  const windows: Array<{ start: number; end: number; duration: number }> = [];
+
+  let cursor = WORK_START_MINUTES;
+
+  for (const range of busyRanges) {
+    if (range.start > cursor) {
+      windows.push({
+        start: cursor,
+        end: range.start,
+        duration: range.start - cursor,
+      });
+    }
+
+    cursor = Math.max(cursor, range.end);
+  }
+
+  if (cursor < DAY_END_MINUTES) {
+    windows.push({
+      start: cursor,
+      end: DAY_END_MINUTES,
+      duration: DAY_END_MINUTES - cursor,
+    });
+  }
+
+  return windows.filter((window) => window.duration >= 30);
+}
+
+function getBestGapWindow(worker: ScheduleWorker) {
+  const freeWindows = getWorkerFreeWindows(worker);
+
+  if (freeWindows.length === 0) return null;
+
+  return [...freeWindows].sort((a, b) => {
+    if (b.duration !== a.duration) return b.duration - a.duration;
+    return a.start - b.start;
+  })[0];
+}
+
 function scoreGapFillJob(job: JobsApiJob, worker: ScheduleWorker, freeMinutes: number) {
   let score = 0;
 
