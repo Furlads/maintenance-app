@@ -18,6 +18,14 @@ type Worker = {
   active: boolean
 }
 
+type WorkerApiItem = {
+  id?: number | string
+  firstName?: string | null
+  lastName?: string | null
+  name?: string | null
+  active?: boolean | null
+}
+
 type JobAssignment = {
   id: number
   workerId: number
@@ -197,9 +205,58 @@ function isTrevWorker(worker: Worker) {
 
 function isKellyWorker(worker: Pick<Worker, 'firstName' | 'lastName'>) {
   const first = worker.firstName.trim().toLowerCase()
-  const last = worker.lastName.trim().toLowerCase()
 
   return first === 'kelly'
+}
+
+function normaliseWorkers(workerData: unknown): Worker[] {
+  const rawWorkers: WorkerApiItem[] = Array.isArray(workerData)
+    ? workerData
+    : workerData &&
+        typeof workerData === 'object' &&
+        Array.isArray((workerData as { workers?: WorkerApiItem[] }).workers)
+      ? (workerData as { workers: WorkerApiItem[] }).workers
+      : []
+
+  return rawWorkers
+    .filter((worker): worker is WorkerApiItem => !!worker)
+    .map((worker) => {
+      const numericId =
+        typeof worker.id === 'number'
+          ? worker.id
+          : typeof worker.id === 'string'
+            ? Number(worker.id)
+            : NaN
+
+      const fallbackName =
+        typeof worker.name === 'string' ? worker.name.trim() : ''
+
+      const fallbackParts = fallbackName ? fallbackName.split(/\s+/) : []
+
+      const firstName =
+        typeof worker.firstName === 'string' && worker.firstName.trim()
+          ? worker.firstName.trim()
+          : fallbackParts[0] || ''
+
+      const lastName =
+        typeof worker.lastName === 'string' && worker.lastName.trim()
+          ? worker.lastName.trim()
+          : fallbackParts.slice(1).join(' ')
+
+      return {
+        id: numericId,
+        firstName,
+        lastName,
+        active: typeof worker.active === 'boolean' ? worker.active : true,
+      }
+    })
+    .filter(
+      (worker) =>
+        Number.isFinite(worker.id) &&
+        worker.id > 0 &&
+        worker.active &&
+        (worker.firstName.trim() || worker.lastName.trim())
+    )
 }
 
 export default function EditJobPage() {
@@ -252,9 +309,7 @@ export default function EditJobPage() {
         const workerData = await workerRes.json()
 
         const safeCustomers = Array.isArray(customerData) ? customerData : []
-        const activeWorkers = Array.isArray(workerData)
-          ? workerData.filter((worker) => worker.active)
-          : []
+        const activeWorkers = normaliseWorkers(workerData)
 
         const assignableWorkers = activeWorkers.filter(
           (worker) => !isKellyWorker(worker)
