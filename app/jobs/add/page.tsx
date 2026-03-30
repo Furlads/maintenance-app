@@ -18,6 +18,14 @@ type Worker = {
   active: boolean
 }
 
+type WorkerApiItem = {
+  id?: number | string
+  firstName?: string | null
+  lastName?: string | null
+  name?: string | null
+  active?: boolean | null
+}
+
 type SavedJobResponse = {
   id?: number
   title?: string
@@ -146,6 +154,56 @@ function getMaintenanceFrequencyWeeks(value: MaintenanceFrequencyValue) {
   if (value === 'every_3_weeks') return 3
   if (value === 'monthly') return null
   return null
+}
+
+function normaliseWorkers(workerData: unknown): Worker[] {
+  const rawWorkers: WorkerApiItem[] = Array.isArray(workerData)
+    ? workerData
+    : workerData &&
+        typeof workerData === 'object' &&
+        Array.isArray((workerData as { workers?: WorkerApiItem[] }).workers)
+      ? (workerData as { workers: WorkerApiItem[] }).workers
+      : []
+
+  return rawWorkers
+    .filter((worker): worker is WorkerApiItem => !!worker)
+    .map((worker) => {
+      const numericId =
+        typeof worker.id === 'number'
+          ? worker.id
+          : typeof worker.id === 'string'
+            ? Number(worker.id)
+            : NaN
+
+      const fallbackName =
+        typeof worker.name === 'string' ? worker.name.trim() : ''
+
+      const fallbackParts = fallbackName ? fallbackName.split(/\s+/) : []
+
+      const firstName =
+        typeof worker.firstName === 'string' && worker.firstName.trim()
+          ? worker.firstName.trim()
+          : fallbackParts[0] || ''
+
+      const lastName =
+        typeof worker.lastName === 'string' && worker.lastName.trim()
+          ? worker.lastName.trim()
+          : fallbackParts.slice(1).join(' ')
+
+      return {
+        id: numericId,
+        firstName,
+        lastName,
+        active: typeof worker.active === 'boolean' ? worker.active : true,
+      }
+    })
+    .filter(
+      (worker) =>
+        Number.isFinite(worker.id) &&
+        worker.id > 0 &&
+        worker.active &&
+        (worker.firstName.trim() || worker.lastName.trim())
+    )
 }
 
 function SaveConfirmationModal({
@@ -350,11 +408,7 @@ export default function AddJobPage() {
         const workerData = await workerRes.json()
 
         setCustomers(Array.isArray(customerData) ? customerData : [])
-        setWorkers(
-          Array.isArray(workerData)
-            ? workerData.filter((worker) => worker.active)
-            : []
-        )
+        setWorkers(normaliseWorkers(workerData))
       } catch (error) {
         console.error(error)
         setCustomers([])
