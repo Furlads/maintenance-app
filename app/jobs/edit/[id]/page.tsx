@@ -62,8 +62,13 @@ function toDateInputValue(value?: string | null) {
 function normalizeEditStatus(value?: string | null) {
   const status = String(value || '').trim().toLowerCase()
 
-  if (status === 'scheduled' || status === 'todo' || status === 'to do') {
-    return 'todo'
+  if (
+    status === 'unscheduled' ||
+    status === 'scheduled' ||
+    status === 'todo' ||
+    status === 'to do'
+  ) {
+    return status === 'unscheduled' ? 'unscheduled' : 'todo'
   }
 
   if (
@@ -82,8 +87,12 @@ function normalizeEditStatus(value?: string | null) {
     return 'done'
   }
 
-  if (status === 'quoted' || status === 'quote') {
-    return 'quoted'
+  if (status === 'cancelled') {
+    return 'cancelled'
+  }
+
+  if (status === 'archived') {
+    return 'archived'
   }
 
   return 'todo'
@@ -627,11 +636,13 @@ export default function EditJobPage() {
                       onChange={(e) => setStatus(e.target.value)}
                       className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
+                      <option value="unscheduled">Unscheduled</option>
                       <option value="todo">Scheduled</option>
                       <option value="in_progress">In Progress</option>
                       <option value="paused">Paused</option>
                       <option value="done">Done</option>
-                      <option value="quoted">Quoted</option>
+                      <option value="cancelled">Cancelled</option>
+                      <option value="archived">Archived</option>
                     </select>
                   </div>
                 </div>
