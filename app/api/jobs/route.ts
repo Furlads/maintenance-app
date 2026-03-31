@@ -36,6 +36,19 @@ function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function normaliseJobStatus(value: unknown): string {
+  const status = clean(value).toLowerCase()
+
+  if (!status) return ''
+
+  if (status === 'scheduled' || status === 'to do') return 'todo'
+  if (status === 'in progress' || status === 'inprogress') return 'in_progress'
+  if (status === 'completed' || status === 'complete') return 'done'
+  if (status === 'quote' || status === 'quoted') return 'todo'
+
+  return status
+}
+
 function isTrue(value: unknown) {
   return value === true || value === 'true' || value === 1 || value === '1'
 }
@@ -534,7 +547,7 @@ export async function GET(req: Request) {
     const where: Record<string, unknown> = {}
 
     if (status) {
-      where.status = status
+      where.status = normaliseJobStatus(status)
     } else {
       const excludedStatuses: string[] = []
 
@@ -757,7 +770,7 @@ export async function POST(req: Request) {
       return resolvedQuoteSchedule.error
     }
 
-    const requestedStatus = clean(body.status).toLowerCase()
+    const requestedStatus = normaliseJobStatus(body.status)
 
     if (requestedStatus && !ALLOWED_JOB_STATUSES.has(requestedStatus)) {
       return NextResponse.json(

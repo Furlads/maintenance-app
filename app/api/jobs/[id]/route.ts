@@ -24,6 +24,19 @@ function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function normaliseJobStatus(value: unknown): string {
+  const status = clean(value).toLowerCase()
+
+  if (!status) return ''
+
+  if (status === 'scheduled' || status === 'to do') return 'todo'
+  if (status === 'in progress' || status === 'inprogress') return 'in_progress'
+  if (status === 'completed' || status === 'complete') return 'done'
+  if (status === 'quote' || status === 'quoted') return 'todo'
+
+  return status
+}
+
 function isQuoteJobType(jobType: string) {
   const value = clean(jobType).toLowerCase()
   return value === 'quote' || value === 'quoted'
@@ -678,7 +691,7 @@ function normaliseScheduleState(params: {
   isTrevQuoteJob: boolean
 }) {
   const { requestedStatus, visitDate, startTime } = params
-  const cleanStatus = clean(requestedStatus).toLowerCase()
+  const cleanStatus = normaliseJobStatus(requestedStatus)
 
   if (startTime && !visitDate) {
     throw new Error('A start time cannot be saved without a visit date.')
@@ -868,7 +881,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const existingSnapshot = buildJobAuditSnapshot(existing)
 
     const action = clean(body.action).toLowerCase()
-    const requestedStatus = clean(body.status).toLowerCase()
+    const requestedStatus = normaliseJobStatus(body.status)
     const appendNote = clean(body.appendNote)
     const noteAuthor = clean(body.noteAuthor)
     const allowQuoteTimeOverride = isTrue(body.allowQuoteTimeOverride)
