@@ -1107,14 +1107,37 @@ async function loadJobs() {
   try {
     setError('')
 
-    const res = await fetch('/api/jobs', { cache: 'no-store' })
+    const currentWorkerId =
+      workerId ||
+      Number(
+        localStorage.getItem('workerId') ||
+        localStorage.getItem('lastWorkerId') ||
+        0
+      )
+
+    const currentDateKey = selectedDateKey || toDateKey(new Date())
+
+    if (!currentWorkerId) {
+      setJobs([])
+      setShowingOfflineSnapshot(false)
+      setLoading(false)
+      return
+    }
+
+    const params = new URLSearchParams()
+    params.set('workerId', String(currentWorkerId))
+    params.set('date', currentDateKey)
+
+    const res = await fetch(`/api/jobs?${params.toString()}`, {
+      cache: 'no-store'
+    })
 
     if (!res.ok) {
       throw new Error('Failed to load jobs')
     }
 
     const data = await res.json()
-    const nextJobs = Array.isArray(data) ? data : []
+    const nextJobs = Array.isArray(data?.items) ? data.items : []
 
     setJobs(nextJobs)
     setShowingOfflineSnapshot(false)
@@ -1226,7 +1249,6 @@ async function loadCustomers() {
     setTimeOffForm(DEFAULT_TIME_OFF_FORM(initialDate))
 
     refreshQueuedActionCount()
-    loadJobs()
     loadCustomers()
   }, [])
 
@@ -1247,6 +1269,10 @@ async function loadCustomers() {
       window.removeEventListener('online', handleOnline)
     }
   }, [])
+    useEffect(() => {
+    if (!workerId || !selectedDateKey) return
+    loadJobs()
+  }, [workerId, selectedDateKey])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
