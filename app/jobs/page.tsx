@@ -405,9 +405,10 @@ function JobTable({ jobs }: { jobs: JobItem[] }) {
                     </Link>
 
                     <JobQuickActions
-                      jobId={job.id}
-                      customerName={job.customer?.name ?? `Job #${job.id}`}
-                    />
+  jobId={job.id}
+  customerName={job.customer?.name ?? `Job #${job.id}`}
+  jobType={job.jobType}
+/>
                   </div>
                 </td>
               </tr>
@@ -485,9 +486,10 @@ function JobCards({ jobs }: { jobs: JobItem[] }) {
 
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <JobQuickActions
-              jobId={job.id}
-              customerName={job.customer?.name ?? `Job #${job.id}`}
-            />
+  jobId={job.id}
+  customerName={job.customer?.name ?? `Job #${job.id}`}
+  jobType={job.jobType}
+/>
           </div>
         </div>
       ))}

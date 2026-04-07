@@ -15,6 +15,7 @@ const ALLOWED_JOB_STATUSES = new Set([
   'in_progress',
   'paused',
   'done',
+  'quoted',
   'cancelled',
   'archived',
 ])
@@ -32,7 +33,8 @@ function normaliseJobStatus(value: unknown): string {
   if (status === 'scheduled' || status === 'to do') return 'todo'
   if (status === 'in progress' || status === 'inprogress') return 'in_progress'
   if (status === 'completed' || status === 'complete') return 'done'
-  if (status === 'quote' || status === 'quoted') return 'todo'
+  if (status === 'quote') return 'todo'
+  if (status === 'quoted') return 'quoted'
 
   return status
 }
@@ -698,6 +700,14 @@ function normaliseScheduleState(params: {
   }
 
   if (!visitDate && !startTime) {
+    if (cleanStatus === 'quoted') {
+      return {
+        visitDate: null,
+        startTime: null,
+        status: 'quoted',
+      }
+    }
+
     return {
       visitDate: null,
       startTime: null,
@@ -1190,21 +1200,33 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const proposedStartTime =
       startTimeUpdate !== undefined ? startTimeUpdate : existing.startTime
 
-    const resolvedQuoteSchedule = await resolveTrevQuoteVisitSchedule({
-      jobId,
-      visitDate: proposedVisitDate,
-      startTime: proposedStartTime,
-      jobType: proposedJobType,
-      assignedWorkerIds: proposedAssignedWorkerIds,
-      allowQuoteTimeOverride,
-    })
+    const isExplicitQuoteComplete =
+      isQuoteJobType(proposedJobType) &&
+      requestedStatus === 'quoted' &&
+      visitDateUpdate === null &&
+      startTimeUpdate === null
 
-    if ('error' in resolvedQuoteSchedule) {
-      return resolvedQuoteSchedule.error
+    let finalVisitDate = proposedVisitDate
+    let finalStartTime = proposedStartTime
+
+    if (!isExplicitQuoteComplete) {
+      const resolvedQuoteSchedule = await resolveTrevQuoteVisitSchedule({
+        jobId,
+        visitDate: proposedVisitDate,
+        startTime: proposedStartTime,
+        jobType: proposedJobType,
+        assignedWorkerIds: proposedAssignedWorkerIds,
+        allowQuoteTimeOverride,
+      })
+
+      if ('error' in resolvedQuoteSchedule) {
+        return resolvedQuoteSchedule.error
+      }
+
+      finalVisitDate = resolvedQuoteSchedule.visitDate
+      finalStartTime = resolvedQuoteSchedule.startTime
     }
 
-    const finalVisitDate = resolvedQuoteSchedule.visitDate
-    const finalStartTime = resolvedQuoteSchedule.startTime
     const isTrevQuoteJob =
       isQuoteJobType(proposedJobType) && finalVisitDate !== null
 
