@@ -220,6 +220,10 @@ function calculateRouteTravel(jobs: DayJobLike[]) {
     prev = pc || prev
   }
 
+  if (jobs.length > 0) {
+    total += getTravelMinutes(prev, FARM_POSTCODE)
+  }
+
   return total
 }
 
@@ -233,31 +237,84 @@ function optimiseOrder(jobs: DayJobLike[]) {
     return jobs
   }
 
-  const remaining = [...nonQuoteJobs]
-  const ordered: DayJobLike[] = []
-  let prev = FARM_POSTCODE
+  function buildNearestRoute(items: DayJobLike[], startPostcode: string) {
+    const remaining = [...items]
+    const ordered: DayJobLike[] = []
+    let prev = startPostcode
 
-  while (remaining.length) {
-    remaining.sort((a, b) => {
-      const ta = getTravelMinutes(prev, getJobPostcode(a))
-      const tb = getTravelMinutes(prev, getJobPostcode(b))
-      if (ta !== tb) return ta - tb
+    while (remaining.length) {
+      remaining.sort((a, b) => {
+        const ta = getTravelMinutes(prev, getJobPostcode(a))
+        const tb = getTravelMinutes(prev, getJobPostcode(b))
+        if (ta !== tb) return ta - tb
 
-      const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0
-      const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0
-      if (aCreated !== bCreated) return aCreated - bCreated
+        const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        if (aCreated !== bCreated) return aCreated - bCreated
 
-      return a.id - b.id
-    })
+        return a.id - b.id
+      })
 
-    const next = remaining.shift()
-    if (!next) break
+      const next = remaining.shift()
+      if (!next) break
 
-    ordered.push(next)
-    prev = getJobPostcode(next) || prev
+      ordered.push(next)
+      prev = getJobPostcode(next) || prev
+    }
+
+    return ordered
   }
 
-  return [...quoteJobs, ...ordered]
+  function calculateRouteTravelFromStart(items: DayJobLike[], startPostcode: string) {
+    let total = 0
+    let prev = startPostcode
+
+    for (const job of items) {
+      const pc = getJobPostcode(job)
+      total += getTravelMinutes(prev, pc)
+      prev = pc || prev
+    }
+
+    return total
+  }
+
+  const nearestFirstRoute = buildNearestRoute(nonQuoteJobs, FARM_POSTCODE)
+
+  let furthestJob = nonQuoteJobs[0]
+  let furthestMinutes = -1
+
+  for (const job of nonQuoteJobs) {
+    const travelFromFarm = getTravelMinutes(FARM_POSTCODE, getJobPostcode(job))
+    if (travelFromFarm > furthestMinutes) {
+      furthestMinutes = travelFromFarm
+      furthestJob = job
+    }
+  }
+
+  const remainingAfterFurthest = nonQuoteJobs.filter((job) => job.id !== furthestJob.id)
+  const furthestFirstRoute = [
+    furthestJob,
+    ...buildNearestRoute(
+      remainingAfterFurthest,
+      getJobPostcode(furthestJob) || FARM_POSTCODE
+    ),
+  ]
+
+  const nearestFirstTravel = calculateRouteTravelFromStart(
+    nearestFirstRoute,
+    FARM_POSTCODE
+  )
+  const furthestFirstTravel = calculateRouteTravelFromStart(
+    furthestFirstRoute,
+    FARM_POSTCODE
+  )
+
+  const bestFlexibleRoute =
+    furthestFirstTravel < nearestFirstTravel
+      ? furthestFirstRoute
+      : nearestFirstRoute
+
+  return [...quoteJobs, ...bestFlexibleRoute]
 }
 
 function countReorderedJobs(original: DayJobLike[], optimised: DayJobLike[]) {
