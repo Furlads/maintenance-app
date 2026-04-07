@@ -2478,10 +2478,10 @@ export default function SchedulePage() {
       }
 
       const scheduleJson: ScheduleResponse = await scheduleRes.json();
-      const jobsJson: JobsApiJob[] = await jobsRes.json();
+      const jobsJson = await jobsRes.json();
 
       setScheduleData(scheduleJson);
-      setJobsData(Array.isArray(jobsJson) ? jobsJson : []);
+      setJobsData(Array.isArray(jobsJson?.items) ? jobsJson.items : []);
     } catch (err) {
       console.error("Failed to load schedule page", err);
       const message =
