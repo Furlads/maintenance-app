@@ -21,7 +21,7 @@ const END_OF_DAY_MINUTES = 16 * 60 + 30
 const BREAK_THRESHOLD_MINUTES = 6 * 60
 const BREAK_DURATION_MINUTES = 20
 const SCHEDULER_HORIZON_DAYS = 30
-const MIN_TRAVEL_SAVING_TO_APPLY = 5
+const MIN_TRAVEL_SAVING_TO_APPLY = 1
 
 // -------------------------
 // TYPES
@@ -226,14 +226,15 @@ function calculateRouteTravel(jobs: DayJobLike[]) {
 function optimiseOrder(jobs: DayJobLike[]) {
   if (jobs.length <= 2) return jobs
 
-  // Leave quote days alone for safety
-  if (jobs.some((job) => isQuoteJob(job))) {
+  const quoteJobs = jobs.filter((job) => isQuoteJob(job))
+  const nonQuoteJobs = jobs.filter((job) => !isQuoteJob(job))
+
+  if (nonQuoteJobs.length <= 1) {
     return jobs
   }
 
-  const remaining = [...jobs]
+  const remaining = [...nonQuoteJobs]
   const ordered: DayJobLike[] = []
-
   let prev = FARM_POSTCODE
 
   while (remaining.length) {
@@ -256,7 +257,7 @@ function optimiseOrder(jobs: DayJobLike[]) {
     prev = getJobPostcode(next) || prev
   }
 
-  return ordered
+  return [...quoteJobs, ...ordered]
 }
 
 function countReorderedJobs(original: DayJobLike[], optimised: DayJobLike[]) {
