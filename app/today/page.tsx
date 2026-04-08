@@ -1107,13 +1107,44 @@ async function loadJobs() {
   try {
     setError('')
 
-    const currentWorkerId =
-      workerId ||
-      Number(
+    let currentWorkerId = workerId
+
+    if (!currentWorkerId) {
+      try {
+        const authRes = await fetch('/api/auth/me', {
+          cache: 'no-store'
+        })
+
+        const authData = await authRes.json().catch(() => null)
+
+        if (authRes.ok && authData?.authenticated && authData?.workerId) {
+          const sessionWorkerId = Number(authData.workerId)
+
+          if (sessionWorkerId > 0) {
+            currentWorkerId = sessionWorkerId
+            setWorkerId(sessionWorkerId)
+            localStorage.setItem('workerId', String(sessionWorkerId))
+            localStorage.setItem('lastWorkerId', String(sessionWorkerId))
+          }
+
+          if (typeof authData?.name === 'string' && authData.name.trim()) {
+            setWorkerName(authData.name.trim())
+            localStorage.setItem('workerName', authData.name.trim())
+            localStorage.setItem('lastWorkerName', authData.name.trim())
+          }
+        }
+      } catch (authError) {
+        console.error('Failed to refresh authenticated worker session:', authError)
+      }
+    }
+
+    if (!currentWorkerId) {
+      currentWorkerId = Number(
         localStorage.getItem('workerId') ||
         localStorage.getItem('lastWorkerId') ||
         0
       )
+    }
 
     const currentDateKey = selectedDateKey || toDateKey(new Date())
 
@@ -1200,56 +1231,92 @@ async function loadCustomers() {
 }
 
   useEffect(() => {
-    const savedWorkerId =
-      localStorage.getItem('workerId') ||
-      localStorage.getItem('lastWorkerId')
+    async function bootTodayPage() {
+      try {
+        const savedWorkerName =
+          localStorage.getItem('workerName') ||
+          localStorage.getItem('lastWorkerName')
 
-    const savedWorkerName =
-      localStorage.getItem('workerName') ||
-      localStorage.getItem('lastWorkerName')
+        const savedWorkerPhotoUrl =
+          localStorage.getItem('workerPhotoUrl') ||
+          localStorage.getItem('photoUrl') ||
+          localStorage.getItem('selectedLoginWorkerPhotoUrl') ||
+          ''
 
-    const savedWorkerPhotoUrl =
-      localStorage.getItem('workerPhotoUrl') ||
-      localStorage.getItem('photoUrl') ||
-      localStorage.getItem('selectedLoginWorkerPhotoUrl') ||
-      ''
+        if (savedWorkerName) {
+          setWorkerName(savedWorkerName)
+        }
 
-    if (savedWorkerId) {
-      setWorkerId(Number(savedWorkerId))
+        if (savedWorkerPhotoUrl) {
+          setWorkerPhotoUrl(savedWorkerPhotoUrl)
+        }
+
+        const snapshot = getTodaySnapshot()
+
+        if (snapshot?.jobs?.length) {
+          setJobs(snapshot.jobs as unknown as Job[])
+          setShowingOfflineSnapshot(true)
+        }
+
+        if (snapshot?.customers?.length) {
+          setCustomers(snapshot.customers as unknown as Customer[])
+        }
+
+        const defaultToday = toDateKey(new Date())
+        const urlDate =
+          typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search).get('date') || ''
+            : ''
+
+        const initialDate = urlDate || defaultToday
+
+        setSelectedDateKey(initialDate)
+        setTimeOffForm(DEFAULT_TIME_OFF_FORM(initialDate))
+
+        refreshQueuedActionCount()
+        loadCustomers()
+
+        try {
+          const authRes = await fetch('/api/auth/me', {
+            cache: 'no-store'
+          })
+
+          const authData = await authRes.json().catch(() => null)
+
+          if (authRes.ok && authData?.authenticated && authData?.workerId) {
+            const sessionWorkerId = Number(authData.workerId)
+
+            if (sessionWorkerId > 0) {
+              setWorkerId(sessionWorkerId)
+              localStorage.setItem('workerId', String(sessionWorkerId))
+              localStorage.setItem('lastWorkerId', String(sessionWorkerId))
+            }
+
+            if (typeof authData?.name === 'string' && authData.name.trim()) {
+              setWorkerName(authData.name.trim())
+              localStorage.setItem('workerName', authData.name.trim())
+              localStorage.setItem('lastWorkerName', authData.name.trim())
+            }
+
+            return
+          }
+        } catch (authError) {
+          console.error('Failed to load authenticated worker session:', authError)
+        }
+
+        const fallbackWorkerId =
+          localStorage.getItem('workerId') ||
+          localStorage.getItem('lastWorkerId')
+
+        if (fallbackWorkerId) {
+          setWorkerId(Number(fallbackWorkerId))
+        }
+      } catch (error) {
+        console.error('Failed to boot today page:', error)
+      }
     }
 
-    if (savedWorkerName) {
-      setWorkerName(savedWorkerName)
-    }
-
-    if (savedWorkerPhotoUrl) {
-      setWorkerPhotoUrl(savedWorkerPhotoUrl)
-    }
-
-    const snapshot = getTodaySnapshot()
-
-    if (snapshot?.jobs?.length) {
-      setJobs(snapshot.jobs as unknown as Job[])
-      setShowingOfflineSnapshot(true)
-    }
-
-    if (snapshot?.customers?.length) {
-      setCustomers(snapshot.customers as unknown as Customer[])
-    }
-
-    const defaultToday = toDateKey(new Date())
-    const urlDate =
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('date') || ''
-        : ''
-
-    const initialDate = urlDate || defaultToday
-
-    setSelectedDateKey(initialDate)
-    setTimeOffForm(DEFAULT_TIME_OFF_FORM(initialDate))
-
-    refreshQueuedActionCount()
-    loadCustomers()
+    bootTodayPage()
   }, [])
 
   useEffect(() => {
