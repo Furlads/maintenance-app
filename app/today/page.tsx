@@ -1276,6 +1276,8 @@ async function loadCustomers() {
         refreshQueuedActionCount()
         loadCustomers()
 
+        let resolvedWorkerId: number | null = null
+
         try {
           const authRes = await fetch('/api/auth/me', {
             cache: 'no-store'
@@ -1287,6 +1289,7 @@ async function loadCustomers() {
             const sessionWorkerId = Number(authData.workerId)
 
             if (sessionWorkerId > 0) {
+              resolvedWorkerId = sessionWorkerId
               setWorkerId(sessionWorkerId)
               localStorage.setItem('workerId', String(sessionWorkerId))
               localStorage.setItem('lastWorkerId', String(sessionWorkerId))
@@ -1297,22 +1300,49 @@ async function loadCustomers() {
               localStorage.setItem('workerName', authData.name.trim())
               localStorage.setItem('lastWorkerName', authData.name.trim())
             }
-
-            return
           }
         } catch (authError) {
           console.error('Failed to load authenticated worker session:', authError)
         }
 
-        const fallbackWorkerId =
-          localStorage.getItem('workerId') ||
-          localStorage.getItem('lastWorkerId')
+        if (!resolvedWorkerId) {
+          const fallbackWorkerId =
+            localStorage.getItem('workerId') ||
+            localStorage.getItem('lastWorkerId')
 
-        if (fallbackWorkerId) {
-          setWorkerId(Number(fallbackWorkerId))
+          if (fallbackWorkerId) {
+            resolvedWorkerId = Number(fallbackWorkerId)
+            setWorkerId(resolvedWorkerId)
+          }
         }
+
+        if (resolvedWorkerId && initialDate) {
+          const params = new URLSearchParams()
+          params.set('workerId', String(resolvedWorkerId))
+          params.set('date', initialDate)
+
+          const res = await fetch(`/api/jobs?${params.toString()}`, {
+            cache: 'no-store'
+          })
+
+          if (res.ok) {
+            const data = await res.json().catch(() => null)
+            const nextJobs = Array.isArray(data?.items) ? data.items : []
+
+            setJobs(nextJobs)
+            setShowingOfflineSnapshot(false)
+
+            saveTodaySnapshot({
+              jobs: nextJobs as OfflineJob[],
+              customers: (snapshot?.customers || []) as OfflineCustomer[]
+            })
+          }
+        }
+
+        setLoading(false)
       } catch (error) {
         console.error('Failed to boot today page:', error)
+        setLoading(false)
       }
     }
 
@@ -1336,9 +1366,9 @@ async function loadCustomers() {
       window.removeEventListener('online', handleOnline)
     }
   }, [])
-    useEffect(() => {
+  useEffect(() => {
     if (!workerId || !selectedDateKey) return
-    loadJobs()
+    void loadJobs()
   }, [workerId, selectedDateKey])
 
   useEffect(() => {
