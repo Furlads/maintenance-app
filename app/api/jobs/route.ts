@@ -655,6 +655,18 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       items: jobs,
+      debug: {
+        workerId: workerId ?? null,
+        customerId: customerId ?? null,
+        jobId: jobId ?? null,
+        status: status || null,
+        q: q || null,
+        requestedDate: requestedDate ? requestedDate.toISOString() : null,
+        includeArchived,
+        includeCancelled,
+        where,
+        total,
+      },
       pagination: {
         page,
         pageSize,
