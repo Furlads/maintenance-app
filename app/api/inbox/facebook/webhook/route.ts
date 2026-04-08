@@ -129,9 +129,9 @@ async function fetchMessengerProfile(
   }
 
   try {
-const url = new URL(`https://graph.facebook.com/v23.0/${senderPsid}`)
-url.searchParams.set("fields", "first_name,last_name,profile_pic")
-url.searchParams.set("access_token", pageConfig.token)
+    const url = new URL(`https://graph.facebook.com/v23.0/${senderPsid}`)
+    url.searchParams.set("fields", "first_name,last_name,profile_pic")
+    url.searchParams.set("access_token", pageConfig.token)
 
     console.log("[FB PROFILE LOOKUP START]", {
       senderPsid,
@@ -139,9 +139,10 @@ url.searchParams.set("access_token", pageConfig.token)
       pageLabel: pageConfig.label,
       pageKey: pageConfig.key,
       tokenPreview: maskToken(pageConfig.token),
- urlPreview: `https://graph.facebook.com/v23.0/${senderPsid}?fields=first_name,last_name,profile_pic&access_token=${maskToken(
-  pageConfig.token
-)}`,
+      urlPreview: `https://graph.facebook.com/v23.0/${senderPsid}?fields=first_name,last_name,profile_pic&access_token=${maskToken(
+        pageConfig.token
+      )}`,
+    })
 
     const response = await fetch(url.toString(), {
       method: "GET",
