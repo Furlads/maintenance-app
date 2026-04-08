@@ -2800,25 +2800,6 @@ input, textarea, select {
             />
           </div>
         </section>
-        {!loading && (
-  <section
-    style={{
-      ...styles.panel,
-      ...styles.panelPadding,
-      marginBottom: 16,
-      border: '2px solid red'
-    }}
-  >
-    <div style={{ fontWeight: 900, marginBottom: 6 }}>DEBUG</div>
-
-    <div>workerId: {String(workerId)}</div>
-    <div>jobs.length: {jobs.length}</div>
-    <div>workerJobs.length: {workerJobs.length}</div>
-    <div>dayJobs.length: {dayJobs.length}</div>
-    <div>selectedDateKey: {selectedDateKey || 'none'}</div>
-    <div>todayDateKey: {todayDateKey}</div>
-  </section>
-)}
 
         {timeOffMessage && !timeOffOpen && (
           <section
