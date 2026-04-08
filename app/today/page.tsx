@@ -3218,6 +3218,22 @@ input, textarea, select {
               {showingLeftOnly ? 'Jobs left' : 'Next jobs'}
             </div>
 
+            <div
+              style={{
+                ...styles.panel,
+                ...styles.panelPadding,
+                marginBottom: 12,
+                border: '2px solid blue'
+              }}
+            >
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>NEXT JOBS DEBUG</div>
+              {filteredNextJobs.map((job, index) => (
+                <div key={`debug-${job.id}`}>
+                  {index + 1}. id={job.id} | title={job.title} | customer={job.customer?.name || 'none'} | waiting={String(job.isWaiting)} | next={String(job.isNext)}
+                </div>
+              ))}
+            </div>
+
             {filteredNextJobs.map((job, index) => {
               const navigationQuery =
                 job.customer?.postcode || job.address || job.customer?.address || ''
