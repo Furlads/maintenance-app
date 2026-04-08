@@ -1405,14 +1405,16 @@ async function loadCustomers() {
   }, [timeOffOpen, selectedDateKey, todayDateKey])
 
   const workerJobs = useMemo(() => {
-    if (!workerId) return []
-
     const assignedJobs = jobs
       .filter((job) => {
         const status = String(job.status || '').toLowerCase()
 
         if (status === 'archived' || status === 'cancelled') {
           return false
+        }
+
+        if (!workerId) {
+          return true
         }
 
         return job.assignments.some((assignment) => assignment.workerId === workerId)
@@ -3158,7 +3160,7 @@ input, textarea, select {
           </section>
         )}
 
-        {!loading && !error && !workerId && (
+        {!loading && !error && !workerId && jobs.length === 0 && (
           <section style={{ ...styles.panel, ...styles.panelPadding, marginBottom: 16 }}>
             <div style={{ fontWeight: 700 }}>No worker selected.</div>
             <div style={{ marginTop: 6, color: colours.muted }}>
