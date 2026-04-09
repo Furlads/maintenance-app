@@ -3,11 +3,6 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
-const [showEarlyFinishCheck, setShowEarlyFinishCheck] = useState(false)
-const [earlyFinishData, setEarlyFinishData] = useState<{
-  remainingMinutes: number
-  suggestions: Job[]
-} | null>(null)
 
 type Worker = {
   id: number
@@ -497,6 +492,11 @@ function rankSuggestedJobs(params: {
 }
 
 export default function JobPage() {
+  const [showEarlyFinishCheck, setShowEarlyFinishCheck] = useState(false)
+  const [earlyFinishData, setEarlyFinishData] = useState<{
+    remainingMinutes: number
+    suggestions: Job[]
+  } | null>(null)
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -888,19 +888,28 @@ export default function JobPage() {
     const dateParam = sameDayDateParam(currentJob.visitDate)
 
     const results = await Promise.all(
-      workerIds.map(async (workerId) => {
-        const res = await fetch(`/api/jobs?workerId=${workerId}&date=${dateParam}`, {
-          cache: 'no-store',
-        })
+  workerIds.map(async (workerId) => {
+    const res = await fetch(`/api/jobs?workerId=${workerId}&date=${dateParam}`, {
+      cache: 'no-store',
+    })
 
-        if (!res.ok) {
-          return []
-        }
+    if (!res.ok) {
+      return []
+    }
 
-        const data = await res.json().catch(() => [])
-        return Array.isArray(data) ? data : []
-      })
-    )
+    const data = await res.json().catch(() => null)
+
+    if (Array.isArray(data)) {
+      return data
+    }
+
+    if (Array.isArray(data?.items)) {
+      return data.items
+    }
+
+    return []
+  })
+)
 
     const merged = new Map<number, SuggestedJob>()
 
@@ -2028,8 +2037,8 @@ Heavy rain made it unsafe`,
               <button
                 key={j.id}
                 onClick={() => {
-                  window.location.href = `/jobs/${j.id}`
-                }}
+  router.push(`/jobs/${j.id}`)
+}}
                 className="w-full text-left rounded-xl border border-zinc-200 p-3 hover:bg-zinc-50"
               >
                 <div className="font-semibold text-zinc-900">
