@@ -1556,7 +1556,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       ) {
         await runLocalRepairForJob({
           jobId,
-          reason: action || 'edit',
+          reason: 'edit',
         })
       }
     } catch (schedulerError) {
