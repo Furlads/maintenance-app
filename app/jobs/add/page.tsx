@@ -1,1303 +1,2410 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { FormEvent, useEffect, useMemo, useState } from 'react'
-
-type Customer = {
-  id: number
-  name: string
-  address: string | null
-  postcode: string | null
-}
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 
 type Worker = {
   id: number
   firstName: string
   lastName: string
-  active: boolean
+  phone: string | null
 }
 
-type WorkerApiItem = {
-  id?: number | string
-  firstName?: string | null
-  lastName?: string | null
-  name?: string | null
-  active?: boolean | null
+type JobAssignment = {
+  id: number
+  workerId: number
+  worker: Worker
 }
 
-type SavedJobResponse = {
-  id?: number
-  title?: string
-  address?: string | null
-  status?: string | null
-  jobType?: string | null
+type Customer = {
+  id: number
+  name: string
+  phone: string | null
+  address: string | null
+  postcode: string | null
+}
+
+type JobNote = {
+  id: number
+  note: string
+  createdAt: string
+  worker?: Worker | null
+}
+
+type Job = {
+  id: number
+  title: string
+  address: string
+  notes: string | null
+  status: string
+  jobType: string
+  createdAt: string
+  customer: Customer
+  assignments: JobAssignment[]
+  jobNotes?: JobNote[]
   visitDate?: string | null
   startTime?: string | null
   durationMinutes?: number | null
-  customer?: {
-    id?: number
-    name?: string | null
-    postcode?: string | null
-  } | null
+  overrunMins?: number | null
+  pausedMinutes?: number | null
+  arrivedAt?: string | null
+  pausedAt?: string | null
+  finishedAt?: string | null
+  paymentStatus?: string | null
+  paymentNotes?: string | null
+}
+
+type JobPhoto = {
+  id: number
+  jobId: number
+  uploadedByWorkerId: number | null
+  label: string | null
+  imageUrl: string
+  createdAt: string
+}
+
+type CannotCompleteInfo = {
+  reason: string
+  details: string
+  reportedBy: string
+  recordedAt: string
+  rawLine: string
+}
+
+type ParsedEndOfJobReport = {
+  workSummary: string
+  followUpRequired: string
+  followUpDetails: string
+  beforePhotos: string
+  afterPhotos: string
+  notesForKelly: string
+  reportedBy: string
+  recordedAt: string
+}
+
+type SuggestedJob = {
+  id: number
+  title: string
+  address: string
+  status: string
+  startTime?: string | null
+  durationMinutes?: number | null
+  jobType?: string | null
+  visitDate?: string | null
   assignments?: Array<{
-    worker?: {
-      id?: number
-      firstName?: string | null
-      lastName?: string | null
-    } | null
+    workerId?: number | null
   }>
 }
 
-type SaveSummary = {
-  title: string
-  customerName: string
-  assignedWorkerNames: string[]
-  durationMinutes: number
-  scheduled: boolean
-  visitDate: string | null
-  startTime: string | null
-  locationLabel: string
+type CompletionReview = {
+  plannedMinutes: number | null
+  actualMinutes: number | null
+  deltaMinutes: number | null
+  nextFittingJob: SuggestedJob | null
+  nextScheduledJob: SuggestedJob | null
+  rankedJobs: SuggestedJob[]
 }
 
-type MaintenanceFrequencyValue =
-  | 'weekly'
-  | 'fortnightly'
-  | 'every_3_weeks'
-  | 'monthly'
+function fullName(firstName?: string | null, lastName?: string | null) {
+  return `${firstName ?? ''} ${lastName ?? ''}`.trim() || 'Unknown worker'
+}
 
-function SectionCard({
-  title,
-  description,
-  children,
-}: {
-  title: string
-  description?: string
-  children: React.ReactNode
-}) {
-  return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="mb-4">
-        <h2 className="text-lg font-bold text-zinc-900">{title}</h2>
-        {description ? (
-          <p className="mt-1 text-sm text-zinc-500">{description}</p>
-        ) : null}
-      </div>
-      {children}
-    </section>
+function extractCannotCompleteInfo(notes: string | null): CannotCompleteInfo | null {
+  if (!notes) return null
+
+  const lines = notes
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const matchingLine = [...lines]
+    .reverse()
+    .find((line) => line.toLowerCase().startsWith('job could not be completed:'))
+
+  if (!matchingLine) return null
+
+  const parts = matchingLine.split(' | ').map((part) => part.trim())
+
+  const reasonPart =
+    parts.find((part) =>
+      part.toLowerCase().startsWith('job could not be completed:')
+    ) || ''
+
+  const detailsPart =
+    parts.find((part) => part.toLowerCase().startsWith('details:')) || ''
+
+  const reportedByPart =
+    parts.find((part) => part.toLowerCase().startsWith('reported by:')) || ''
+
+  const recordedAtPart =
+    parts.find((part) => part.toLowerCase().startsWith('recorded at:')) || ''
+
+  return {
+    reason: reasonPart.replace(/^job could not be completed:\s*/i, '').trim(),
+    details: detailsPart.replace(/^details:\s*/i, '').trim(),
+    reportedBy: reportedByPart.replace(/^reported by:\s*/i, '').trim(),
+    recordedAt: recordedAtPart.replace(/^recorded at:\s*/i, '').trim(),
+    rawLine: matchingLine,
+  }
+}
+
+function parseEndOfJobReport(note: string | null): ParsedEndOfJobReport | null {
+  if (!note) return null
+
+  const parts = note
+    .split(' | ')
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  const hasReportPrefix = parts.some((part) =>
+    part.toLowerCase().startsWith('end of job report:')
   )
+
+  if (!hasReportPrefix) return null
+
+  const getValue = (prefix: string) => {
+    const match = parts.find((part) =>
+      part.toLowerCase().startsWith(prefix.toLowerCase())
+    )
+
+    if (!match) return ''
+
+    return match.slice(prefix.length).trim()
+  }
+
+  return {
+    workSummary: getValue('Work summary:'),
+    followUpRequired: getValue('Follow-up required:'),
+    followUpDetails: getValue('Follow-up details:'),
+    beforePhotos: getValue('Before photos:'),
+    afterPhotos: getValue('After photos:'),
+    notesForKelly: getValue('Notes for Kelly:'),
+    reportedBy: getValue('Reported by:'),
+    recordedAt: getValue('Recorded at:'),
+  }
 }
 
-function FieldLabel({
-  children,
-  required = false,
-}: {
-  children: React.ReactNode
-  required?: boolean
-}) {
-  return (
-    <label className="mb-2 block text-sm font-semibold text-zinc-800">
-      {children}
-      {required ? <span className="ml-1 text-red-500">*</span> : null}
-    </label>
-  )
+function stripCannotCompleteLines(notes: string | null) {
+  if (!notes) return ''
+
+  return notes
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        !line.toLowerCase().startsWith('job could not be completed:')
+    )
+    .join('\n')
 }
 
-function isTrevWorker(worker: Worker) {
-  const first = worker.firstName.trim().toLowerCase()
-  const last = worker.lastName.trim().toLowerCase()
-
-  const firstMatches = first === 'trevor' || first === 'trev'
-  const lastMatches = last.includes('fudger')
-
-  return firstMatches && lastMatches
-}
-
-function fullWorkerName(worker: Worker) {
-  return `${worker.firstName} ${worker.lastName}`.trim()
-}
-
-function formatDateForDisplay(value: string | null) {
-  if (!value) return 'No date'
+function formatTime(value?: string | null) {
+  if (!value) return '—'
 
   const date = new Date(value)
 
   if (Number.isNaN(date.getTime())) {
-    return value
+    return '—'
   }
 
-  return new Intl.DateTimeFormat('en-GB', {
-    weekday: 'short',
-    day: '2-digit',
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  return date.toLocaleString('en-GB', {
+    day: 'numeric',
     month: 'short',
     year: 'numeric',
-  }).format(date)
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
-function formatDurationLabel(minutes: number) {
-  if (minutes === 390) return 'Full day'
-  if (minutes < 60) return `${minutes} mins`
-
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-
-  if (mins === 0) {
-    return `${hours} hour${hours === 1 ? '' : 's'}`
+function formatMinutes(totalMinutes?: number | null) {
+  if (totalMinutes === null || totalMinutes === undefined || totalMinutes <= 0) {
+    return '0m'
   }
 
-  return `${hours}h ${mins}m`
+  const hours = Math.floor(totalMinutes / 60)
+  const mins = totalMinutes % 60
+
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m`
+  }
+
+  if (hours > 0) {
+    return `${hours}h`
+  }
+
+  return `${mins}m`
 }
 
-function getMaintenanceFrequencyWeeks(value: MaintenanceFrequencyValue) {
-  if (value === 'weekly') return 1
-  if (value === 'fortnightly') return 2
-  if (value === 'every_3_weeks') return 3
-  if (value === 'monthly') return null
-  return null
+function statusBadgeClass(status: string) {
+  const value = String(status || '').toLowerCase()
+
+  if (value === 'done' || value === 'completed') {
+    return 'bg-green-100 text-green-800 ring-green-200'
+  }
+
+  if (value === 'inprogress' || value === 'in_progress') {
+    return 'bg-blue-100 text-blue-800 ring-blue-200'
+  }
+
+  if (value === 'scheduled' || value === 'todo') {
+    return 'bg-amber-100 text-amber-800 ring-amber-200'
+  }
+
+  if (value === 'paused') {
+    return 'bg-orange-100 text-orange-800 ring-orange-200'
+  }
+
+  return 'bg-zinc-100 text-zinc-700 ring-zinc-200'
 }
 
-function normaliseWorkers(workerData: unknown): Worker[] {
-  const rawWorkers: WorkerApiItem[] = Array.isArray(workerData)
-    ? workerData
-    : workerData &&
-        typeof workerData === 'object' &&
-        Array.isArray((workerData as { workers?: WorkerApiItem[] }).workers)
-      ? (workerData as { workers: WorkerApiItem[] }).workers
-      : []
+function typeBadgeClass(jobType: string) {
+  const value = String(jobType || '').toLowerCase()
 
-  return rawWorkers
-    .filter((worker): worker is WorkerApiItem => !!worker)
-    .map((worker) => {
-      const numericId =
-        typeof worker.id === 'number'
-          ? worker.id
-          : typeof worker.id === 'string'
-            ? Number(worker.id)
-            : NaN
+  if (value.includes('maint')) {
+    return 'bg-emerald-100 text-emerald-800 ring-emerald-200'
+  }
 
-      const fallbackName =
-        typeof worker.name === 'string' ? worker.name.trim() : ''
+  if (value.includes('land')) {
+    return 'bg-sky-100 text-sky-800 ring-sky-200'
+  }
 
-      const fallbackParts = fallbackName ? fallbackName.split(/\s+/) : []
+  if (value.includes('quote')) {
+    return 'bg-amber-100 text-amber-800 ring-amber-200'
+  }
 
-      const firstName =
-        typeof worker.firstName === 'string' && worker.firstName.trim()
-          ? worker.firstName.trim()
-          : fallbackParts[0] || ''
+  if (value.includes('prep')) {
+    return 'bg-indigo-100 text-indigo-800 ring-indigo-200'
+  }
 
-      const lastName =
-        typeof worker.lastName === 'string' && worker.lastName.trim()
-          ? worker.lastName.trim()
-          : fallbackParts.slice(1).join(' ')
-
-      return {
-        id: numericId,
-        firstName,
-        lastName,
-        active: typeof worker.active === 'boolean' ? worker.active : true,
-      }
-    })
-    .filter(
-      (worker) =>
-        Number.isFinite(worker.id) &&
-        worker.id > 0 &&
-        worker.active &&
-        (worker.firstName.trim() || worker.lastName.trim())
-    )
+  return 'bg-zinc-100 text-zinc-700 ring-zinc-200'
 }
 
-function SaveConfirmationModal({
-  summary,
-  onClearForm,
-  onGoToJobs,
+function Pill({
+  children,
+  className,
 }: {
-  summary: SaveSummary
-  onClearForm: () => void
-  onGoToJobs: () => void
+  children: React.ReactNode
+  className: string
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 px-4 py-6">
-      <div className="w-full max-w-xl rounded-3xl border border-zinc-200 bg-white shadow-2xl">
-        <div className="border-b border-zinc-200 px-5 py-5 sm:px-6">
-          <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-500">
-            Job Saved
-          </div>
-          <h2 className="mt-1 text-2xl font-bold text-zinc-900">
-            {summary.scheduled ? 'Job scheduled into the diary' : 'Job saved into Unscheduled'}
-          </h2>
-          <p className="mt-2 text-sm text-zinc-500">
-            Check the details below, then either clear the form for the next job or go back to Jobs.
-          </p>
-        </div>
+    <span
+      className={`inline-flex rounded-full px-3 py-1.5 text-xs font-bold ring-1 ring-inset ${className}`}
+    >
+      {children}
+    </span>
+  )
+}
 
-        <div className="space-y-4 px-5 py-5 sm:px-6">
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-            <div className="break-words text-sm font-bold text-zinc-900">{summary.customerName}</div>
-            <div className="mt-1 break-words text-sm text-zinc-700">{summary.title}</div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                Status
-              </div>
-              <div className="mt-2 text-sm font-bold text-zinc-900">
-                {summary.scheduled ? 'Scheduled' : 'Unscheduled'}
-              </div>
-              <div className="mt-1 break-words text-sm text-zinc-600">{summary.locationLabel}</div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                Expected time
-              </div>
-              <div className="mt-2 text-sm font-bold text-zinc-900">
-                {formatDurationLabel(summary.durationMinutes)}
-              </div>
-              <div className="mt-1 text-sm text-zinc-600">{summary.durationMinutes} minutes</div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Assigned workers
-            </div>
-            <div className="mt-2 break-words text-sm font-bold text-zinc-900">
-              {summary.assignedWorkerNames.length > 0
-                ? summary.assignedWorkerNames.join(', ')
-                : 'No workers assigned'}
-            </div>
-          </div>
-
-          {summary.scheduled ? (
-            <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-              <div className="font-bold text-green-900">Placed into the diary</div>
-              <div className="mt-1">
-                {formatDateForDisplay(summary.visitDate)}
-                {summary.startTime ? ` at ${summary.startTime}` : ''}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              <div className="font-bold text-amber-900">Waiting to be scheduled</div>
-              <div className="mt-1">
-                This job has been saved into the unscheduled queue for Kelly to place later.
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-3 border-t border-zinc-200 px-5 py-5 sm:flex-row sm:justify-end sm:px-6">
-          <button
-            type="button"
-            onClick={onClearForm}
-            className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-          >
-            Confirm and clear form
-          </button>
-          <button
-            type="button"
-            onClick={onGoToJobs}
-            className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black"
-          >
-            Confirm and go to Jobs
-          </button>
-        </div>
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string
+  value: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+        {label}
       </div>
+      <div className="mt-2 text-sm font-medium text-zinc-900">{value}</div>
     </div>
   )
 }
 
-export default function AddJobPage() {
+function isPrepJob(job: Job | null) {
+  if (!job) return false
+
+  const title = String(job.title || '').trim().toLowerCase()
+  const jobType = String(job.jobType || '').trim().toLowerCase()
+
+  return title === 'morning prep' || jobType === 'prep'
+}
+
+function normalisePhotoLabel(value?: string | null) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function isBeforePhoto(photo: JobPhoto) {
+  return normalisePhotoLabel(photo.label) === 'before'
+}
+
+function isAfterPhoto(photo: JobPhoto) {
+  return normalisePhotoLabel(photo.label) === 'after'
+}
+
+function calculateActualMinutes(job: Pick<Job, 'arrivedAt' | 'finishedAt' | 'pausedMinutes'>) {
+  if (!job.arrivedAt || !job.finishedAt) return null
+
+  const arrivedAt = new Date(job.arrivedAt)
+  const finishedAt = new Date(job.finishedAt)
+
+  if (Number.isNaN(arrivedAt.getTime()) || Number.isNaN(finishedAt.getTime())) {
+    return null
+  }
+
+  const rawMinutes = Math.max(
+    0,
+    Math.round((finishedAt.getTime() - arrivedAt.getTime()) / 60000)
+  )
+
+  const pausedMinutes = Math.max(0, Number(job.pausedMinutes || 0))
+
+  return Math.max(0, rawMinutes - pausedMinutes)
+}
+
+function sameDayDateParam(value?: string | null) {
+  if (!value) {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  return date.toISOString().slice(0, 10)
+}
+
+function isActiveSuggestionStatus(status: string) {
+  const value = String(status || '').toLowerCase()
+  return value !== 'done' && value !== 'completed' && value !== 'cancelled' && value !== 'archived'
+}
+
+function hhmmToMinutes(value?: string | null) {
+  if (!value || !/^\d{2}:\d{2}$/.test(value)) return null
+
+  const [hours, minutes] = value.split(':').map(Number)
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+
+  return hours * 60 + minutes
+}
+
+function scoreSuggestedJob(params: {
+  candidate: SuggestedJob
+  currentJob: Job
+  spareMinutes: number | null
+  workerIds: number[]
+}) {
+  const { candidate, currentJob, spareMinutes, workerIds } = params
+
+  let score = 0
+
+  const candidateStart = hhmmToMinutes(candidate.startTime)
+  const currentStart = hhmmToMinutes(currentJob.startTime)
+  const candidateDuration = candidate.durationMinutes ?? 0
+
+  if (candidate.startTime) {
+    score += 1000
+  }
+
+  const assignedWorkerIds = Array.isArray(candidate.assignments)
+    ? candidate.assignments
+        .map((assignment) => Number(assignment.workerId))
+        .filter((value) => Number.isFinite(value))
+    : []
+
+  if (assignedWorkerIds.some((workerId) => workerIds.includes(workerId))) {
+    score += 500
+  }
+
+  if (candidateStart !== null && currentStart !== null && candidateStart >= currentStart) {
+    score += 200
+    score += Math.max(0, 200 - Math.abs(candidateStart - currentStart))
+  }
+
+  if (spareMinutes !== null && spareMinutes > 0) {
+    if (candidateDuration > 0 && candidateDuration <= spareMinutes) {
+      score += 400
+      score += Math.max(0, 120 - Math.abs(spareMinutes - candidateDuration))
+    } else if (candidateDuration > spareMinutes) {
+      score -= 200
+    }
+  }
+
+  const statusValue = String(candidate.status || '').toLowerCase()
+  if (statusValue === 'todo' || statusValue === 'scheduled') {
+    score += 50
+  }
+
+  if (String(candidate.title || '').trim().toLowerCase() === 'morning prep') {
+    score -= 1000
+  }
+
+  return score
+}
+
+function rankSuggestedJobs(params: {
+  jobs: SuggestedJob[]
+  currentJob: Job
+  spareMinutes: number | null
+  workerIds: number[]
+}) {
+  return [...params.jobs].sort((a, b) => {
+    const scoreA = scoreSuggestedJob({
+      candidate: a,
+      currentJob: params.currentJob,
+      spareMinutes: params.spareMinutes,
+      workerIds: params.workerIds,
+    })
+
+    const scoreB = scoreSuggestedJob({
+      candidate: b,
+      currentJob: params.currentJob,
+      spareMinutes: params.spareMinutes,
+      workerIds: params.workerIds,
+    })
+
+    if (scoreA !== scoreB) {
+      return scoreB - scoreA
+    }
+
+    const aStart = hhmmToMinutes(a.startTime)
+    const bStart = hhmmToMinutes(b.startTime)
+
+    if (aStart !== null && bStart !== null && aStart !== bStart) {
+      return aStart - bStart
+    }
+
+    if (aStart !== null) return -1
+    if (bStart !== null) return 1
+
+    return a.id - b.id
+  })
+}
+
+export default function JobPage() {
+  const [showEarlyFinishCheck, setShowEarlyFinishCheck] = useState(false)
+  const [earlyFinishData, setEarlyFinishData] = useState<{
+    remainingMinutes: number
+    suggestions: Job[]
+  } | null>(null)
+  const params = useParams()
+  const searchParams = useSearchParams()
   const router = useRouter()
+  const id = Number(params.id)
 
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [workers, setWorkers] = useState<Worker[]>([])
-  const [customerId, setCustomerId] = useState('')
-  const [title, setTitle] = useState('')
-  const [notes, setNotes] = useState('')
-  const [status, setStatus] = useState('Scheduled')
-  const [jobType, setJobType] = useState('Quote')
-  const [assignedTo, setAssignedTo] = useState<number[]>([])
-  const [useDifferentAddress, setUseDifferentAddress] = useState(false)
-  const [jobAddress, setJobAddress] = useState('')
-  const [durationMinutes, setDurationMinutes] = useState('60')
+  const [job, setJob] = useState<Job | null>(null)
+  const [photos, setPhotos] = useState<JobPhoto[]>([])
+  const [label, setLabel] = useState('Before')
+  const [uploading, setUploading] = useState(false)
+  const [deletingPhotoId, setDeletingPhotoId] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [photoMessage, setPhotoMessage] = useState('')
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+  const [busyAction, setBusyAction] = useState('')
+  const [checkingNextJob, setCheckingNextJob] = useState(false)
 
-  const [visitDate, setVisitDate] = useState('')
-  const [startTime, setStartTime] = useState('')
-  const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
+  const [showQuoteForm, setShowQuoteForm] = useState(false)
+  const [quoteBusy, setQuoteBusy] = useState(false)
+  const [quoteMessage, setQuoteMessage] = useState('')
+  const [quoteCustomerName, setQuoteCustomerName] = useState('')
+  const [quoteCustomerPhone, setQuoteCustomerPhone] = useState('')
+  const [quoteCustomerEmail, setQuoteCustomerEmail] = useState('')
+  const [quoteCustomerAddress, setQuoteCustomerAddress] = useState('')
+  const [quoteCustomerPostcode, setQuoteCustomerPostcode] = useState('')
+  const [quoteWorkSummary, setQuoteWorkSummary] = useState('')
+  const [quoteEstimatedTime, setQuoteEstimatedTime] = useState('')
+  const [quoteNotes, setQuoteNotes] = useState('')
 
-  const [visitPattern, setVisitPattern] = useState('one-off')
-  const [maintenanceFrequency, setMaintenanceFrequency] =
-    useState<MaintenanceFrequencyValue>('fortnightly')
-  const [timePreferenceMode, setTimePreferenceMode] = useState('best-fit')
-  const [preferredDay, setPreferredDay] = useState('')
-  const [preferredTimeBand, setPreferredTimeBand] = useState('Anytime')
+  const [showFinishReport, setShowFinishReport] = useState(false)
+  const [hasAutoOpenedFinishReport, setHasAutoOpenedFinishReport] = useState(false)
+  const [finishSummary, setFinishSummary] = useState('')
+  const [finishFollowUpRequired, setFinishFollowUpRequired] = useState<'no' | 'yes'>('no')
+  const [finishFollowUpDetails, setFinishFollowUpDetails] = useState('')
+  const [finishKellyNotes, setFinishKellyNotes] = useState('')
 
-  const [showAddCustomer, setShowAddCustomer] = useState(false)
-  const [newCustomerName, setNewCustomerName] = useState('')
-  const [newCustomerPhone, setNewCustomerPhone] = useState('')
-  const [newCustomerAddress, setNewCustomerAddress] = useState('')
-  const [newCustomerPostcode, setNewCustomerPostcode] = useState('')
-  const [customerLoading, setCustomerLoading] = useState(false)
-  const [customerMessage, setCustomerMessage] = useState('')
+  const [showCompletionReview, setShowCompletionReview] = useState(false)
+  const [completionReview, setCompletionReview] = useState<CompletionReview | null>(null)
 
-  const [message, setMessage] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [saveSummary, setSaveSummary] = useState<SaveSummary | null>(null)
+  async function loadPhotos() {
+    const res = await fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' })
 
-  const durationOptions = useMemo(() => {
-    if (jobType === 'Maintenance') {
-      return [30, 45, 60, 90, 120, 180, 240, 300, 390]
+    if (!res.ok) {
+      throw new Error('Failed to load photos')
     }
 
-    return [30, 45, 60, 90, 120]
-  }, [jobType])
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-
-    const customerIdFromUrl = params.get('customerId') || ''
-    const jobTypeFromUrl = params.get('jobType') || ''
-    const titleFromUrl = params.get('title') || ''
-    const addressFromUrl = params.get('address') || ''
-    const visitDateFromUrl = params.get('visitDate') || ''
-    const startTimeFromUrl = params.get('startTime') || ''
-
-    if (customerIdFromUrl) setCustomerId(customerIdFromUrl)
-
-    if (jobTypeFromUrl) {
-      setJobType(jobTypeFromUrl)
-
-      if (jobTypeFromUrl === 'Quote') {
-        setTitle('Quote Visit')
-        setStatus('Scheduled')
-        setDurationMinutes('60')
-      }
-
-      if (jobTypeFromUrl === 'Maintenance') {
-        setTitle('Garden Maintenance')
-        setStatus('Scheduled')
-        setDurationMinutes('60')
-      }
-
-      if (jobTypeFromUrl === 'Landscaping') {
-        setTitle('Landscaping Job')
-        setStatus('Scheduled')
-        setDurationMinutes('390')
-      }
-    }
-
-    if (titleFromUrl) setTitle(titleFromUrl)
-    if (visitDateFromUrl) setVisitDate(visitDateFromUrl)
-    if (startTimeFromUrl) setStartTime(startTimeFromUrl)
-
-    if (addressFromUrl) {
-      setUseDifferentAddress(true)
-      setJobAddress(addressFromUrl)
-    }
-
-    async function loadData() {
-      try {
-        const [customerRes, workerRes] = await Promise.all([
-          fetch('/api/customers'),
-          fetch('/api/workers'),
-        ])
-
-        const customerData = await customerRes.json()
-        const workerData = await workerRes.json()
-
-        setCustomers(Array.isArray(customerData) ? customerData : [])
-        setWorkers(normaliseWorkers(workerData))
-      } catch (error) {
-        console.error(error)
-        setCustomers([])
-        setWorkers([])
-      }
-    }
-
-    loadData()
-  }, [])
-
-  const selectedCustomer = useMemo(() => {
-    return customers.find((customer) => String(customer.id) === customerId) || null
-  }, [customers, customerId])
-
-  const defaultCustomerAddress = useMemo(() => {
-    if (!selectedCustomer) return ''
-
-    const parts = [selectedCustomer.address, selectedCustomer.postcode].filter(Boolean)
-    return parts.join('\n')
-  }, [selectedCustomer])
-
-  const selectedWorkers = useMemo(() => {
-    return workers.filter((worker) => assignedTo.includes(worker.id))
-  }, [workers, assignedTo])
-
-  const trevAssigned = useMemo(() => {
-    return selectedWorkers.some((worker) => isTrevWorker(worker))
-  }, [selectedWorkers])
-
-  const isTrevQuoteJob = jobType === 'Quote' && trevAssigned
-
-  const finalAddress = useDifferentAddress ? jobAddress : defaultCustomerAddress
-  const isRegularMaintenance =
-    jobType === 'Maintenance' && visitPattern === 'regular-maintenance'
-  const useSpecificVisitPreference = timePreferenceMode === 'specific'
-
-  useEffect(() => {
-    if (!isTrevQuoteJob) {
-      setAllowQuoteTimeOverride(false)
-    }
-  }, [isTrevQuoteJob])
-
-  useEffect(() => {
-    if (isTrevQuoteJob && !allowQuoteTimeOverride) {
-      setStartTime('')
-    }
-  }, [isTrevQuoteJob, allowQuoteTimeOverride])
-
-  function resetForm() {
-    setTitle('')
-    setNotes('')
-    setStatus('Scheduled')
-    setJobType('Quote')
-    setUseDifferentAddress(false)
-    setJobAddress('')
-    setAssignedTo([])
-    setDurationMinutes('60')
-    setVisitDate('')
-    setStartTime('')
-    setAllowQuoteTimeOverride(false)
-    setVisitPattern('one-off')
-    setMaintenanceFrequency('fortnightly')
-    setTimePreferenceMode('best-fit')
-    setPreferredDay('')
-    setPreferredTimeBand('Anytime')
-    setMessage('')
-    setSaveSummary(null)
+    const data = await res.json()
+    setPhotos(Array.isArray(data) ? data : [])
   }
 
-  function buildSaveSummary(
-    responseData: SavedJobResponse | null,
-    parsedDuration: number
-  ): SaveSummary {
-    const responseAssignments = Array.isArray(responseData?.assignments)
-      ? responseData?.assignments ?? []
-      : []
-
-    const responseWorkerNames = responseAssignments
-      .map((assignment) => {
-        const first = assignment.worker?.firstName?.trim() || ''
-        const last = assignment.worker?.lastName?.trim() || ''
-        return `${first} ${last}`.trim()
-      })
-      .filter(Boolean)
-
-    const fallbackWorkerNames = selectedWorkers.map(fullWorkerName)
-
-    const assignedWorkerNames =
-      responseWorkerNames.length > 0 ? responseWorkerNames : fallbackWorkerNames
-
-    const scheduledVisitDate = responseData?.visitDate ?? (visitDate || null)
-    const scheduledStartTime =
-      responseData?.startTime ??
-      (isTrevQuoteJob && !allowQuoteTimeOverride ? null : startTime || null)
-
-    const scheduled = Boolean(scheduledVisitDate || scheduledStartTime)
-
-    const customerName =
-      responseData?.customer?.name?.trim() ||
-      selectedCustomer?.name ||
-      'Customer'
-
-    let locationLabel = 'Saved into Unscheduled'
-
-    if (scheduled) {
-      const dateLabel = scheduledVisitDate
-        ? formatDateForDisplay(scheduledVisitDate)
-        : 'Scheduled date'
-      const timeLabel = scheduledStartTime ? ` at ${scheduledStartTime}` : ''
-      locationLabel = `${dateLabel}${timeLabel}`
-    }
-
-    return {
-      title: responseData?.title?.trim() || title.trim(),
-      customerName,
-      assignedWorkerNames,
-      durationMinutes:
-        typeof responseData?.durationMinutes === 'number' &&
-        responseData.durationMinutes > 0
-          ? responseData.durationMinutes
-          : parsedDuration,
-      scheduled,
-      visitDate: scheduledVisitDate,
-      startTime: scheduledStartTime,
-      locationLabel,
-    }
-  }
-
-  function toggleWorker(workerId: number) {
-    setAssignedTo((prev) =>
-      prev.includes(workerId)
-        ? prev.filter((id) => id !== workerId)
-        : [...prev, workerId]
-    )
-  }
-
-  async function handleAddCustomer() {
-    setCustomerLoading(true)
-    setCustomerMessage('')
-
+  async function loadJob() {
     try {
-      const name = newCustomerName.trim()
+      setError('')
 
-      if (!name) {
-        throw new Error('Customer name is required')
+      const [jobRes, photoRes] = await Promise.all([
+        fetch(`/api/jobs/${id}`, { cache: 'no-store' }),
+        fetch(`/api/jobs/${id}/photos`, { cache: 'no-store' }),
+      ])
+
+      if (!jobRes.ok) {
+        throw new Error('Failed to load job')
       }
 
-      const res = await fetch('/api/customers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name,
-          phone: newCustomerPhone,
-          address: newCustomerAddress,
-          postcode: newCustomerPostcode,
-        }),
-      })
-
-      const data = await res.json().catch(() => null)
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to save customer')
+      if (!photoRes.ok) {
+        throw new Error('Failed to load photos')
       }
 
-      if (!data || typeof data.id !== 'number') {
-        throw new Error('Customer was created but no customer was returned')
-      }
+      const jobData = await jobRes.json()
+      setJob(jobData || null)
 
-      setCustomers((prev) => [data, ...prev])
-      setCustomerId(String(data.id))
-      setUseDifferentAddress(false)
-      setJobAddress('')
-
-      setNewCustomerName('')
-      setNewCustomerPhone('')
-      setNewCustomerAddress('')
-      setNewCustomerPostcode('')
-      setShowAddCustomer(false)
-      setCustomerMessage('Customer added and selected.')
-    } catch (error) {
-      console.error(error)
-      setCustomerMessage(
-        error instanceof Error ? error.message : 'Failed to save customer.'
-      )
-    } finally {
-      setCustomerLoading(false)
-    }
-  }
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setLoading(true)
-    setMessage('')
-
-    try {
-      const parsedDuration = Number(durationMinutes)
-
-      if (!customerId) {
-        throw new Error('Please select a customer')
-      }
-
-      if (!title.trim()) {
-        throw new Error('Job title is required')
-      }
-
-      if (!finalAddress.trim()) {
-        throw new Error('Address is required')
-      }
-
-      if (!Number.isFinite(parsedDuration) || parsedDuration <= 0) {
-        throw new Error('Expected time must be greater than 0')
-      }
-
-      if (assignedTo.length === 0) {
-        throw new Error('Please assign at least one worker')
-      }
-
-      if (isTrevQuoteJob && !visitDate) {
-        throw new Error('Trev quote visits must have a visit date')
-      }
-
-      if (isTrevQuoteJob && allowQuoteTimeOverride && !startTime) {
-        throw new Error('Please choose a manual time override for this Trev quote visit')
-      }
-
-      const maintenanceFrequencyWeeks = isRegularMaintenance
-        ? getMaintenanceFrequencyWeeks(maintenanceFrequency)
-        : null
-
-      const res = await fetch('/api/jobs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          customerId: Number(customerId),
-          title,
-          address: finalAddress,
-          notes,
-          status,
-          jobType,
-          assignedTo,
-          durationMinutes: parsedDuration,
-          visitDate: visitDate || null,
-          startTime:
-            isTrevQuoteJob && !allowQuoteTimeOverride
-              ? null
-              : startTime || null,
-          allowQuoteTimeOverride: isTrevQuoteJob ? allowQuoteTimeOverride : false,
-
-          visitPattern,
-          isRegularMaintenance,
-          maintenanceFrequency: isRegularMaintenance ? maintenanceFrequency : null,
-          maintenanceFrequencyUnit: isRegularMaintenance
-            ? maintenanceFrequency === 'monthly'
-              ? 'monthly'
-              : 'weeks'
-            : null,
-          maintenanceFrequencyWeeks,
-          timePreferenceMode: isRegularMaintenance ? timePreferenceMode : null,
-          preferredDay:
-            isRegularMaintenance && useSpecificVisitPreference
-              ? preferredDay
-              : null,
-          preferredTimeBand:
-            isRegularMaintenance && useSpecificVisitPreference
-              ? preferredTimeBand
-              : null,
-        }),
-      })
-
-      const data: SavedJobResponse | null = await res.json().catch(() => null)
-
-      if (!res.ok) {
-        throw new Error(data && 'error' in data ? String((data as any).error) : 'Failed to save job')
-      }
-
-      const summary = buildSaveSummary(data, parsedDuration)
-      setSaveSummary(summary)
-      setMessage('')
-    } catch (error) {
-      console.error(error)
-      setMessage(
-        error instanceof Error ? error.message : 'Failed to save job.'
-      )
+      const photoData = await photoRes.json()
+      setPhotos(Array.isArray(photoData) ? photoData : [])
+    } catch (err) {
+      console.error(err)
+      setError('Failed to load job.')
+      setJob(null)
+      setPhotos([])
     } finally {
       setLoading(false)
     }
   }
 
+  useEffect(() => {
+    if (id) {
+      loadJob()
+    }
+  }, [id])
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (viewerIndex === null) return
+
+      if (event.key === 'Escape') {
+        setViewerIndex(null)
+      }
+
+      if (event.key === 'ArrowLeft') {
+        setViewerIndex((current) => {
+          if (current === null) return current
+          return current > 0 ? current - 1 : current
+        })
+      }
+
+      if (event.key === 'ArrowRight') {
+        setViewerIndex((current) => {
+          if (current === null) return current
+          return current < photos.length - 1 ? current + 1 : current
+        })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [viewerIndex, photos.length])
+
+  useEffect(() => {
+    if (!showQuoteForm || !job) return
+
+    setQuoteCustomerName(job.customer?.name || '')
+    setQuoteCustomerPhone(job.customer?.phone || '')
+    setQuoteCustomerEmail('')
+    setQuoteCustomerAddress(job.customer?.address || job.address || '')
+    setQuoteCustomerPostcode(job.customer?.postcode || '')
+    setQuoteWorkSummary(job.title || '')
+    setQuoteEstimatedTime('')
+    setQuoteNotes('')
+    setQuoteMessage('')
+  }, [showQuoteForm, job])
+
+  const finishQueryParam = searchParams.get('finish')
+
+  useEffect(() => {
+    if (!job) return
+    if (isPrepJob(job)) return
+    if (hasAutoOpenedFinishReport) return
+    if (finishQueryParam !== '1') return
+
+    setShowFinishReport(true)
+    setHasAutoOpenedFinishReport(true)
+  }, [job, finishQueryParam, hasAutoOpenedFinishReport])
+
+  useEffect(() => {
+    if (!showFinishReport) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [showFinishReport])
+
+  useEffect(() => {
+    if (!showCompletionReview) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [showCompletionReview])
+
+  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    const workerId = localStorage.getItem('workerId')
+
+    if (!file || !id) return
+
+    setUploading(true)
+    setPhotoMessage('')
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('label', label)
+
+      if (workerId) {
+        formData.append('workerId', workerId)
+      }
+
+      const res = await fetch(`/api/jobs/${id}/photos`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to upload photo')
+      }
+
+      if (data && typeof data === 'object' && typeof data.id === 'number') {
+        setPhotos((current) => [data as JobPhoto, ...current])
+      } else {
+        await loadPhotos()
+      }
+
+      setPhotoMessage(`${label} photo uploaded successfully.`)
+      event.target.value = ''
+    } catch (error) {
+      console.error(error)
+      setPhotoMessage('Failed to upload photo.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleDeletePhoto(photoId: number) {
+    const confirmed = window.confirm('Delete this photo?')
+
+    if (!confirmed) return
+
+    setDeletingPhotoId(photoId)
+    setPhotoMessage('')
+
+    try {
+      const res = await fetch(`/api/job-photos/${photoId}`, {
+        method: 'DELETE',
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Failed to delete photo')
+      }
+
+      setPhotos((current) => current.filter((photo) => photo.id !== photoId))
+      setPhotoMessage('Photo deleted successfully.')
+      setViewerIndex((current) => {
+        if (current === null) return current
+
+        const deletedIndex = photos.findIndex((photo) => photo.id === photoId)
+
+        if (deletedIndex === -1) return current
+        if (current === deletedIndex) return null
+        if (current > deletedIndex) return current - 1
+
+        return current
+      })
+    } catch (error) {
+      console.error(error)
+      setPhotoMessage('Failed to delete photo.')
+    } finally {
+      setDeletingPhotoId(null)
+    }
+  }
+
+  async function patchJob(payload: Record<string, unknown>, actionLabel: string) {
+    try {
+      setBusyAction(actionLabel)
+      setError('')
+
+      const res = await fetch(`/api/jobs/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error || `Failed to ${actionLabel}`)
+      }
+
+      let updatedJob: Job | null = null
+
+      if (data && typeof data === 'object') {
+        updatedJob = data as Job
+        setJob(updatedJob)
+      }
+
+      await loadPhotos()
+      router.refresh()
+
+      return updatedJob
+    } catch (err) {
+      console.error(err)
+      setError(`Failed to ${actionLabel}.`)
+      return null
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function handleSendQuoteRequest() {
+    const workerName = localStorage.getItem('workerName') || ''
+    const company = localStorage.getItem('company') || 'furlads'
+
+    setQuoteBusy(true)
+    setQuoteMessage('')
+
+    try {
+      const res = await fetch('/api/chas/quote-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          company,
+          worker: workerName,
+          sessionId: `job-${id}-${Date.now()}`,
+          customerName: quoteCustomerName,
+          customerPhone: quoteCustomerPhone,
+          customerEmail: quoteCustomerEmail,
+          customerAddress: quoteCustomerAddress,
+          customerPostcode: quoteCustomerPostcode,
+          workSummary: quoteWorkSummary,
+          estimatedTimeText: quoteEstimatedTime,
+          notes: quoteNotes,
+          imageDataUrl: '',
+          chatTranscript: `New Quote created from job page for job ${job?.id ?? id}: ${job?.title || ''}`,
+        }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Failed to save quote enquiry.')
+      }
+
+      setQuoteMessage('Quote enquiry saved successfully.')
+      setShowQuoteForm(false)
+    } catch (err: any) {
+      console.error(err)
+      setQuoteMessage(String(err?.message || 'Failed to save quote enquiry.'))
+    } finally {
+      setQuoteBusy(false)
+    }
+  }
+
+  async function handleStartJob() {
+    const beforeCount = beforePhotos.length
+
+    if (beforeCount === 0) {
+      const confirmed = window.confirm(
+        'No before photos have been added yet. Start this job anyway?'
+      )
+
+      if (!confirmed) return
+    }
+
+    await patchJob({ action: 'start' }, 'start job')
+  }
+
+  async function handleFinishJob() {
+  if (!job) return
+
+  if (isPrepJob(job)) {
+    await patchJob({ action: 'finish' }, 'finish job')
+    return
+  }
+
+  try {
+    const res = await fetch(`/api/jobs/${job.id}/early-finish-check`)
+    const data = await res.json()
+
+    if (data?.shouldCheck) {
+      setEarlyFinishData(data)
+      setShowEarlyFinishCheck(true)
+      return
+    }
+  } catch (err) {
+    console.error('Early finish check failed', err)
+  }
+
+  setShowFinishReport(true)
+}
+
+  async function handlePrepComplete() {
+    if (!job) return
+
+    if (!job.arrivedAt) {
+      const startOk = await patchJob({ action: 'start' }, 'start job')
+      if (!startOk) return
+    }
+
+    await patchJob({ action: 'finish' }, 'finish job')
+  }
+
+  async function fetchSuggestedJobs(currentJob: Job) {
+    const workerIds = currentJob.assignments.map((assignment) => assignment.workerId)
+
+    if (workerIds.length === 0) {
+      return []
+    }
+
+    const dateParam = sameDayDateParam(currentJob.visitDate)
+
+    const results = await Promise.all(
+  workerIds.map(async (workerId) => {
+    const res = await fetch(`/api/jobs?workerId=${workerId}&date=${dateParam}`, {
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      return []
+    }
+
+    const data = await res.json().catch(() => null)
+
+    if (Array.isArray(data)) {
+      return data
+    }
+
+    if (Array.isArray(data?.items)) {
+      return data.items
+    }
+
+    return []
+  })
+)
+
+    const merged = new Map<number, SuggestedJob>()
+
+    for (const items of results) {
+      for (const item of items) {
+        if (
+          item &&
+          typeof item === 'object' &&
+          typeof item.id === 'number' &&
+          item.id !== currentJob.id &&
+          isActiveSuggestionStatus(String(item.status || ''))
+        ) {
+          merged.set(item.id, {
+            id: item.id,
+            title: String(item.title || 'Untitled job'),
+            address: String(item.address || ''),
+            startTime: typeof item.startTime === 'string' ? item.startTime : null,
+            durationMinutes:
+              typeof item.durationMinutes === 'number' ? item.durationMinutes : null,
+            status: String(item.status || ''),
+            jobType: typeof item.jobType === 'string' ? item.jobType : null,
+            visitDate: typeof item.visitDate === 'string' ? item.visitDate : null,
+            assignments: Array.isArray(item.assignments)
+              ? item.assignments.map((assignment: any) => ({
+                  workerId:
+                    typeof assignment?.workerId === 'number'
+                      ? assignment.workerId
+                      : null,
+                }))
+              : [],
+          })
+        }
+      }
+    }
+
+    return Array.from(merged.values())
+  }
+
+  async function openCompletionReview(updatedJob: Job) {
+    const actualMinutes = calculateActualMinutes(updatedJob)
+    const plannedMinutes =
+      typeof updatedJob.durationMinutes === 'number' ? updatedJob.durationMinutes : null
+    const deltaMinutes =
+      plannedMinutes !== null && actualMinutes !== null
+        ? plannedMinutes - actualMinutes
+        : null
+
+    const workerIds = updatedJob.assignments.map((assignment) => assignment.workerId)
+
+    setCheckingNextJob(true)
+
+    try {
+      const suggestedJobs = await fetchSuggestedJobs(updatedJob)
+
+      const rankedJobs = rankSuggestedJobs({
+        jobs: suggestedJobs,
+        currentJob: updatedJob,
+        spareMinutes: deltaMinutes,
+        workerIds,
+      })
+
+      const nextScheduledJob =
+        [...suggestedJobs]
+          .filter((item) => !!item.startTime)
+          .sort((a, b) => {
+            const aStart = hhmmToMinutes(a.startTime)
+            const bStart = hhmmToMinutes(b.startTime)
+
+            if (aStart !== null && bStart !== null) {
+              return aStart - bStart
+            }
+
+            if (aStart !== null) return -1
+            if (bStart !== null) return 1
+
+            return a.id - b.id
+          })[0] || null
+
+      const nextFittingJob =
+        deltaMinutes && deltaMinutes > 0
+          ? rankedJobs.find((item) => {
+              if (!item.durationMinutes) return false
+              return item.durationMinutes <= deltaMinutes
+            }) || null
+          : null
+
+      setCompletionReview({
+        plannedMinutes,
+        actualMinutes,
+        deltaMinutes,
+        nextFittingJob,
+        nextScheduledJob,
+        rankedJobs,
+      })
+      setShowCompletionReview(true)
+    } finally {
+      setCheckingNextJob(false)
+    }
+  }
+
+  async function submitFinishReport() {
+    const workerName = localStorage.getItem('workerName') || 'Unknown worker'
+    const recordedAt = new Date().toLocaleString('en-GB')
+
+    if (afterPhotos.length === 0) {
+      const confirmed = window.confirm(
+        'No after photos have been added yet. Finish this job anyway?'
+      )
+
+      if (!confirmed) return
+    }
+
+    const reportLines = [
+      'End of job report:',
+      `Work summary: ${finishSummary.trim() || 'Not provided'}`,
+      `Follow-up required: ${finishFollowUpRequired === 'yes' ? 'Yes' : 'No'}`,
+      `Follow-up details: ${
+        finishFollowUpRequired === 'yes'
+          ? finishFollowUpDetails.trim() || 'Not provided'
+          : 'None'
+      }`,
+      `Before photos: ${beforePhotos.length}`,
+      `After photos: ${afterPhotos.length}`,
+      `Notes for Kelly: ${finishKellyNotes.trim() || 'None'}`,
+      `Reported by: ${workerName}`,
+      `Recorded at: ${recordedAt}`,
+    ]
+
+    const updatedJob = await patchJob(
+      {
+        action: 'finish',
+        appendNote: reportLines.join(' | '),
+        noteAuthor: workerName,
+      },
+      'finish job'
+    )
+
+    if (updatedJob) {
+      setShowFinishReport(false)
+      await openCompletionReview(updatedJob)
+    }
+  }
+
+  async function handlePauseJob() {
+    await patchJob({ action: 'pause' }, 'pause job')
+  }
+
+  async function handleResumeJob() {
+    await patchJob({ action: 'resume' }, 'resume job')
+  }
+
+  async function handleUndoStart() {
+    await patchJob(
+      {
+        arrivedAt: null,
+        pausedAt: null,
+        finishedAt: null,
+        pausedMinutes: 0,
+        status: 'todo',
+      },
+      'undo start'
+    )
+  }
+
+  async function handleExtendJob(minutes: number) {
+    await patchJob({ extendMins: minutes }, 'extend job')
+  }
+
+  async function handleOtherExtendJob() {
+    const value = window.prompt('How many extra minutes?', '90')
+
+    if (value === null) return
+
+    const minutes = Number(value)
+
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      window.alert('Please enter a valid number of minutes.')
+      return
+    }
+
+    await handleExtendJob(Math.round(minutes))
+  }
+
+  async function handleCannotComplete() {
+    const workerName = localStorage.getItem('workerName') || ''
+
+    const reasonInput = window.prompt(
+      `Why couldn't the job be completed?
+
+Examples:
+No access
+Customer cancelled
+Need materials
+Ran out of time
+Weather stopped work`,
+      ''
+    )
+
+    if (reasonInput === null) return
+
+    const reason = reasonInput.trim()
+
+    if (!reason) {
+      window.alert('Please enter a reason.')
+      return
+    }
+
+    const detailsInput = window.prompt(
+      `Add any extra details if needed (optional)
+
+Examples:
+Gate locked
+Customer asked us to return next week
+Heavy rain made it unsafe`,
+      ''
+    )
+
+    if (detailsInput === null) return
+
+    const details = detailsInput.trim()
+
+    await patchJob(
+      {
+        action: 'cannot_complete',
+        reason,
+        details,
+        workerName,
+      },
+      "mark job as couldn't complete"
+    )
+  }
+
+  function openViewer(index: number) {
+    setViewerIndex(index)
+  }
+
+  function closeViewer() {
+    setViewerIndex(null)
+  }
+
+  function showPreviousPhoto() {
+    setViewerIndex((current) => {
+      if (current === null) return current
+      return current > 0 ? current - 1 : current
+    })
+  }
+
+  function showNextPhoto() {
+    setViewerIndex((current) => {
+      if (current === null) return current
+      return current < photos.length - 1 ? current + 1 : current
+    })
+  }
+
+  const cannotCompleteInfo = useMemo(
+    () => extractCannotCompleteInfo(job?.notes ?? null),
+    [job?.notes]
+  )
+
+  const visibleNotes = useMemo(
+    () => stripCannotCompleteLines(job?.notes ?? null),
+    [job?.notes]
+  )
+
+  const beforePhotos = useMemo(
+    () => photos.filter((photo) => isBeforePhoto(photo)),
+    [photos]
+  )
+
+  const afterPhotos = useMemo(
+    () => photos.filter((photo) => isAfterPhoto(photo)),
+    [photos]
+  )
+
+  const actualMinutes = useMemo(() => {
+    if (!job) return null
+    return calculateActualMinutes(job)
+  }, [job])
+
+  const isDone =
+    job ? String(job.status || '').toLowerCase() === 'done' || !!job.finishedAt : false
+
+  const isPaused =
+    !!job?.arrivedAt && !!job?.pausedAt && !job?.finishedAt && !isDone
+
+  const isStarted =
+    !!job?.arrivedAt && !job?.finishedAt && !isDone && !isPaused
+
+  const prepJob = isPrepJob(job)
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-zinc-50">
+        <div className="mx-auto max-w-6xl px-4 py-5 md:px-6">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <p className="text-sm text-zinc-600">Loading job...</p>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  if (error && !job) {
+    return (
+      <main className="min-h-screen bg-zinc-50">
+        <div className="mx-auto max-w-6xl px-4 py-5 md:px-6">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  if (!job) {
+    return (
+      <main className="min-h-screen bg-zinc-50">
+        <div className="mx-auto max-w-6xl px-4 py-5 md:px-6">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <p className="text-sm text-zinc-600">Job not found.</p>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  const navigationQuery =
+    job.customer?.postcode || job.address || job.customer?.address || ''
+
+  const activePhoto =
+    viewerIndex !== null && photos[viewerIndex] ? photos[viewerIndex] : null
+
   return (
     <main className="min-h-screen bg-zinc-50">
-      <div className="mx-auto max-w-4xl px-4 py-4 md:px-6">
-        <div className="space-y-4 sm:space-y-5">
+      <div className="mx-auto max-w-6xl px-4 py-5 md:px-6">
+        <div className="space-y-5">
           <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="bg-zinc-900 px-4 py-5 text-white md:px-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="bg-zinc-900 px-5 py-5 text-white md:px-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-400">
-                    Jobs
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Pill className={typeBadgeClass(job.jobType || '')}>
+                      {job.jobType || 'General'}
+                    </Pill>
+                    <Pill className={statusBadgeClass(job.status || '')}>
+                      {job.status || 'Unknown'}
+                    </Pill>
                   </div>
+
+                  <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-400">
+                    Job Details
+                  </div>
+
                   <h1 className="mt-1 text-3xl font-bold tracking-tight md:text-4xl">
-                    Add Job
+                    {prepJob ? 'Morning Prep' : job.title}
                   </h1>
+
                   <p className="mt-2 text-sm text-zinc-300 md:text-base">
-                    Create a new landscaping job, maintenance visit or quote.
+                    {prepJob
+                      ? 'Prep block before the working day starts'
+                      : job.customer?.name || 'Unknown customer'}
                   </p>
+
+                  <p className="mt-1 text-sm text-zinc-400">Job #{job.id}</p>
                 </div>
 
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+                <div className="flex flex-wrap gap-2">
                   <Link
-                    href="/jobs"
-                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
+                    href="/today"
+                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
                   >
-                    Back to Jobs
+                    Back to Today
                   </Link>
                 </div>
               </div>
             </div>
 
-            <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 md:px-6">
-              Add the customer, job details, workers and timing in one place.
+            <div className="grid gap-3 border-t border-zinc-200 bg-zinc-50 p-4 md:grid-cols-2 xl:grid-cols-4 md:p-5">
+              <InfoRow
+                label="Visit date"
+                value={job.visitDate ? formatDateTime(job.visitDate) : '—'}
+              />
+              <InfoRow label="Start time" value={job.startTime || '—'} />
+              <InfoRow label="Duration" value={formatMinutes(job.durationMinutes)} />
+              <InfoRow
+                label="Assigned workers"
+                value={
+                  job.assignments.length > 0
+                    ? job.assignments
+                        .map(
+                          (assignment) =>
+                            `${assignment.worker.firstName} ${assignment.worker.lastName}`
+                        )
+                        .join(', ')
+                    : 'Nobody assigned'
+                }
+              />
             </div>
           </section>
 
-          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
-            <SectionCard
-              title="Customer"
-              description="Select an existing customer or add a new one."
-            >
-              <div className="space-y-4">
-                <div>
-                  <FieldLabel required>Customer</FieldLabel>
-                  <select
-                    value={customerId}
-                    onChange={(e) => {
-                      setCustomerId(e.target.value)
-                      setUseDifferentAddress(false)
-                      setJobAddress('')
-                    }}
-                    required
-                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                  >
-                    <option value="">Select customer</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                  </select>
+          {error && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
+              {error}
+            </div>
+          )}
+
+          {cannotCompleteInfo && (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
+              <h2 className="mb-3 text-lg font-bold text-amber-900">
+                Job could not be completed
+              </h2>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="text-sm text-amber-900">
+                  <strong>Reason:</strong> {cannotCompleteInfo.reason || 'Not provided'}
                 </div>
 
-                {selectedCustomer ? (
-                  <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-green-700">
-                      Selected customer
-                    </div>
-                    <div className="mt-2 font-bold text-zinc-900">{selectedCustomer.name}</div>
-                    <div className="mt-1 whitespace-pre-line text-sm text-zinc-700">
-                      {defaultCustomerAddress || 'No saved address'}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddCustomer((prev) => !prev)
-                      setCustomerMessage('')
-                    }}
-                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-                  >
-                    {showAddCustomer ? 'Close New Customer' : 'Add New Customer'}
-                  </button>
-                </div>
-
-                {showAddCustomer && (
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <div className="mb-4 text-lg font-bold text-zinc-900">
-                      Add New Customer
-                    </div>
-
-                    <div className="grid gap-4">
-                      <div>
-                        <FieldLabel required>Name</FieldLabel>
-                        <input
-                          value={newCustomerName}
-                          onChange={(e) => setNewCustomerName(e.target.value)}
-                          className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        />
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <FieldLabel>Phone</FieldLabel>
-                          <input
-                            value={newCustomerPhone}
-                            onChange={(e) => setNewCustomerPhone(e.target.value)}
-                            className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                          />
-                        </div>
-
-                        <div>
-                          <FieldLabel>Postcode</FieldLabel>
-                          <input
-                            value={newCustomerPostcode}
-                            onChange={(e) => setNewCustomerPostcode(e.target.value.toUpperCase())}
-                            className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <FieldLabel>Address</FieldLabel>
-                        <textarea
-                          value={newCustomerAddress}
-                          onChange={(e) => setNewCustomerAddress(e.target.value)}
-                          rows={3}
-                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-3 sm:flex-row">
-                        <button
-                          type="button"
-                          onClick={handleAddCustomer}
-                          disabled={customerLoading}
-                          className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          {customerLoading ? 'Saving Customer...' : 'Save Customer'}
-                        </button>
-                      </div>
-
-                      {customerMessage && (
-                        <div
-                          className={`rounded-xl px-4 py-3 text-sm font-medium ${
-                            customerMessage.toLowerCase().includes('selected') ||
-                            customerMessage.toLowerCase().includes('saved')
-                              ? 'border border-green-200 bg-green-50 text-green-700'
-                              : 'border border-red-200 bg-red-50 text-red-700'
-                          }`}
-                        >
-                          {customerMessage}
-                        </div>
-                      )}
-                    </div>
+                {cannotCompleteInfo.reportedBy && (
+                  <div className="text-sm text-amber-900">
+                    <strong>Reported by:</strong> {cannotCompleteInfo.reportedBy}
                   </div>
                 )}
 
-                {!selectedCustomer && (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                    Pick a customer first so the address and job setup flow can auto-fill properly.
+                {cannotCompleteInfo.details && (
+                  <div className="text-sm text-amber-900 md:col-span-2">
+                    <strong>Details:</strong> {cannotCompleteInfo.details}
+                  </div>
+                )}
+
+                {cannotCompleteInfo.recordedAt && (
+                  <div className="text-sm text-amber-900 md:col-span-2">
+                    <strong>Recorded at:</strong> {cannotCompleteInfo.recordedAt}
                   </div>
                 )}
               </div>
-            </SectionCard>
+            </div>
+          )}
 
-            <SectionCard
-              title="Job Details"
-              description="Set the work type, expected time and general details."
-            >
-              <div className="grid gap-4">
-                <div>
-                  <FieldLabel required>Job Title</FieldLabel>
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    required
-                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                  />
+          <div className="grid gap-5 xl:grid-cols-3">
+            <div className="space-y-5 xl:col-span-2">
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Quick actions</h2>
+
+                <div className="mb-5 flex flex-wrap gap-3">
+                  {!isStarted && !isPaused && !isDone && !prepJob && (
+                    <button
+                      type="button"
+                      onClick={handleStartJob}
+                      disabled={busyAction !== ''}
+                      className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {busyAction === 'start job' ? 'Updating...' : 'Start Job'}
+                    </button>
+                  )}
+
+                  {prepJob && !isDone && (
+                    <button
+                      type="button"
+                      onClick={handlePrepComplete}
+                      disabled={busyAction !== ''}
+                      className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {busyAction === 'finish job' || busyAction === 'start job'
+                        ? 'Updating...'
+                        : 'Prep Complete'}
+                    </button>
+                  )}
+
+                  {isStarted && !prepJob && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handlePauseJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'pause job' ? 'Updating...' : 'Pause Work'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleFinishJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'finish job' ? 'Updating...' : 'Finish Job'}
+                      </button>
+                    </>
+                  )}
+
+                  {isPaused && !prepJob && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleResumeJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'resume job' ? 'Updating...' : 'Resume Work'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleFinishJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'finish job' ? 'Updating...' : 'Finish Job'}
+                      </button>
+                    </>
+                  )}
+
+                  {(isStarted || isPaused) && !prepJob && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleUndoStart}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'undo start' ? 'Updating...' : 'Undo Start'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleCannotComplete}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === "mark job as couldn't complete"
+                          ? 'Updating...'
+                          : "Couldn't Complete"}
+                      </button>
+                    </>
+                  )}
+
+                  {!prepJob && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowQuoteForm((prev) => !prev)
+                        setQuoteMessage('')
+                      }}
+                      className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
+                    >
+                      {showQuoteForm ? 'Hide New Quote' : 'New Quote'}
+                    </button>
+                  )}
+
+                  {!prepJob && (
+                    <a
+                      href={`/jobs/add?customerId=${job.customer?.id}&title=${encodeURIComponent(
+                        job.title
+                      )}&address=${encodeURIComponent(job.address || '')}&postcode=${encodeURIComponent(
+                        job.customer?.postcode || ''
+                      )}&jobType=${encodeURIComponent(job.jobType || '')}`}
+                      className="inline-flex rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
+                    >
+                      Book Extra Day
+                    </a>
+                  )}
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <FieldLabel>Job Type</FieldLabel>
+                {visibleNotes && (
+                  <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                      Notes
+                    </div>
+                    <div className="mt-2 whitespace-pre-line text-sm text-zinc-900">
+                      {visibleNotes}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        End of job reports
+                      </div>
+                      <div className="mt-1 text-sm text-zinc-500">
+                        Previous visit reports, work summary and office notes.
+                      </div>
+                    </div>
+
+                    <div className="rounded-full bg-white px-3 py-1 text-xs font-bold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                      {job.jobNotes?.length || 0} note{job.jobNotes?.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+
+                  {!job.jobNotes || job.jobNotes.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-500">
+                      No end of job reports saved yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {job.jobNotes.map((note) => {
+                        const parsedReport = parseEndOfJobReport(note.note)
+                        const cleanedNote = stripCannotCompleteLines(note.note)
+
+                        return (
+                          <div
+                            key={note.id}
+                            className="rounded-2xl border border-zinc-200 bg-white p-4"
+                          >
+                            <div className="text-xs text-zinc-500">
+                              {formatDateTime(note.createdAt)} •{' '}
+                              {fullName(note.worker?.firstName, note.worker?.lastName)}
+                            </div>
+
+                            {parsedReport ? (
+                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Work summary
+                                  </div>
+                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                    {parsedReport.workSummary || 'Not provided'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Follow-up required
+                                  </div>
+                                  <div className="mt-2 text-sm text-zinc-700">
+                                    {parsedReport.followUpRequired || 'Not provided'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Before / After photos
+                                  </div>
+                                  <div className="mt-2 text-sm text-zinc-700">
+                                    {parsedReport.beforePhotos || '0'} / {parsedReport.afterPhotos || '0'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Follow-up details
+                                  </div>
+                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                    {parsedReport.followUpDetails || 'None'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Notes for Kelly
+                                  </div>
+                                  <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                    {parsedReport.notesForKelly || 'None'}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Reported by
+                                  </div>
+                                  <div className="mt-2 text-sm text-zinc-700">
+                                    {parsedReport.reportedBy || fullName(note.worker?.firstName, note.worker?.lastName)}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                                    Recorded at
+                                  </div>
+                                  <div className="mt-2 text-sm text-zinc-700">
+                                    {parsedReport.recordedAt || formatDateTime(note.createdAt)}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
+                                {cleanedNote || 'No note text'}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {showQuoteForm && !prepJob && (
+                  <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="mb-3 text-lg font-extrabold text-zinc-900">
+                      New Quote
+                    </div>
+
+                    <div className="grid gap-3">
+                      <input
+                        value={quoteCustomerName}
+                        onChange={(e) => setQuoteCustomerName(e.target.value)}
+                        placeholder="Customer name"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteCustomerPhone}
+                        onChange={(e) => setQuoteCustomerPhone(e.target.value)}
+                        placeholder="Customer phone"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteCustomerEmail}
+                        onChange={(e) => setQuoteCustomerEmail(e.target.value)}
+                        placeholder="Customer email (optional)"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteCustomerAddress}
+                        onChange={(e) => setQuoteCustomerAddress(e.target.value)}
+                        placeholder="Customer address"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteCustomerPostcode}
+                        onChange={(e) => setQuoteCustomerPostcode(e.target.value)}
+                        placeholder="Customer postcode"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <textarea
+                        value={quoteWorkSummary}
+                        onChange={(e) => setQuoteWorkSummary(e.target.value)}
+                        placeholder="What work is needed?"
+                        className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <input
+                        value={quoteEstimatedTime}
+                        onChange={(e) => setQuoteEstimatedTime(e.target.value)}
+                        placeholder="How long do you think it will take conservatively?"
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+
+                      <textarea
+                        value={quoteNotes}
+                        onChange={(e) => setQuoteNotes(e.target.value)}
+                        placeholder="Extra notes for the office (optional)"
+                        className="min-h-[80px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      />
+                    </div>
+
+                    {quoteMessage && (
+                      <div
+                        className={`mt-3 text-sm font-medium ${
+                          quoteMessage.includes('successfully')
+                            ? 'text-green-700'
+                            : 'text-red-700'
+                        }`}
+                      >
+                        {quoteMessage}
+                      </div>
+                    )}
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={handleSendQuoteRequest}
+                        disabled={quoteBusy}
+                        className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {quoteBusy ? 'Saving...' : 'Save New Quote'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowQuoteForm(false)}
+                        disabled={quoteBusy}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(isStarted || isPaused) && !prepJob && (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="mb-3 text-sm font-bold text-zinc-800">
+                      Add Extra Time
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleExtendJob(15)}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : '+15'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExtendJob(30)}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : '+30'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExtendJob(45)}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : '+45'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExtendJob(60)}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : '+60'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleOtherExtendJob}
+                        disabled={busyAction !== ''}
+                        className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === 'extend job' ? 'Updating...' : 'Other'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-zinc-900">Job details</h2>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <InfoRow
+                    label="Customer"
+                    value={prepJob ? 'Prep block' : job.customer?.name || 'Unknown customer'}
+                  />
+
+                  <InfoRow label="Type" value={job.jobType || '—'} />
+
+                  <div className="sm:col-span-2">
+                    <InfoRow label="Address" value={job.address || '—'} />
+                  </div>
+
+                  <InfoRow
+                    label="Visit date"
+                    value={job.visitDate ? formatDateTime(job.visitDate) : '—'}
+                  />
+
+                  <InfoRow label="Start time" value={job.startTime || '—'} />
+
+                  <InfoRow label="Duration" value={formatMinutes(job.durationMinutes)} />
+
+                  <InfoRow label="Overrun" value={formatMinutes(job.overrunMins)} />
+
+                  <InfoRow label="Paused total" value={formatMinutes(job.pausedMinutes)} />
+
+                  <InfoRow label="Started at" value={formatTime(job.arrivedAt)} />
+
+                  <InfoRow label="Paused at" value={formatTime(job.pausedAt)} />
+
+                  <InfoRow label="Finished at" value={formatTime(job.finishedAt)} />
+
+                  <InfoRow
+                    label="Actual time on site"
+                    value={formatMinutes(actualMinutes)}
+                  />
+
+                  <InfoRow
+                    label="Before photos"
+                    value={`${beforePhotos.length} uploaded`}
+                  />
+
+                  <InfoRow
+                    label="After photos"
+                    value={`${afterPhotos.length} uploaded`}
+                  />
+
+                  <div className="sm:col-span-2">
+                    <InfoRow
+                      label="Assigned"
+                      value={
+                        job.assignments.length > 0
+                          ? job.assignments
+                              .map(
+                                (assignment) =>
+                                  `${assignment.worker.firstName} ${assignment.worker.lastName}`
+                              )
+                              .join(', ')
+                          : 'Nobody assigned'
+                      }
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-bold text-zinc-900">Photos</h2>
+
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700">
+                      Before: {beforePhotos.length}
+                    </span>
+                    <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700">
+                      After: {afterPhotos.length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="mb-3">
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Photo Label
+                    </label>
                     <select
-                      value={jobType}
-                      onChange={(e) => {
-                        const nextType = e.target.value
-                        setJobType(nextType)
-
-                        if (nextType !== 'Maintenance') {
-                          setVisitPattern('one-off')
-                        }
-
-                        if (nextType !== 'Quote') {
-                          setAllowQuoteTimeOverride(false)
-                        }
-
-                        if (nextType !== 'Maintenance' && durationMinutes === '390') {
-                          setDurationMinutes('60')
-                        }
-                      }}
-                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      value={label}
+                      onChange={(e) => setLabel(e.target.value)}
+                      className="w-full max-w-[240px] rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
-                      <option value="Quote">Quote</option>
-                      <option value="Maintenance">Maintenance</option>
-                      <option value="Landscaping">Landscaping</option>
+                      <option value="Before">Before</option>
+                      <option value="During">During</option>
+                      <option value="After">After</option>
                       <option value="Other">Other</option>
                     </select>
                   </div>
 
-                  <div>
-                    <FieldLabel>Status</FieldLabel>
-                    <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value)}
-                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                    >
-                      <option value="Scheduled">Scheduled</option>
-                      <option value="Quoted">Quoted</option>
-                      <option value="Completed">Completed</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <FieldLabel required>Expected Time (minutes)</FieldLabel>
-
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    {durationOptions.map((minutes) => (
-                      <button
-                        key={minutes}
-                        type="button"
-                        onClick={() => setDurationMinutes(String(minutes))}
-                        className={`min-h-[44px] rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                          durationMinutes === String(minutes)
-                            ? 'border-zinc-900 bg-zinc-900 text-white'
-                            : 'border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100'
-                        }`}
-                      >
-                        {minutes === 390 ? 'Full day' : `${minutes} mins`}
-                      </button>
-                    ))}
-                  </div>
-
                   <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(e.target.value)}
-                    required
-                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleFileChange}
+                    disabled={uploading}
+                    className="block w-full text-sm"
                   />
 
-                  {jobType === 'Maintenance' && (
-                    <p className="mt-2 text-sm text-zinc-500">
-                      Maintenance can now be short visits or longer blocks, including full-day work.
-                    </p>
+                  <p className="mt-3 text-xs text-zinc-500">
+                    Add before photos when you arrive and after photos before finishing.
+                  </p>
+
+                  {photoMessage && (
+                    <p className="mt-3 text-sm text-zinc-600">{photoMessage}</p>
                   )}
                 </div>
-              </div>
-            </SectionCard>
 
-            <SectionCard
-              title="Scheduling"
-              description="Set a visit date and time if you want this job added straight into the diary."
-            >
-              <div className="grid gap-4">
-                {isTrevQuoteJob && (
-                  <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-zinc-800">
-                    <div className="font-bold text-zinc-900">Trev quote visit rules</div>
-                    <div className="mt-1 space-y-1 text-zinc-700">
-                      <p>• Trev can only have 3 quote visits per day.</p>
-                      <p>• Default quote slots are 11:00, 12:00 and 13:00.</p>
-                      <p>• If you leave manual override off, the system will pick the next free slot automatically.</p>
-                    </div>
-                  </div>
+                {photos.length === 0 && (
+                  <p className="text-sm text-zinc-500">No photos uploaded yet.</p>
                 )}
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {photos.map((photo, index) => (
+                    <div
+                      key={photo.id}
+                      className="overflow-hidden rounded-2xl border border-zinc-200 bg-white"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openViewer(index)}
+                        className="block w-full text-left"
+                      >
+                        <img
+                          src={photo.imageUrl}
+                          alt={photo.label || 'Job photo'}
+                          className="h-[220px] w-full object-cover"
+                        />
+
+                        <div className="p-3">
+                          <p className="mb-1 text-sm text-zinc-700">
+                            <strong>Label:</strong> {photo.label || 'None'}
+                          </p>
+
+                          <p className="text-sm text-zinc-500">Tap to open full size</p>
+                        </div>
+                      </button>
+
+                      <div className="p-3 pt-0">
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePhoto(photo.id)}
+                          disabled={deletingPhotoId === photo.id}
+                          className="w-full rounded-xl border border-red-300 bg-white px-3 py-2.5 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingPhotoId === photo.id ? 'Deleting...' : 'Delete Photo'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-5">
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Quick links</h2>
+
+                <div className="flex flex-col gap-3">
+                  {!prepJob && job.customer?.phone && (
+                    <a
+                      href={`tel:${job.customer.phone}`}
+                      className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    >
+                      Call Customer
+                    </a>
+                  )}
+
+                  {navigationQuery && (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationQuery)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                    >
+                      Navigate
+                    </a>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">Assigned workers</h2>
+
+                <div className="space-y-3">
+                  {job.assignments.length === 0 && (
+                    <p className="text-sm text-zinc-500">No workers assigned</p>
+                  )}
+
+                  {job.assignments.map((a) => (
+                    <div
+                      key={a.id}
+                      className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700"
+                    >
+                      <div className="font-semibold text-zinc-900">
+                        {a.worker.firstName} {a.worker.lastName}
+                      </div>
+                      {a.worker.phone ? (
+                        <div className="mt-1 text-zinc-500">{a.worker.phone}</div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {!prepJob && (
+                <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                  <h2 className="mb-4 text-lg font-bold text-zinc-900">Customer</h2>
+
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Name
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.name || 'Unknown customer'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Phone
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.phone || '—'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Address
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.address || '—'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                        Postcode
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-zinc-900">
+                        {job.customer?.postcode || '—'}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+{showEarlyFinishCheck && earlyFinishData && (
+  <div className="fixed inset-0 z-[1002] bg-black/50 flex items-center justify-center p-4">
+    <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
+      
+      <h2 className="text-xl font-bold text-zinc-900 mb-2">
+        You’re finishing early 👀
+      </h2>
+
+      <p className="text-sm text-zinc-600 mb-4">
+        You’ve still got about{' '}
+        <strong>{earlyFinishData.remainingMinutes} minutes</strong> left on this job.
+      </p>
+
+      {earlyFinishData.suggestions.length > 0 ? (
+        <>
+          <p className="text-sm font-semibold text-zinc-800 mb-2">
+            Nearby jobs you could jump onto:
+          </p>
+
+          <div className="space-y-2 mb-4">
+            {earlyFinishData.suggestions.map((j) => (
+              <button
+                key={j.id}
+                onClick={() => {
+  router.push(`/jobs/${j.id}`)
+}}
+                className="w-full text-left rounded-xl border border-zinc-200 p-3 hover:bg-zinc-50"
+              >
+                <div className="font-semibold text-zinc-900">
+                  {j.title}
+                </div>
+                <div className="text-xs text-zinc-500">
+                  {j.address}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-zinc-600 mb-4">
+          No nearby jobs available right now 👍
+        </p>
+      )}
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => setShowEarlyFinishCheck(false)}
+          className="flex-1 rounded-xl border border-zinc-300 px-4 py-3 text-sm font-semibold"
+        >
+          Stay on job
+        </button>
+
+        <button
+          onClick={() => {
+            setShowEarlyFinishCheck(false)
+            setShowFinishReport(true)
+          }}
+          className="flex-1 rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white"
+        >
+          Finish anyway
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
+
+      {showFinishReport && (
+        <div className="fixed inset-0 z-[1001] bg-black/50 sm:flex sm:items-center sm:justify-center sm:p-4">
+          <div className="flex h-[100dvh] w-full items-end justify-center sm:h-auto sm:items-center">
+            <div className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-3xl">
+              <div className="border-b border-zinc-200 px-5 py-4">
+                <h2 className="text-xl font-bold text-zinc-900">Finish job report</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Quick end-of-job report for Kelly before you finish this job.
+                </p>
+              </div>
+
+              <div
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 pb-32"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+              >
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <InfoRow label="Before photos" value={`${beforePhotos.length} uploaded`} />
+                      <InfoRow label="After photos" value={`${afterPhotos.length} uploaded`} />
+                    </div>
+                  </div>
+
                   <div>
-                    <FieldLabel required={isTrevQuoteJob}>Visit Date</FieldLabel>
-                    <input
-                      type="date"
-                      value={visitDate}
-                      onChange={(e) => setVisitDate(e.target.value)}
-                      required={isTrevQuoteJob}
-                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Work summary
+                    </label>
+                    <textarea
+                      value={finishSummary}
+                      onChange={(e) => setFinishSummary(e.target.value)}
+                      placeholder="What was done today?"
+                      className="min-h-[100px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     />
                   </div>
 
                   <div>
-                    <FieldLabel>
-                      {isTrevQuoteJob && !allowQuoteTimeOverride
-                        ? 'Start Time (automatic)'
-                        : 'Start Time'}
-                    </FieldLabel>
-
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="time"
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        disabled={isTrevQuoteJob && !allowQuoteTimeOverride}
-                        className={`min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 ${
-                          isTrevQuoteJob && !allowQuoteTimeOverride
-                            ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
-                            : 'border-zinc-300 bg-white text-zinc-900'
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Follow-up required?
+                    </label>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setFinishFollowUpRequired('no')}
+                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                          finishFollowUpRequired === 'no'
+                            ? 'bg-zinc-900 text-white'
+                            : 'border border-zinc-300 bg-white text-zinc-800'
                         }`}
-                      />
+                      >
+                        No
+                      </button>
 
                       <button
                         type="button"
-                        onClick={() => setStartTime('')}
-                        disabled={
-                          (isTrevQuoteJob && !allowQuoteTimeOverride) || !startTime
-                        }
-                        className="shrink-0 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => setFinishFollowUpRequired('yes')}
+                        className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                          finishFollowUpRequired === 'yes'
+                            ? 'bg-zinc-900 text-white'
+                            : 'border border-zinc-300 bg-white text-zinc-800'
+                        }`}
                       >
-                        Clear
+                        Yes
                       </button>
                     </div>
                   </div>
-                </div>
 
-                {isTrevQuoteJob ? (
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <label className="flex items-start gap-3 text-sm text-zinc-800">
-                      <input
-                        type="checkbox"
-                        checked={allowQuoteTimeOverride}
-                        onChange={(e) => setAllowQuoteTimeOverride(e.target.checked)}
-                        className="mt-1"
+                  {finishFollowUpRequired === 'yes' && (
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                        Follow-up details
+                      </label>
+                      <textarea
+                        value={finishFollowUpDetails}
+                        onChange={(e) => setFinishFollowUpDetails(e.target.value)}
+                        placeholder="What still needs doing, returning for, or chasing?"
+                        className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                       />
-                      <span>
-                        <span className="block font-semibold">
-                          Manually choose a different quote time
-                        </span>
-                        <span className="mt-1 block text-zinc-500">
-                          Only tick this if you need to override the normal 11:00 / 12:00 / 13:00 Trev quote slots.
-                        </span>
-                      </span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Extra notes for Kelly
                     </label>
-                  </div>
-                ) : (
-                  <p className="text-sm text-zinc-500">
-                    Leave date and time blank if this job should stay unscheduled for now.
-                  </p>
-                )}
-              </div>
-            </SectionCard>
-
-            {jobType === 'Maintenance' && (
-              <SectionCard
-                title="Maintenance Visit Pattern"
-                description="Choose whether this is a one-off maintenance visit or recurring work."
-              >
-                <div className="grid gap-4">
-                  <div>
-                    <FieldLabel>Visit Pattern</FieldLabel>
-                    <select
-                      value={visitPattern}
-                      onChange={(e) => setVisitPattern(e.target.value)}
-                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                    >
-                      <option value="one-off">One-off job</option>
-                      <option value="regular-maintenance">Regular maintenance</option>
-                    </select>
-                  </div>
-
-                  {isRegularMaintenance && (
-                    <>
-                      <div>
-                        <FieldLabel>How regular does it need to be?</FieldLabel>
-                        <select
-                          value={maintenanceFrequency}
-                          onChange={(e) =>
-                            setMaintenanceFrequency(
-                              e.target.value as MaintenanceFrequencyValue
-                            )
-                          }
-                          className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        >
-                          <option value="weekly">Weekly</option>
-                          <option value="fortnightly">Fortnightly</option>
-                          <option value="every_3_weeks">Every 3 Weeks</option>
-                          <option value="monthly">Monthly</option>
-                        </select>
-                        <p className="mt-2 text-sm text-zinc-500">
-                          Monthly is treated separately from 4 weeks so the auto-scheduler can keep visits aligned properly across long and short months.
-                        </p>
-                      </div>
-
-                      <div>
-                        <FieldLabel>Visit preference</FieldLabel>
-                        <select
-                          value={timePreferenceMode}
-                          onChange={(e) => setTimePreferenceMode(e.target.value)}
-                          className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        >
-                          <option value="best-fit">Drop into the diary in the best place</option>
-                          <option value="specific">Customer wants a specific day / time</option>
-                        </select>
-                      </div>
-
-                      {useSpecificVisitPreference && (
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div>
-                            <FieldLabel>Preferred day</FieldLabel>
-                            <select
-                              value={preferredDay}
-                              onChange={(e) => setPreferredDay(e.target.value)}
-                              className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                            >
-                              <option value="">Select preferred day</option>
-                              <option value="Monday">Monday</option>
-                              <option value="Tuesday">Tuesday</option>
-                              <option value="Wednesday">Wednesday</option>
-                              <option value="Thursday">Thursday</option>
-                              <option value="Friday">Friday</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <FieldLabel>Preferred time of day</FieldLabel>
-                            <select
-                              value={preferredTimeBand}
-                              onChange={(e) => setPreferredTimeBand(e.target.value)}
-                              className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                            >
-                              <option value="Morning">Morning</option>
-                              <option value="Midday">Midday</option>
-                              <option value="Afternoon">Afternoon</option>
-                              <option value="Anytime">Anytime</option>
-                            </select>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </SectionCard>
-            )}
-
-            <SectionCard
-              title="Address"
-              description="Use the customer address or set a different job address."
-            >
-              <div className="space-y-4">
-                {!useDifferentAddress && selectedCustomer ? (
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                      Using customer address
-                    </div>
-                    <div className="mt-2 whitespace-pre-line text-sm text-zinc-700">
-                      {defaultCustomerAddress || 'No saved address'}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                  <label className="flex items-start gap-3 text-sm text-zinc-800">
-                    <input
-                      type="checkbox"
-                      checked={useDifferentAddress}
-                      onChange={(e) => setUseDifferentAddress(e.target.checked)}
-                      className="mt-1"
-                    />
-                    <span>
-                      <span className="block font-semibold">
-                        Job is at a different address
-                      </span>
-                      <span className="mt-1 block text-zinc-500">
-                        Tick this if the work is not being done at the customer's main address.
-                      </span>
-                    </span>
-                  </label>
-                </div>
-
-                {useDifferentAddress && (
-                  <div>
-                    <FieldLabel required>Job Address</FieldLabel>
                     <textarea
-                      value={jobAddress}
-                      onChange={(e) => setJobAddress(e.target.value)}
-                      rows={4}
-                      required={useDifferentAddress}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      value={finishKellyNotes}
+                      onChange={(e) => setFinishKellyNotes(e.target.value)}
+                      placeholder="Anything Kelly should know?"
+                      className="min-h-[90px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     />
                   </div>
-                )}
+                </div>
               </div>
-            </SectionCard>
 
-            <SectionCard
-              title="Assigned Workers"
-              description="Choose which workers should be assigned to this job. At least one worker is required."
-            >
-              {workers.length === 0 ? (
-                <p className="text-sm text-zinc-500">No active workers found.</p>
-              ) : (
-                <>
-                  <div className="grid gap-3">
-                    {workers.map((worker) => {
-                      const checked = assignedTo.includes(worker.id)
-
-                      return (
-                        <label
-                          key={worker.id}
-                          className={`flex min-h-[56px] cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 text-sm transition sm:min-h-[60px] ${
-                            checked
-                              ? 'border-zinc-900 bg-zinc-900 text-white'
-                              : 'border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleWorker(worker.id)}
-                            className="h-4 w-4 shrink-0"
-                          />
-                          <span className="font-semibold">
-                            {worker.firstName} {worker.lastName}
-                          </span>
-                        </label>
-                      )
-                    })}
-                  </div>
-
-                  {assignedTo.length === 0 && (
-                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                      Please select at least one worker before saving this job.
-                    </div>
-                  )}
-                </>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Notes"
-              description="Internal notes for the office or team."
-            >
-              <div>
-                <FieldLabel>Notes</FieldLabel>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={5}
-                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                />
-              </div>
-            </SectionCard>
-
-            {message && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-sm">
-                {message}
-              </div>
-            )}
-
-            <div className="sticky bottom-3 z-10">
-              <div className="rounded-2xl border border-zinc-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                  <Link
-                    href="/jobs"
-                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+              <div className="border-t border-zinc-200 bg-white px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowFinishReport(false)}
+                    disabled={busyAction !== ''}
+                    className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Cancel
-                  </Link>
+                  </button>
 
                   <button
-                    type="submit"
-                    disabled={loading}
-                    className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
+                    type="button"
+                    onClick={submitFinishReport}
+                    disabled={busyAction !== ''}
+                    className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {loading ? 'Saving...' : 'Save Job'}
+                    {busyAction === 'finish job' ? 'Saving...' : 'Save report & finish job'}
                   </button>
                 </div>
               </div>
             </div>
-          </form>
+          </div>
         </div>
-      </div>
+      )}
 
-      {saveSummary ? (
-        <SaveConfirmationModal
-          summary={saveSummary}
-          onClearForm={() => {
-            resetForm()
-          }}
-          onGoToJobs={() => {
-            router.push('/jobs')
-          }}
-        />
-      ) : null}
+      {showCompletionReview && completionReview && (
+        <div className="fixed inset-0 z-[1002] bg-black/50 sm:flex sm:items-center sm:justify-center sm:p-4">
+          <div className="flex h-[100dvh] w-full items-end justify-center sm:h-auto sm:items-center">
+            <div className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-3xl">
+              <div className="border-b border-zinc-200 px-5 py-4">
+                <h2 className="text-xl font-bold text-zinc-900">Job complete</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Time summary and best next move.
+                </p>
+              </div>
+
+              <div className="space-y-4 overflow-y-auto p-5">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <InfoRow
+                    label="Planned"
+                    value={formatMinutes(completionReview.plannedMinutes)}
+                  />
+                  <InfoRow
+                    label="Actual"
+                    value={formatMinutes(completionReview.actualMinutes)}
+                  />
+                  <InfoRow
+                    label={
+                      completionReview.deltaMinutes !== null &&
+                      completionReview.deltaMinutes >= 0
+                        ? 'Time saved'
+                        : 'Overrun'
+                    }
+                    value={formatMinutes(
+                      completionReview.deltaMinutes !== null
+                        ? Math.abs(completionReview.deltaMinutes)
+                        : null
+                    )}
+                  />
+                </div>
+
+                {checkingNextJob ? (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+                    Checking whether there is anything else that fits before moving on...
+                  </div>
+                ) : completionReview.deltaMinutes !== null &&
+                  completionReview.deltaMinutes > 0 ? (
+                  <div className="space-y-3">
+                    {completionReview.nextFittingJob ? (
+                      <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
+                        <div className="text-sm font-bold text-green-900">
+                          Best next job
+                        </div>
+                        <div className="mt-2 text-sm text-green-900">
+                          <strong>{completionReview.nextFittingJob.title}</strong>
+                        </div>
+                        <div className="mt-1 text-sm text-green-800">
+                          {completionReview.nextFittingJob.address || 'No address'}
+                        </div>
+                        <div className="mt-1 text-sm text-green-800">
+                          Start: {completionReview.nextFittingJob.startTime || 'No set time'} •
+                          Duration: {formatMinutes(completionReview.nextFittingJob.durationMinutes)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+                        You finished early, but no suitable same-day job fits the spare time.
+                      </div>
+                    )}
+
+                    {completionReview.nextScheduledJob && (
+                      <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                        <div className="text-sm font-bold text-zinc-900">
+                          Next scheduled job
+                        </div>
+                        <div className="mt-2 text-sm text-zinc-900">
+                          <strong>{completionReview.nextScheduledJob.title}</strong>
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-600">
+                          {completionReview.nextScheduledJob.address || 'No address'}
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-600">
+                          Start: {completionReview.nextScheduledJob.startTime || 'No set time'} •
+                          Duration: {formatMinutes(completionReview.nextScheduledJob.durationMinutes)}
+                        </div>
+                      </div>
+                    )}
+
+                    {completionReview.rankedJobs.length > 1 && (
+                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                        <div className="mb-3 text-sm font-bold text-zinc-900">
+                          Other possible jobs today
+                        </div>
+                        <div className="space-y-2">
+                          {completionReview.rankedJobs.slice(0, 3).map((rankedJob) => (
+                            <div
+                              key={rankedJob.id}
+                              className="rounded-xl border border-zinc-200 bg-white p-3"
+                            >
+                              <div className="text-sm font-semibold text-zinc-900">
+                                {rankedJob.title}
+                              </div>
+                              <div className="mt-1 text-xs text-zinc-600">
+                                {rankedJob.address || 'No address'}
+                              </div>
+                              <div className="mt-1 text-xs text-zinc-600">
+                                Start: {rankedJob.startTime || 'No set time'} •
+                                Duration: {formatMinutes(rankedJob.durationMinutes)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+                    No spare time was created on this job.
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-zinc-200 bg-white px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+                <div className="flex flex-wrap justify-end gap-3">
+                  {completionReview.nextFittingJob && (
+                    <Link
+                      href={`/jobs/${completionReview.nextFittingJob.id}`}
+                      className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800"
+                    >
+                      Go to suggested job
+                    </Link>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowCompletionReview(false)}
+                    className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activePhoto && (
+        <div
+          onClick={closeViewer}
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-5"
+        >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              closeViewer()
+            }}
+            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl text-white"
+          >
+            ×
+          </button>
+
+          {viewerIndex !== null && viewerIndex > 0 && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                showPreviousPhoto()
+              }}
+              className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl text-white"
+            >
+              ‹
+            </button>
+          )}
+
+          <div
+            onClick={(event) => event.stopPropagation()}
+            className="flex w-full max-w-[1100px] flex-col items-center gap-3"
+          >
+            <img
+              src={activePhoto.imageUrl}
+              alt={activePhoto.label || 'Job photo'}
+              className="max-h-[80vh] max-w-full rounded-xl object-contain"
+            />
+
+            <div className="text-center text-white">
+              <p className="mb-1">
+                <strong>{activePhoto.label || 'Job photo'}</strong>
+              </p>
+              <p className="opacity-80">
+                Photo {viewerIndex !== null ? viewerIndex + 1 : 1} of {photos.length}
+              </p>
+            </div>
+          </div>
+
+          {viewerIndex !== null && viewerIndex < photos.length - 1 && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                showNextPhoto()
+              }}
+              className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl text-white"
+            >
+              ›
+            </button>
+          )}
+        </div>
+      )}
     </main>
   )
 }

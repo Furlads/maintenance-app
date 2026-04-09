@@ -895,6 +895,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const appendNote = clean(body.appendNote)
     const noteAuthor = clean(body.noteAuthor)
     const allowQuoteTimeOverride = isTrue(body.allowQuoteTimeOverride)
+    const extendMins = parsePositiveInt(body.extendMins)
 
     const isCancelAction =
       action === 'cancel' || action === 'cancelled' || requestedStatus === 'cancelled'
@@ -908,6 +909,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
     let finishedAtUpdate: Date | null | undefined = undefined
     let pausedAtUpdate: Date | null | undefined = undefined
     let pausedMinutesUpdate: number | undefined = undefined
+    let durationMinutesUpdate: number | undefined = parsePositiveInt(
+      body.durationMinutes ?? body.durationMins
+    )
+    let notesUpdate: string | null | undefined = undefined
 
     if (requestedStatus) {
       if (!ALLOWED_JOB_STATUSES.has(requestedStatus)) {
@@ -973,6 +978,49 @@ export async function PATCH(req: Request, ctx: Ctx) {
       pausedMinutesUpdate = finalPausedMinutes
       finishedAtUpdate = now
       statusUpdate = statusUpdate ?? 'done'
+    }
+
+    if (action === 'cannot_complete') {
+      const workerName = clean(body.workerName) || 'Unknown worker'
+      const reason = clean(body.reason)
+      const details = clean(body.details)
+      const recordedAt = new Date().toLocaleString('en-GB')
+
+      if (!reason) {
+        return NextResponse.json(
+          { error: 'Reason is required when marking a job as could not complete' },
+          { status: 400 }
+        )
+      }
+
+      const existingNotes = existing.notes?.trim() || ''
+      const cannotCompleteLine = [
+        `Job could not be completed: ${reason}`,
+        `Details: ${details || 'None'}`,
+        `Reported by: ${workerName}`,
+        `Recorded at: ${recordedAt}`,
+      ].join(' | ')
+
+      notesUpdate = existingNotes
+        ? `${existingNotes}\n${cannotCompleteLine}`
+        : cannotCompleteLine
+
+      if (existing.pausedAt) {
+        const additionalPausedMinutes = Math.max(
+          0,
+          Math.round((now.getTime() - existing.pausedAt.getTime()) / 60000)
+        )
+        pausedMinutesUpdate = (existing.pausedMinutes ?? 0) + additionalPausedMinutes
+        pausedAtUpdate = null
+      }
+
+      finishedAtUpdate = null
+      statusUpdate = 'paused'
+    }
+
+    if (extendMins) {
+      const currentDuration = existing.durationMinutes ?? DEFAULT_JOB_DURATION_MINUTES
+      durationMinutesUpdate = currentDuration + extendMins
     }
 
     if ('arrivedAt' in body) {
@@ -1041,10 +1089,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
         )
       }
     }
-
-    const durationMinutesUpdate = parsePositiveInt(
-      body.durationMinutes ?? body.durationMins
-    )
 
     const overrunMinsUpdate = parseNonNegativeInt(body.overrunMins)
 
@@ -1321,11 +1365,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
           title: titleUpdate,
           address: typeof body.address === 'string' ? body.address : undefined,
           notes:
-            body.notes === null
-              ? null
-              : typeof body.notes === 'string'
-                ? body.notes
-                : undefined,
+            notesUpdate !== undefined
+              ? notesUpdate
+              : body.notes === null
+                ? null
+                : typeof body.notes === 'string'
+                  ? body.notes
+                  : undefined,
           jobType: typeof body.jobType === 'string' ? body.jobType : undefined,
           customerId: customerIdUpdate,
           visitDate: scheduleState.visitDate,
@@ -1444,7 +1490,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       await tx.jobAuditLog.create({
         data: {
           jobId,
-          action: 'updated',
+          action: action || 'updated',
           beforeJson: JSON.stringify(existingSnapshot),
           afterJson: JSON.stringify(buildJobAuditSnapshot(result)),
         },
@@ -1510,7 +1556,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       ) {
         await runLocalRepairForJob({
           jobId,
-          reason: 'edit',
+          reason: action || 'edit',
         })
       }
     } catch (schedulerError) {
