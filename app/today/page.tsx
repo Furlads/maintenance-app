@@ -3218,22 +3218,6 @@ input, textarea, select {
               {showingLeftOnly ? 'Jobs left' : 'Next jobs'}
             </div>
 
-            <div
-              style={{
-                ...styles.panel,
-                ...styles.panelPadding,
-                marginBottom: 12,
-                border: '2px solid blue'
-              }}
-            >
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>NEXT JOBS DEBUG</div>
-              {filteredNextJobs.map((job, index) => (
-                <div key={`debug-${job.id}`}>
-                  {index + 1}. id={job.id} | title={job.title} | customer={job.customer?.name || 'none'} | waiting={String(job.isWaiting)} | next={String(job.isNext)}
-                </div>
-              ))}
-            </div>
-
             {filteredNextJobs.map((job, index) => {
               const navigationQuery =
                 job.customer?.postcode || job.address || job.customer?.address || ''
@@ -3241,72 +3225,6 @@ input, textarea, select {
               const startedAt = job.arrivedAt || null
               const pausedAt = job.pausedAt || null
               const livePausedMinutes = job.isPaused ? getPausedLiveMinutes(job, now) : 0
-
-              const firstCollapsedHeadlineIndex = filteredNextJobs.findIndex(
-                (item) => item.isWaiting
-              )
-
-              const shouldCollapseToHeadline =
-                job.isWaiting &&
-                firstCollapsedHeadlineIndex !== -1 &&
-                index > firstCollapsedHeadlineIndex
-
-              if (shouldCollapseToHeadline) {
-                return (
-                  <div
-                    key={job.id}
-                    style={{
-                      ...styles.panel,
-                      padding: 14,
-                      marginBottom: 8,
-                      background: '#fafafa'
-                    }}
-                  >
-                    <Link
-  href={`/jobs/${job.id}`}
-  style={{
-    textDecoration: 'none',
-    color: 'inherit',
-    display: 'block'
-  }}
->
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: 12,
-                          flexWrap: 'wrap'
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontSize: 16, fontWeight: 800 }}>
-                            {getJobPrimaryTitle(job)}
-                          </div>
-
-                          {getJobSecondaryTitle(job) && (
-                            <div style={{ marginTop: 4, fontSize: 13, color: colours.inkSoft }}>
-                              {getJobSecondaryTitle(job)}
-                            </div>
-                          )}
-
-                          {job.notes && (
-                            <div style={{ marginTop: 6, fontSize: 13, color: colours.inkSoft }}>
-                              Notes ready on card
-                            </div>
-                          )}
-
-                          <div style={{ marginTop: 4, fontSize: 13, color: colours.muted }}>
-                            ETA start: {formatClockTime(job.etaStart)}
-                          </div>
-                        </div>
-
-                        <div style={getStatusPill(job)}>{getStatusText(job)}</div>
-                      </div>
-                    </Link>
-                  </div>
-                )
-              }
 
               return (
                 <div
