@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useSearchParams, useRouter } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 
 type Worker = {
   id: number
@@ -498,7 +498,6 @@ export default function JobPage() {
     suggestions: Job[]
   } | null>(null)
   const params = useParams()
-  const searchParams = useSearchParams()
   const router = useRouter()
   const id = Number(params.id)
 
@@ -532,6 +531,7 @@ export default function JobPage() {
   const [finishFollowUpRequired, setFinishFollowUpRequired] = useState<'no' | 'yes'>('no')
   const [finishFollowUpDetails, setFinishFollowUpDetails] = useState('')
   const [finishKellyNotes, setFinishKellyNotes] = useState('')
+  const [finishQueryParam, setFinishQueryParam] = useState<string | null>(null)
 
   const [showCompletionReview, setShowCompletionReview] = useState(false)
   const [completionReview, setCompletionReview] = useState<CompletionReview | null>(null)
@@ -586,6 +586,13 @@ export default function JobPage() {
   }, [id])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const search = new URLSearchParams(window.location.search)
+    setFinishQueryParam(search.get('finish'))
+  }, [])
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (viewerIndex === null) return
 
@@ -625,8 +632,6 @@ export default function JobPage() {
     setQuoteNotes('')
     setQuoteMessage('')
   }, [showQuoteForm, job])
-
-  const finishQueryParam = searchParams.get('finish')
 
   useEffect(() => {
     if (!job) return
@@ -844,28 +849,28 @@ export default function JobPage() {
   }
 
   async function handleFinishJob() {
-  if (!job) return
+    if (!job) return
 
-  if (isPrepJob(job)) {
-    await patchJob({ action: 'finish' }, 'finish job')
-    return
-  }
-
-  try {
-    const res = await fetch(`/api/jobs/${job.id}/early-finish-check`)
-    const data = await res.json()
-
-    if (data?.shouldCheck) {
-      setEarlyFinishData(data)
-      setShowEarlyFinishCheck(true)
+    if (isPrepJob(job)) {
+      await patchJob({ action: 'finish' }, 'finish job')
       return
     }
-  } catch (err) {
-    console.error('Early finish check failed', err)
-  }
 
-  setShowFinishReport(true)
-}
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/early-finish-check`)
+      const data = await res.json()
+
+      if (data?.shouldCheck) {
+        setEarlyFinishData(data)
+        setShowEarlyFinishCheck(true)
+        return
+      }
+    } catch (err) {
+      console.error('Early finish check failed', err)
+    }
+
+    setShowFinishReport(true)
+  }
 
   async function handlePrepComplete() {
     if (!job) return
@@ -888,28 +893,28 @@ export default function JobPage() {
     const dateParam = sameDayDateParam(currentJob.visitDate)
 
     const results = await Promise.all(
-  workerIds.map(async (workerId) => {
-    const res = await fetch(`/api/jobs?workerId=${workerId}&date=${dateParam}`, {
-      cache: 'no-store',
-    })
+      workerIds.map(async (workerId) => {
+        const res = await fetch(`/api/jobs?workerId=${workerId}&date=${dateParam}`, {
+          cache: 'no-store',
+        })
 
-    if (!res.ok) {
-      return []
-    }
+        if (!res.ok) {
+          return []
+        }
 
-    const data = await res.json().catch(() => null)
+        const data = await res.json().catch(() => null)
 
-    if (Array.isArray(data)) {
-      return data
-    }
+        if (Array.isArray(data)) {
+          return data
+        }
 
-    if (Array.isArray(data?.items)) {
-      return data.items
-    }
+        if (Array.isArray(data?.items)) {
+          return data.items
+        }
 
-    return []
-  })
-)
+        return []
+      })
+    )
 
     const merged = new Map<number, SuggestedJob>()
 
@@ -2013,72 +2018,70 @@ Heavy rain made it unsafe`,
         </div>
       </div>
 
-{showEarlyFinishCheck && earlyFinishData && (
-  <div className="fixed inset-0 z-[1002] bg-black/50 flex items-center justify-center p-4">
-    <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
-      
-      <h2 className="text-xl font-bold text-zinc-900 mb-2">
-        You’re finishing early 👀
-      </h2>
+      {showEarlyFinishCheck && earlyFinishData && (
+        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
+            <h2 className="mb-2 text-xl font-bold text-zinc-900">
+              You’re finishing early 👀
+            </h2>
 
-      <p className="text-sm text-zinc-600 mb-4">
-        You’ve still got about{' '}
-        <strong>{earlyFinishData.remainingMinutes} minutes</strong> left on this job.
-      </p>
+            <p className="mb-4 text-sm text-zinc-600">
+              You’ve still got about{' '}
+              <strong>{earlyFinishData.remainingMinutes} minutes</strong> left on this job.
+            </p>
 
-      {earlyFinishData.suggestions.length > 0 ? (
-        <>
-          <p className="text-sm font-semibold text-zinc-800 mb-2">
-            Nearby jobs you could jump onto:
-          </p>
+            {earlyFinishData.suggestions.length > 0 ? (
+              <>
+                <p className="mb-2 text-sm font-semibold text-zinc-800">
+                  Nearby jobs you could jump onto:
+                </p>
 
-          <div className="space-y-2 mb-4">
-            {earlyFinishData.suggestions.map((j) => (
+                <div className="mb-4 space-y-2">
+                  {earlyFinishData.suggestions.map((j) => (
+                    <button
+                      key={j.id}
+                      onClick={() => {
+                        router.push(`/jobs/${j.id}`)
+                      }}
+                      className="w-full rounded-xl border border-zinc-200 p-3 text-left hover:bg-zinc-50"
+                    >
+                      <div className="font-semibold text-zinc-900">
+                        {j.title}
+                      </div>
+                      <div className="text-xs text-zinc-500">
+                        {j.address}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="mb-4 text-sm text-zinc-600">
+                No nearby jobs available right now 👍
+              </p>
+            )}
+
+            <div className="flex gap-3">
               <button
-                key={j.id}
-                onClick={() => {
-  router.push(`/jobs/${j.id}`)
-}}
-                className="w-full text-left rounded-xl border border-zinc-200 p-3 hover:bg-zinc-50"
+                onClick={() => setShowEarlyFinishCheck(false)}
+                className="flex-1 rounded-xl border border-zinc-300 px-4 py-3 text-sm font-semibold"
               >
-                <div className="font-semibold text-zinc-900">
-                  {j.title}
-                </div>
-                <div className="text-xs text-zinc-500">
-                  {j.address}
-                </div>
+                Stay on job
               </button>
-            ))}
+
+              <button
+                onClick={() => {
+                  setShowEarlyFinishCheck(false)
+                  setShowFinishReport(true)
+                }}
+                className="flex-1 rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white"
+              >
+                Finish anyway
+              </button>
+            </div>
           </div>
-        </>
-      ) : (
-        <p className="text-sm text-zinc-600 mb-4">
-          No nearby jobs available right now 👍
-        </p>
+        </div>
       )}
-
-      <div className="flex gap-3">
-        <button
-          onClick={() => setShowEarlyFinishCheck(false)}
-          className="flex-1 rounded-xl border border-zinc-300 px-4 py-3 text-sm font-semibold"
-        >
-          Stay on job
-        </button>
-
-        <button
-          onClick={() => {
-            setShowEarlyFinishCheck(false)
-            setShowFinishReport(true)
-          }}
-          className="flex-1 rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white"
-        >
-          Finish anyway
-        </button>
-      </div>
-
-    </div>
-  </div>
-)}
 
       {showFinishReport && (
         <div className="fixed inset-0 z-[1001] bg-black/50 sm:flex sm:items-center sm:justify-center sm:p-4">
