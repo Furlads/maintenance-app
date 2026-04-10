@@ -3,6 +3,7 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { runLocalRepairForJob } from '@/lib/auto-scheduler'
+import { syncJobAlerts, cancelJobAlerts } from '@/lib/notifications'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -1211,6 +1212,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
         return result
       })
 
+      await cancelJobAlerts(jobId)
+
       const { notes, notesLog } = await buildNotesLog(jobId)
 
       try {
@@ -1498,6 +1501,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
       return result
     })
+
+    if (updated.visitDate && updated.startTime) {
+      await syncJobAlerts(jobId)
+    } else {
+      await cancelJobAlerts(jobId)
+    }
 
     let nextRecurringJobs: unknown[] = []
 

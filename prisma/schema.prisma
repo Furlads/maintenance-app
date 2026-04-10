@@ -126,6 +126,7 @@ model Job {
   jobNotes                  JobNote[]
   photos                    JobPhoto[]
   auditLogs                 JobAuditLog[]
+  notifications             Notification[]
 
   @@index([customerId])
   @@index([status, createdAt])
@@ -331,4 +332,26 @@ model JobAuditLog {
   @@index([jobId, createdAt])
   @@index([actorWorkerId, createdAt])
   @@index([action, createdAt])
+}
+
+model Notification {
+  id             Int      @id @default(autoincrement())
+  jobId          Int
+  kind           String
+  channel        String   @default("sms")
+  recipientPhone String
+  scheduledFor   DateTime
+  sentAt         DateTime?
+  status         String   @default("pending")
+  body           String?
+  metaJson       String?
+  failureReason  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([status, scheduledFor])
+  @@index([kind, status, scheduledFor])
 }
