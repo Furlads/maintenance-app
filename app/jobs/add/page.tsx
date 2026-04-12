@@ -174,7 +174,7 @@ export default function AddJobPage() {
 
         const loadedWorkers = rawWorkers
           .map(normaliseWorker)
-          .filter((worker): worker is Worker => worker !== null)
+          .filter((worker: Worker | null): worker is Worker => worker !== null)
 
         setCustomers(loadedCustomers)
         setWorkers(loadedWorkers)
