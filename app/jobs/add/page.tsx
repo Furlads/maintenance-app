@@ -108,13 +108,17 @@ export default function AddJobPage() {
           ? customersData
           : Array.isArray(customersData?.items)
             ? customersData.items
-            : []
+            : Array.isArray(customersData?.customers)
+              ? customersData.customers
+              : []
 
         const loadedWorkers = Array.isArray(workersData)
           ? workersData
           : Array.isArray(workersData?.items)
             ? workersData.items
-            : []
+            : Array.isArray(workersData?.workers)
+              ? workersData.workers
+              : []
 
         setCustomers(loadedCustomers)
         setWorkers(loadedWorkers)
