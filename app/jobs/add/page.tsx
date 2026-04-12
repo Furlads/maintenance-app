@@ -47,6 +47,58 @@ function fullName(worker: Worker) {
   return `${worker.firstName || ''} ${worker.lastName || ''}`.trim() || `Worker ${worker.id}`
 }
 
+function splitWorkerName(name: string) {
+  const trimmed = clean(name)
+
+  if (!trimmed) {
+    return {
+      firstName: '',
+      lastName: '',
+    }
+  }
+
+  const parts = trimmed.split(/\s+/).filter(Boolean)
+
+  if (parts.length === 1) {
+    return {
+      firstName: parts[0],
+      lastName: '',
+    }
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+  }
+}
+
+function normaliseWorker(raw: any): Worker | null {
+  if (!raw || typeof raw !== 'object') return null
+
+  const id = Number(raw.id)
+  if (!Number.isFinite(id) || id <= 0) return null
+
+  const firstNameRaw = clean(raw.firstName)
+  const lastNameRaw = clean(raw.lastName)
+  const combinedName = clean(raw.name)
+
+  let firstName = firstNameRaw
+  let lastName = lastNameRaw
+
+  if (!firstName && !lastName && combinedName) {
+    const split = splitWorkerName(combinedName)
+    firstName = split.firstName
+    lastName = split.lastName
+  }
+
+  return {
+    id,
+    firstName,
+    lastName,
+    active: typeof raw.active === 'boolean' ? raw.active : true,
+  }
+}
+
 export default function AddJobPage() {
   const router = useRouter()
 
@@ -112,13 +164,17 @@ export default function AddJobPage() {
               ? customersData.customers
               : []
 
-        const loadedWorkers = Array.isArray(workersData)
+        const rawWorkers = Array.isArray(workersData)
           ? workersData
           : Array.isArray(workersData?.items)
             ? workersData.items
             : Array.isArray(workersData?.workers)
               ? workersData.workers
               : []
+
+        const loadedWorkers = rawWorkers
+          .map(normaliseWorker)
+          .filter((worker): worker is Worker => worker !== null)
 
         setCustomers(loadedCustomers)
         setWorkers(loadedWorkers)
