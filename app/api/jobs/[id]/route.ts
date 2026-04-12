@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { runLocalRepairForJob } from '@/lib/auto-scheduler'
-import { syncJobAlerts, cancelJobAlerts } from '@/lib/notifications'
+import { cancelJobAlerts, syncJobAlerts } from '@/lib/notifications'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -1212,9 +1212,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
         return result
       })
 
-      await cancelJobAlerts(jobId)
-
       const { notes, notesLog } = await buildNotesLog(jobId)
+
+      try {
+        await cancelJobAlerts(jobId)
+      } catch (alertError) {
+        console.error(`Failed to cancel alerts after job ${finalStatus}:`, alertError)
+      }
 
       try {
         await runLocalRepairForJob({
@@ -1502,12 +1506,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return result
     })
 
-    if (updated.visitDate && updated.startTime) {
-      await syncJobAlerts(jobId)
-    } else {
-      await cancelJobAlerts(jobId)
-    }
-
     let nextRecurringJobs: unknown[] = []
 
     if (updated.status === 'done') {
@@ -1570,6 +1568,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
       }
     } catch (schedulerError) {
       console.error('Local scheduler repair failed after job patch:', schedulerError)
+    }
+
+    try {
+      await syncJobAlerts(jobId)
+    } catch (alertError) {
+      console.error('Failed to sync alerts after job patch:', alertError)
     }
 
     return NextResponse.json({

@@ -2,7 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { syncJobAlerts, cancelJobAlerts } from '@/lib/notifications'
+import { syncJobAlerts } from '@/lib/notifications'
 
 const TREV_QUOTE_DEFAULT_SLOTS = ['11:00', '12:00', '13:00'] as const
 
@@ -928,10 +928,10 @@ export async function POST(req: Request) {
       },
     })
 
-    if (created.visitDate && created.startTime) {
+    try {
       await syncJobAlerts(created.id)
-    } else {
-      await cancelJobAlerts(created.id)
+    } catch (alertError) {
+      console.error('Failed to sync alerts after job create:', alertError)
     }
 
     return NextResponse.json(created, { status: 201 })
