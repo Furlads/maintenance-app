@@ -521,28 +521,33 @@ export default function WorkerTimeOffPage() {
               />
             </div>
 
-            {message && (
-              <div
-                style={{
-                  borderRadius: 14,
-                  padding: '12px 14px',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  background: message.toLowerCase().includes('failed')
-                    ? '#fef2f2'
-                    : '#ecfdf3',
-                  border: message.toLowerCase().includes('failed')
-                    ? '1px solid #fecaca'
-                    : '1px solid #bbf7d0',
-                  color: message.toLowerCase().includes('failed')
-                    ? '#991b1b'
-                    : '#166534',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {message}
-              </div>
-            )}
+            {message && (() => {
+              const lowerMessage = message.toLowerCase()
+              const isErrorMessage =
+                lowerMessage.includes('failed') ||
+                lowerMessage.includes('error') ||
+                lowerMessage.includes('invalid') ||
+                lowerMessage.includes('missing') ||
+                lowerMessage.includes('not found') ||
+                lowerMessage.includes('did not match')
+
+              return (
+                <div
+                  style={{
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    background: isErrorMessage ? '#fef2f2' : '#ecfdf3',
+                    border: isErrorMessage ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                    color: isErrorMessage ? '#991b1b' : '#166534',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {message}
+                </div>
+              )
+            })()}
 
             <button
               type="button"
