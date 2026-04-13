@@ -477,11 +477,11 @@ function JobCards({ jobs }: { jobs: JobItem[] }) {
             </Link>
 
             <Link
-              href={`/jobs/edit/${job.id}`}
-              className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
-            >
-              Edit
-            </Link>
+  href={`/jobs/${job.id}/edit`}
+  className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
+>
+  Edit
+</Link>
           </div>
 
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
