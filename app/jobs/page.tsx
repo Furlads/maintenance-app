@@ -398,11 +398,11 @@ function JobTable({ jobs }: { jobs: JobItem[] }) {
                     </Link>
 
                     <Link
-                      href={`/jobs/edit/${job.id}`}
-                      className="inline-flex min-w-[82px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-black"
-                    >
-                      Edit
-                    </Link>
+  href={`/jobs/${job.id}/edit`}
+  className="inline-flex min-w-[82px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-black"
+>
+  Edit
+</Link>
 
                     <JobQuickActions
   jobId={job.id}
