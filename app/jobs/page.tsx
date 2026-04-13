@@ -398,7 +398,7 @@ function JobTable({ jobs }: { jobs: JobItem[] }) {
                     </Link>
 
                     <Link
-  href={`/jobs/${job.id}/edit`}
+  href={`/jobs/edit/${job.id}`}
   className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
 >
   Edit
@@ -477,7 +477,7 @@ function JobCards({ jobs }: { jobs: JobItem[] }) {
             </Link>
 
             <Link
-  href={`/jobs/${job.id}/edit`}
+  href={`/jobs/edit/${job.id}`}
   className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
 >
   Edit
