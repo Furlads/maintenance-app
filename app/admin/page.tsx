@@ -402,11 +402,18 @@ export default async function AdminPage() {
               Open calendar
             </Link>
 
-            <Link
+                        <Link
               href="/kelly/time-off"
               className="inline-flex items-center justify-center rounded-xl bg-amber-400 px-4 py-3 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
             >
               Time Off / Holidays
+            </Link>
+
+            <Link
+              href="/admin/todos"
+              className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              To-Do List
             </Link>
 
             <div className="flex sm:col-span-2 xl:col-span-2">

@@ -355,3 +355,14 @@ model Notification {
   @@index([status, scheduledFor])
   @@index([kind, status, scheduledFor])
 }
+model Todo {
+  id          Int      @id @default(autoincrement())
+  description String
+  assignedTo  String   // "Kelly" or "Trevor"
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([completed])
+  @@index([assignedTo])
+}

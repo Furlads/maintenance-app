@@ -845,6 +845,12 @@ export default async function TrevPage() {
               >
                 Worker today
               </Link>
+              <Link
+                href="/admin/todos"
+                className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15"
+              >
+                To-Do List
+              </Link>
             </div>
           </div>
 
