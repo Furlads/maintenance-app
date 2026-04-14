@@ -25,6 +25,25 @@ type JobResponse = {
   id: number
 }
 
+type MaintenanceFrequency =
+  | 'weekly'
+  | 'fortnightly'
+  | 'every_3_weeks'
+  | 'monthly'
+  | ''
+
+type TimePreferenceMode = 'best-fit' | 'specific'
+
+type PreferredDay =
+  | 'Monday'
+  | 'Tuesday'
+  | 'Wednesday'
+  | 'Thursday'
+  | 'Friday'
+  | ''
+
+type PreferredTimeBand = 'Morning' | 'Midday' | 'Afternoon' | 'Anytime'
+
 function todayLocalDate() {
   const now = new Date()
   const year = now.getFullYear()
@@ -99,6 +118,17 @@ function normaliseWorker(raw: any): Worker | null {
   }
 }
 
+function isMaintenanceJobType(jobType: string) {
+  return clean(jobType).toLowerCase() === 'maintenance'
+}
+
+function getMaintenanceWeeks(frequency: MaintenanceFrequency) {
+  if (frequency === 'weekly') return 1
+  if (frequency === 'fortnightly') return 2
+  if (frequency === 'every_3_weeks') return 3
+  return null
+}
+
 export default function AddJobPage() {
   const router = useRouter()
 
@@ -121,6 +151,15 @@ export default function AddJobPage() {
   const [durationMinutes, setDurationMinutes] = useState('60')
   const [assignedWorkerIds, setAssignedWorkerIds] = useState<number[]>([])
   const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
+
+  const [isRegularMaintenance, setIsRegularMaintenance] = useState(false)
+  const [maintenanceFrequency, setMaintenanceFrequency] =
+    useState<MaintenanceFrequency>('')
+  const [timePreferenceMode, setTimePreferenceMode] =
+    useState<TimePreferenceMode>('best-fit')
+  const [preferredDay, setPreferredDay] = useState<PreferredDay>('')
+  const [preferredTimeBand, setPreferredTimeBand] =
+    useState<PreferredTimeBand>('Anytime')
 
   useEffect(() => {
     let cancelled = false
@@ -223,6 +262,16 @@ export default function AddJobPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isMaintenanceJobType(jobType)) {
+      setIsRegularMaintenance(false)
+      setMaintenanceFrequency('')
+      setTimePreferenceMode('best-fit')
+      setPreferredDay('')
+      setPreferredTimeBand('Anytime')
+    }
+  }, [jobType])
+
   const selectedCustomer = useMemo(() => {
     if (!customerId) return null
     return customers.find((customer) => customer.id === customerId) || null
@@ -273,6 +322,25 @@ export default function AddJobPage() {
         return
       }
 
+      if (
+        isMaintenanceJobType(jobType) &&
+        isRegularMaintenance &&
+        !maintenanceFrequency
+      ) {
+        setError('Please choose a maintenance frequency for regular maintenance.')
+        return
+      }
+
+      if (
+        isMaintenanceJobType(jobType) &&
+        isRegularMaintenance &&
+        timePreferenceMode === 'specific' &&
+        !preferredTimeBand
+      ) {
+        setError('Please choose a preferred time band.')
+        return
+      }
+
       const payload: Record<string, unknown> = {
         customerId,
         title: title.trim() || selectedCustomer?.name || 'New Job',
@@ -299,6 +367,31 @@ export default function AddJobPage() {
         const parsedDuration = Number(durationMinutes)
         if (Number.isFinite(parsedDuration) && parsedDuration > 0) {
           payload.durationMinutes = Math.round(parsedDuration)
+        }
+      }
+
+      if (isMaintenanceJobType(jobType)) {
+        payload.isRegularMaintenance = isRegularMaintenance
+
+        if (isRegularMaintenance) {
+          payload.visitPattern = 'regular-maintenance'
+          payload.maintenanceFrequency = maintenanceFrequency
+          payload.maintenanceFrequencyUnit =
+            maintenanceFrequency === 'monthly' ? 'monthly' : 'weeks'
+
+          const maintenanceWeeks = getMaintenanceWeeks(maintenanceFrequency)
+          if (maintenanceWeeks) {
+            payload.maintenanceFrequencyWeeks = maintenanceWeeks
+          }
+
+          payload.timePreferenceMode = timePreferenceMode
+
+          if (timePreferenceMode === 'specific') {
+            if (preferredDay) {
+              payload.preferredDay = preferredDay
+            }
+            payload.preferredTimeBand = preferredTimeBand || 'Anytime'
+          }
         }
       }
 
@@ -576,6 +669,120 @@ export default function AddJobPage() {
                 )}
               </div>
             </section>
+
+            {isMaintenanceJobType(jobType) && (
+              <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <h2 className="mb-4 text-lg font-bold text-zinc-900">
+                  Regular Maintenance
+                </h2>
+
+                <div className="space-y-4">
+                  <label className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <input
+                      type="checkbox"
+                      checked={isRegularMaintenance}
+                      onChange={(e) => setIsRegularMaintenance(e.target.checked)}
+                      className="mt-1 h-4 w-4"
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-zinc-900">
+                        This is a regular maintenance job
+                      </div>
+                      <div className="text-xs text-zinc-500">
+                        Turn this on for recurring garden maintenance rather than a one-off visit.
+                      </div>
+                    </div>
+                  </label>
+
+                  {isRegularMaintenance && (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                          Frequency
+                        </label>
+                        <select
+                          value={maintenanceFrequency}
+                          onChange={(e) =>
+                            setMaintenanceFrequency(
+                              e.target.value as MaintenanceFrequency
+                            )
+                          }
+                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                        >
+                          <option value="">Select frequency</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="fortnightly">Fortnightly</option>
+                          <option value="every_3_weeks">Every 3 weeks</option>
+                          <option value="monthly">Monthly</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                          Time preference
+                        </label>
+                        <select
+                          value={timePreferenceMode}
+                          onChange={(e) =>
+                            setTimePreferenceMode(
+                              e.target.value as TimePreferenceMode
+                            )
+                          }
+                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                        >
+                          <option value="best-fit">Best fit</option>
+                          <option value="specific">Specific preference</option>
+                        </select>
+                      </div>
+
+                      {timePreferenceMode === 'specific' && (
+                        <>
+                          <div>
+                            <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                              Preferred day
+                            </label>
+                            <select
+                              value={preferredDay}
+                              onChange={(e) =>
+                                setPreferredDay(e.target.value as PreferredDay)
+                              }
+                              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                            >
+                              <option value="">No preference</option>
+                              <option value="Monday">Monday</option>
+                              <option value="Tuesday">Tuesday</option>
+                              <option value="Wednesday">Wednesday</option>
+                              <option value="Thursday">Thursday</option>
+                              <option value="Friday">Friday</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                              Preferred time band
+                            </label>
+                            <select
+                              value={preferredTimeBand}
+                              onChange={(e) =>
+                                setPreferredTimeBand(
+                                  e.target.value as PreferredTimeBand
+                                )
+                              }
+                              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                            >
+                              <option value="Morning">Morning</option>
+                              <option value="Midday">Midday</option>
+                              <option value="Afternoon">Afternoon</option>
+                              <option value="Anytime">Anytime</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
 
             <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
               <h2 className="mb-4 text-lg font-bold text-zinc-900">Assign workers</h2>
