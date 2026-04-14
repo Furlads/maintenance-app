@@ -7,15 +7,17 @@ type Todo = {
   description: string
   assignedTo: string
   completed: boolean
+  dueDate: string | null
 }
 
 export default function TodosPage() {
   const [todos, setTodos] = useState<Todo[]>([])
   const [description, setDescription] = useState('')
   const [assignedTo, setAssignedTo] = useState('Kelly')
+  const [dueDate, setDueDate] = useState('')
 
   async function loadTodos() {
-    const res = await fetch('/api/todos')
+    const res = await fetch('/api/todos', { cache: 'no-store' })
     const data = await res.json()
     setTodos(data)
   }
@@ -29,35 +31,50 @@ export default function TodosPage() {
 
     await fetch('/api/todos', {
       method: 'POST',
-      body: JSON.stringify({ description, assignedTo }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description,
+        assignedTo,
+        dueDate: dueDate || null,
+      }),
     })
 
     setDescription('')
+    setDueDate('')
     loadTodos()
   }
 
   async function toggleTodo(todo: Todo) {
     await fetch(`/api/todos/${todo.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ completed: !todo.completed }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        completed: !todo.completed,
+      }),
     })
 
     loadTodos()
   }
 
+  function formatDate(date: string | null) {
+    if (!date) return null
+    return new Date(date).toLocaleDateString('en-GB')
+  }
+
   const outstanding = todos.filter(t => !t.completed)
+  const completed = todos.filter(t => t.completed)
 
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">To-Do List</h1>
 
       {/* Add new */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <input
           value={description}
           onChange={e => setDescription(e.target.value)}
           placeholder="New task..."
-          className="border p-2 rounded w-full"
+          className="border p-2 rounded flex-1 min-w-[200px]"
         />
 
         <select
@@ -68,6 +85,13 @@ export default function TodosPage() {
           <option>Kelly</option>
           <option>Trevor</option>
         </select>
+
+        <input
+          type="date"
+          value={dueDate}
+          onChange={e => setDueDate(e.target.value)}
+          className="border p-2 rounded"
+        />
 
         <button
           onClick={addTodo}
@@ -95,7 +119,14 @@ export default function TodosPage() {
                   checked={todo.completed}
                   onChange={() => toggleTodo(todo)}
                 />
-                <span>{todo.description}</span>
+                <div>
+                  <div>{todo.description}</div>
+                  {todo.dueDate && (
+                    <div className="text-xs text-red-500">
+                      Due: {formatDate(todo.dueDate)}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <span className="text-sm text-gray-500">
@@ -111,29 +142,27 @@ export default function TodosPage() {
         <h2 className="font-bold mb-2">Completed</h2>
 
         <div className="space-y-2">
-          {todos
-            .filter(t => t.completed)
-            .map(todo => (
-              <div
-                key={todo.id}
-                className="flex items-center justify-between border p-3 rounded opacity-60"
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked
-                    onChange={() => toggleTodo(todo)}
-                  />
-                  <span className="line-through">
-                    {todo.description}
-                  </span>
+          {completed.map(todo => (
+            <div
+              key={todo.id}
+              className="flex items-center justify-between border p-3 rounded opacity-60"
+            >
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked
+                  onChange={() => toggleTodo(todo)}
+                />
+                <div className="line-through">
+                  {todo.description}
                 </div>
-
-                <span className="text-sm">
-                  {todo.assignedTo}
-                </span>
               </div>
-            ))}
+
+              <span className="text-sm">
+                {todo.assignedTo}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

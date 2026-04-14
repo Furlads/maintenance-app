@@ -358,11 +358,13 @@ model Notification {
 model Todo {
   id          Int      @id @default(autoincrement())
   description String
-  assignedTo  String   // "Kelly" or "Trevor"
+  assignedTo  String
   completed   Boolean  @default(false)
+  dueDate     DateTime?   // 👈 NEW
   completedAt DateTime?
   createdAt   DateTime @default(now())
 
   @@index([completed])
   @@index([assignedTo])
+  @@index([dueDate])
 }

@@ -1,16 +1,18 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
-// GET all todos
 export async function GET() {
   const todos = await prisma.todo.findMany({
-    orderBy: { createdAt: 'desc' },
+    orderBy: [
+      { completed: 'asc' },
+      { dueDate: 'asc' },
+      { createdAt: 'desc' },
+    ],
   })
 
   return NextResponse.json(todos)
 }
 
-// CREATE new todo
 export async function POST(req: Request) {
   const body = await req.json()
 
@@ -18,6 +20,7 @@ export async function POST(req: Request) {
     data: {
       description: body.description,
       assignedTo: body.assignedTo,
+      dueDate: body.dueDate ? new Date(body.dueDate) : null,
     },
   })
 
