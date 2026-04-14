@@ -26,6 +26,25 @@ type WorkerApiItem = {
   active?: boolean | null
 }
 
+type MaintenanceFrequency =
+  | 'weekly'
+  | 'fortnightly'
+  | 'every_3_weeks'
+  | 'monthly'
+  | ''
+
+type TimePreferenceMode = 'best-fit' | 'specific'
+
+type PreferredDay =
+  | 'Monday'
+  | 'Tuesday'
+  | 'Wednesday'
+  | 'Thursday'
+  | 'Friday'
+  | ''
+
+type PreferredTimeBand = 'Morning' | 'Midday' | 'Afternoon' | 'Anytime'
+
 type JobApiResponse = {
   id: number
   title: string | null
@@ -36,6 +55,14 @@ type JobApiResponse = {
   visitDate: string | null
   startTime: string | null
   durationMinutes: number | null
+  isRegularMaintenance?: boolean | null
+  maintenanceFrequency?: string | null
+  maintenanceFrequencyUnit?: string | null
+  maintenanceFrequencyWeeks?: number | null
+  preferredDay?: string | null
+  preferredTimeBand?: string | null
+  timePreferenceMode?: string | null
+  visitPattern?: string | null
   customer?: {
     id?: number
     name?: string | null
@@ -88,6 +115,10 @@ function FieldLabel({
       {required ? <span className="ml-1 text-red-500">*</span> : null}
     </label>
   )
+}
+
+function clean(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function normaliseWorkers(workerData: unknown): Worker[] {
@@ -161,6 +192,63 @@ function toDateInputValue(value: string | null | undefined) {
   }).format(date)
 }
 
+function isMaintenanceJobType(jobType: string) {
+  return clean(jobType).toLowerCase() === 'maintenance'
+}
+
+function normaliseMaintenanceFrequency(
+  value: string | null | undefined
+): MaintenanceFrequency {
+  const raw = clean(value).toLowerCase()
+
+  if (raw === 'weekly') return 'weekly'
+  if (raw === 'fortnightly') return 'fortnightly'
+  if (raw === 'every_3_weeks') return 'every_3_weeks'
+  if (raw === 'monthly') return 'monthly'
+  if (raw === '4-weekly') return 'monthly'
+
+  return ''
+}
+
+function normaliseTimePreferenceMode(
+  value: string | null | undefined
+): TimePreferenceMode {
+  const raw = clean(value).toLowerCase()
+
+  if (raw === 'specific') return 'specific'
+  return 'best-fit'
+}
+
+function normalisePreferredDay(value: string | null | undefined): PreferredDay {
+  const raw = clean(value).toLowerCase()
+
+  if (raw === 'monday') return 'Monday'
+  if (raw === 'tuesday') return 'Tuesday'
+  if (raw === 'wednesday') return 'Wednesday'
+  if (raw === 'thursday') return 'Thursday'
+  if (raw === 'friday') return 'Friday'
+
+  return ''
+}
+
+function normalisePreferredTimeBand(
+  value: string | null | undefined
+): PreferredTimeBand {
+  const raw = clean(value).toLowerCase()
+
+  if (raw === 'morning' || raw === 'am') return 'Morning'
+  if (raw === 'midday') return 'Midday'
+  if (raw === 'afternoon' || raw === 'pm') return 'Afternoon'
+  return 'Anytime'
+}
+
+function getMaintenanceWeeks(frequency: MaintenanceFrequency) {
+  if (frequency === 'weekly') return 1
+  if (frequency === 'fortnightly') return 2
+  if (frequency === 'every_3_weeks') return 3
+  return null
+}
+
 export default function EditJobPage() {
   const router = useRouter()
   const params = useParams()
@@ -191,6 +279,15 @@ export default function EditJobPage() {
   const [durationMinutes, setDurationMinutes] = useState('60')
   const [visitDate, setVisitDate] = useState('')
   const [startTime, setStartTime] = useState('')
+
+  const [isRegularMaintenance, setIsRegularMaintenance] = useState(false)
+  const [maintenanceFrequency, setMaintenanceFrequency] =
+    useState<MaintenanceFrequency>('')
+  const [timePreferenceMode, setTimePreferenceMode] =
+    useState<TimePreferenceMode>('best-fit')
+  const [preferredDay, setPreferredDay] = useState<PreferredDay>('')
+  const [preferredTimeBand, setPreferredTimeBand] =
+    useState<PreferredTimeBand>('Anytime')
 
   const selectedCustomer = useMemo(() => {
     return customers.find((customer) => String(customer.id) === customerId) || null
@@ -286,6 +383,22 @@ export default function EditJobPage() {
             : []
         )
 
+        const loadedIsRegularMaintenance =
+          Boolean(jobData.isRegularMaintenance) ||
+          clean(jobData.visitPattern) === 'regular-maintenance'
+
+        setIsRegularMaintenance(loadedIsRegularMaintenance)
+        setMaintenanceFrequency(
+          normaliseMaintenanceFrequency(jobData.maintenanceFrequency)
+        )
+        setTimePreferenceMode(
+          normaliseTimePreferenceMode(jobData.timePreferenceMode)
+        )
+        setPreferredDay(normalisePreferredDay(jobData.preferredDay))
+        setPreferredTimeBand(
+          normalisePreferredTimeBand(jobData.preferredTimeBand)
+        )
+
         if (!savedAddress || sameAsCustomerAddress) {
           setUseDifferentAddress(false)
           setJobAddress('')
@@ -303,6 +416,16 @@ export default function EditJobPage() {
 
     loadData()
   }, [jobId])
+
+  useEffect(() => {
+    if (!isMaintenanceJobType(jobType)) {
+      setIsRegularMaintenance(false)
+      setMaintenanceFrequency('')
+      setTimePreferenceMode('best-fit')
+      setPreferredDay('')
+      setPreferredTimeBand('Anytime')
+    }
+  }, [jobType])
 
   function toggleWorker(workerId: number) {
     setAssignedWorkerIds((prev) =>
@@ -344,23 +467,87 @@ export default function EditJobPage() {
         throw new Error('Please assign at least one worker')
       }
 
+      if (
+        isMaintenanceJobType(jobType) &&
+        isRegularMaintenance &&
+        !maintenanceFrequency
+      ) {
+        throw new Error('Please choose a maintenance frequency')
+      }
+
+      if (
+        isMaintenanceJobType(jobType) &&
+        isRegularMaintenance &&
+        timePreferenceMode === 'specific' &&
+        !preferredTimeBand
+      ) {
+        throw new Error('Please choose a preferred time band')
+      }
+
+      const payload: Record<string, unknown> = {
+        customerId: Number(customerId),
+        title: title.trim(),
+        address: finalAddress.trim(),
+        notes,
+        status,
+        jobType,
+        assignedWorkerIds,
+        durationMinutes: parsedDuration,
+        visitDate: visitDate || null,
+        startTime: startTime || null,
+      }
+
+      if (isMaintenanceJobType(jobType)) {
+        payload.isRegularMaintenance = isRegularMaintenance
+
+        if (isRegularMaintenance) {
+          payload.visitPattern = 'regular-maintenance'
+          payload.maintenanceFrequency = maintenanceFrequency
+          payload.maintenanceFrequencyUnit =
+            maintenanceFrequency === 'monthly' ? 'monthly' : 'weeks'
+
+          const maintenanceWeeks = getMaintenanceWeeks(maintenanceFrequency)
+          if (maintenanceWeeks) {
+            payload.maintenanceFrequencyWeeks = maintenanceWeeks
+          }
+
+          payload.timePreferenceMode = timePreferenceMode
+
+          if (timePreferenceMode === 'specific') {
+            if (preferredDay) {
+              payload.preferredDay = preferredDay
+            }
+            payload.preferredTimeBand = preferredTimeBand || 'Anytime'
+          } else {
+            payload.preferredDay = null
+            payload.preferredTimeBand = null
+          }
+        } else {
+          payload.visitPattern = null
+          payload.maintenanceFrequency = null
+          payload.maintenanceFrequencyUnit = null
+          payload.maintenanceFrequencyWeeks = null
+          payload.timePreferenceMode = null
+          payload.preferredDay = null
+          payload.preferredTimeBand = null
+        }
+      } else {
+        payload.isRegularMaintenance = false
+        payload.visitPattern = null
+        payload.maintenanceFrequency = null
+        payload.maintenanceFrequencyUnit = null
+        payload.maintenanceFrequencyWeeks = null
+        payload.timePreferenceMode = null
+        payload.preferredDay = null
+        payload.preferredTimeBand = null
+      }
+
       const res = await fetch(`/api/jobs/${jobId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          customerId: Number(customerId),
-          title: title.trim(),
-          address: finalAddress.trim(),
-          notes,
-          status,
-          jobType,
-          assignedWorkerIds,
-          durationMinutes: parsedDuration,
-          visitDate: visitDate || null,
-          startTime: startTime || null,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json().catch(() => null)
@@ -543,6 +730,111 @@ export default function EditJobPage() {
                 </div>
               </div>
             </SectionCard>
+
+            {isMaintenanceJobType(jobType) && (
+              <SectionCard
+                title="Regular Maintenance"
+                description="Set recurring maintenance details for this job."
+              >
+                <div className="space-y-4">
+                  <label className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-800">
+                    <input
+                      type="checkbox"
+                      checked={isRegularMaintenance}
+                      onChange={(e) => setIsRegularMaintenance(e.target.checked)}
+                      className="mt-1 h-4 w-4"
+                    />
+                    <span>
+                      <span className="block font-semibold">
+                        This is a regular maintenance job
+                      </span>
+                      <span className="mt-1 block text-zinc-500">
+                        Turn this on for recurring maintenance rather than a one-off visit.
+                      </span>
+                    </span>
+                  </label>
+
+                  {isRegularMaintenance && (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <FieldLabel required>Frequency</FieldLabel>
+                        <select
+                          value={maintenanceFrequency}
+                          onChange={(e) =>
+                            setMaintenanceFrequency(
+                              e.target.value as MaintenanceFrequency
+                            )
+                          }
+                          className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                        >
+                          <option value="">Select frequency</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="fortnightly">Fortnightly</option>
+                          <option value="every_3_weeks">Every 3 weeks</option>
+                          <option value="monthly">Monthly</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <FieldLabel>Time preference</FieldLabel>
+                        <select
+                          value={timePreferenceMode}
+                          onChange={(e) =>
+                            setTimePreferenceMode(
+                              e.target.value as TimePreferenceMode
+                            )
+                          }
+                          className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                        >
+                          <option value="best-fit">Best fit</option>
+                          <option value="specific">Specific preference</option>
+                        </select>
+                      </div>
+
+                      {timePreferenceMode === 'specific' && (
+                        <>
+                          <div>
+                            <FieldLabel>Preferred day</FieldLabel>
+                            <select
+                              value={preferredDay}
+                              onChange={(e) =>
+                                setPreferredDay(e.target.value as PreferredDay)
+                              }
+                              className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                            >
+                              <option value="">No preference</option>
+                              <option value="Monday">Monday</option>
+                              <option value="Tuesday">Tuesday</option>
+                              <option value="Wednesday">Wednesday</option>
+                              <option value="Thursday">Thursday</option>
+                              <option value="Friday">Friday</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <FieldLabel>Preferred time band</FieldLabel>
+                            <select
+                              value={preferredTimeBand}
+                              onChange={(e) =>
+                                setPreferredTimeBand(
+                                  e.target.value as PreferredTimeBand
+                                )
+                              }
+                              className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                            >
+                              <option value="Morning">Morning</option>
+                              <option value="Midday">Midday</option>
+                              <option value="Afternoon">Afternoon</option>
+                              <option value="Anytime">Anytime</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </SectionCard>
+            )}
 
             <SectionCard
               title="Address"
