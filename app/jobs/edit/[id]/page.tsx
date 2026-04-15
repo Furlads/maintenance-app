@@ -196,6 +196,10 @@ function isMaintenanceJobType(jobType: string) {
   return clean(jobType).toLowerCase() === 'maintenance'
 }
 
+function isQuoteJobType(jobType: string) {
+  return clean(jobType).toLowerCase() === 'quote' || clean(jobType).toLowerCase() === 'quoted'
+}
+
 function normaliseMaintenanceFrequency(
   value: string | null | undefined
 ): MaintenanceFrequency {
@@ -279,6 +283,7 @@ export default function EditJobPage() {
   const [durationMinutes, setDurationMinutes] = useState('60')
   const [visitDate, setVisitDate] = useState('')
   const [startTime, setStartTime] = useState('')
+  const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
 
   const [isRegularMaintenance, setIsRegularMaintenance] = useState(false)
   const [maintenanceFrequency, setMaintenanceFrequency] =
@@ -300,6 +305,20 @@ export default function EditJobPage() {
   }, [selectedCustomer])
 
   const finalAddress = useDifferentAddress ? jobAddress : defaultCustomerAddress
+
+  const selectedWorkers = useMemo(() => {
+    return workers.filter((worker) => assignedWorkerIds.includes(worker.id))
+  }, [workers, assignedWorkerIds])
+
+  const isAssignedToTrev = useMemo(() => {
+    return selectedWorkers.some((worker) => {
+      const first = clean(worker.firstName).toLowerCase()
+      const last = clean(worker.lastName).toLowerCase()
+      return (first === 'trev' || first === 'trevor') && last.includes('fudger')
+    })
+  }, [selectedWorkers])
+
+  const showQuoteOverride = isQuoteJobType(jobType) && isAssignedToTrev
 
   useEffect(() => {
     async function loadData() {
@@ -357,6 +376,28 @@ export default function EditJobPage() {
           customerAddress !== '' &&
           savedAddress === customerAddress
 
+        const loadedAssignedWorkerIds =
+          Array.isArray(jobData.assignments)
+            ? jobData.assignments
+                .map((assignment) =>
+                  typeof assignment.workerId === 'number'
+                    ? assignment.workerId
+                    : typeof assignment.worker?.id === 'number'
+                      ? assignment.worker.id
+                      : null
+                )
+                .filter((id): id is number => id !== null)
+            : []
+
+        const loadedIsQuote =
+          clean(jobData.jobType).toLowerCase() === 'quote' ||
+          clean(jobData.jobType).toLowerCase() === 'quoted'
+
+        const loadedHasCustomQuoteTime =
+          loadedIsQuote &&
+          !!jobData.startTime &&
+          !['11:00', '12:00', '13:00'].includes(jobData.startTime)
+
         setCustomerId(loadedCustomerId)
         setTitle(jobData.title?.trim() || '')
         setNotes(jobData.notes || '')
@@ -369,19 +410,8 @@ export default function EditJobPage() {
         )
         setVisitDate(toDateInputValue(jobData.visitDate))
         setStartTime(jobData.startTime || '')
-        setAssignedWorkerIds(
-          Array.isArray(jobData.assignments)
-            ? jobData.assignments
-                .map((assignment) =>
-                  typeof assignment.workerId === 'number'
-                    ? assignment.workerId
-                    : typeof assignment.worker?.id === 'number'
-                      ? assignment.worker.id
-                      : null
-                )
-                .filter((id): id is number => id !== null)
-            : []
-        )
+        setAssignedWorkerIds(loadedAssignedWorkerIds)
+        setAllowQuoteTimeOverride(loadedHasCustomQuoteTime)
 
         const loadedIsRegularMaintenance =
           Boolean(jobData.isRegularMaintenance) ||
@@ -426,6 +456,12 @@ export default function EditJobPage() {
       setPreferredTimeBand('Anytime')
     }
   }, [jobType])
+
+  useEffect(() => {
+    if (!showQuoteOverride) {
+      setAllowQuoteTimeOverride(false)
+    }
+  }, [showQuoteOverride])
 
   function toggleWorker(workerId: number) {
     setAssignedWorkerIds((prev) =>
@@ -484,6 +520,10 @@ export default function EditJobPage() {
         throw new Error('Please choose a preferred time band')
       }
 
+      if (showQuoteOverride && allowQuoteTimeOverride && !startTime) {
+        throw new Error('Please enter a start time when quote override is enabled')
+      }
+
       const payload: Record<string, unknown> = {
         customerId: Number(customerId),
         title: title.trim(),
@@ -495,6 +535,7 @@ export default function EditJobPage() {
         durationMinutes: parsedDuration,
         visitDate: visitDate || null,
         startTime: startTime || null,
+        allowQuoteTimeOverride,
       }
 
       if (isMaintenanceJobType(jobType)) {
@@ -729,6 +770,27 @@ export default function EditJobPage() {
                   />
                 </div>
               </div>
+
+              {showQuoteOverride && (
+                <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <label className="flex items-start gap-3 text-sm text-zinc-800">
+                    <input
+                      type="checkbox"
+                      checked={allowQuoteTimeOverride}
+                      onChange={(e) => setAllowQuoteTimeOverride(e.target.checked)}
+                      className="mt-1 h-4 w-4"
+                    />
+                    <span>
+                      <span className="block font-semibold">
+                        Allow quote time override
+                      </span>
+                      <span className="mt-1 block text-zinc-500">
+                        Turn this on if a different Trev quote time has been agreed, instead of only using 11:00, 12:00 or 13:00.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
             </SectionCard>
 
             {isMaintenanceJobType(jobType) && (
