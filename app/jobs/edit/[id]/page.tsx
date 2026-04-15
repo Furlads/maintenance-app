@@ -746,32 +746,38 @@ export default function EditJobPage() {
             </SectionCard>
 
             <SectionCard
-              title="Scheduling"
-              description="Set or change the diary date and start time."
-            >
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <FieldLabel>Visit Date</FieldLabel>
-                  <input
-                    type="date"
-                    value={visitDate}
-                    onChange={(e) => setVisitDate(e.target.value)}
-                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                  />
-                </div>
+  title="Scheduling"
+  description="Set or change the diary date and start time."
+>
+  <div className="grid gap-4 md:grid-cols-2">
+    <div>
+      <FieldLabel>Visit Date</FieldLabel>
+      <input
+        type="date"
+        value={visitDate}
+        onChange={(e) => setVisitDate(e.target.value)}
+        className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+      />
+    </div>
 
-                <div>
-                  <FieldLabel>Start Time</FieldLabel>
-                  <input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                  />
-                </div>
-              </div>
+    <div>
+      <FieldLabel>Start Time</FieldLabel>
+      <input
+        type="time"
+        value={startTime}
+        onChange={(e) => setStartTime(e.target.value)}
+        className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+      />
+    </div>
+  </div>
 
-              {showQuoteOverride && (
+  {isQuoteJobType(jobType) && isAssignedToTrev && !allowQuoteTimeOverride ? (
+    <p className="mt-3 text-sm text-zinc-500">
+      Default Trev quote times are 11:00, 12:00 and 13:00. Tick the override box below if a different time has been agreed.
+    </p>
+  ) : null}
+
+  {showQuoteOverride && (
                 <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                   <label className="flex items-start gap-3 text-sm text-zinc-800">
                     <input

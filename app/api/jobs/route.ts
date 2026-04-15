@@ -368,9 +368,8 @@ async function resolveTrevQuoteVisitSchedule(params: {
   const dayStart = startOfLondonDayUtc(visitDate)
   const dayEnd = nextLondonDayUtc(visitDate)
 
-  const existingTrevQuoteJobs = await prisma.job.findMany({
+  const existingTrevQuoteJobsRaw = await prisma.job.findMany({
     where: {
-      jobType: 'Quote',
       visitDate: {
         gte: dayStart,
         lt: dayEnd,
@@ -388,9 +387,15 @@ async function resolveTrevQuoteVisitSchedule(params: {
     },
     select: {
       id: true,
+      jobType: true,
       startTime: true,
+      status: true,
     },
   })
+
+  const existingTrevQuoteJobs = existingTrevQuoteJobsRaw.filter((job) =>
+    isQuoteJobType(job.jobType)
+  )
 
   if (existingTrevQuoteJobs.length >= 3) {
     return {
