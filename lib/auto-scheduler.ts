@@ -46,6 +46,7 @@ type WorkerBlock = {
 type DayJobLike = {
   id: number
   startTime?: string | null
+  fixedSchedule?: boolean | null
   durationMinutes?: number | null
   postcode?: string | null
   address?: string | null
@@ -192,11 +193,25 @@ function getJobDurationMinutes(job: DayJobLike) {
     : 120
 }
 
+function timeToMinutes(value: string | null | undefined) {
+  const cleaned = cleanString(value)
+  if (!/^\d{2}:\d{2}$/.test(cleaned)) return null
+
+  const [hours, minutes] = cleaned.split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+
+  return hours * 60 + minutes
+}
+
 function sortJobs(jobs: DayJobLike[]) {
   return [...jobs].sort((a, b) => {
     const aStart = a.startTime ?? '99:99'
     const bStart = b.startTime ?? '99:99'
     if (aStart !== bStart) return aStart.localeCompare(bStart)
+
+    const aFixed = a.fixedSchedule ? 0 : 1
+    const bFixed = b.fixedSchedule ? 0 : 1
+    if (aFixed !== bFixed) return aFixed - bFixed
 
     const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0
     const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0
@@ -230,6 +245,11 @@ function calculateRouteTravel(jobs: DayJobLike[]) {
 
 function optimiseOrder(jobs: DayJobLike[]) {
   if (jobs.length <= 2) return jobs
+
+  const hasFixedJobs = jobs.some((job) => job.fixedSchedule && job.startTime)
+  if (hasFixedJobs) {
+    return sortJobs(jobs)
+  }
 
   const quoteJobs = jobs.filter((job) => isQuoteJob(job))
   const nonQuoteJobs = jobs.filter((job) => !isQuoteJob(job))
@@ -365,6 +385,8 @@ function buildRouteSchedule(params: {
 }) {
   const { date, jobs, blocks } = params
 
+  const orderedJobs = sortJobs(jobs)
+
   let currentMinutes = PREP_START_MINUTES
   let previousPostcode = FARM_POSTCODE
   let workedMinutes = 0
@@ -372,18 +394,63 @@ function buildRouteSchedule(params: {
 
   const schedule: RouteScheduleItem[] = []
 
-  for (const job of jobs) {
-    const travelMinutes = getTravelMinutes(
-      previousPostcode,
-      getJobPostcode(job)
+  for (let index = 0; index < orderedJobs.length; index++) {
+    const job = orderedJobs[index]
+    const durationMinutes = getJobDurationMinutes(job)
+    const travelMinutes = getTravelMinutes(previousPostcode, getJobPostcode(job))
+    const nextFixedJob = orderedJobs.slice(index + 1).find(
+      (candidate) => candidate.fixedSchedule && candidate.startTime
     )
+
+    if (job.fixedSchedule && job.startTime) {
+      const fixedStart = timeToMinutes(job.startTime)
+
+      if (fixedStart === null) {
+        return null
+      }
+
+      const earliestPossibleStart = Math.max(
+        currentMinutes + travelMinutes,
+        JOBS_START_MINUTES
+      )
+
+      if (earliestPossibleStart > fixedStart) {
+        return null
+      }
+
+      const fixedEnd = fixedStart + durationMinutes
+
+      if (fixedEnd > END_OF_DAY_MINUTES) {
+        return null
+      }
+
+      if (
+        isWorkerBlockedForSlot({
+          blocks,
+          date,
+          startMinutes: fixedStart,
+          endMinutes: fixedEnd,
+        })
+      ) {
+        return null
+      }
+
+      schedule.push({
+        jobId: job.id,
+        startMinutes: fixedStart,
+        endMinutes: fixedEnd,
+      })
+
+      currentMinutes = fixedEnd
+      workedMinutes += durationMinutes
+      previousPostcode = getJobPostcode(job) || previousPostcode
+      continue
+    }
 
     let startMinutes = Math.max(
       currentMinutes + travelMinutes,
       JOBS_START_MINUTES
     )
-
-    const durationMinutes = getJobDurationMinutes(job)
 
     if (
       !breakInserted &&
@@ -398,6 +465,20 @@ function buildRouteSchedule(params: {
 
     if (endMinutes > END_OF_DAY_MINUTES) {
       return null
+    }
+
+    if (nextFixedJob && nextFixedJob.startTime) {
+      const nextFixedStart = timeToMinutes(nextFixedJob.startTime)
+      if (nextFixedStart !== null) {
+        const travelToNextFixed = getTravelMinutes(
+          getJobPostcode(job),
+          getJobPostcode(nextFixedJob)
+        )
+
+        if (endMinutes + travelToNextFixed > nextFixedStart) {
+          return null
+        }
+      }
     }
 
     if (

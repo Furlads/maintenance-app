@@ -95,6 +95,7 @@ model Job {
   notes                     String?
   visitDate                 DateTime?
   startTime                 String?
+  fixedSchedule             Boolean         @default(false)
   durationMinutes           Int?
   status                    String          @default("unscheduled")
   createdAt                 DateTime        @default(now())
@@ -360,7 +361,7 @@ model Todo {
   description String
   assignedTo  String
   completed   Boolean  @default(false)
-  dueDate     DateTime?   // 👈 NEW
+  dueDate     DateTime?
   completedAt DateTime?
   createdAt   DateTime @default(now())
 

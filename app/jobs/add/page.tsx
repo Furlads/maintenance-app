@@ -148,6 +148,7 @@ export default function AddJobPage() {
   const [notes, setNotes] = useState('')
   const [visitDate, setVisitDate] = useState(todayLocalDate())
   const [startTime, setStartTime] = useState('')
+  const [fixedSchedule, setFixedSchedule] = useState(false)
   const [durationMinutes, setDurationMinutes] = useState('60')
   const [assignedWorkerIds, setAssignedWorkerIds] = useState<number[]>([])
   const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
@@ -272,6 +273,12 @@ export default function AddJobPage() {
     }
   }, [jobType])
 
+  useEffect(() => {
+    if (!visitDate || !startTime) {
+      setFixedSchedule(false)
+    }
+  }, [visitDate, startTime])
+
   const selectedCustomer = useMemo(() => {
     if (!customerId) return null
     return customers.find((customer) => customer.id === customerId) || null
@@ -341,6 +348,11 @@ export default function AddJobPage() {
         return
       }
 
+      if (fixedSchedule && (!visitDate.trim() || !startTime.trim())) {
+        setError('Locked jobs must have both a visit date and a start time.')
+        return
+      }
+
       const payload: Record<string, unknown> = {
         customerId,
         title: title.trim() || selectedCustomer?.name || 'New Job',
@@ -349,6 +361,7 @@ export default function AddJobPage() {
         notes: notes.trim(),
         assignedWorkerIds,
         allowQuoteTimeOverride,
+        fixedSchedule,
       }
 
       if (postcode.trim()) {
@@ -633,6 +646,27 @@ export default function AddJobPage() {
                     onChange={(e) => setStartTime(e.target.value)}
                     className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <input
+                      type="checkbox"
+                      checked={fixedSchedule}
+                      onChange={(e) => setFixedSchedule(e.target.checked)}
+                      disabled={!visitDate || !startTime}
+                      className="mt-1 h-4 w-4"
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-zinc-900">
+                        Lock this date and time
+                      </div>
+                      <div className="text-xs text-zinc-500">
+                        When this is ticked, refit / optimise / auto-schedule must not move this job.
+                        Add both a visit date and a start time first.
+                      </div>
+                    </div>
+                  </label>
                 </div>
 
                 <div className="md:col-span-2">

@@ -54,6 +54,18 @@ function isTrue(value: unknown) {
   return value === true || value === 'true' || value === 1 || value === '1'
 }
 
+function normaliseFixedSchedule(params: {
+  requestedFixedSchedule: unknown
+  visitDate: Date | null
+  startTime: string | null
+}) {
+  return (
+    isTrue(params.requestedFixedSchedule) &&
+    !!params.visitDate &&
+    !!params.startTime
+  )
+}
+
 function isQuoteJobType(jobType: string) {
   const value = clean(jobType).toLowerCase()
   return value === 'quote' || value === 'quoted'
@@ -818,6 +830,12 @@ export async function POST(req: Request) {
       )
     }
 
+    const fixedSchedule = normaliseFixedSchedule({
+      requestedFixedSchedule: body.fixedSchedule,
+      visitDate: scheduleState.visitDate,
+      startTime: scheduleState.startTime,
+    })
+
     const paymentStatusRaw = clean(body.paymentStatus).toLowerCase()
 
     const paymentStatus =
@@ -873,6 +891,7 @@ export async function POST(req: Request) {
         jobType,
         visitDate: scheduleState.visitDate,
         startTime: scheduleState.startTime,
+        fixedSchedule,
         durationMinutes:
           parsePositiveInt(body.durationMinutes ?? body.durationMins) ?? null,
         overrunMins: parseNonNegativeInt(body.overrunMins) ?? 0,
@@ -926,6 +945,7 @@ export async function POST(req: Request) {
           address: created.address,
           visitDate: created.visitDate,
           startTime: created.startTime,
+          fixedSchedule: created.fixedSchedule,
           status: created.status,
           jobType: created.jobType,
           assignedWorkerIds,

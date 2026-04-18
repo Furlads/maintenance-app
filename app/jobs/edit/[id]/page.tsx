@@ -54,6 +54,7 @@ type JobApiResponse = {
   jobType: string | null
   visitDate: string | null
   startTime: string | null
+  fixedSchedule?: boolean | null
   durationMinutes: number | null
   isRegularMaintenance?: boolean | null
   maintenanceFrequency?: string | null
@@ -283,9 +284,11 @@ export default function EditJobPage() {
   const [durationMinutes, setDurationMinutes] = useState('60')
   const [visitDate, setVisitDate] = useState('')
   const [startTime, setStartTime] = useState('')
+  const [fixedSchedule, setFixedSchedule] = useState(false)
   const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
 
-  const [isRegularMaintenance, setIsRegularMaintenance] = useState(false)
+  const [isRegularMaintenance, setIsRegularMaintenance] =
+    useState(false)
   const [maintenanceFrequency, setMaintenanceFrequency] =
     useState<MaintenanceFrequency>('')
   const [timePreferenceMode, setTimePreferenceMode] =
@@ -410,6 +413,7 @@ export default function EditJobPage() {
         )
         setVisitDate(toDateInputValue(jobData.visitDate))
         setStartTime(jobData.startTime || '')
+        setFixedSchedule(Boolean(jobData.fixedSchedule))
         setAssignedWorkerIds(loadedAssignedWorkerIds)
         setAllowQuoteTimeOverride(loadedHasCustomQuoteTime)
 
@@ -462,6 +466,12 @@ export default function EditJobPage() {
       setAllowQuoteTimeOverride(false)
     }
   }, [showQuoteOverride])
+
+  useEffect(() => {
+    if (!visitDate || !startTime) {
+      setFixedSchedule(false)
+    }
+  }, [visitDate, startTime])
 
   function toggleWorker(workerId: number) {
     setAssignedWorkerIds((prev) =>
@@ -524,6 +534,10 @@ export default function EditJobPage() {
         throw new Error('Please enter a start time when quote override is enabled')
       }
 
+      if (fixedSchedule && (!visitDate || !startTime)) {
+        throw new Error('Locked jobs must have both a visit date and a start time.')
+      }
+
       const payload: Record<string, unknown> = {
         customerId: Number(customerId),
         title: title.trim(),
@@ -535,6 +549,7 @@ export default function EditJobPage() {
         durationMinutes: parsedDuration,
         visitDate: visitDate || null,
         startTime: startTime || null,
+        fixedSchedule,
         allowQuoteTimeOverride,
       }
 
@@ -746,38 +761,59 @@ export default function EditJobPage() {
             </SectionCard>
 
             <SectionCard
-  title="Scheduling"
-  description="Set or change the diary date and start time."
->
-  <div className="grid gap-4 md:grid-cols-2">
-    <div>
-      <FieldLabel>Visit Date</FieldLabel>
-      <input
-        type="date"
-        value={visitDate}
-        onChange={(e) => setVisitDate(e.target.value)}
-        className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-      />
-    </div>
+              title="Scheduling"
+              description="Set or change the diary date and start time."
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <FieldLabel>Visit Date</FieldLabel>
+                  <input
+                    type="date"
+                    value={visitDate}
+                    onChange={(e) => setVisitDate(e.target.value)}
+                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  />
+                </div>
 
-    <div>
-      <FieldLabel>Start Time</FieldLabel>
-      <input
-        type="time"
-        value={startTime}
-        onChange={(e) => setStartTime(e.target.value)}
-        className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-      />
-    </div>
-  </div>
+                <div>
+                  <FieldLabel>Start Time</FieldLabel>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  />
+                </div>
+              </div>
 
-  {isQuoteJobType(jobType) && isAssignedToTrev && !allowQuoteTimeOverride ? (
-    <p className="mt-3 text-sm text-zinc-500">
-      Default Trev quote times are 11:00, 12:00 and 13:00. Tick the override box below if a different time has been agreed.
-    </p>
-  ) : null}
+              <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <label className="flex items-start gap-3 text-sm text-zinc-800">
+                  <input
+                    type="checkbox"
+                    checked={fixedSchedule}
+                    onChange={(e) => setFixedSchedule(e.target.checked)}
+                    disabled={!visitDate || !startTime}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <span>
+                    <span className="block font-semibold">
+                      Lock this date and time
+                    </span>
+                    <span className="mt-1 block text-zinc-500">
+                      When this is ticked, refit / optimise / auto-schedule must not move
+                      this job. Add both a visit date and a start time first.
+                    </span>
+                  </span>
+                </label>
+              </div>
 
-  {showQuoteOverride && (
+              {isQuoteJobType(jobType) && isAssignedToTrev && !allowQuoteTimeOverride ? (
+                <p className="mt-3 text-sm text-zinc-500">
+                  Default Trev quote times are 11:00, 12:00 and 13:00. Tick the override box below if a different time has been agreed.
+                </p>
+              ) : null}
+
+              {showQuoteOverride && (
                 <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                   <label className="flex items-start gap-3 text-sm text-zinc-800">
                     <input

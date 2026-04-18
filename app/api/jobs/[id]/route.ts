@@ -70,6 +70,20 @@ function isTrue(value: unknown) {
   return value === true || value === 'true' || value === 1 || value === '1'
 }
 
+function normaliseFixedSchedule(params: {
+  requestedFixedSchedule: unknown
+  existingFixedSchedule: boolean
+  visitDate: Date | null
+  startTime: string | null
+}) {
+  const raw =
+    params.requestedFixedSchedule === undefined
+      ? params.existingFixedSchedule
+      : isTrue(params.requestedFixedSchedule)
+
+  return raw && !!params.visitDate && !!params.startTime
+}
+
 function isValidHHMM(value: string) {
   return /^\d{2}:\d{2}$/.test(value)
 }
@@ -793,6 +807,7 @@ function buildJobAuditSnapshot(job: {
   notes: string | null
   visitDate: Date | null
   startTime: string | null
+  fixedSchedule?: boolean | null
   durationMinutes: number | null
   status: string
   jobType: string
@@ -821,6 +836,7 @@ function buildJobAuditSnapshot(job: {
     notes: job.notes,
     visitDate: job.visitDate,
     startTime: job.startTime,
+    fixedSchedule: job.fixedSchedule ?? false,
     durationMinutes: job.durationMinutes,
     status: job.status,
     jobType: job.jobType,
@@ -1332,6 +1348,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
       )
     }
 
+    const nextFixedSchedule = normaliseFixedSchedule({
+      requestedFixedSchedule: body.fixedSchedule,
+      existingFixedSchedule: Boolean(existing.fixedSchedule),
+      visitDate: scheduleState.visitDate,
+      startTime: scheduleState.startTime,
+    })
+
     let titleUpdate: string | undefined = undefined
 
     if (customerIdUpdate !== undefined) {
@@ -1454,6 +1477,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
           customerId: customerIdUpdate,
           visitDate: scheduleState.visitDate,
           startTime: scheduleState.startTime,
+          fixedSchedule: nextFixedSchedule,
           durationMinutes: durationMinutesUpdate,
           overrunMins: overrunMinsUpdate,
           status: scheduleState.status,

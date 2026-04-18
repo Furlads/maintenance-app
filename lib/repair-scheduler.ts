@@ -38,6 +38,7 @@ type JobWithRelations = {
   address?: string | null
   visitDate: Date | null
   startTime: string | null
+  fixedSchedule?: boolean | null
   durationMinutes: number | null
   status: string | null
   createdAt: Date
@@ -52,6 +53,7 @@ type JobWithRelations = {
 type DayJobLike = {
   id: number
   startTime?: string | null
+  fixedSchedule?: boolean | null
   durationMinutes?: number | null
   postcode?: string | null
   address?: string | null
@@ -200,11 +202,18 @@ function getJobDurationMinutes(job: { durationMinutes?: number | null }) {
     : 120
 }
 
-function sortDayJobs<T extends { startTime?: string | null; id: number }>(jobs: T[]) {
+function sortDayJobs<
+  T extends { startTime?: string | null; fixedSchedule?: boolean | null; id: number }
+>(jobs: T[]) {
   return [...jobs].sort((a, b) => {
     const aStart = a.startTime ?? '99:99'
     const bStart = b.startTime ?? '99:99'
     if (aStart !== bStart) return aStart.localeCompare(bStart)
+
+    const aFixed = a.fixedSchedule ? 0 : 1
+    const bFixed = b.fixedSchedule ? 0 : 1
+    if (aFixed !== bFixed) return aFixed - bFixed
+
     return a.id - b.id
   })
 }
@@ -382,6 +391,7 @@ async function markJobAttention(params: {
     where: { id: params.jobId },
     data: {
       status: 'unscheduled',
+      fixedSchedule: false,
     },
   })
 }
@@ -397,6 +407,7 @@ async function clearJobAttentionAndPlace(params: {
       visitDate: params.visitDate,
       startTime: params.startTime,
       status: 'todo',
+      fixedSchedule: false,
     },
   })
 }
@@ -648,6 +659,7 @@ export async function repairAssignedJobsForWorker(params: {
     while (true) {
       const availableJobs = candidateJobs.filter((job) => {
         if (scheduledJobIds.has(job.id)) return false
+        if (job.fixedSchedule) return false
 
         if (job.visitDate) {
           return sameLocalDay(job.visitDate, scheduledDate)
@@ -782,7 +794,7 @@ export async function repairAssignedJobsForWorker(params: {
 
   for (const jobId of remainingJobIds) {
     const job = candidateJobsById.get(jobId)
-    if (!job) continue
+    if (!job || job.fixedSchedule) continue
 
     await prisma.job.update({
       where: { id: jobId },
@@ -790,6 +802,7 @@ export async function repairAssignedJobsForWorker(params: {
         visitDate: null,
         startTime: null,
         status: 'unscheduled',
+        fixedSchedule: false,
       },
     })
   }
@@ -824,6 +837,18 @@ export async function refitSingleAssignedJob(params: {
       repairedJobIds: [],
       remainingJobIds: [params.jobId],
       error: 'Job not found',
+    }
+  }
+
+  if (job.fixedSchedule) {
+    return {
+      ok: false,
+      repaired: false,
+      jobId: job.id,
+      remaining: 1,
+      repairedJobIds: [],
+      remainingJobIds: [job.id],
+      error: 'This job is locked to its current date and time',
     }
   }
 
@@ -865,6 +890,7 @@ export async function refitSingleAssignedJob(params: {
       visitDate: null,
       startTime: null,
       status: 'unscheduled',
+      fixedSchedule: false,
     },
   })
 
@@ -939,10 +965,13 @@ export async function refitWorkerDay(params: {
     ],
     select: {
       id: true,
+      fixedSchedule: true,
     },
   })
 
-  const targetJobIds = dayJobs.map((job) => job.id)
+  const targetJobIds = dayJobs
+    .filter((job: { fixedSchedule?: boolean | null }) => !job.fixedSchedule)
+    .map((job) => job.id)
 
   if (targetJobIds.length === 0) {
     return {
@@ -966,6 +995,7 @@ export async function refitWorkerDay(params: {
       visitDate: null,
       startTime: null,
       status: 'unscheduled',
+      fixedSchedule: false,
     },
   })
 
