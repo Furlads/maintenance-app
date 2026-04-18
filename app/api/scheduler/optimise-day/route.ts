@@ -1,38 +1,48 @@
 import { NextResponse } from 'next/server'
-import { runLocalWorkerDayRepair } from '@/lib/auto-scheduler'
+import { refitWorkerDay } from '@/lib/repair-scheduler'
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}))
-
+    const body = await req.json().catch(() => ({} as Record<string, unknown>))
     const workerId = Number(body.workerId)
-    const dateValue = typeof body.date === 'string' ? body.date : ''
-    const date = dateValue ? new Date(dateValue) : null
+    const rawDate = typeof body.date === 'string' ? body.date.trim() : ''
 
     if (!Number.isInteger(workerId) || workerId <= 0) {
       return NextResponse.json(
         {
           ok: false,
-          error: 'Invalid workerId.',
+          error: 'Valid workerId is required',
         },
         { status: 400 }
       )
     }
 
-    if (!date || Number.isNaN(date.getTime())) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
       return NextResponse.json(
         {
           ok: false,
-          error: 'Invalid date.',
+          error: 'Valid date is required in YYYY-MM-DD format',
         },
         { status: 400 }
       )
     }
 
-    const result = await runLocalWorkerDayRepair({
+    const date = new Date(`${rawDate}T00:00:00.000Z`)
+
+    if (Number.isNaN(date.getTime())) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Invalid date',
+        },
+        { status: 400 }
+      )
+    }
+
+    const result = await refitWorkerDay({
       workerId,
       date,
-      reason: 'manual',
+      daysToScan: 1,
     })
 
     if (!result.ok) {
@@ -45,18 +55,19 @@ export async function POST(req: Request) {
       date: result.date,
       repaired: result.repaired,
       remaining: result.remaining,
-      unplacedJobIds: result.unplacedJobIds,
-      optimised: result.optimised ?? false,
-      travelMinutesSaved: result.travelMinutesSaved ?? 0,
-      reorderedJobs: result.reorderedJobs ?? 0,
-      warning: result.warning ?? null,
+      repairedJobIds: result.repairedJobIds,
+      remainingJobIds: result.remainingJobIds,
+      optimised: result.repaired > 0,
+      travelMinutesSaved: 0,
+      reorderedJobs: result.repaired,
+      warning:
+        result.remaining > 0
+          ? `${result.remaining} job${result.remaining === 1 ? '' : 's'} could not be fitted back into this day.`
+          : null,
       message:
-        result.message ||
-        (result.optimised
-          ? `Saved ${result.travelMinutesSaved ?? 0} mins travel by reordering ${
-              result.reorderedJobs ?? 0
-            } job${(result.reorderedJobs ?? 0) === 1 ? '' : 's'}.`
-          : 'No better route found for this worker/day.'),
+        result.remaining > 0
+          ? `Rebuilt this day. ${result.repaired} job${result.repaired === 1 ? '' : 's'} re-timed, but ${result.remaining} still would not fit into this day.`
+          : `Rebuilt this day and updated ${result.repaired} job${result.repaired === 1 ? '' : 's'}.`,
     })
   } catch (error) {
     console.error('POST /api/scheduler/optimise-day failed:', error)
