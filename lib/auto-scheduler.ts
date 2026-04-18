@@ -7,7 +7,6 @@ import {
   endOfLocalDay,
   getActiveBlocksForWorkersRange,
   getBlockWindowForDate,
-  sameLocalDay,
   startOfLocalDay,
   minutesToTime,
   windowsOverlap,
@@ -102,6 +101,8 @@ type ApplyOptimisedRouteResult = {
   improved: boolean
   saved: number
   reorderedJobs: number
+  compacted: boolean
+  updatedTimes: number
   warning: string | null
 }
 
@@ -458,6 +459,40 @@ function buildDayWarning(schedule: RouteScheduleItem[], jobs: DayJobLike[]) {
   return null
 }
 
+function countScheduleTimeChanges(
+  jobs: DayJobLike[],
+  schedule: RouteScheduleItem[]
+) {
+  const currentById = new Map(
+    jobs.map((job) => [job.id, cleanString(job.startTime)])
+  )
+
+  let changed = 0
+
+  for (const item of schedule) {
+    const nextTime = minutesToTime(item.startMinutes)
+    const currentTime = currentById.get(item.jobId) || ''
+
+    if (currentTime !== nextTime) {
+      changed += 1
+    }
+  }
+
+  return changed
+}
+
+async function applyRouteSchedule(schedule: RouteScheduleItem[], date: Date) {
+  for (const item of schedule) {
+    await prisma.job.update({
+      where: { id: item.jobId },
+      data: {
+        visitDate: startOfLocalDay(date),
+        startTime: minutesToTime(item.startMinutes),
+      },
+    })
+  }
+}
+
 async function applyOptimisedRoute(params: {
   worker: WorkerLite
   date: Date
@@ -469,8 +504,25 @@ async function applyOptimisedRoute(params: {
   const sorted = sortJobs(jobs)
 
   if (sorted.length <= 1) {
-    return { improved: false, saved: 0, reorderedJobs: 0, warning: null }
+    return {
+      improved: false,
+      saved: 0,
+      reorderedJobs: 0,
+      compacted: false,
+      updatedTimes: 0,
+      warning: null,
+    }
   }
+
+  const currentSchedule = buildRouteSchedule({
+    date,
+    jobs: sorted,
+    blocks,
+  })
+
+  const currentScheduleChanges = currentSchedule
+    ? countScheduleTimeChanges(sorted, currentSchedule)
+    : 0
 
   const originalTravel = calculateRouteTravel(sorted)
   const optimised = optimiseOrder(sorted)
@@ -478,46 +530,54 @@ async function applyOptimisedRoute(params: {
   const saved = originalTravel - newTravel
   const reorderedJobs = countReorderedJobs(sorted, optimised)
 
-  if (saved < MIN_TRAVEL_SAVING_TO_APPLY || reorderedJobs === 0) {
-    const existingSchedule = buildRouteSchedule({
-      date,
-      jobs: sorted,
-      blocks,
-    })
-
-    return {
-      improved: false,
-      saved: 0,
-      reorderedJobs: 0,
-      warning: existingSchedule ? buildDayWarning(existingSchedule, sorted) : null,
-    }
-  }
-
-  const rebuiltSchedule = buildRouteSchedule({
+  const optimisedSchedule = buildRouteSchedule({
     date,
     jobs: optimised,
     blocks,
   })
 
-  if (!rebuiltSchedule) {
-    return { improved: false, saved: 0, reorderedJobs: 0, warning: null }
+  const optimisedScheduleChanges = optimisedSchedule
+    ? countScheduleTimeChanges(optimised, optimisedSchedule)
+    : 0
+
+  const shouldApplyOptimisedOrder =
+    !!optimisedSchedule &&
+    reorderedJobs > 0 &&
+    saved >= MIN_TRAVEL_SAVING_TO_APPLY
+
+  if (shouldApplyOptimisedOrder) {
+    await applyRouteSchedule(optimisedSchedule!, date)
+
+    return {
+      improved: true,
+      saved,
+      reorderedJobs,
+      compacted: optimisedScheduleChanges > 0,
+      updatedTimes: optimisedScheduleChanges,
+      warning: buildDayWarning(optimisedSchedule!, optimised),
+    }
   }
 
-  for (const item of rebuiltSchedule) {
-    await prisma.job.update({
-      where: { id: item.jobId },
-      data: {
-        visitDate: startOfLocalDay(date),
-        startTime: minutesToTime(item.startMinutes),
-      },
-    })
+  if (currentSchedule && currentScheduleChanges > 0) {
+    await applyRouteSchedule(currentSchedule, date)
+
+    return {
+      improved: true,
+      saved: 0,
+      reorderedJobs: 0,
+      compacted: true,
+      updatedTimes: currentScheduleChanges,
+      warning: buildDayWarning(currentSchedule, sorted),
+    }
   }
 
   return {
-    improved: true,
-    saved,
-    reorderedJobs,
-    warning: buildDayWarning(rebuiltSchedule, optimised),
+    improved: false,
+    saved: 0,
+    reorderedJobs: 0,
+    compacted: false,
+    updatedTimes: 0,
+    warning: currentSchedule ? buildDayWarning(currentSchedule, sorted) : null,
   }
 }
 
@@ -635,10 +695,16 @@ export async function runLocalWorkerDayRepair(params: {
 
   const messageParts: string[] = []
 
-  if (result.improved) {
+  if (result.reorderedJobs > 0 && result.saved > 0) {
     messageParts.push(
       `Saved ${result.saved} mins travel by reordering ${result.reorderedJobs} job${
         result.reorderedJobs === 1 ? '' : 's'
+      }.`
+    )
+  } else if (result.compacted && result.updatedTimes > 0) {
+    messageParts.push(
+      `Tightened this day and updated ${result.updatedTimes} job time${
+        result.updatedTimes === 1 ? '' : 's'
       }.`
     )
   } else {
@@ -654,7 +720,12 @@ export async function runLocalWorkerDayRepair(params: {
     workerId: worker.id,
     date: day.toISOString(),
     reason: repairReason,
-    repaired: result.improved ? result.reorderedJobs : 0,
+    repaired:
+      result.reorderedJobs > 0
+        ? result.reorderedJobs
+        : result.updatedTimes > 0
+          ? result.updatedTimes
+          : 0,
     remaining: 0,
     unplacedJobIds: [],
     optimised: result.improved,
