@@ -2377,6 +2377,7 @@ function DesktopWorkerCard({
 
 export default function SchedulePage() {
   const [date, setDate] = useState(getTodayDateString());
+  const [selectedWorker, setSelectedWorker] = useState("all");
   const [scheduleData, setScheduleData] = useState<ScheduleResponse | null>(null);
   const [jobsData, setJobsData] = useState<JobsApiJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2408,6 +2409,11 @@ export default function SchedulePage() {
     }));
   }, [scheduleData]);
 
+  const filteredWorkers = useMemo(() => {
+    if (selectedWorker === "all") return workers;
+    return workers.filter((worker) => String(worker.id) === selectedWorker);
+  }, [workers, selectedWorker]);
+
   const unscheduledJobs = useMemo(() => {
     return jobsData
       .filter((job) => {
@@ -2425,11 +2431,11 @@ export default function SchedulePage() {
   }, [unscheduledJobs]);
 
   const scheduledJobCount = useMemo(() => {
-    return workers.reduce((total, worker) => total + worker.jobs.length, 0);
-  }, [workers]);
+    return filteredWorkers.reduce((total, worker) => total + worker.jobs.length, 0);
+  }, [filteredWorkers]);
 
   const totalScheduledMinutes = useMemo(() => {
-    return workers.reduce(
+    return filteredWorkers.reduce(
       (total, worker) =>
         total +
         worker.jobs.reduce(
@@ -2438,18 +2444,18 @@ export default function SchedulePage() {
         ),
       0
     );
-  }, [workers]);
+  }, [filteredWorkers]);
 
   const totalAvailabilityBlocks = useMemo(() => {
-    return workers.reduce(
+    return filteredWorkers.reduce(
       (total, worker) => total + (worker.availabilityBlocks?.length ?? 0),
       0
     );
-  }, [workers]);
+  }, [filteredWorkers]);
 
-    const gapFillSuggestions = useMemo(() => {
-    return buildGapFillSuggestions(workers, unscheduledJobs);
-  }, [workers, unscheduledJobs]);
+  const gapFillSuggestions = useMemo(() => {
+    return buildGapFillSuggestions(filteredWorkers, unscheduledJobs);
+  }, [filteredWorkers, unscheduledJobs]);
 
   async function loadPage(selectedDate: string, isManualRefresh = false) {
     if (isManualRefresh) {
@@ -3265,6 +3271,56 @@ export default function SchedulePage() {
 
             <div
               style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedWorker("all")}
+                style={{
+                  borderRadius: 999,
+                  padding: "7px 11px",
+                  border:
+                    selectedWorker === "all" ? "2px solid #18181b" : "1px solid #dddddd",
+                  background: selectedWorker === "all" ? "#18181b" : "#fff",
+                  color: selectedWorker === "all" ? "#fff" : "#18181b",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                All workers
+              </button>
+
+              {workers.map((worker) => {
+                const active = selectedWorker === String(worker.id);
+
+                return (
+                  <button
+                    key={worker.id}
+                    type="button"
+                    onClick={() => setSelectedWorker(String(worker.id))}
+                    style={{
+                      borderRadius: 999,
+                      padding: "7px 11px",
+                      border: active ? "2px solid #18181b" : "1px solid #dddddd",
+                      background: active ? "#18181b" : "#fff",
+                      color: active ? "#fff" : "#18181b",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {worker.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div
+              style={{
                 fontSize: 12,
                 color: "#52525b",
                 display: "flex",
@@ -3296,7 +3352,7 @@ export default function SchedulePage() {
             marginBottom: 14,
           }}
         >
-          <StatCard label="Workers" value={workers.length} compact={isMobile} />
+          <StatCard label="Workers" value={filteredWorkers.length} compact={isMobile} />
           <StatCard label="Jobs" value={scheduledJobCount} compact={isMobile} />
           <StatCard
             label="Hours"
@@ -3686,13 +3742,13 @@ onClick={() =>
               </div>
 
               <div style={{ display: "grid", gap: 14 }}>
-                {workers.length === 0 && (
+                {filteredWorkers.length === 0 && (
                   <div style={messageCard()}>
-                    No active workers found.
+                    No workers found for this filter.
                   </div>
                 )}
 
-                {workers.map((worker) => {
+                {filteredWorkers.map((worker) => {
                   const scheduledMinutes = worker.jobs.reduce(
                     (total, job) => total + (job.durationMinutes ?? 60),
                     0
