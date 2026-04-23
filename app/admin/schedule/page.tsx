@@ -116,7 +116,7 @@ type PlaceIntoGapSheetState = {
 
 const PREP_START_MINUTES = 8 * 60 + 30;
 const WORK_START_MINUTES = 9 * 60;
-const DAY_END_MINUTES = 17 * 60 + 30;
+const DAY_END_MINUTES = 19 * 60;
 const TOTAL_DAY_MINUTES = DAY_END_MINUTES - PREP_START_MINUTES;
 const MOBILE_BREAKPOINT = 768;
 
@@ -131,6 +131,8 @@ const TIMELINE_MARKERS = [
   { label: "15:00", minutes: 15 * 60 },
   { label: "16:00", minutes: 16 * 60 },
   { label: "17:00", minutes: 17 * 60 },
+  { label: "18:00", minutes: 18 * 60 },
+  { label: "19:00", minutes: 19 * 60 },
 ];
 
 function getTodayDateString() {
@@ -3333,7 +3335,7 @@ export default function SchedulePage() {
                 <strong>Prep:</strong> 08:30–09:00
               </span>
               <span>
-                <strong>Working day:</strong> 09:00–1730
+                <strong>Working day:</strong> 09:00–19:00
               </span>
               <span>
                 <strong>Farm start:</strong> TF9 4BQ
