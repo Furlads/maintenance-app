@@ -19,8 +19,23 @@ function safeString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function isValidDateText(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+function normaliseDateText(value: string) {
+  const clean = value.trim()
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+    return clean
+  }
+
+  const parsed = new Date(clean)
+
+  if (!Number.isNaN(parsed.getTime())) {
+    const yyyy = parsed.getFullYear()
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0')
+    const dd = String(parsed.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  }
+
+  return ''
 }
 
 function isValidTimeText(value: string) {
@@ -34,8 +49,8 @@ export async function POST(req: Request) {
     const workerId = Number(body.workerId)
     const requestType = safeString(body.requestType) || 'holiday'
     const isFullDay = Boolean(body.isFullDay)
-    const startDateText = safeString(body.startDate)
-    const endDateText = safeString(body.endDate)
+    const startDateText = normaliseDateText(safeString(body.startDate))
+    const endDateText = normaliseDateText(safeString(body.endDate))
     const startTime = safeString(body.startTime)
     const endTime = safeString(body.endTime)
     const reason = safeString(body.reason)
@@ -46,14 +61,7 @@ export async function POST(req: Request) {
     }
 
     if (!startDateText || !endDateText) {
-      return NextResponse.json({ error: 'Missing start or end date' }, { status: 400 })
-    }
-
-    if (!isValidDateText(startDateText) || !isValidDateText(endDateText)) {
-      return NextResponse.json(
-        { error: 'Dates must be in YYYY-MM-DD format' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Missing or invalid start/end date' }, { status: 400 })
     }
 
     const startDate = new Date(`${startDateText}T00:00:00.000Z`)
