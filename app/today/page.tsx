@@ -197,6 +197,19 @@ function formatChasTimestamp(value: string) {
   })
 }
 
+function formatDateKeyLabel(dateKey: string) {
+  const date = parseDateKey(dateKey)
+
+  if (!date) return 'Selected date'
+
+  return date.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  })
+}
+
 function toDateKey(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value)
 
