@@ -1832,11 +1832,11 @@ async function loadCustomers() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          workerId,
-          requestType: timeOffForm.requestType,
-          isFullDay: timeOffForm.isFullDay,
-          startDate: timeOffForm.startDate,
-          endDate: timeOffForm.endDate,
+  workerId,
+  requestType: timeOffForm.requestType,
+  isFullDay: timeOffForm.isFullDay,
+  startDate: toDateKey(timeOffForm.startDate),
+  endDate: toDateKey(timeOffForm.endDate),
           startTime: timeOffForm.isFullDay ? null : timeOffForm.startTime,
           endTime: timeOffForm.isFullDay ? null : timeOffForm.endTime,
           reason: timeOffForm.reason,
