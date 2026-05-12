@@ -18,8 +18,35 @@ type RequestItem = {
   createdAt: string
 }
 
+function todayIsoDate() {
+  const now = new Date()
+  const yyyy = now.getFullYear()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function isIsoDateText(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim())
+}
+
+function normaliseDateInputValue(value: string) {
+  const clean = String(value || '').trim()
+
+  if (isIsoDateText(clean)) {
+    return clean
+  }
+
+  return ''
+}
+
 function formatDate(value: string) {
-  const date = new Date(value)
+  const clean = String(value || '').trim()
+  const isoDate = isIsoDateText(clean) ? clean : clean.slice(0, 10)
+
+  if (!isIsoDateText(isoDate)) return '—'
+
+  const date = new Date(`${isoDate}T00:00:00.000Z`)
   if (Number.isNaN(date.getTime())) return '—'
 
   return date.toLocaleDateString('en-GB', {
@@ -27,6 +54,7 @@ function formatDate(value: string) {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone: 'UTC',
   })
 }
 
@@ -121,13 +149,7 @@ export default function WorkerTimeOffPage() {
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  const today = useMemo(() => {
-    const now = new Date()
-    const yyyy = now.getFullYear()
-    const mm = String(now.getMonth() + 1).padStart(2, '0')
-    const dd = String(now.getDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}`
-  }, [])
+  const today = useMemo(() => todayIsoDate(), [])
 
   async function loadRequests(currentWorkerId: number) {
     try {
@@ -162,7 +184,11 @@ export default function WorkerTimeOffPage() {
       if (Number.isInteger(parsed) && parsed > 0) {
         setWorkerId(parsed)
         loadRequests(parsed)
+      } else {
+        setLoading(false)
       }
+    } else {
+      setLoading(false)
     }
 
     if (savedWorkerName) {
@@ -174,13 +200,31 @@ export default function WorkerTimeOffPage() {
   }, [today])
 
   async function handleSubmit() {
+    const cleanStartDate = normaliseDateInputValue(startDate)
+    const cleanEndDate = normaliseDateInputValue(endDate)
+
     if (!workerId) {
       setMessage('No worker is logged in on this device.')
       return
     }
 
-    if (!startDate || !endDate) {
-      setMessage('Please choose your dates.')
+    if (!cleanStartDate || !cleanEndDate) {
+      setMessage('Please choose your dates again.')
+      return
+    }
+
+    if (cleanEndDate < cleanStartDate) {
+      setMessage('End date cannot be before start date.')
+      return
+    }
+
+    if (!isFullDay && (!startTime || !endTime)) {
+      setMessage('Please choose the start and end time.')
+      return
+    }
+
+    if (!isFullDay && endTime <= startTime) {
+      setMessage('End time must be after start time.')
       return
     }
 
@@ -198,8 +242,8 @@ export default function WorkerTimeOffPage() {
           requestedByName: workerName,
           requestType,
           isFullDay,
-          startDate,
-          endDate,
+          startDate: cleanStartDate,
+          endDate: cleanEndDate,
           startTime: isFullDay ? null : startTime,
           endTime: isFullDay ? null : endTime,
           reason,
@@ -411,8 +455,8 @@ export default function WorkerTimeOffPage() {
                 <input
                   id="startDate"
                   type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  value={normaliseDateInputValue(startDate)}
+                  onChange={(e) => setStartDate(e.currentTarget.value)}
                   style={inputStyle}
                 />
               </div>
@@ -433,8 +477,8 @@ export default function WorkerTimeOffPage() {
                 <input
                   id="endDate"
                   type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  value={normaliseDateInputValue(endDate)}
+                  onChange={(e) => setEndDate(e.currentTarget.value)}
                   style={inputStyle}
                 />
               </div>
@@ -529,7 +573,9 @@ export default function WorkerTimeOffPage() {
                 lowerMessage.includes('invalid') ||
                 lowerMessage.includes('missing') ||
                 lowerMessage.includes('not found') ||
-                lowerMessage.includes('did not match')
+                lowerMessage.includes('did not match') ||
+                lowerMessage.includes('cannot') ||
+                lowerMessage.includes('please choose')
 
               return (
                 <div
