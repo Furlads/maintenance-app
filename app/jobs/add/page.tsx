@@ -122,6 +122,10 @@ function isMaintenanceJobType(jobType: string) {
   return clean(jobType).toLowerCase() === 'maintenance'
 }
 
+function isLandscapingJobType(jobType: string) {
+  return clean(jobType).toLowerCase() === 'landscaping'
+}
+
 function getMaintenanceWeeks(frequency: MaintenanceFrequency) {
   if (frequency === 'weekly') return 1
   if (frequency === 'fortnightly') return 2
@@ -183,13 +187,8 @@ export default function AddJobPage() {
           fetch('/api/workers', { cache: 'no-store' }),
         ])
 
-        if (!customersRes.ok) {
-          throw new Error('Failed to load customers')
-        }
-
-        if (!workersRes.ok) {
-          throw new Error('Failed to load workers')
-        }
+        if (!customersRes.ok) throw new Error('Failed to load customers')
+        if (!workersRes.ok) throw new Error('Failed to load workers')
 
         const customersData = await customersRes.json().catch(() => [])
         const workersData = await workersRes.json().catch(() => [])
@@ -241,18 +240,12 @@ export default function AddJobPage() {
           setTitle(queryTitle)
         }
 
-        if (queryJobType) {
-          setJobType(queryJobType)
-        }
+        if (queryJobType) setJobType(queryJobType)
       } catch (err) {
         console.error(err)
-        if (!cancelled) {
-          setError('Failed to load add job page.')
-        }
+        if (!cancelled) setError('Failed to load add job page.')
       } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+        if (!cancelled) setLoading(false)
       }
     }
 
@@ -271,12 +264,18 @@ export default function AddJobPage() {
       setPreferredDay('')
       setPreferredTimeBand('Anytime')
     }
+
+    if (isMaintenanceJobType(jobType)) {
+      setDurationMinutes('60')
+    }
+
+    if (isLandscapingJobType(jobType)) {
+      setDurationMinutes('390')
+    }
   }, [jobType])
 
   useEffect(() => {
-    if (!visitDate || !startTime) {
-      setFixedSchedule(false)
-    }
+    if (!visitDate || !startTime) setFixedSchedule(false)
   }, [visitDate, startTime])
 
   const selectedCustomer = useMemo(() => {
@@ -287,25 +286,14 @@ export default function AddJobPage() {
   function handleCustomerChange(nextCustomerId: number | '') {
     setCustomerId(nextCustomerId)
 
-    if (!nextCustomerId) {
-      return
-    }
+    if (!nextCustomerId) return
 
     const customer = customers.find((item) => item.id === nextCustomerId)
-
     if (!customer) return
 
-    if (!address) {
-      setAddress(customer.address || '')
-    }
-
-    if (!postcode) {
-      setPostcode(customer.postcode || '')
-    }
-
-    if (!title) {
-      setTitle(customer.name || '')
-    }
+    if (!address) setAddress(customer.address || '')
+    if (!postcode) setPostcode(customer.postcode || '')
+    if (!title) setTitle(customer.name || '')
   }
 
   function toggleWorker(workerId: number) {
@@ -353,6 +341,13 @@ export default function AddJobPage() {
         return
       }
 
+      const parsedDuration = Number(durationMinutes)
+
+      if (!Number.isFinite(parsedDuration) || parsedDuration <= 0) {
+        setError('Please choose a valid job duration.')
+        return
+      }
+
       const payload: Record<string, unknown> = {
         customerId,
         title: title.trim() || selectedCustomer?.name || 'New Job',
@@ -362,26 +357,12 @@ export default function AddJobPage() {
         assignedWorkerIds,
         allowQuoteTimeOverride,
         fixedSchedule,
+        durationMinutes: Math.round(parsedDuration),
       }
 
-      if (postcode.trim()) {
-        payload.postcode = postcode.trim()
-      }
-
-      if (visitDate.trim()) {
-        payload.visitDate = visitDate
-      }
-
-      if (startTime.trim()) {
-        payload.startTime = startTime
-      }
-
-      if (durationMinutes.trim()) {
-        const parsedDuration = Number(durationMinutes)
-        if (Number.isFinite(parsedDuration) && parsedDuration > 0) {
-          payload.durationMinutes = Math.round(parsedDuration)
-        }
-      }
+      if (postcode.trim()) payload.postcode = postcode.trim()
+      if (visitDate.trim()) payload.visitDate = visitDate
+      if (startTime.trim()) payload.startTime = startTime
 
       if (isMaintenanceJobType(jobType)) {
         payload.isRegularMaintenance = isRegularMaintenance
@@ -393,16 +374,12 @@ export default function AddJobPage() {
             maintenanceFrequency === 'monthly' ? 'monthly' : 'weeks'
 
           const maintenanceWeeks = getMaintenanceWeeks(maintenanceFrequency)
-          if (maintenanceWeeks) {
-            payload.maintenanceFrequencyWeeks = maintenanceWeeks
-          }
+          if (maintenanceWeeks) payload.maintenanceFrequencyWeeks = maintenanceWeeks
 
           payload.timePreferenceMode = timePreferenceMode
 
           if (timePreferenceMode === 'specific') {
-            if (preferredDay) {
-              payload.preferredDay = preferredDay
-            }
+            if (preferredDay) payload.preferredDay = preferredDay
             payload.preferredTimeBand = preferredTimeBand || 'Anytime'
           }
         }
@@ -410,17 +387,13 @@ export default function AddJobPage() {
 
       const res = await fetch('/api/jobs', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
 
       const data = await res.json().catch(() => null)
 
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to create job')
-      }
+      if (!res.ok) throw new Error(data?.error || 'Failed to create job')
 
       const createdJob = data as JobResponse
       setSuccessMessage('Job created successfully.')
@@ -482,37 +455,6 @@ export default function AddJobPage() {
                 </div>
               </div>
             </div>
-
-            <div className="border-t border-zinc-200 bg-zinc-50 p-4 md:p-5">
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                    Selected customer
-                  </div>
-                  <div className="mt-2 text-sm font-medium text-zinc-900">
-                    {selectedCustomer?.name || 'Not selected'}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                    Job type
-                  </div>
-                  <div className="mt-2 text-sm font-medium text-zinc-900">
-                    {jobType || 'Quote'}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                    Assigned workers
-                  </div>
-                  <div className="mt-2 text-sm font-medium text-zinc-900">
-                    {assignedWorkerIds.length > 0 ? assignedWorkerIds.length : 'None'}
-                  </div>
-                </div>
-              </div>
-            </div>
           </section>
 
           {error && (
@@ -531,27 +473,23 @@ export default function AddJobPage() {
             <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
               <h2 className="mb-4 text-lg font-bold text-zinc-900">Customer</h2>
 
-              <div className="grid gap-4">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                    Customer
-                  </label>
-                  <select
-                    value={customerId}
-                    onChange={(e) =>
-                      handleCustomerChange(e.target.value ? Number(e.target.value) : '')
-                    }
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                  >
-                    <option value="">Select a customer</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                Customer
+              </label>
+              <select
+                value={customerId}
+                onChange={(e) =>
+                  handleCustomerChange(e.target.value ? Number(e.target.value) : '')
+                }
+                className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+              >
+                <option value="">Select a customer</option>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </select>
             </section>
 
             <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -613,15 +551,27 @@ export default function AddJobPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                    Duration (minutes)
+                    {isLandscapingJobType(jobType) ? 'Job length' : 'Duration (minutes)'}
                   </label>
-                  <input
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(e.target.value)}
-                    inputMode="numeric"
-                    placeholder="60"
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                  />
+
+                  {isLandscapingJobType(jobType) ? (
+                    <select
+                      value={durationMinutes}
+                      onChange={(e) => setDurationMinutes(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    >
+                      <option value="195">Half day</option>
+                      <option value="390">Full day</option>
+                    </select>
+                  ) : (
+                    <input
+                      value={durationMinutes}
+                      onChange={(e) => setDurationMinutes(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="60"
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  )}
                 </div>
 
                 <div>
@@ -680,27 +630,6 @@ export default function AddJobPage() {
                     className="min-h-[110px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
                 </div>
-
-                {jobType.toLowerCase() === 'quote' && (
-                  <div className="md:col-span-2">
-                    <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                      <input
-                        type="checkbox"
-                        checked={allowQuoteTimeOverride}
-                        onChange={(e) => setAllowQuoteTimeOverride(e.target.checked)}
-                        className="h-4 w-4"
-                      />
-                      <div>
-                        <div className="text-sm font-semibold text-zinc-900">
-                          Allow quote time override
-                        </div>
-                        <div className="text-xs text-zinc-500">
-                          Use this only if you want a non-standard Trev quote time.
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                )}
               </div>
             </section>
 
@@ -710,111 +639,61 @@ export default function AddJobPage() {
                   Regular Maintenance
                 </h2>
 
-                <div className="space-y-4">
-                  <label className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <input
-                      type="checkbox"
-                      checked={isRegularMaintenance}
-                      onChange={(e) => setIsRegularMaintenance(e.target.checked)}
-                      className="mt-1 h-4 w-4"
-                    />
+                <label className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <input
+                    type="checkbox"
+                    checked={isRegularMaintenance}
+                    onChange={(e) => setIsRegularMaintenance(e.target.checked)}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-zinc-900">
+                      This is a regular maintenance job
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      Turn this on for recurring garden maintenance rather than a one-off visit.
+                    </div>
+                  </div>
+                </label>
+
+                {isRegularMaintenance && (
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <div>
-                      <div className="text-sm font-semibold text-zinc-900">
-                        This is a regular maintenance job
-                      </div>
-                      <div className="text-xs text-zinc-500">
-                        Turn this on for recurring garden maintenance rather than a one-off visit.
-                      </div>
+                      <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                        Frequency
+                      </label>
+                      <select
+                        value={maintenanceFrequency}
+                        onChange={(e) =>
+                          setMaintenanceFrequency(e.target.value as MaintenanceFrequency)
+                        }
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      >
+                        <option value="">Select frequency</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="fortnightly">Fortnightly</option>
+                        <option value="every_3_weeks">Every 3 weeks</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
                     </div>
-                  </label>
 
-                  {isRegularMaintenance && (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                          Frequency
-                        </label>
-                        <select
-                          value={maintenanceFrequency}
-                          onChange={(e) =>
-                            setMaintenanceFrequency(
-                              e.target.value as MaintenanceFrequency
-                            )
-                          }
-                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        >
-                          <option value="">Select frequency</option>
-                          <option value="weekly">Weekly</option>
-                          <option value="fortnightly">Fortnightly</option>
-                          <option value="every_3_weeks">Every 3 weeks</option>
-                          <option value="monthly">Monthly</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                          Time preference
-                        </label>
-                        <select
-                          value={timePreferenceMode}
-                          onChange={(e) =>
-                            setTimePreferenceMode(
-                              e.target.value as TimePreferenceMode
-                            )
-                          }
-                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        >
-                          <option value="best-fit">Best fit</option>
-                          <option value="specific">Specific preference</option>
-                        </select>
-                      </div>
-
-                      {timePreferenceMode === 'specific' && (
-                        <>
-                          <div>
-                            <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                              Preferred day
-                            </label>
-                            <select
-                              value={preferredDay}
-                              onChange={(e) =>
-                                setPreferredDay(e.target.value as PreferredDay)
-                              }
-                              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                            >
-                              <option value="">No preference</option>
-                              <option value="Monday">Monday</option>
-                              <option value="Tuesday">Tuesday</option>
-                              <option value="Wednesday">Wednesday</option>
-                              <option value="Thursday">Thursday</option>
-                              <option value="Friday">Friday</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm font-semibold text-zinc-800">
-                              Preferred time band
-                            </label>
-                            <select
-                              value={preferredTimeBand}
-                              onChange={(e) =>
-                                setPreferredTimeBand(
-                                  e.target.value as PreferredTimeBand
-                                )
-                              }
-                              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                            >
-                              <option value="Morning">Morning</option>
-                              <option value="Midday">Midday</option>
-                              <option value="Afternoon">Afternoon</option>
-                              <option value="Anytime">Anytime</option>
-                            </select>
-                          </div>
-                        </>
-                      )}
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                        Time preference
+                      </label>
+                      <select
+                        value={timePreferenceMode}
+                        onChange={(e) =>
+                          setTimePreferenceMode(e.target.value as TimePreferenceMode)
+                        }
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                      >
+                        <option value="best-fit">Best fit</option>
+                        <option value="specific">Specific preference</option>
+                      </select>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </section>
             )}
 
