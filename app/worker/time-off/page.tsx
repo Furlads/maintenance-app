@@ -30,13 +30,18 @@ function isIsoDateText(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim())
 }
 
-function formatDate(value: string) {
+function dateInputValue(value: string) {
   const clean = String(value || '').trim()
-  const isoDate = isIsoDateText(clean) ? clean : clean.slice(0, 10)
+  if (isIsoDateText(clean)) return clean
+  const sliced = clean.slice(0, 10)
+  if (isIsoDateText(sliced)) return sliced
+  return todayIsoDate()
+}
 
-  if (!isIsoDateText(isoDate)) return '—'
-
+function formatDate(value: string) {
+  const isoDate = dateInputValue(value)
   const date = new Date(`${isoDate}T00:00:00.000Z`)
+
   if (Number.isNaN(date.getTime())) return '—'
 
   return date.toLocaleDateString('en-GB', {
@@ -75,6 +80,14 @@ function statusStyles(status: string) {
       background: '#fef2f2',
       border: '1px solid #fecaca',
       color: '#991b1b',
+    }
+  }
+
+  if (value === 'cancelled') {
+    return {
+      background: '#f3f4f6',
+      border: '1px solid #d1d5db',
+      color: '#374151',
     }
   }
 
@@ -137,12 +150,27 @@ export default function WorkerTimeOffPage() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [requests, setRequests] = useState<RequestItem[]>([])
+  const [editingRequestId, setEditingRequestId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   const startDateRef = useRef<HTMLInputElement | null>(null)
   const endDateRef = useRef<HTMLInputElement | null>(null)
 
   const today = useMemo(() => todayIsoDate(), [])
+
+  function resetForm() {
+    setEditingRequestId(null)
+    setRequestType('holiday')
+    setIsFullDay(true)
+    setStartDate(today)
+    setEndDate(today)
+    setStartTime('13:00')
+    setEndTime('16:30')
+    setReason('')
+
+    if (startDateRef.current) startDateRef.current.value = today
+    if (endDateRef.current) endDateRef.current.value = today
+  }
 
   async function loadRequests(currentWorkerId: number) {
     try {
@@ -193,8 +221,9 @@ export default function WorkerTimeOffPage() {
   }, [today])
 
   async function handleSubmit() {
-    const submitStartDate = startDateRef.current?.value || startDate
-    const submitEndDate = endDateRef.current?.value || endDate
+    const submitStartDate = dateInputValue(startDateRef.current?.value || startDate)
+    const submitEndDate = dateInputValue(endDateRef.current?.value || endDate)
+    const isEditing = editingRequestId !== null
 
     if (!workerId) {
       setMessage('No worker is logged in on this device.')
@@ -225,48 +254,91 @@ export default function WorkerTimeOffPage() {
     setMessage('')
 
     try {
-      const res = await fetch('/api/time-off/request', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          workerId,
-          requestedByName: workerName,
-          requestType,
-          isFullDay,
-          startDate: submitStartDate,
-          endDate: submitEndDate,
-          startTime: isFullDay ? null : startTime,
-          endTime: isFullDay ? null : endTime,
-          reason,
-        }),
+      const res = await fetch(
+        isEditing ? `/api/time-off/${editingRequestId}` : '/api/time-off/request',
+        {
+          method: isEditing ? 'PATCH' : 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            workerId,
+            requestedByName: workerName,
+            requestType,
+            isFullDay,
+            startDate: submitStartDate,
+            endDate: submitEndDate,
+            startTime: isFullDay ? null : startTime,
+            endTime: isFullDay ? null : endTime,
+            reason,
+          }),
+        }
+      )
+
+      const data = await res.json()
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Failed to save request.')
+      }
+
+      setMessage(isEditing ? 'Request updated.' : 'Request sent to Kelly for approval.')
+      resetForm()
+      await loadRequests(workerId)
+    } catch (error: any) {
+      console.error(error)
+      setMessage(String(error?.message || 'Failed to save request.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function cancelRequest(id: number) {
+    if (!workerId) return
+
+    const confirmed = window.confirm('Cancel this request?')
+    if (!confirmed) return
+
+    try {
+      setMessage('')
+
+      const res = await fetch(`/api/time-off/${id}?workerId=${workerId}`, {
+        method: 'DELETE',
       })
 
       const data = await res.json()
 
       if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || 'Failed to send request.')
+        throw new Error(data?.error || 'Failed to cancel request.')
       }
 
-      setMessage('Request sent to Kelly for approval.')
-      setReason('')
-
-      if (
-        requestType === 'holiday' ||
-        requestType === 'day_off' ||
-        requestType === 'sick'
-      ) {
-        setIsFullDay(true)
-      }
-
+      setMessage('Request cancelled.')
       await loadRequests(workerId)
     } catch (error: any) {
       console.error(error)
-      setMessage(String(error?.message || 'Failed to send request.'))
-    } finally {
-      setBusy(false)
+      setMessage(String(error?.message || 'Failed to cancel request.'))
     }
+  }
+
+  function startEditing(item: RequestItem) {
+    const nextStartDate = dateInputValue(item.startDate)
+    const nextEndDate = dateInputValue(item.endDate)
+
+    setEditingRequestId(item.id)
+    setRequestType(item.requestType)
+    setIsFullDay(item.isFullDay)
+    setStartDate(nextStartDate)
+    setEndDate(nextEndDate)
+    setStartTime(item.startTime || '13:00')
+    setEndTime(item.endTime || '16:30')
+    setReason(item.reason || '')
+
+    if (startDateRef.current) startDateRef.current.value = nextStartDate
+    if (endDateRef.current) endDateRef.current.value = nextEndDate
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    })
   }
 
   return (
@@ -360,7 +432,7 @@ export default function WorkerTimeOffPage() {
               color: '#111827',
             }}
           >
-            New request
+            {editingRequestId ? 'Edit request' : 'New request'}
           </div>
 
           <div style={{ display: 'grid', gap: 12 }}>
@@ -606,8 +678,35 @@ export default function WorkerTimeOffPage() {
                 opacity: busy ? 0.7 : 1,
               }}
             >
-              {busy ? 'Sending...' : 'Send to Kelly'}
+              {busy
+                ? editingRequestId
+                  ? 'Updating...'
+                  : 'Sending...'
+                : editingRequestId
+                  ? 'Update request'
+                  : 'Send to Kelly'}
             </button>
+
+            {editingRequestId && (
+              <button
+                type="button"
+                onClick={resetForm}
+                disabled={busy}
+                style={{
+                  minHeight: 48,
+                  borderRadius: 16,
+                  border: '1px solid #d1d5db',
+                  background: '#ffffff',
+                  color: '#111827',
+                  fontWeight: 900,
+                  fontSize: 16,
+                  cursor: busy ? 'not-allowed' : 'pointer',
+                  opacity: busy ? 0.7 : 1,
+                }}
+              >
+                Cancel editing
+              </button>
+            )}
           </div>
         </section>
 
@@ -648,6 +747,7 @@ export default function WorkerTimeOffPage() {
             <div style={{ display: 'grid', gap: 12 }}>
               {requests.map((item) => {
                 const badgeStyle = statusStyles(item.status)
+                const isPending = String(item.status || '').toLowerCase() === 'pending'
 
                 return (
                   <div
@@ -712,6 +812,50 @@ export default function WorkerTimeOffPage() {
                           {item.status}
                         </div>
                       </div>
+
+                      {isPending && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: 10,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => startEditing(item)}
+                            style={{
+                              minHeight: 42,
+                              borderRadius: 12,
+                              border: '1px solid #111827',
+                              background: '#ffffff',
+                              color: '#111827',
+                              fontWeight: 800,
+                              padding: '0 16px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => cancelRequest(item.id)}
+                            style={{
+                              minHeight: 42,
+                              borderRadius: 12,
+                              border: '1px solid #fecaca',
+                              background: '#fef2f2',
+                              color: '#991b1b',
+                              fontWeight: 800,
+                              padding: '0 16px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
 
                       {item.reason && (
                         <div
