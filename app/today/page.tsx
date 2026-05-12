@@ -197,17 +197,18 @@ function formatChasTimestamp(value: string) {
   })
 }
 
-function formatDateKeyLabel(dateKey: string) {
-  const date = parseDateKey(dateKey)
+function toDateKey(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value)
 
-  if (!date) return 'Selected date'
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
 
-  return date.toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric'
-  })
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
 function toDateKey(value: Date | string) {
@@ -223,8 +224,32 @@ function toDateKey(value: Date | string) {
 
   return `${year}-${month}-${day}`
 }
+
+function toSafeDateInputValue(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return toDateKey(new Date())
+  }
+
+  return toDateKey(parsed)
+}
+
 function parseDateKey(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+
+  const [year, month, day] = value.split('-').map(Number)
+
+  if (!year || !month || !day) return null
+
+  const date = new Date(year, month - 1, day)
+
+  if (Number.isNaN(date.getTime())) return null
+
+  return date
+}
 
   const [year, month, day] = value.split('-').map(Number)
 
@@ -902,15 +927,19 @@ function TopStatCard({
   )
 }
 
-const DEFAULT_TIME_OFF_FORM = (dateKey: string): TimeOffForm => ({
-  requestType: 'Holiday',
-  isFullDay: false,
-  startDate: dateKey,
-  endDate: dateKey,
-  startTime: '08:30',
-  endTime: '09:30',
-  reason: ''
-})
+const DEFAULT_TIME_OFF_FORM = (dateKey: string): TimeOffForm => {
+  const safeDateKey = toSafeDateInputValue(dateKey)
+
+  return {
+    requestType: 'holiday',
+    isFullDay: true,
+    startDate: safeDateKey,
+    endDate: safeDateKey,
+    startTime: '08:30',
+    endTime: '09:30',
+    reason: ''
+  }
+}
 
 export default function TodayPage() {
   const router = useRouter()
@@ -3655,12 +3684,12 @@ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)'
                     background: '#fff'
                   }}
                 >
-                  <option value="Holiday">Holiday</option>
-                  <option value="Appointment">Appointment</option>
-                  <option value="Sick">Sick</option>
-                  <option value="Late Start">Late Start</option>
-                  <option value="Early Finish">Early Finish</option>
-                  <option value="Unavailable">Unavailable</option>
+                  <option value="holiday">Holiday</option>
+<option value="appointment">Appointment</option>
+<option value="sick">Sick</option>
+<option value="late_start">Late Start</option>
+<option value="early_finish">Early Finish</option>
+<option value="unavailable">Unavailable</option>
                 </select>
               </div>
 
@@ -3698,7 +3727,7 @@ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)'
                   <div style={{ ...styles.label, marginBottom: 6 }}>Start date</div>
                   <input
                     type="date"
-                    value={timeOffForm.startDate}
+                    value={toSafeDateInputValue(timeOffForm.startDate)}
                     onChange={(e) => updateTimeOff('startDate', e.target.value)}
                     style={{
                       width: '100%',
@@ -3714,7 +3743,7 @@ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)'
                   <div style={{ ...styles.label, marginBottom: 6 }}>End date</div>
                   <input
                     type="date"
-                    value={timeOffForm.endDate}
+                    value={toSafeDateInputValue(timeOffForm.endDate)}
                     onChange={(e) => updateTimeOff('endDate', e.target.value)}
                     style={{
                       width: '100%',
