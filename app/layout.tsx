@@ -29,6 +29,12 @@ export default function RootLayout({
       <body>
         <ServiceWorkerRegister />
         {children}
+        <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script
+  dangerouslySetInnerHTML={{
+    __html: `eruda.init();`,
+  }}
+/>
       </body>
     </html>
   );
