@@ -197,8 +197,20 @@ function isMaintenanceJobType(jobType: string) {
   return clean(jobType).toLowerCase() === 'maintenance'
 }
 
+function isLandscapingJobType(jobType: string) {
+  return clean(jobType).toLowerCase() === 'landscaping'
+}
+
 function isQuoteJobType(jobType: string) {
-  return clean(jobType).toLowerCase() === 'quote' || clean(jobType).toLowerCase() === 'quoted'
+  return (
+    clean(jobType).toLowerCase() === 'quote' ||
+    clean(jobType).toLowerCase() === 'quoted'
+  )
+}
+
+function normaliseLandscapingDuration(value: number | null | undefined) {
+  if (typeof value !== 'number' || value <= 0) return '390'
+  return value <= 195 ? '195' : '390'
 }
 
 function normaliseMaintenanceFrequency(
@@ -287,8 +299,7 @@ export default function EditJobPage() {
   const [fixedSchedule, setFixedSchedule] = useState(false)
   const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
 
-  const [isRegularMaintenance, setIsRegularMaintenance] =
-    useState(false)
+  const [isRegularMaintenance, setIsRegularMaintenance] = useState(false)
   const [maintenanceFrequency, setMaintenanceFrequency] =
     useState<MaintenanceFrequency>('')
   const [timePreferenceMode, setTimePreferenceMode] =
@@ -371,7 +382,9 @@ export default function EditJobPage() {
 
         const customerAddress = customerMatch
           ? [customerMatch.address, customerMatch.postcode].filter(Boolean).join('\n')
-          : [jobData.customer?.address, jobData.customer?.postcode].filter(Boolean).join('\n')
+          : [jobData.customer?.address, jobData.customer?.postcode]
+              .filter(Boolean)
+              .join('\n')
 
         const savedAddress = jobData.address?.trim() || ''
         const sameAsCustomerAddress =
@@ -379,18 +392,17 @@ export default function EditJobPage() {
           customerAddress !== '' &&
           savedAddress === customerAddress
 
-        const loadedAssignedWorkerIds =
-          Array.isArray(jobData.assignments)
-            ? jobData.assignments
-                .map((assignment) =>
-                  typeof assignment.workerId === 'number'
-                    ? assignment.workerId
-                    : typeof assignment.worker?.id === 'number'
-                      ? assignment.worker.id
-                      : null
-                )
-                .filter((id): id is number => id !== null)
-            : []
+        const loadedAssignedWorkerIds = Array.isArray(jobData.assignments)
+          ? jobData.assignments
+              .map((assignment) =>
+                typeof assignment.workerId === 'number'
+                  ? assignment.workerId
+                  : typeof assignment.worker?.id === 'number'
+                    ? assignment.worker.id
+                    : null
+              )
+              .filter((id): id is number => id !== null)
+          : []
 
         const loadedIsQuote =
           clean(jobData.jobType).toLowerCase() === 'quote' ||
@@ -407,9 +419,11 @@ export default function EditJobPage() {
         setStatus(jobData.status || 'todo')
         setJobType(jobData.jobType || 'Quote')
         setDurationMinutes(
-          typeof jobData.durationMinutes === 'number' && jobData.durationMinutes > 0
-            ? String(jobData.durationMinutes)
-            : '60'
+          isLandscapingJobType(jobData.jobType || '')
+            ? normaliseLandscapingDuration(jobData.durationMinutes)
+            : typeof jobData.durationMinutes === 'number' && jobData.durationMinutes > 0
+              ? String(jobData.durationMinutes)
+              : '60'
         )
         setVisitDate(toDateInputValue(jobData.visitDate))
         setStartTime(jobData.startTime || '')
@@ -472,6 +486,19 @@ export default function EditJobPage() {
       setFixedSchedule(false)
     }
   }, [visitDate, startTime])
+
+  function handleJobTypeChange(nextJobType: string) {
+    setJobType(nextJobType)
+
+    if (isMaintenanceJobType(nextJobType)) {
+      setDurationMinutes('60')
+      return
+    }
+
+    if (isLandscapingJobType(nextJobType)) {
+      setDurationMinutes('390')
+    }
+  }
 
   function toggleWorker(workerId: number) {
     setAssignedWorkerIds((prev) =>
@@ -546,7 +573,7 @@ export default function EditJobPage() {
         status,
         jobType,
         assignedWorkerIds,
-        durationMinutes: parsedDuration,
+        durationMinutes: Math.round(parsedDuration),
         visitDate: visitDate || null,
         startTime: startTime || null,
         fixedSchedule,
@@ -716,7 +743,7 @@ export default function EditJobPage() {
                     <FieldLabel>Job Type</FieldLabel>
                     <select
                       value={jobType}
-                      onChange={(e) => setJobType(e.target.value)}
+                      onChange={(e) => handleJobTypeChange(e.target.value)}
                       className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     >
                       <option value="Quote">Quote</option>
@@ -746,16 +773,33 @@ export default function EditJobPage() {
                 </div>
 
                 <div>
-                  <FieldLabel required>Expected Time (minutes)</FieldLabel>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(e.target.value)}
-                    required
-                    className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                  />
+                  <FieldLabel required>
+                    {isLandscapingJobType(jobType)
+                      ? 'Job Length'
+                      : 'Expected Time (minutes)'}
+                  </FieldLabel>
+
+                  {isLandscapingJobType(jobType) ? (
+                    <select
+                      value={durationMinutes}
+                      onChange={(e) => setDurationMinutes(e.target.value)}
+                      required
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    >
+                      <option value="195">Half day</option>
+                      <option value="390">Full day</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={durationMinutes}
+                      onChange={(e) => setDurationMinutes(e.target.value)}
+                      required
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                  )}
                 </div>
               </div>
             </SectionCard>
