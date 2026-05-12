@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 type RequestItem = {
   id: number
@@ -139,6 +139,9 @@ export default function WorkerTimeOffPage() {
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [loading, setLoading] = useState(true)
 
+  const startDateRef = useRef<HTMLInputElement | null>(null)
+  const endDateRef = useRef<HTMLInputElement | null>(null)
+
   const today = useMemo(() => todayIsoDate(), [])
 
   async function loadRequests(currentWorkerId: number) {
@@ -190,17 +193,20 @@ export default function WorkerTimeOffPage() {
   }, [today])
 
   async function handleSubmit() {
+    const submitStartDate = startDateRef.current?.value || startDate
+    const submitEndDate = endDateRef.current?.value || endDate
+
     if (!workerId) {
       setMessage('No worker is logged in on this device.')
       return
     }
 
-    if (!isIsoDateText(startDate) || !isIsoDateText(endDate)) {
+    if (!isIsoDateText(submitStartDate) || !isIsoDateText(submitEndDate)) {
       setMessage('Please choose your dates again.')
       return
     }
 
-    if (endDate < startDate) {
+    if (submitEndDate < submitStartDate) {
       setMessage('End date cannot be before start date.')
       return
     }
@@ -229,8 +235,8 @@ export default function WorkerTimeOffPage() {
           requestedByName: workerName,
           requestType,
           isFullDay,
-          startDate,
-          endDate,
+          startDate: submitStartDate,
+          endDate: submitEndDate,
           startTime: isFullDay ? null : startTime,
           endTime: isFullDay ? null : endTime,
           reason,
@@ -441,8 +447,9 @@ export default function WorkerTimeOffPage() {
                 </label>
                 <input
                   id="startDate"
+                  ref={startDateRef}
                   type="date"
-                  value={startDate}
+                  defaultValue={today}
                   onChange={(e) => setStartDate(e.currentTarget.value)}
                   style={inputStyle}
                 />
@@ -463,8 +470,9 @@ export default function WorkerTimeOffPage() {
                 </label>
                 <input
                   id="endDate"
+                  ref={endDateRef}
                   type="date"
-                  value={endDate}
+                  defaultValue={today}
                   onChange={(e) => setEndDate(e.currentTarget.value)}
                   style={inputStyle}
                 />
@@ -651,12 +659,7 @@ export default function WorkerTimeOffPage() {
                       background: '#f9fafb',
                     }}
                   >
-                    <div
-                      style={{
-                        display: 'grid',
-                        gap: 12,
-                      }}
-                    >
+                    <div style={{ display: 'grid', gap: 12 }}>
                       <div
                         style={{
                           display: 'flex',
