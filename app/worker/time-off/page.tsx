@@ -30,16 +30,6 @@ function isIsoDateText(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim())
 }
 
-function normaliseDateInputValue(value: string) {
-  const clean = String(value || '').trim()
-
-  if (isIsoDateText(clean)) {
-    return clean
-  }
-
-  return ''
-}
-
 function formatDate(value: string) {
   const clean = String(value || '').trim()
   const isoDate = isIsoDateText(clean) ? clean : clean.slice(0, 10)
@@ -200,20 +190,17 @@ export default function WorkerTimeOffPage() {
   }, [today])
 
   async function handleSubmit() {
-    const cleanStartDate = normaliseDateInputValue(startDate)
-    const cleanEndDate = normaliseDateInputValue(endDate)
-
     if (!workerId) {
       setMessage('No worker is logged in on this device.')
       return
     }
 
-    if (!cleanStartDate || !cleanEndDate) {
+    if (!isIsoDateText(startDate) || !isIsoDateText(endDate)) {
       setMessage('Please choose your dates again.')
       return
     }
 
-    if (cleanEndDate < cleanStartDate) {
+    if (endDate < startDate) {
       setMessage('End date cannot be before start date.')
       return
     }
@@ -242,8 +229,8 @@ export default function WorkerTimeOffPage() {
           requestedByName: workerName,
           requestType,
           isFullDay,
-          startDate: cleanStartDate,
-          endDate: cleanEndDate,
+          startDate,
+          endDate,
           startTime: isFullDay ? null : startTime,
           endTime: isFullDay ? null : endTime,
           reason,
@@ -455,7 +442,7 @@ export default function WorkerTimeOffPage() {
                 <input
                   id="startDate"
                   type="date"
-                  value={normaliseDateInputValue(startDate)}
+                  value={startDate}
                   onChange={(e) => setStartDate(e.currentTarget.value)}
                   style={inputStyle}
                 />
@@ -477,7 +464,7 @@ export default function WorkerTimeOffPage() {
                 <input
                   id="endDate"
                   type="date"
-                  value={normaliseDateInputValue(endDate)}
+                  value={endDate}
                   onChange={(e) => setEndDate(e.currentTarget.value)}
                   style={inputStyle}
                 />
