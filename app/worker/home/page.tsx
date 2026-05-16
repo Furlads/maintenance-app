@@ -137,6 +137,20 @@ function getFirstName(name: string) {
   return name.trim().split(/\s+/)[0] || "there";
 }
 
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+
+  if (parts.length === 0) return "W";
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 1).toUpperCase();
+  }
+
+  return `${parts[0].slice(0, 1)}${parts[
+    parts.length - 1
+  ].slice(0, 1)}`.toUpperCase();
+}
+
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   background: "#f4f4f0",
@@ -147,7 +161,7 @@ const shellStyle: React.CSSProperties = {
   width: "100%",
   maxWidth: 760,
   margin: "0 auto",
-  padding: "18px 14px 90px",
+  padding: "12px 14px 104px",
 };
 
 const headerStyle: React.CSSProperties = {
@@ -155,12 +169,34 @@ const headerStyle: React.CSSProperties = {
   alignItems: "flex-start",
   justifyContent: "space-between",
   gap: 12,
-  marginBottom: 16,
+  marginBottom: 12,
+};
+
+const headerIdentityStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  minWidth: 0,
+};
+
+const avatarStyle: React.CSSProperties = {
+  width: 48,
+  height: 48,
+  borderRadius: "50%",
+  background: "#111",
+  color: "#ffd800",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 18,
+  fontWeight: 900,
+  flex: "0 0 auto",
+  boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
 };
 
 const titleStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 30,
+  fontSize: 28,
   lineHeight: 1.05,
   letterSpacing: -0.8,
 };
@@ -205,6 +241,17 @@ const buttonBaseStyle: React.CSSProperties = {
   display: "block",
   textDecoration: "none",
   color: "#111",
+};
+
+const bottomNavStyle: React.CSSProperties = {
+  position: "fixed",
+  left: 0,
+  right: 0,
+  bottom: 0,
+  zIndex: 50,
+  background: "rgba(255,255,255,0.96)",
+  borderTop: "1px solid #ddd",
+  boxShadow: "0 -8px 22px rgba(0,0,0,0.08)",
 };
 
 export default function WorkerHomePage() {
@@ -352,17 +399,48 @@ export default function WorkerHomePage() {
     <main style={pageStyle}>
       <div style={shellStyle}>
         <header style={headerStyle}>
-          <div>
-            <h1 style={titleStyle}>
-              {getGreeting()}, {getFirstName(workerName)} 👋
-            </h1>
-            <p style={mutedStyle}>
-              {formatShortDate()} — here’s your work dashboard.
-            </p>
+          <div style={headerIdentityStyle}>
+            <div style={avatarStyle}>{getInitials(workerName)}</div>
+
+            <div>
+              <h1 style={titleStyle}>
+                {getGreeting()}, {getFirstName(workerName)} 👋
+              </h1>
+
+              <p style={mutedStyle}>
+                {formatShortDate()} — here’s your work dashboard.
+              </p>
+            </div>
           </div>
 
           <WorkerMenu />
         </header>
+
+        <div
+          style={{
+            ...cardStyle,
+            padding: "10px 12px",
+            marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            background: "#fffdf0",
+          }}
+        >
+          <span style={{ fontSize: 21, lineHeight: 1 }}>🌦️</span>
+
+          <p
+            style={{
+              margin: 0,
+              color: "#555",
+              fontSize: 14,
+              lineHeight: 1.35,
+            }}
+          >
+            Weather check: confirm conditions, access and job notes before
+            setting off.
+          </p>
+        </div>
 
         {error && (
           <div
@@ -436,7 +514,9 @@ export default function WorkerHomePage() {
               </p>
 
               <p style={mutedStyle}>
-                {getJobPostcode(nextJob) || getJobAddress(nextJob) || "Address not set"}
+                {getJobPostcode(nextJob) ||
+                  getJobAddress(nextJob) ||
+                  "Address not set"}
               </p>
 
               {nextJob.notes && (
@@ -507,8 +587,8 @@ export default function WorkerHomePage() {
                 No jobs showing for today
               </h2>
               <p style={mutedStyle}>
-                If you expected work here, check Today or ask Kelly/Trev to confirm
-                your schedule.
+                If you expected work here, check Today or ask Kelly/Trev to
+                confirm your schedule.
               </p>
             </>
           )}
@@ -529,7 +609,7 @@ export default function WorkerHomePage() {
                 style={{
                   ...cardStyle,
                   padding: 14,
-                  minHeight: 118,
+                  minHeight: 142,
                   display: "flex",
                   flexDirection: "column",
                   justifyContent: "space-between",
@@ -537,9 +617,9 @@ export default function WorkerHomePage() {
               >
                 <div
                   style={{
-                    fontSize: 30,
+                    fontSize: 32,
                     lineHeight: 1,
-                    marginBottom: 10,
+                    marginBottom: 12,
                   }}
                 >
                   {action.icon}
@@ -548,7 +628,7 @@ export default function WorkerHomePage() {
                 <div>
                   <h3
                     style={{
-                      margin: "0 0 5px",
+                      margin: "0 0 6px",
                       fontSize: 17,
                       lineHeight: 1.2,
                     }}
@@ -633,7 +713,9 @@ export default function WorkerHomePage() {
                       }}
                     >
                       {job.title}
-                      {getJobPostcode(job) ? ` · ${getJobPostcode(job)}` : ""}
+                      {getJobPostcode(job)
+                        ? ` · ${getJobPostcode(job)}`
+                        : ""}
                     </div>
                   </div>
                 </Link>
@@ -657,18 +739,83 @@ export default function WorkerHomePage() {
         >
           <strong>Worker reminder</strong>
           <p style={{ margin: "6px 0 0", color: "#f2f2f2" }}>
-            If something looks wrong, weather changes, access is blocked, or a job
-            needs longer, update Trev or Kelly before guessing.
+            If something looks wrong, weather changes, access is blocked, or a
+            job needs longer, update Trev or Kelly before guessing.
           </p>
         </div>
 
         {!workerId && !loading && (
           <p style={{ ...mutedStyle, marginTop: 14 }}>
-            Worker ID was not found on your session, so today’s jobs could not be
-            filtered.
+            Worker ID was not found on your session, so today’s jobs could not
+            be filtered.
           </p>
         )}
       </div>
+
+      <nav style={bottomNavStyle} aria-label="Worker quick navigation">
+        <div
+          style={{
+            maxWidth: 760,
+            margin: "0 auto",
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 4,
+            padding: "8px 10px calc(8px + env(safe-area-inset-bottom))",
+          }}
+        >
+          <Link
+            href="/worker/home"
+            style={{
+              ...buttonBaseStyle,
+              textAlign: "center",
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            <div style={{ fontSize: 20 }}>🏠</div>
+            Home
+          </Link>
+
+          <Link
+            href="/today"
+            style={{
+              ...buttonBaseStyle,
+              textAlign: "center",
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            <div style={{ fontSize: 20 }}>📅</div>
+            Today
+          </Link>
+
+          <Link
+            href="/today#chas"
+            style={{
+              ...buttonBaseStyle,
+              textAlign: "center",
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            <div style={{ fontSize: 20 }}>💬</div>
+            CHAS
+          </Link>
+
+          <Link
+            href="/worker/time-off"
+            style={{
+              ...buttonBaseStyle,
+              textAlign: "center",
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            <div style={{ fontSize: 20 }}>👤</div>
+            Me
+          </Link>
+        </div>
+      </nav>
     </main>
   );
 }
