@@ -1710,6 +1710,24 @@ async function loadCustomers() {
     resetChasState()
     setChasOpen(true)
   }
+  useEffect(() => {
+  if (typeof window === 'undefined') return
+
+  const params = new URLSearchParams(window.location.search)
+  const shouldOpenChas = params.get('openChas') === '1'
+
+  if (!shouldOpenChas) return
+
+  openChas()
+
+  params.delete('openChas')
+
+  const nextQuery = params.toString()
+  const nextUrl = nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname
+
+  window.history.replaceState({}, '', nextUrl)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [])
 
   function closeChas() {
     setChasOpen(false)

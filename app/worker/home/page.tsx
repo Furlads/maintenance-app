@@ -430,13 +430,13 @@ export default function WorkerHomePage() {
       icon: "📸",
       title: "Upload Photos",
       text: "Add before and after job photos.",
-      href: "/today",
+      href: "/today?action=photos",
     },
     {
       icon: "💬",
       title: "Ask CHAS",
       text: "Get quick job, plant and safety help.",
-      href: "/today#chas",
+      href: "/today?openChas=1",
     },
     {
       icon: "👤",
@@ -840,7 +840,7 @@ export default function WorkerHomePage() {
           </Link>
 
           <Link
-            href="/today#chas"
+            href="/today?openChas=1"
             style={{
               ...buttonBaseStyle,
               textAlign: "center",
