@@ -51,6 +51,15 @@ type JobsResponse = {
   items?: Job[];
 };
 
+type WeatherResponse = {
+  ok?: boolean;
+  postcode?: string;
+  locationName?: string | null;
+  summary?: string;
+};
+
+const DEFAULT_WEATHER_POSTCODE = "TF9 4BQ";
+
 function getTodayDateKey() {
   const now = new Date();
 
@@ -260,6 +269,7 @@ export default function WorkerHomePage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [weatherSummary, setWeatherSummary] = useState("Loading weather...");
 
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
 
@@ -349,6 +359,47 @@ export default function WorkerHomePage() {
     })[0];
   }, [activeJobs]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWeather() {
+      const postcode = nextJob ? getJobPostcode(nextJob) : DEFAULT_WEATHER_POSTCODE;
+
+      setWeatherSummary("Loading weather...");
+
+      try {
+        const res = await fetch(
+          `/api/weather/postcode?postcode=${encodeURIComponent(postcode)}`,
+          {
+            cache: "no-store",
+            credentials: "include",
+          }
+        );
+
+        const data: WeatherResponse | null = await res.json().catch(() => null);
+
+        if (cancelled) return;
+
+        setWeatherSummary(
+          data?.summary ||
+            "Weather unavailable — check conditions before setting off."
+        );
+      } catch {
+        if (!cancelled) {
+          setWeatherSummary(
+            "Weather unavailable — check conditions before setting off."
+          );
+        }
+      }
+    }
+
+    void loadWeather();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nextJob]);
+
   const totalPlannedMinutes = useMemo(() => {
     return activeJobs.reduce((total, job) => {
       return total + (job.durationMinutes || 0);
@@ -437,8 +488,7 @@ export default function WorkerHomePage() {
               lineHeight: 1.35,
             }}
           >
-            Weather check: confirm conditions, access and job notes before
-            setting off.
+            {weatherSummary}
           </p>
         </div>
 
