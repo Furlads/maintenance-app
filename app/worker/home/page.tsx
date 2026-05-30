@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import WorkerMenu from "@/app/components/WorkerMenu";
+import { logActivity } from "@/lib/logActivity";
 
 type AuthMeResponse = {
   authenticated?: boolean;
@@ -271,6 +272,7 @@ export default function WorkerHomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [weatherSummary, setWeatherSummary] = useState("Loading weather...");
+  const homeLoggedRef = useRef(false);
 
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
 
@@ -346,6 +348,21 @@ export default function WorkerHomePage() {
     };
   }, [todayDateKey]);
 
+  useEffect(() => {
+    if (homeLoggedRef.current) return;
+    if (loading) return;
+
+    homeLoggedRef.current = true;
+
+    void logActivity({
+      workerId,
+      workerName,
+      eventType: "WORKER_HOME_OPENED",
+      page: "/worker/home",
+      details: "Worker opened home dashboard",
+    });
+  }, [loading, workerId, workerName]);
+
   const activeJobs = useMemo(() => jobs.filter((job) => !isFinishedJob(job)), [
     jobs,
   ]);
@@ -409,6 +426,32 @@ export default function WorkerHomePage() {
 
   const nextJobPostcode = nextJob ? getJobPostcode(nextJob) : "";
   const nextJobCustomer = nextJob?.customer?.name || nextJob?.title || "";
+
+  function logWorkerHomeAction(actionTitle: string, href: string, job?: Job | null) {
+    void logActivity({
+      workerId,
+      workerName,
+      jobId: job?.id || null,
+      eventType:
+        actionTitle === "Start Travel"
+          ? "NAVIGATE_CLICKED"
+          : actionTitle === "Ask CHAS"
+            ? "CHAS_OPENED_FROM_WORKER_HOME"
+            : actionTitle === "Upload Photos"
+              ? "PHOTO_UPLOAD_CLICKED_FROM_WORKER_HOME"
+              : actionTitle === "My Time Off"
+                ? "TIME_OFF_OPENED_FROM_WORKER_HOME"
+                : "QUICK_ACTION_CLICKED",
+      page: "/worker/home",
+      details: actionTitle,
+      metadata: {
+        href,
+        postcode: job ? getJobPostcode(job) : null,
+        customerName: job?.customer?.name || null,
+        jobTitle: job?.title || null,
+      },
+    });
+  }
 
   const quickActions = [
     {
@@ -611,6 +654,9 @@ export default function WorkerHomePage() {
               >
                 <Link
                   href="/today"
+                  onClick={() =>
+                    logWorkerHomeAction("Open Job", "/today", nextJob)
+                  }
                   style={{
                     ...buttonBaseStyle,
                     padding: "13px 14px",
@@ -628,6 +674,9 @@ export default function WorkerHomePage() {
                   href={buildMapsUrl(nextJob)}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={() =>
+                    logWorkerHomeAction("Navigate", buildMapsUrl(nextJob), nextJob)
+                  }
                   style={{
                     ...buttonBaseStyle,
                     padding: "13px 14px",
@@ -737,6 +786,9 @@ export default function WorkerHomePage() {
                   href={action.href}
                   target={action.href.startsWith("tel:") ? undefined : "_blank"}
                   rel={action.href.startsWith("tel:") ? undefined : "noreferrer"}
+                  onClick={() =>
+                    logWorkerHomeAction(action.title, action.href, nextJob)
+                  }
                   style={buttonBaseStyle}
                 >
                   {content}
@@ -745,7 +797,14 @@ export default function WorkerHomePage() {
             }
 
             return (
-              <Link key={action.title} href={action.href} style={buttonBaseStyle}>
+              <Link
+                key={action.title}
+                href={action.href}
+                onClick={() =>
+                  logWorkerHomeAction(action.title, action.href, nextJob)
+                }
+                style={buttonBaseStyle}
+              >
                 {content}
               </Link>
             );
@@ -769,6 +828,9 @@ export default function WorkerHomePage() {
                 <Link
                   key={job.id}
                   href="/today"
+                  onClick={() =>
+                    logWorkerHomeAction("Timeline Job Opened", "/today", job)
+                  }
                   style={{
                     display: "grid",
                     gridTemplateColumns: "72px 1fr",
@@ -846,6 +908,9 @@ export default function WorkerHomePage() {
         >
           <Link
             href="/worker/home"
+            onClick={() =>
+              logWorkerHomeAction("Bottom Nav Home", "/worker/home", nextJob)
+            }
             style={{
               ...buttonBaseStyle,
               textAlign: "center",
@@ -859,6 +924,9 @@ export default function WorkerHomePage() {
 
           <Link
             href="/today"
+            onClick={() =>
+              logWorkerHomeAction("Bottom Nav Today", "/today", nextJob)
+            }
             style={{
               ...buttonBaseStyle,
               textAlign: "center",
@@ -872,6 +940,9 @@ export default function WorkerHomePage() {
 
           <Link
             href="/today?openChas=1"
+            onClick={() =>
+              logWorkerHomeAction("Bottom Nav CHAS", "/today?openChas=1", nextJob)
+            }
             style={{
               ...buttonBaseStyle,
               textAlign: "center",
@@ -885,6 +956,9 @@ export default function WorkerHomePage() {
 
           <Link
             href="/worker/time-off"
+            onClick={() =>
+              logWorkerHomeAction("Bottom Nav Me", "/worker/time-off", nextJob)
+            }
             style={{
               ...buttonBaseStyle,
               textAlign: "center",
