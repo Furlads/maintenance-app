@@ -59,6 +59,7 @@ type WeatherResponse = {
 };
 
 const DEFAULT_WEATHER_POSTCODE = "TF9 4BQ";
+const OFFICE_PHONE_NUMBER = "07903192711";
 
 function getTodayDateKey() {
   const now = new Date();
@@ -406,43 +407,59 @@ export default function WorkerHomePage() {
     }, 0);
   }, [activeJobs]);
 
+  const nextJobPostcode = nextJob ? getJobPostcode(nextJob) : "";
+  const nextJobCustomer = nextJob?.customer?.name || nextJob?.title || "";
+
   const quickActions = [
     {
       icon: "📍",
       title: "Today’s Jobs",
-      text: "Job list, timings, notes and actions.",
+      text: loading
+        ? "Loading today’s schedule"
+        : `${activeJobs.length} job${activeJobs.length === 1 ? "" : "s"} scheduled today`,
       href: "/today",
     },
     {
       icon: "🧭",
       title: "Start Travel",
-      text: nextJob ? "Open directions for your next job." : "No next job yet.",
+      text: nextJobPostcode
+        ? `Navigate to ${nextJobPostcode}`
+        : "No next job yet",
       href: nextJob ? buildMapsUrl(nextJob) : "/today",
       external: !!nextJob,
     },
     {
       icon: "✅",
       title: "Start / Finish Work",
-      text: "Start, pause, resume or complete jobs.",
-      href: "/today",
+      text: nextJobCustomer
+        ? `Track progress at ${nextJobCustomer}`
+        : "Start, pause or complete jobs",
+      href: "/today?action=work",
     },
     {
       icon: "📸",
       title: "Upload Photos",
-      text: "Add before and after job photos.",
+      text: "Before & after site photos",
       href: "/today?action=photos",
     },
     {
       icon: "💬",
       title: "Ask CHAS",
-      text: "Get quick job, plant and safety help.",
+      text: "Plants • Jobs • Safety",
       href: "/today?openChas=1",
     },
     {
       icon: "👤",
       title: "My Time Off",
-      text: "Request holiday or time away.",
+      text: "View and request leave",
       href: "/worker/time-off",
+    },
+    {
+      icon: "📞",
+      title: "Contact Office",
+      text: "Call Kelly / Trev if stuck",
+      href: `tel:${OFFICE_PHONE_NUMBER}`,
+      external: true,
     },
   ];
 
@@ -663,8 +680,22 @@ export default function WorkerHomePage() {
                   display: "flex",
                   flexDirection: "column",
                   justifyContent: "space-between",
+                  position: "relative",
                 }}
               >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 14,
+                    right: 14,
+                    fontSize: 20,
+                    fontWeight: 900,
+                    color: "#999",
+                  }}
+                >
+                  →
+                </div>
+
                 <div
                   style={{
                     fontSize: 32,
@@ -704,8 +735,8 @@ export default function WorkerHomePage() {
                 <a
                   key={action.title}
                   href={action.href}
-                  target="_blank"
-                  rel="noreferrer"
+                  target={action.href.startsWith("tel:") ? undefined : "_blank"}
+                  rel={action.href.startsWith("tel:") ? undefined : "noreferrer"}
                   style={buttonBaseStyle}
                 >
                   {content}
