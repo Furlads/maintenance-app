@@ -39,6 +39,7 @@ model Worker {
   companies           WorkerCompany[]
   chasMessages        ChasMessage[]
   jobAuditLogs        JobAuditLog[]
+  activityLogs        ActivityLog[]
 
   @@index([active, accessLevel])
   @@index([lastName, firstName])
@@ -128,6 +129,7 @@ model Job {
   photos                    JobPhoto[]
   auditLogs                 JobAuditLog[]
   notifications             Notification[]
+  activityLogs              ActivityLog[]
 
   @@index([customerId])
   @@index([status, createdAt])
@@ -356,6 +358,28 @@ model Notification {
   @@index([status, scheduledFor])
   @@index([kind, status, scheduledFor])
 }
+
+model ActivityLog {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  workerId    Int?
+  workerName  String?
+  jobId       Int?
+  eventType   String
+  page        String?
+  details     String?
+  metadataJson String?
+  userAgent   String?
+  worker      Worker?  @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  job         Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([workerId, createdAt])
+  @@index([jobId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([page, createdAt])
+}
+
 model Todo {
   id          Int      @id @default(autoincrement())
   description String
