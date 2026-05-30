@@ -52,7 +52,7 @@ function getRedirectPath(worker: {
     return "/admin";
   }
 
-  return "/today";
+  return "/worker/home";
 }
 
 function isLocked(worker: {
