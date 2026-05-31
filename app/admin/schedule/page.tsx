@@ -102,6 +102,9 @@ type MoveJobSheetState = {
   currentWorkerId: number | null;
   currentWorkerName: string;
   selectedWorkerId: string;
+  selectedDate: string;
+  selectedStartTime: string;
+  selectedDurationMinutes: string;
   jobLabel: string;
 } | null;
 
@@ -2797,11 +2800,14 @@ export default function SchedulePage() {
 
   function openMoveJob(job: ScheduleJob, worker: ScheduleWorker) {
     setMoveJobSheet({
-      jobId: job.id,
-      currentWorkerId: worker.id,
-      currentWorkerName: worker.name,
-      selectedWorkerId: String(worker.id),
-      jobLabel: `${titleCase(job.customerName) || "No customer"} — ${titleCase(job.title) || "General"}`,
+  jobId: job.id,
+  currentWorkerId: worker.id,
+  currentWorkerName: worker.name,
+  selectedWorkerId: String(worker.id),
+  selectedDate: date,
+  selectedStartTime: job.startTime || "",
+  selectedDurationMinutes: String(job.durationMinutes ?? 60),
+  jobLabel: `${titleCase(job.customerName) || "No customer"} — ${titleCase(job.title) || "General"}`,
     });
   }
 
@@ -2835,8 +2841,11 @@ export default function SchedulePage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          assignedTo: [nextWorkerId],
-        }),
+  assignedTo: [nextWorkerId],
+  visitDate: moveJobSheet.selectedDate,
+  startTime: moveJobSheet.selectedStartTime || null,
+  durationMinutes: Number(moveJobSheet.selectedDurationMinutes),
+}),
       });
 
       const data = await res.json().catch(() => null);
@@ -4415,7 +4424,110 @@ onClick={() =>
                     {worker.name}
                   </option>
                 ))}
-              </select>
+                            </select>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#27272a",
+                  marginBottom: 6,
+                }}
+              >
+                Date
+              </label>
+
+              <input
+                type="date"
+                value={moveJobSheet.selectedDate}
+                onChange={(e) =>
+                  setMoveJobSheet((current) =>
+                    current
+                      ? { ...current, selectedDate: e.target.value }
+                      : current
+                  )
+                }
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #d4d4d8",
+                  background: "#fff",
+                  color: "#18181b",
+                  fontSize: 14,
+                  minHeight: 46,
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: 10,
+                marginBottom: 14,
+              }}
+            >
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#27272a", marginBottom: 6 }}>
+                  Start time
+                </label>
+
+                <input
+                  type="time"
+                  value={moveJobSheet.selectedStartTime}
+                  onChange={(e) =>
+                    setMoveJobSheet((current) =>
+                      current
+                        ? { ...current, selectedStartTime: e.target.value }
+                        : current
+                    )
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #d4d4d8",
+                    background: "#fff",
+                    color: "#18181b",
+                    fontSize: 14,
+                    minHeight: 46,
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#27272a", marginBottom: 6 }}>
+                  Duration mins
+                </label>
+
+                <input
+                  type="number"
+                  min="15"
+                  step="15"
+                  value={moveJobSheet.selectedDurationMinutes}
+                  onChange={(e) =>
+                    setMoveJobSheet((current) =>
+                      current
+                        ? { ...current, selectedDurationMinutes: e.target.value }
+                        : current
+                    )
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #d4d4d8",
+                    background: "#fff",
+                    color: "#18181b",
+                    fontSize: 14,
+                    minHeight: 46,
+                  }}
+                />
+              </div>
             </div>
 
             <div
@@ -4461,7 +4573,7 @@ onClick={() =>
                   opacity: movingJobId !== null ? 0.7 : 1,
                 }}
               >
-                {movingJobId !== null ? "Moving..." : "Move job"}
+                {movingJobId !== null ? "Saving..." : "Save changes"}
               </button>
             </div>
           </div>
