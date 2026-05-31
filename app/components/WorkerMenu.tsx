@@ -164,12 +164,7 @@ export default function WorkerMenu() {
   };
 
   return (
-    <div
-      ref={menuRef}
-      style={{
-        position: "relative",
-      }}
-    >
+    <div ref={menuRef} style={{ position: "relative" }}>
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -213,13 +208,7 @@ export default function WorkerMenu() {
               borderBottom: "1px solid #eee",
             }}
           >
-            <div
-              style={{
-                fontSize: 14,
-                color: "#666",
-                marginBottom: 4,
-              }}
-            >
+            <div style={{ fontSize: 14, color: "#666", marginBottom: 4 }}>
               Logged in as
             </div>
 
@@ -242,12 +231,12 @@ export default function WorkerMenu() {
             Today
           </a>
 
-          <a href="/customers" style={linkStyle} onClick={() => setOpen(false)}>
-            Customers
+          <a href="/my-visits" style={linkStyle} onClick={() => setOpen(false)}>
+            My Visits
           </a>
 
-          <a href="/jobs" style={linkStyle} onClick={() => setOpen(false)}>
-            Jobs
+          <a href="/chas" style={linkStyle} onClick={() => setOpen(false)}>
+            CHAS
           </a>
 
           <div style={sectionLabelStyle}>Personal</div>
@@ -282,11 +271,7 @@ export default function WorkerMenu() {
             {updatingApp ? "Updating app..." : "Update App"}
           </button>
 
-          <button
-            type="button"
-            onClick={handleSwitchWorker}
-            style={actionButtonStyle}
-          >
+          <button type="button" onClick={handleSwitchWorker} style={actionButtonStyle}>
             Switch worker
           </button>
 
