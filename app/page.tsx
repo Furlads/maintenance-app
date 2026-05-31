@@ -36,7 +36,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
   const [postLoginWorkerPhone, setPostLoginWorkerPhone] = useState("");
-  const [postLoginRedirectTo, setPostLoginRedirectTo] = useState("/today");
+  const [postLoginRedirectTo, setPostLoginRedirectTo] = useState("/worker/home");
   const [postLoginWorker, setPostLoginWorker] = useState<{
     id: number;
     name: string;
@@ -123,7 +123,7 @@ export default function LoginPage() {
         throw new Error(data?.error || "Invalid login details");
       }
 
-      const redirectTo = data?.redirectTo || "/today";
+      const redirectTo = data?.redirectTo || "/worker/home";
 
       if (data?.worker) {
         saveLastLoggedInWorker(data.worker);
@@ -207,7 +207,7 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = "/today";
+      window.location.href = "/worker/home";
     } catch (err: any) {
       setError(err.message || "Quick login failed");
     } finally {

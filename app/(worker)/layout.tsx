@@ -80,7 +80,7 @@ export default function WorkerLayout({ children }: WorkerLayoutProps) {
           </div>
 
           <Link
-            href="/admin/schedule"
+            href="/today"
             style={{
               flexShrink: 0,
               display: 'inline-flex',
@@ -97,7 +97,7 @@ export default function WorkerLayout({ children }: WorkerLayoutProps) {
               whiteSpace: 'nowrap',
             }}
           >
-            Admin
+            Today
           </Link>
         </div>
       </header>
