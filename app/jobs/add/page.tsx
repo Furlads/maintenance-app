@@ -404,7 +404,7 @@ export default function AddJobPage() {
         return
       }
 
-      router.push('/today')
+      router.push('/admin')
       router.refresh()
     } catch (err) {
       console.error(err)
@@ -447,10 +447,10 @@ export default function AddJobPage() {
 
                 <div className="flex flex-wrap gap-2">
                   <Link
-                    href="/today"
+                    href="/admin"
                     className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
                   >
-                    Back to Today
+                    Back to Dashboard
                   </Link>
                 </div>
               </div>
@@ -739,7 +739,7 @@ export default function AddJobPage() {
               </button>
 
               <Link
-                href="/today"
+                href="/admin"
                 className="rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-800"
               >
                 Cancel
