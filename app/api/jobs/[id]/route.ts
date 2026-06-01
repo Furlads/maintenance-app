@@ -391,7 +391,7 @@ async function ensureFutureRecurringMaintenanceJobs(args: {
     return []
   }
 
-  const horizonStart = new Date()
+  const horizonStart = startOfLondonDayUtc(new Date())
   const horizonEnd = addDaysToDate(horizonStart, RECURRING_HORIZON_DAYS)
 
   const existingFutureJobs = await prisma.job.findMany({
