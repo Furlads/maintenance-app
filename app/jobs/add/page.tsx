@@ -126,6 +126,11 @@ function isLandscapingJobType(jobType: string) {
   return clean(jobType).toLowerCase() === 'landscaping'
 }
 
+function isQuoteJobType(jobType: string) {
+  const value = clean(jobType).toLowerCase()
+  return value === 'quote' || value === 'quoted'
+}
+
 function getMaintenanceWeeks(frequency: MaintenanceFrequency) {
   if (frequency === 'weekly') return 1
   if (frequency === 'fortnightly') return 2
@@ -283,6 +288,26 @@ export default function AddJobPage() {
     return customers.find((customer) => customer.id === customerId) || null
   }, [customerId, customers])
 
+  const selectedWorkers = useMemo(() => {
+    return workers.filter((worker) => assignedWorkerIds.includes(worker.id))
+  }, [workers, assignedWorkerIds])
+
+  const isAssignedToTrev = useMemo(() => {
+    return selectedWorkers.some((worker) => {
+      const first = clean(worker.firstName).toLowerCase()
+      const last = clean(worker.lastName).toLowerCase()
+      return (first === 'trev' || first === 'trevor') && last.includes('fudger')
+    })
+  }, [selectedWorkers])
+
+  const showQuoteOverride = isQuoteJobType(jobType) && isAssignedToTrev
+
+  useEffect(() => {
+    if (!showQuoteOverride) {
+      setAllowQuoteTimeOverride(false)
+    }
+  }, [showQuoteOverride])
+
   function handleCustomerChange(nextCustomerId: number | '') {
     setCustomerId(nextCustomerId)
 
@@ -333,6 +358,11 @@ export default function AddJobPage() {
         !preferredTimeBand
       ) {
         setError('Please choose a preferred time band.')
+        return
+      }
+
+      if (showQuoteOverride && allowQuoteTimeOverride && !startTime.trim()) {
+        setError('Please enter a start time when quote override is enabled.')
         return
       }
 
@@ -597,6 +627,27 @@ export default function AddJobPage() {
                     className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
                 </div>
+
+                {showQuoteOverride && (
+                  <div className="md:col-span-2">
+                    <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <input
+                        type="checkbox"
+                        checked={allowQuoteTimeOverride}
+                        onChange={(e) => setAllowQuoteTimeOverride(e.target.checked)}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <div>
+                        <div className="text-sm font-semibold text-zinc-900">
+                          Allow quote time override
+                        </div>
+                        <div className="text-xs text-zinc-600">
+                          Use this only when Trev needs to be booked outside the usual quote slots.
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                )}
 
                 <div className="md:col-span-2">
                   <label className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
