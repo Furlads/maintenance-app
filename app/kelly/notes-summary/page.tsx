@@ -11,6 +11,11 @@ type SearchParams = {
   to?: string
 }
 
+type ParsedNoteSection = {
+  label: string
+  value: string
+}
+
 type JobNoteRow = {
   id: number
   note: string
@@ -24,6 +29,7 @@ type JobNoteRow = {
     id: number
     title: string
     address: string
+    notes: string | null
     visitDate: Date | null
     startTime: string | null
     status: string
@@ -253,6 +259,55 @@ function normaliseStatus(value?: string | null) {
   return value || 'Unscheduled'
 }
 
+function cleanSectionLabel(value: string) {
+  return value
+    .replaceAll('_', ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function parseStructuredNote(note: string): ParsedNoteSection[] {
+  const cleaned = String(note || '').trim()
+
+  if (!cleaned) {
+    return []
+  }
+
+  const parts = cleaned
+    .split('|')
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (parts.length <= 1) {
+    return [
+      {
+        label: 'Note',
+        value: cleaned,
+      },
+    ]
+  }
+
+  return parts.map((part, index) => {
+    const colonIndex = part.indexOf(':')
+
+    if (colonIndex === -1) {
+      return {
+        label: index === 0 ? 'Summary' : `Note ${index + 1}`,
+        value: part,
+      }
+    }
+
+    const label = part.slice(0, colonIndex).trim()
+    const value = part.slice(colonIndex + 1).trim()
+
+    return {
+      label: cleanSectionLabel(label),
+      value: value || '—',
+    }
+  })
+}
+
 function rangeHref(range: string) {
   return `/kelly/notes-summary?range=${encodeURIComponent(range)}`
 }
@@ -310,6 +365,7 @@ export default async function KellyNotesSummaryPage({
           id: true,
           title: true,
           address: true,
+          notes: true,
           visitDate: true,
           startTime: true,
           status: true,
@@ -502,6 +558,7 @@ export default async function KellyNotesSummaryPage({
               const postcode = note.job.customer?.postcode || null
               const phone = note.job.customer?.phone || null
               const email = note.job.customer?.email || null
+              const parsedSections = parseStructuredNote(note.note)
 
               return (
                 <article key={note.id} className="p-4">
@@ -532,9 +589,31 @@ export default async function KellyNotesSummaryPage({
                         {postcode ? ` • ${postcode}` : ''}
                       </div>
 
-                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-zinc-800">
-                        {note.note}
+                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                        <div className="space-y-4">
+                          {parsedSections.map((section, index) => (
+                            <div key={`${note.id}-${section.label}-${index}`}>
+                              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-800">
+                                {section.label}
+                              </div>
+                              <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-800">
+                                {section.value}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
+
+                      {note.job.notes ? (
+                        <div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-800">
+                            Current job description / notes
+                          </div>
+                          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-800">
+                            {note.job.notes}
+                          </p>
+                        </div>
+                      ) : null}
 
                       <div className="mt-3 grid gap-2 rounded-2xl bg-zinc-50 p-3 text-xs text-zinc-600 sm:grid-cols-2">
                         <div>
@@ -558,7 +637,7 @@ export default async function KellyNotesSummaryPage({
                       </div>
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-2 xl:w-48 xl:grid-cols-1">
+                    <div className="grid gap-2 sm:grid-cols-2 xl:w-64 xl:grid-cols-1">
                       <Link
                         href={`/jobs/${note.job.id}`}
                         className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
@@ -571,6 +650,13 @@ export default async function KellyNotesSummaryPage({
                         className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
                       >
                         Edit job
+                      </Link>
+
+                      <Link
+                        href={`/jobs/edit/${note.job.id}`}
+                        className="inline-flex items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-center text-sm font-bold text-amber-800 transition hover:bg-amber-100"
+                      >
+                        Add/change job description or next-time notes
                       </Link>
                     </div>
                   </div>
