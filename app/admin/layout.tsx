@@ -15,6 +15,7 @@ const adminNavItems = [
   { href: '/jobs', label: 'Jobs' },
   { href: '/customers', label: 'Customers' },
   { href: '/workers', label: 'Workers' },
+  { href: '/kelly/notes-summary', label: 'Notes Summary' },
 ]
 
 function isActivePath(pathname: string, href: string) {
@@ -228,10 +229,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       >
         <div
           style={{
-            maxWidth: 720,
+            maxWidth: 820,
             margin: '0 auto',
             display: 'grid',
-            gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+            gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
             gap: 8,
           }}
         >
@@ -255,7 +256,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   justifyContent: 'center',
                   textAlign: 'center',
                   padding: '8px 6px',
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: 800,
                   lineHeight: 1.15,
                   overflowWrap: 'break-word',
