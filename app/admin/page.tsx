@@ -402,11 +402,18 @@ export default async function AdminPage() {
               Open calendar
             </Link>
 
-                        <Link
+            <Link
               href="/kelly/time-off"
               className="inline-flex items-center justify-center rounded-xl bg-amber-400 px-4 py-3 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
             >
               Time Off / Holidays
+            </Link>
+
+            <Link
+              href="/kelly/notes-summary"
+              className="inline-flex items-center justify-center rounded-xl bg-amber-400 px-4 py-3 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
+            >
+              Notes summary
             </Link>
 
             <Link
@@ -606,6 +613,13 @@ export default async function AdminPage() {
               </Link>
 
               <Link
+                href="/kelly/notes-summary"
+                className="inline-flex items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 transition hover:bg-amber-100"
+              >
+                Notes summary
+              </Link>
+
+              <Link
                 href="/jobs"
                 className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
               >
@@ -614,7 +628,7 @@ export default async function AdminPage() {
 
               <Link
                 href="/admin/inbox?source=worker-quote"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 sm:col-span-2"
               >
                 Worker quotes
               </Link>
