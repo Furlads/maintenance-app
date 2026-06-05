@@ -1,39 +1,41 @@
 import Link from 'next/link'
 import * as prismaModule from '@/lib/prisma'
-import SourceBadge from '@/components/admin/SourceBadge'
-import AdminSchedulerButton from '@/app/components/admin/AdminSchedulerButton'
-import { buildContactKey } from '@/lib/inbox/contactKey'
 
 export const dynamic = 'force-dynamic'
 
 const prisma = ((prismaModule as any).prisma ?? (prismaModule as any).default) as any
 
-type InboxMessageRow = {
-  id: number
-  conversationId: string | null
-  source: string
-  senderName: string | null
-  senderEmail: string | null
-  senderPhone: string | null
-  status: string
-  createdAt: Date
-  conversation: {
-    id: string
-    source: string
-    contactName: string | null
-    contactRef: string | null
-    archived: boolean
-    createdAt: Date
-  } | null
+type SearchParams = {
+  range?: string
+  from?: string
+  to?: string
 }
 
-type DashboardInboxSource =
-  | 'whatsapp'
-  | 'furlads-email'
-  | 'threecounties-email'
-  | 'facebook'
-  | 'wix'
-  | 'worker-quote'
+type JobNoteRow = {
+  id: number
+  note: string
+  createdAt: Date
+  createdByWorkerId: number | null
+  worker?: {
+    firstName: string | null
+    lastName: string | null
+  } | null
+  job: {
+    id: number
+    title: string
+    address: string
+    visitDate: Date | null
+    startTime: string | null
+    status: string
+    jobType: string
+    customer?: {
+      name: string | null
+      phone: string | null
+      email: string | null
+      postcode: string | null
+    } | null
+  }
+}
 
 function startOfToday() {
   const now = new Date()
@@ -45,30 +47,169 @@ function endOfToday() {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
 }
 
-function startOfTomorrow() {
+function startOfYesterday() {
+  const today = startOfToday()
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 0, 0, 0, 0)
+}
+
+function endOfYesterday() {
+  const today = startOfToday()
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 23, 59, 59, 999)
+}
+
+function startOfWeek() {
   const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0)
+  const day = now.getDay()
+  const diff = day === 0 ? 6 : day - 1
+
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff, 0, 0, 0, 0)
 }
 
-function fullName(firstName?: string | null, lastName?: string | null) {
-  return `${firstName ?? ''} ${lastName ?? ''}`.trim() || 'Unknown worker'
+function startOfLastWeek() {
+  const weekStart = startOfWeek()
+
+  return new Date(
+    weekStart.getFullYear(),
+    weekStart.getMonth(),
+    weekStart.getDate() - 7,
+    0,
+    0,
+    0,
+    0
+  )
 }
 
-function formatTime(value: Date | null | undefined) {
-  if (!value) return '—'
-  return new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
+function endOfLastWeek() {
+  const weekStart = startOfWeek()
+
+  return new Date(
+    weekStart.getFullYear(),
+    weekStart.getMonth(),
+    weekStart.getDate() - 1,
+    23,
+    59,
+    59,
+    999
+  )
+}
+
+function startOfMonth() {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+}
+
+function parseDateInput(value?: string) {
+  if (!value) return null
+
+  const parts = value.split('-').map(Number)
+  if (parts.length !== 3) return null
+
+  const [year, month, day] = parts
+  if (!year || !month || !day) return null
+
+  return new Date(year, month - 1, day, 0, 0, 0, 0)
+}
+
+function endOfDateInput(value?: string) {
+  const start = parseDateInput(value)
+  if (!start) return null
+
+  return new Date(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate(),
+    23,
+    59,
+    59,
+    999
+  )
+}
+
+function getDateRange(searchParams: SearchParams) {
+  const range = searchParams.range || 'today'
+
+  if (range === 'yesterday') {
+    return {
+      range,
+      label: 'Yesterday',
+      from: startOfYesterday(),
+      to: endOfYesterday(),
+    }
+  }
+
+  if (range === 'this-week') {
+    return {
+      range,
+      label: 'This week',
+      from: startOfWeek(),
+      to: endOfToday(),
+    }
+  }
+
+  if (range === 'last-week') {
+    return {
+      range,
+      label: 'Last week',
+      from: startOfLastWeek(),
+      to: endOfLastWeek(),
+    }
+  }
+
+  if (range === 'this-month') {
+    return {
+      range,
+      label: 'This month',
+      from: startOfMonth(),
+      to: endOfToday(),
+    }
+  }
+
+  if (range === 'custom') {
+    const customFrom = parseDateInput(searchParams.from)
+    const customTo = endOfDateInput(searchParams.to)
+
+    return {
+      range,
+      label: 'Custom range',
+      from: customFrom || startOfToday(),
+      to: customTo || endOfToday(),
+    }
+  }
+
+  return {
+    range: 'today',
+    label: 'Today',
+    from: startOfToday(),
+    to: endOfToday(),
+  }
 }
 
 function formatDate(value: Date | null | undefined) {
   if (!value) return '—'
+
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   }).format(new Date(value))
+}
+
+function formatDateTime(value: Date | null | undefined) {
+  if (!value) return '—'
+
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function fullWorkerName(note: JobNoteRow) {
+  const relationName = `${note.worker?.firstName || ''} ${note.worker?.lastName || ''}`.trim()
+
+  return relationName || 'Unknown / office note'
 }
 
 function normaliseJobType(value?: string | null) {
@@ -105,263 +246,89 @@ function normaliseStatus(value?: string | null) {
   const raw = String(value || '').toLowerCase()
 
   if (raw.includes('progress')) return 'In progress'
-  if (raw.includes('done') || raw.includes('finish')) return 'Done'
+  if (raw.includes('done') || raw.includes('finish') || raw.includes('completed')) return 'Done'
   if (raw.includes('sched')) return 'Scheduled'
   if (raw.includes('cancel')) return 'Cancelled'
   if (raw.includes('archive')) return 'Archived'
   return value || 'Unscheduled'
 }
 
-function normaliseSource(value: string): DashboardInboxSource {
-  const source = String(value || '').toLowerCase()
-
-  if (source.includes('threecounties')) return 'threecounties-email'
-  if (source.includes('furlads')) return 'furlads-email'
-  if (source.includes('whatsapp')) return 'whatsapp'
-  if (source.includes('facebook')) return 'facebook'
-  if (source.includes('wix')) return 'wix'
-  return 'worker-quote'
+function rangeHref(range: string) {
+  return `/kelly/notes-summary?range=${encodeURIComponent(range)}`
 }
 
-function buildThreadKey(message: InboxMessageRow) {
-  const contactKey = buildContactKey({
-    senderPhone: message.senderPhone,
-    senderEmail: message.senderEmail,
-    contactRef: message.conversation?.contactRef ?? null,
-    conversationId: message.conversationId ?? null,
-  })
-
-  if (contactKey) return contactKey
-
-  return message.conversationId || `message-${message.id}`
-}
-
-function statusIsUnread(status: string) {
-  return String(status || '').toLowerCase() === 'unread'
-}
-
-function buildUnreadCountsBySource(messages: InboxMessageRow[]) {
-  const grouped = new Map<string, InboxMessageRow[]>()
-
-  for (const message of messages) {
-    const key = buildThreadKey(message)
-
-    if (!grouped.has(key)) {
-      grouped.set(key, [])
-    }
-
-    grouped.get(key)!.push(message)
-  }
-
-  const counts: Record<DashboardInboxSource, number> = {
-    whatsapp: 0,
-    'furlads-email': 0,
-    'threecounties-email': 0,
-    facebook: 0,
-    wix: 0,
-    'worker-quote': 0,
-  }
-
-  for (const items of grouped.values()) {
-    const sorted = [...items].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
-
-    const latest = sorted[0]
-    const source = normaliseSource(latest.source)
-
-    if (statusIsUnread(latest.status)) {
-      counts[source] += 1
-    }
-  }
-
-  return counts
-}
-
-function DashboardSourceLink({
-  source,
-  unreadCount,
+function RangeButton({
+  href,
+  active,
+  children,
 }: {
-  source: DashboardInboxSource
-  unreadCount: number
+  href: string
+  active: boolean
+  children: React.ReactNode
 }) {
   return (
     <Link
-      href={`/admin/inbox?source=${encodeURIComponent(source)}`}
-      className="inline-flex items-center gap-2 rounded-full transition hover:scale-[1.01]"
+      href={href}
+      className={`inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-bold transition ${
+        active
+          ? 'bg-zinc-900 text-white hover:bg-black'
+          : 'border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100'
+      }`}
     >
-      <SourceBadge source={source} />
-      <span
-        className={`inline-flex min-w-[28px] items-center justify-center rounded-full px-2 py-1 text-[11px] font-bold ring-1 ring-inset ${
-          unreadCount > 0
-            ? 'bg-amber-50 text-amber-700 ring-amber-200'
-            : 'bg-zinc-100 text-zinc-500 ring-zinc-200'
-        }`}
-      >
-        {unreadCount}
-      </span>
+      {children}
     </Link>
   )
 }
 
-function StatCard({
-  label,
-  value,
-  tone = 'default',
+export default async function KellyNotesSummaryPage({
+  searchParams,
 }: {
-  label: string
-  value: number
-  tone?: 'default' | 'green' | 'blue' | 'amber' | 'red'
+  searchParams?: SearchParams
 }) {
-  const toneClasses =
-    tone === 'green'
-      ? 'border-green-200 bg-green-50'
-      : tone === 'blue'
-        ? 'border-blue-200 bg-blue-50'
-        : tone === 'amber'
-          ? 'border-amber-200 bg-amber-50'
-          : tone === 'red'
-            ? 'border-red-200 bg-red-50'
-            : 'border-zinc-200 bg-white'
+  const selectedRange = getDateRange(searchParams || {})
 
-  return (
-    <div className={`rounded-2xl border p-4 shadow-sm ${toneClasses}`}>
-      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
-        {label}
-      </div>
-      <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">{value}</div>
-    </div>
-  )
-}
-
-export default async function AdminPage() {
-  const todayStart = startOfToday()
-  const todayEnd = endOfToday()
-  const tomorrowStart = startOfTomorrow()
-
-  const [
-    jobsTodayRaw,
-    workers,
-    quotesWaiting,
-    inboxMessages,
-    overdueCount,
-    unscheduledCount,
-  ] = await Promise.all([
-    prisma.job.findMany({
-      where: {
-        visitDate: {
-          gte: todayStart,
-          lte: todayEnd,
-        },
-        status: {
-          notIn: ['cancelled', 'archived'],
+  const notes = (await prisma.jobNote.findMany({
+    where: {
+      createdAt: {
+        gte: selectedRange.from,
+        lte: selectedRange.to,
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+    take: 500,
+    include: {
+      worker: {
+        select: {
+          firstName: true,
+          lastName: true,
         },
       },
-      orderBy: [{ visitDate: 'asc' }, { startTime: 'asc' }, { createdAt: 'asc' }],
-      take: 50,
-      include: {
-        customer: true,
-        assignments: {
-          include: {
-            worker: true,
+      job: {
+        select: {
+          id: true,
+          title: true,
+          address: true,
+          visitDate: true,
+          startTime: true,
+          status: true,
+          jobType: true,
+          customer: {
+            select: {
+              name: true,
+              phone: true,
+              email: true,
+              postcode: true,
+            },
           },
         },
       },
-    }),
-    prisma.worker.findMany({
-      where: {
-        active: true,
-      },
-      orderBy: {
-        firstName: 'asc',
-      },
-      take: 30,
-    }),
-    prisma.chasMessage.count({
-      where: {
-        enquiryReadyForKelly: true,
-      },
-    }),
-    prisma.inboxMessage.findMany({
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: 300,
-      include: {
-        conversation: true,
-      },
-      where: {
-        OR: [{ conversation: { archived: false } }, { conversation: null }],
-      },
-    }) as Promise<InboxMessageRow[]>,
-    prisma.job.count({
-      where: {
-        visitDate: {
-          lt: todayStart,
-        },
-        status: {
-          notIn: ['done', 'completed', 'cancelled', 'archived'],
-        },
-      },
-    }),
-    prisma.job.count({
-      where: {
-        OR: [{ visitDate: null }, { status: 'unscheduled' }],
-        status: {
-          notIn: ['cancelled', 'archived'],
-        },
-      },
-    }),
-  ])
-
-  const jobsToday = [...jobsTodayRaw].sort((a: any, b: any) => {
-    const aTime = String(a.startTime || '99:99')
-    const bTime = String(b.startTime || '99:99')
-
-    if (aTime !== bTime) {
-      return aTime.localeCompare(bTime)
-    }
-
-    return new Date(a.createdAt).getTime() - new Date(a.createdAt).getTime()
-  })
-
-  const maintenanceToday = jobsToday.filter((job: any) =>
-    String(job.jobType || '').toLowerCase().includes('maint')
-  )
-
-  const landscapingToday = jobsToday.filter((job: any) =>
-    String(job.jobType || '').toLowerCase().includes('land')
-  )
-
-  const quotesToday = jobsToday.filter((job: any) =>
-    String(job.jobType || '').toLowerCase().includes('quote')
-  )
-
-  const workersActive = jobsToday.filter((job: any) => {
-    const status = String(job.status || '').toLowerCase()
-    return (job.arrivedAt && !job.finishedAt) || status.includes('progress')
-  })
-
-  const activeWorkerIds = new Set<number>()
-  for (const job of workersActive) {
-    for (const assignment of job.assignments || []) {
-      activeWorkerIds.add(assignment.worker.id)
-    }
-  }
-
-  const activeWorkers = workers.filter((worker: any) => activeWorkerIds.has(worker.id))
-  const unreadBySource = buildUnreadCountsBySource(inboxMessages)
-
-  const tomorrowJobsCount = await prisma.job.count({
-    where: {
-      visitDate: {
-        gte: tomorrowStart,
-      },
-      status: {
-        notIn: ['cancelled', 'archived'],
-      },
     },
-  })
+  })) as JobNoteRow[]
+
+  const uniqueJobs = new Set(notes.map((note) => note.job.id)).size
+  const uniqueWorkers = new Set(notes.map((note) => fullWorkerName(note))).size
 
   return (
     <div className="space-y-4">
@@ -369,338 +336,250 @@ export default async function AdminPage() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="min-w-0">
             <div className="text-xs font-black uppercase tracking-[0.22em] text-zinc-300">
-              Daily overview
+              Kelly notes summary
             </div>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
-              Office control for today
-            </h2>
+
+            <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+              Notes added across jobs
+            </h1>
+
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-300">
-              One dashboard for today&apos;s jobs, inbox pressure, quote follow-up and Kelly&apos;s
-              main diary view.
+              Review notes added by the team over a chosen time period, then open the job if
+              anything needs checking, editing or following up.
             </p>
           </div>
 
-          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-2">
+          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto">
             <Link
-              href="/admin/inbox"
+              href="/admin"
               className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-bold text-zinc-900 transition hover:bg-zinc-100"
             >
-              Open inbox
+              Back to admin
             </Link>
 
             <Link
               href="/jobs"
               className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
             >
-              View jobs
+              View all jobs
             </Link>
-
-            <Link
-              href="/admin/calendar"
-              className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-            >
-              Open calendar
-            </Link>
-
-            <Link
-              href="/kelly/time-off"
-              className="inline-flex items-center justify-center rounded-xl bg-amber-400 px-4 py-3 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
-            >
-              Time Off / Holidays
-            </Link>
-
-            <Link
-              href="/admin/todos"
-              className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-            >
-              To-Do List
-            </Link>
-
-            <div className="flex sm:col-span-2 xl:col-span-2">
-              <AdminSchedulerButton />
-            </div>
           </div>
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-        <StatCard label="Jobs today" value={jobsToday.length} />
-        <StatCard label="Maintenance today" value={maintenanceToday.length} tone="green" />
-        <StatCard label="Landscaping today" value={landscapingToday.length} tone="blue" />
-        <StatCard label="Quotes today" value={quotesToday.length} tone="amber" />
-        <StatCard label="Overdue" value={overdueCount} tone="red" />
-        <StatCard label="Unscheduled" value={unscheduledCount} tone="amber" />
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+            Time period
+          </div>
+
+          <div className="mt-2 text-xl font-bold tracking-tight text-zinc-900">
+            {selectedRange.label}
+          </div>
+
+          <div className="mt-1 text-xs text-zinc-500">
+            {formatDate(selectedRange.from)} to {formatDate(selectedRange.to)}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+            Notes
+          </div>
+
+          <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
+            {notes.length}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+            Jobs mentioned
+          </div>
+
+          <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
+            {uniqueJobs}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm">
+          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
+            Note authors
+          </div>
+
+          <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
+            {uniqueWorkers}
+          </div>
+        </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-12">
-        <section className="xl:col-span-7">
-          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-base font-bold text-zinc-900">Today&apos;s jobs</h3>
-                <p className="text-xs text-zinc-500">
-                  First job at the top, then the rest of the diary flows down the page
-                </p>
-              </div>
-              <Link href="/jobs" className="text-sm font-semibold text-zinc-700">
-                All jobs
-              </Link>
-            </div>
+      <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+        <div className="border-b border-zinc-200 px-4 py-4">
+          <h2 className="text-base font-bold text-zinc-900">Choose time period</h2>
+          <p className="text-xs text-zinc-500">Newest notes will always show first.</p>
+        </div>
 
-            <div className="p-3 sm:p-4">
-              {jobsToday.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
-                  No jobs scheduled for today.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {jobsToday.map((job: any) => {
-                    const jobType = normaliseJobType(job.jobType)
-                    const assignedNames = (job.assignments || []).map((assignment: any) =>
-                      fullName(assignment.worker?.firstName, assignment.worker?.lastName)
-                    )
+        <div className="grid gap-3 p-4 sm:grid-cols-3 xl:grid-cols-5">
+          <RangeButton href={rangeHref('today')} active={selectedRange.range === 'today'}>
+            Today
+          </RangeButton>
 
-                    return (
-                      <div key={job.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
-                        <div className="flex flex-col gap-4">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${jobType.className}`}
-                                >
-                                  {jobType.label}
-                                </span>
-                                <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
-                                  {normaliseStatus(job.status)}
-                                </span>
-                              </div>
+          <RangeButton href={rangeHref('yesterday')} active={selectedRange.range === 'yesterday'}>
+            Yesterday
+          </RangeButton>
 
-                              <h4 className="mt-3 text-lg font-bold leading-tight text-zinc-900">
-                                {job.customer?.name || 'Unknown customer'}
-                              </h4>
+          <RangeButton href={rangeHref('this-week')} active={selectedRange.range === 'this-week'}>
+            This week
+          </RangeButton>
 
-                              <p className="mt-1 text-sm leading-6 text-zinc-500">
-                                {job.address || 'No address'} • {formatDate(job.visitDate)}
-                              </p>
-                            </div>
+          <RangeButton href={rangeHref('last-week')} active={selectedRange.range === 'last-week'}>
+            Last week
+          </RangeButton>
 
-                            <div className="inline-flex w-fit rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-bold text-zinc-700 ring-1 ring-inset ring-zinc-200">
-                              {job.startTime || formatTime(job.visitDate)}
-                            </div>
-                          </div>
+          <RangeButton href={rangeHref('this-month')} active={selectedRange.range === 'this-month'}>
+            This month
+          </RangeButton>
+        </div>
 
-                          <div className="grid gap-2 rounded-2xl bg-zinc-50 p-3 text-sm text-zinc-700 sm:grid-cols-2">
-                            <div>
-                              <span className="font-semibold">Start:</span>{' '}
-                              {job.startTime || 'Time TBC'}
-                            </div>
-                            <div>
-                              <span className="font-semibold">Job ID:</span> #{job.id}
-                            </div>
-                            <div className="sm:col-span-2">
-                              <span className="font-semibold">Assigned:</span>{' '}
-                              {assignedNames.length > 0 ? assignedNames.join(', ') : 'Unassigned'}
-                            </div>
-                          </div>
+        <form
+          action="/kelly/notes-summary"
+          className="grid gap-3 border-t border-zinc-100 p-4 sm:grid-cols-[1fr_1fr_auto]"
+        >
+          <input type="hidden" name="range" value="custom" />
 
-                          <div className="grid gap-2 sm:grid-cols-3">
-                            <Link
-                              href={`/jobs/${job.id}`}
-                              className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-                            >
-                              Open
-                            </Link>
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-zinc-600">From</span>
+            <input
+              type="date"
+              name="from"
+              defaultValue={searchParams?.from || ''}
+              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none focus:border-zinc-900"
+            />
+          </label>
 
-                            <Link
-                              href={`/jobs/edit/${job.id}`}
-                              className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
-                            >
-                              Edit
-                            </Link>
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-zinc-600">To</span>
+            <input
+              type="date"
+              name="to"
+              defaultValue={searchParams?.to || ''}
+              className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none focus:border-zinc-900"
+            />
+          </label>
 
-                            <Link
-                              href={`/jobs/edit/${job.id}`}
-                              className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-                            >
-                              Reschedule / push back
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+          <button
+            type="submit"
+            className="self-end rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
+          >
+            Apply custom range
+          </button>
+        </form>
+      </section>
+
+      <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-bold text-zinc-900">Notes found</h2>
+            <p className="text-xs text-zinc-500">
+              Showing up to 500 notes for the selected period.
+            </p>
           </div>
-        </section>
 
-        <section className="space-y-4 xl:col-span-5">
-          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-base font-bold text-zinc-900">Workers active</h3>
-                <p className="text-xs text-zinc-500">
-                  Live view from jobs currently in progress
-                </p>
-              </div>
-              <Link href="/workers" className="text-sm font-semibold text-zinc-700">
-                Workers
-              </Link>
+          <Link href="/admin/activity" className="text-sm font-semibold text-zinc-700">
+            View full activity dashboard
+          </Link>
+        </div>
+
+        <div className="divide-y divide-zinc-100">
+          {notes.length === 0 ? (
+            <div className="p-5 text-sm text-zinc-600">
+              No job notes were added during this time period.
             </div>
+          ) : (
+            notes.map((note) => {
+              const jobType = normaliseJobType(note.job.jobType)
+              const customerName = note.job.customer?.name || note.job.title || 'Unknown customer'
+              const postcode = note.job.customer?.postcode || null
+              const phone = note.job.customer?.phone || null
+              const email = note.job.customer?.email || null
 
-            <div className="p-3 sm:p-4">
-              {activeWorkers.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
-                  No workers currently marked active.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {activeWorkers.map((worker: any) => (
-                    <div key={worker.id} className="rounded-2xl border border-zinc-200 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-bold text-zinc-900">
-                            {fullName(worker.firstName, worker.lastName)}
-                          </div>
-                          <div className="mt-1 text-xs text-zinc-500">
-                            {worker.jobTitle || 'Worker'}
-                          </div>
-                        </div>
+              return (
+                <article key={note.id} className="p-4">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${jobType.className}`}
+                        >
+                          {jobType.label}
+                        </span>
 
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
-                          Active
+                        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
+                          {normaliseStatus(note.job.status)}
+                        </span>
+
+                        <span className="text-xs text-zinc-500">
+                          Added {formatDateTime(note.createdAt)}
                         </span>
                       </div>
+
+                      <h3 className="mt-3 text-lg font-bold leading-tight text-zinc-900">
+                        {customerName}
+                      </h3>
+
+                      <div className="mt-1 text-sm leading-6 text-zinc-500">
+                        Job #{note.job.id} • {note.job.address || 'No address'}
+                        {postcode ? ` • ${postcode}` : ''}
+                      </div>
+
+                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-zinc-800">
+                        {note.note}
+                      </div>
+
+                      <div className="mt-3 grid gap-2 rounded-2xl bg-zinc-50 p-3 text-xs text-zinc-600 sm:grid-cols-2">
+                        <div>
+                          <span className="font-semibold">Added by:</span> {fullWorkerName(note)}
+                        </div>
+
+                        <div>
+                          <span className="font-semibold">Job date:</span>{' '}
+                          {formatDate(note.job.visitDate)}
+                        </div>
+
+                        <div>
+                          <span className="font-semibold">Start time:</span>{' '}
+                          {note.job.startTime || 'Time TBC'}
+                        </div>
+
+                        <div>
+                          <span className="font-semibold">Contact:</span>{' '}
+                          {[phone, email].filter(Boolean).join(' / ') || 'No contact saved'}
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
 
-          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-base font-bold text-zinc-900">Kelly quick actions</h3>
-                <p className="text-xs text-zinc-500">
-                  Main diary, absences, quote follow-up and office shortcuts
-                </p>
-              </div>
-            </div>
+                    <div className="grid gap-2 sm:grid-cols-2 xl:w-48 xl:grid-cols-1">
+                      <Link
+                        href={`/jobs/${note.job.id}`}
+                        className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
+                      >
+                        Open job
+                      </Link>
 
-            <div className="grid gap-3 p-4 sm:grid-cols-2">
-              <Link
-                href="/admin/calendar"
-                className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
-              >
-                Open calendar
-              </Link>
-
-              <Link
-                href="/kelly/time-off"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-              >
-                Manage time off
-              </Link>
-
-              <Link
-                href="/kelly/notes-summary"
-                className="inline-flex items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 transition hover:bg-amber-100"
-              >
-                Notes summary
-              </Link>
-
-              <Link
-                href="/jobs"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-              >
-                Check all jobs
-              </Link>
-
-              <Link
-                href="/admin/inbox?source=worker-quote"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 sm:col-span-2"
-              >
-                Worker quotes
-              </Link>
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-base font-bold text-zinc-900">Inbox sources</h3>
-                <p className="text-xs text-zinc-500">
-                  Unread thread counts with click-through to each channel
-                </p>
-              </div>
-              <Link href="/admin/inbox" className="text-sm font-semibold text-zinc-700">
-                Inbox
-              </Link>
-            </div>
-
-            <div className="p-4">
-              <div className="flex flex-wrap gap-2">
-                <DashboardSourceLink
-                  source="whatsapp"
-                  unreadCount={unreadBySource.whatsapp}
-                />
-                <DashboardSourceLink
-                  source="furlads-email"
-                  unreadCount={unreadBySource['furlads-email']}
-                />
-                <DashboardSourceLink
-                  source="threecounties-email"
-                  unreadCount={unreadBySource['threecounties-email']}
-                />
-                <DashboardSourceLink
-                  source="worker-quote"
-                  unreadCount={unreadBySource['worker-quote']}
-                />
-                <DashboardSourceLink
-                  source="facebook"
-                  unreadCount={unreadBySource.facebook}
-                />
-                <DashboardSourceLink
-                  source="wix"
-                  unreadCount={unreadBySource.wix}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="border-b border-zinc-200 px-4 py-4">
-              <h3 className="text-base font-bold text-zinc-900">Forward view</h3>
-              <p className="text-xs text-zinc-500">
-                Quick office pressure check beyond today
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 p-4">
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                  Tomorrow onwards
-                </div>
-                <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
-                  {tomorrowJobsCount}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                  Quotes waiting
-                </div>
-                <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
-                  {quotesWaiting}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
+                      <Link
+                        href={`/jobs/edit/${note.job.id}`}
+                        className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                      >
+                        Edit job
+                      </Link>
+                    </div>
+                  </div>
+                </article>
+              )
+            })
+          )}
+        </div>
+      </section>
     </div>
   )
 }
