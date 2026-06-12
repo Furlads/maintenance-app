@@ -54,6 +54,14 @@ export async function POST(req: Request) {
     }
 
     const workerId = cleanNumber(body.workerId);
+
+    if (!workerId) {
+      return NextResponse.json(
+        { ok: false, error: "workerId is required" },
+        { status: 400 }
+      );
+    }
+
     const jobId = cleanNumber(body.jobId);
 
     await prisma.activityLog.create({
