@@ -162,6 +162,37 @@ function getInitials(name: string) {
   ].slice(0, 1)}`.toUpperCase();
 }
 
+function getWorkerHomeEventType(actionTitle: string) {
+  switch (actionTitle) {
+    case "Today’s Jobs":
+      return "TODAY_JOBS_OPENED_FROM_WORKER_HOME";
+    case "Start Travel":
+    case "Navigate":
+      return "JOB_NAVIGATION_CLICKED_FROM_WORKER_HOME";
+    case "Start / Finish Work":
+      return "WORK_TRACKER_OPENED_FROM_WORKER_HOME";
+    case "Upload Photos":
+      return "PHOTO_UPLOAD_CLICKED_FROM_WORKER_HOME";
+    case "Ask CHAS":
+    case "Bottom Nav CHAS":
+      return "CHAS_OPENED_FROM_WORKER_HOME";
+    case "My Time Off":
+    case "Bottom Nav Me":
+      return "TIME_OFF_OPENED_FROM_WORKER_HOME";
+    case "Contact Office":
+      return "OFFICE_CALL_CLICKED_FROM_WORKER_HOME";
+    case "Open Job":
+    case "Timeline Job Opened":
+      return "JOB_OPENED_FROM_WORKER_HOME";
+    case "Bottom Nav Home":
+      return "HOME_TAB_CLICKED_FROM_WORKER_HOME";
+    case "Bottom Nav Today":
+      return "TODAY_TAB_CLICKED_FROM_WORKER_HOME";
+    default:
+      return "WORKER_HOME_ACTION_CLICKED";
+  }
+}
+
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   background: "#f4f4f0",
@@ -351,6 +382,7 @@ export default function WorkerHomePage() {
   useEffect(() => {
     if (homeLoggedRef.current) return;
     if (loading) return;
+    if (!workerId) return;
 
     homeLoggedRef.current = true;
 
@@ -428,20 +460,13 @@ export default function WorkerHomePage() {
   const nextJobCustomer = nextJob?.customer?.name || nextJob?.title || "";
 
   function logWorkerHomeAction(actionTitle: string, href: string, job?: Job | null) {
+    if (!workerId) return;
+
     void logActivity({
       workerId,
       workerName,
       jobId: job?.id || null,
-      eventType:
-        actionTitle === "Start Travel"
-          ? "NAVIGATE_CLICKED"
-          : actionTitle === "Ask CHAS"
-            ? "CHAS_OPENED_FROM_WORKER_HOME"
-            : actionTitle === "Upload Photos"
-              ? "PHOTO_UPLOAD_CLICKED_FROM_WORKER_HOME"
-              : actionTitle === "My Time Off"
-                ? "TIME_OFF_OPENED_FROM_WORKER_HOME"
-                : "QUICK_ACTION_CLICKED",
+      eventType: getWorkerHomeEventType(actionTitle),
       page: "/worker/home",
       details: actionTitle,
       metadata: {
