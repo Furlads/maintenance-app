@@ -6,6 +6,11 @@ export const dynamic = 'force-dynamic'
 
 type QuoteAction = 'price' | 'write'
 
+type QuotePhoto = {
+  url?: string
+  label?: string
+}
+
 type QuoteRequest = {
   action?: QuoteAction
   customerName?: string
@@ -14,6 +19,7 @@ type QuoteRequest = {
   priceExVat?: number
   vatRate?: number
   depositPercent?: number
+  photos?: QuotePhoto[]
 }
 
 function cleanText(value: unknown) {
@@ -23,6 +29,34 @@ function cleanText(value: unknown) {
 function cleanNumber(value: unknown, fallback = 0) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function cleanPhotos(value: unknown): Array<{ url: string; label: string }> {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((photo) => {
+      if (!photo || typeof photo !== 'object') return null
+
+      const url = cleanText((photo as QuotePhoto).url)
+      const label = cleanText((photo as QuotePhoto).label)
+
+      if (!url || !url.startsWith('https://')) return null
+
+      return {
+        url,
+        label: label || 'Site photo',
+      }
+    })
+    .filter(
+      (
+        photo
+      ): photo is {
+        url: string
+        label: string
+      } => photo !== null
+    )
+    .slice(0, 12)
 }
 
 function extractJson(value: string) {
@@ -54,13 +88,56 @@ function createClient() {
   return new OpenAI({ apiKey })
 }
 
-async function runOpenAI(systemPrompt: string, userPrompt: string) {
+async function runOpenAI({
+  systemPrompt,
+  userPrompt,
+  photos,
+}: {
+  systemPrompt: string
+  userPrompt: string
+  photos?: Array<{ url: string; label: string }>
+}) {
   const openai = createClient()
+
+  const content: Array<
+    | {
+        type: 'input_text'
+        text: string
+      }
+    | {
+        type: 'input_image'
+        image_url: string
+        detail: 'auto'
+      }
+  > = [
+    {
+      type: 'input_text',
+      text: userPrompt,
+    },
+  ]
+
+  for (const photo of photos || []) {
+    content.push({
+      type: 'input_text',
+      text: `Photo label: ${photo.label}`,
+    })
+
+    content.push({
+      type: 'input_image',
+      image_url: photo.url,
+      detail: 'auto',
+    })
+  }
 
   const response = await openai.responses.create({
     model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
     instructions: systemPrompt,
-    input: userPrompt,
+    input: [
+      {
+        role: 'user',
+        content,
+      },
+    ],
   })
 
   const output = response.output_text
@@ -76,10 +153,14 @@ async function priceJob(body: QuoteRequest) {
   const customerName = cleanText(body.customerName)
   const jobDetails = cleanText(body.jobDetails)
   const additionalInstructions = cleanText(body.additionalInstructions)
+  const photos = cleanPhotos(body.photos)
 
-  if (!jobDetails) {
+  if (!jobDetails && photos.length === 0) {
     return NextResponse.json(
-      { error: 'Enter the job details before pricing the job.' },
+      {
+        error:
+          'Enter job details or upload site photos before pricing the job.',
+      },
       { status: 400 }
     )
   }
@@ -89,29 +170,56 @@ You are the internal landscaping estimator for Furlads, a VAT-registered UK land
 
 Your task is to help Trevor price landscaping jobs commercially and realistically.
 
-Important rules:
+You may receive written survey notes and site photographs.
+
+PHOTO REVIEW RULES:
+
+- Inspect the photographs carefully.
+- Identify visible features that could affect labour, materials, access, waste or machinery.
+- Look for restricted access, steps, slopes, level changes, retaining requirements, drains, manholes, tree roots, existing concrete, fragile property, utility boxes, difficult cuts, large waste volumes and obstacles.
+- Never claim certainty from a photograph alone.
+- Describe concerns as potential issues that Trevor should check.
+- Do not infer exact measurements from photographs.
+- Do not invent hidden ground conditions.
+- If photographs contradict the written notes, clearly flag the contradiction.
+- Do not identify or make personal comments about people visible in photographs.
+
+PRICING RULES:
 
 - Work in pounds sterling.
 - All recommended selling prices must be excluding VAT.
 - VAT will be calculated separately by the app.
-- Do not create fake measurements, quantities or supplier prices.
+- Do not invent exact supplier prices.
 - Clearly separate confirmed information from estimates.
-- Include labour, materials, waste, delivery, machinery, fuel, consumables and contingency where relevant.
-- Allow for collection time, loading, unloading, site setup and final tidy-up.
-- Consider access, ground conditions, excavation, waste removal and difficult cuts.
-- Protect the business against underpricing.
-- Do not simply add the visible costs together.
+- Include labour, materials, waste, deliveries, machinery, fuel, consumables and contingency where relevant.
+- Allow for collection, loading, unloading, site setup and final tidy-up.
+- Consider access, excavation, ground conditions, waste removal and difficult cuts.
+- Protect Furlads against underpricing.
 - Include a sensible commercial margin.
-- Never call the customer-facing price a cost. Call it the recommended selling price.
-- If important information is missing, still provide a provisional estimate but identify what must be checked.
-- Keep the response practical for a working landscaping business.
+- Never call the customer-facing selling price a hard cost.
+- If important information is missing, provide a provisional estimate and identify what must be checked.
+- Keep the response practical.
 
 Return only valid JSON using this exact structure:
 
 {
   "summary": "Short description of the proposed works",
   "confirmedInformation": [
-    "Confirmed item"
+    "Confirmed information from the notes or photographs"
+  ],
+  "photoObservations": [
+    {
+      "observation": "What appears visible",
+      "potentialImpact": "How it could affect the job",
+      "checkRequired": "What Trevor should confirm"
+    }
+  ],
+  "potentialIssues": [
+    {
+      "title": "Potential issue",
+      "details": "What may need checking",
+      "pricingImpact": "Possible impact on price or duration"
+    }
   ],
   "assumptions": [
     "Assumption used when pricing"
@@ -150,22 +258,28 @@ All monetary values must be JSON numbers without pound signs or commas.
 Customer:
 ${customerName || 'Not supplied'}
 
-Job details:
-${jobDetails}
+Written job details:
+${jobDetails || 'No written notes supplied.'}
 
 Additional pricing instructions:
 ${additionalInstructions || 'None supplied'}
 
-Price this job for Furlads.
+Number of site photographs:
+${photos.length}
+
+Review the supplied notes and photographs, identify any potential issues and produce a provisional Furlads price.
 `.trim()
 
-  const result = await runOpenAI(systemPrompt, userPrompt)
+  const result = await runOpenAI({
+    systemPrompt,
+    userPrompt,
+    photos,
+  })
 
   const priceExVat = cleanNumber(result.recommendedPriceExVat)
   const vatRate = cleanNumber(result.vatRate, 20)
   const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
   const totalIncVat = Number((priceExVat + vatAmount).toFixed(2))
-
   const depositPercent = cleanNumber(result.depositPercent, 25)
   const depositAmount = Number(
     ((totalIncVat * depositPercent) / 100).toFixed(2)
@@ -193,14 +307,19 @@ async function writeQuote(body: QuoteRequest) {
 
   if (!jobDetails) {
     return NextResponse.json(
-      { error: 'Enter the job details before writing the quote.' },
+      {
+        error:
+          'Enter the confirmed scope of work before writing the quotation.',
+      },
       { status: 400 }
     )
   }
 
   if (priceExVat <= 0) {
     return NextResponse.json(
-      { error: 'Enter or generate a valid price excluding VAT.' },
+      {
+        error: 'Enter or generate a valid price excluding VAT.',
+      },
       { status: 400 }
     )
   }
@@ -212,48 +331,47 @@ async function writeQuote(body: QuoteRequest) {
   )
 
   const systemPrompt = `
-You write customer quotations for Furlads, a friendly professional landscaping company.
+You write customer quotations for Furlads, a friendly and professional landscaping company.
 
 The quotation will normally be sent directly through WhatsApp.
 
 Write in Trevor and Furlads' natural style:
 
 - Warm, friendly and confident.
-- Excited about the finished transformation.
-- Detailed enough that the customer understands exactly what is included.
-- Easy to scan on WhatsApp.
-- Use short paragraphs and clear bullet points.
-- Use a small number of suitable emojis, such as 👋, ✅ or 🌿.
-- Do not make the message childish or overloaded with emojis.
-- Never sound like a generic corporate quotation.
+- Make the customer feel excited about the finished transformation.
+- Clearly explain exactly what is included.
+- Make the message easy to scan on WhatsApp.
+- Use short paragraphs and clear tick-point bullets.
+- Use only a small number of suitable emojis.
+- Do not sound like a generic corporate quotation.
 - Do not use aggressive sales language.
-- Do not call the total an investment unless it sounds natural.
-- Never invent work, materials, guarantees, timescales or exclusions.
+- Never invent work, guarantees, materials or timescales.
 - Do not change the supplied price.
-- Explain how the finished garden will look or feel.
-- Include a clear, relaxed next step.
-- Mention the deposit only when the deposit percentage is greater than zero.
-- The deposit is calculated from the VAT-inclusive total.
+- Do not include internal pricing concerns.
+- Do not mention issues identified from photographs unless Trevor included them within the confirmed scope.
+- Explain how the finished garden should look or feel.
+- Include a clear and relaxed next step.
+- Mention the deposit only when the percentage is greater than zero.
+- Calculate the deposit from the VAT-inclusive total.
 - Do not say the quote is attached.
 - Do not say the customer has already accepted.
-- Do not claim that a diary space has been reserved.
-- The finished text must be ready to copy directly into WhatsApp.
+- Do not claim that a diary space is already reserved.
+- The result must be ready to copy directly into WhatsApp.
 
-The preferred format is:
+Preferred format:
 
 Hi [name] 👋
 
-Friendly introduction.
+Friendly opening.
 
-A short paragraph describing the transformation and why the proposed design will work well.
+Brief and exciting description of the finished result.
 
 Here's everything we've included:
 
 ✅ Scope item
 ✅ Scope item
 
-Price:
-£X + VAT
+Price: £X + VAT
 VAT: £X
 Total: £X
 
@@ -265,7 +383,7 @@ Thanks,
 Trevor
 Furlads 🌿
 
-Return only valid JSON using this structure:
+Return only valid JSON using this exact structure:
 
 {
   "whatsappQuote": "Complete customer-ready WhatsApp message",
@@ -274,7 +392,7 @@ Return only valid JSON using this structure:
   ],
   "customerSummary": "Short transformation-focused summary",
   "warnings": [
-    "Anything that Trevor should check before sending"
+    "Anything Trevor should check before sending"
   ]
 }
 `.trim()
@@ -283,7 +401,7 @@ Return only valid JSON using this structure:
 Customer name:
 ${customerName || 'Customer'}
 
-Confirmed job details:
+Confirmed scope of works:
 ${jobDetails}
 
 Additional wording instructions:
@@ -300,7 +418,10 @@ Deposit amount: £${depositAmount.toFixed(2)}
 Write the finished Furlads WhatsApp quotation.
 `.trim()
 
-  const result = await runOpenAI(systemPrompt, userPrompt)
+  const result = await runOpenAI({
+    systemPrompt,
+    userPrompt,
+  })
 
   return NextResponse.json({
     ...result,
@@ -316,18 +437,19 @@ Write the finished Furlads WhatsApp quotation.
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as QuoteRequest
-    const action = body.action
 
-    if (action === 'price') {
+    if (body.action === 'price') {
       return await priceJob(body)
     }
 
-    if (action === 'write') {
+    if (body.action === 'write') {
       return await writeQuote(body)
     }
 
     return NextResponse.json(
-      { error: 'Choose either the price or write action.' },
+      {
+        error: 'Choose either the price or write action.',
+      },
       { status: 400 }
     )
   } catch (error) {
@@ -338,6 +460,11 @@ export async function POST(request: NextRequest) {
         ? error.message
         : 'Something went wrong while generating the quote.'
 
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: message,
+      },
+      { status: 500 }
+    )
   }
 }
