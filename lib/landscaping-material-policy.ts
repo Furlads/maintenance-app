@@ -72,6 +72,29 @@ function mergeNote(existing: string, addition: string) {
   return `${addition} ${cleanExisting}`
 }
 
+function isJointingMaterial(name: string) {
+  return (
+    name.includes('jointing') ||
+    name.includes('pointing') ||
+    name.includes('grout') ||
+    name.includes('easyjoint') ||
+    name.includes('easy joint') ||
+    name.includes('polymeric')
+  )
+}
+
+function halfBagUnits(requiredTonnes: number, bagTonnes: number) {
+  if (!Number.isFinite(requiredTonnes) || requiredTonnes <= 0) return 0.5
+  const halfBagTonnes = bagTonnes / 2
+  return Math.max(0.5, Math.ceil(requiredTonnes / halfBagTonnes) * 0.5)
+}
+
+function formatBulkBagUnits(value: number) {
+  if (value === 0.5) return '½ bulk bag'
+  if (Number.isInteger(value)) return `${value} bulk bag${value === 1 ? '' : 's'}`
+  return `${value.toFixed(1)} bulk bags`
+}
+
 function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
   if (!isPatio(plan.scope)) return plan
 
@@ -80,16 +103,21 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
 
   const gravelAreaM2 = extractGravelAreaM2(plan.scope)
 
+  // Furlads site-order rule: use six 25kg cement bags per bulk bag of sharp sand.
+  // Work out how many sand bulk bags the full mortar-bed allowance needs, then derive
+  // cement directly from that count so the two order lines can never contradict each other.
   const mortarBedDepthM = 0.04
   const wetMortarM3 = areaM2 * mortarBedDepthM
   const dryMortarM3 = wetMortarM3 * 1.33
   const sandShare = 4 / 5
-  const cementShare = 1 / 5
   const sandDensityTPerM3 = 1.6
-  const cementDensityKgPerM3 = 1440
   const sharpSandNeededTonnes = roundTo(dryMortarM3 * sandShare * sandDensityTPerM3, 2)
-  const cementNeededKg = dryMortarM3 * cementShare * cementDensityKgPerM3
-  const cementNeededBags = Math.max(1, Math.ceil(cementNeededKg / 25))
+  const sharpSandBagWeightTonnes = TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.packedWeightKg / 1000
+  const sharpSandFullBags = Math.max(1, Math.ceil(sharpSandNeededTonnes / sharpSandBagWeightTonnes))
+  const sharpSandInitialBags = Math.max(1, sharpSandFullBags - 1)
+  const cementBagsPerSandBulkBag = 6
+  const cementFullBags = sharpSandFullBags * cementBagsPerSandBulkBag
+  const cementInitialBags = sharpSandInitialBags * cementBagsPerSandBulkBag
 
   const materials = plan.materials.map((material) => {
     const name = material.item.toLowerCase()
@@ -123,71 +151,65 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
       }
     }
 
+    // Pointing/jointing is always brush-in grout tubs. This must be checked before
+    // the cement rule because old CHAS labels may contain words like “sand/cement”.
+    if (isJointingMaterial(name)) {
+      const tub = TRAVIS_PERKINS_BENCHMARKS.easyJoint12_5KgTub
+      const tubsNeeded = Math.max(1, Math.ceil(areaM2 / tub.planningCoverageM2))
+      const tubsToOrder = Math.max(1, tubsNeeded - 1)
+      const projectedCost = roundMoney(tubsNeeded * tub.priceExVat)
+
+      return {
+        ...material,
+        item: 'Brush-in pointing / jointing grout',
+        quantity: `${tubsNeeded} × 12.5kg tubs needed`,
+        neededQuantity: `${tubsNeeded} × 12.5kg brush-in grout tubs`,
+        orderQuantity: `${tubsToOrder} × 12.5kg tubs initially; top up only if joint widths/depth use more`,
+        estimatedCostExVat: projectedCost,
+        note: mergeNote(
+          material.note,
+          `${benchmarkNote(tub.label)} Furlads uses brush-in jointing/grout tubs for pointing; do not allocate cement bags to pointing/jointing.`
+        ),
+      }
+    }
+
     if (
       name.includes('sharp sand') ||
       name.includes('bedding sand') ||
       name.includes('mortar bed')
     ) {
-      const bagWeightTonnes = TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.packedWeightKg / 1000
-      const fullRequirementBags = Math.max(1, Math.ceil(sharpSandNeededTonnes / bagWeightTonnes))
-      const initialOrderBags = Math.max(1, Math.floor(fullRequirementBags * 0.8))
       const projectedCost = roundMoney(
-        fullRequirementBags * TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.priceExVat
+        sharpSandFullBags * TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.priceExVat
       )
 
       return {
         ...material,
-        quantity: `${fullRequirementBags} bulk bags needed for the full 4:1 mortar-bed allowance`,
-        neededQuantity: `${fullRequirementBags} × ~800kg sharp-sand bulk bags`,
-        orderQuantity: `${initialOrderBags} × ~800kg sharp-sand bulk bags initially; top up only if levels/bed thickness need more`,
+        quantity: `${sharpSandFullBags} bulk bag${sharpSandFullBags === 1 ? '' : 's'} needed for the full mortar-bed allowance`,
+        neededQuantity: `${sharpSandFullBags} × ~800kg sharp-sand bulk bag${sharpSandFullBags === 1 ? '' : 's'}`,
+        orderQuantity: `${sharpSandInitialBags} × ~800kg sharp-sand bulk bag${sharpSandInitialBags === 1 ? '' : 's'} initially; top up only if required`,
         estimatedCostExVat: projectedCost,
         note: mergeNote(
           material.note,
-          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.label)} Sand and cement are calculated together from the same 4:1 sand:cement mix at a 40mm average full bed.`
+          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.label)} Furlads order ratio is fixed at 6 × 25kg cement bags per sharp-sand bulk bag.`
         ),
       }
     }
 
     if (name.includes('cement')) {
-      const fullBags = cementNeededBags
-      const initialBags = Math.max(1, Math.floor(fullBags * 0.85))
       const projectedCost = roundMoney(
-        fullBags * TRAVIS_PERKINS_BENCHMARKS.generalPurposeCement25Kg.priceExVat
+        cementFullBags * TRAVIS_PERKINS_BENCHMARKS.generalPurposeCement25Kg.priceExVat
       )
 
       return {
         ...material,
-        quantity: `${fullBags} × 25kg bags needed for the same 4:1 mortar mix`,
-        neededQuantity: `${fullBags} × 25kg cement bags`,
-        orderQuantity: `${initialBags} × 25kg bags initially; top up only if required`,
+        item: 'Cement for bedding mortar',
+        quantity: `${cementFullBags} × 25kg cement bags needed (${cementBagsPerSandBulkBag} per sharp-sand bulk bag)`,
+        neededQuantity: `${cementFullBags} × 25kg cement bags`,
+        orderQuantity: `${cementInitialBags} × 25kg bags initially — exactly ${cementBagsPerSandBulkBag} per ordered sharp-sand bulk bag`,
         estimatedCostExVat: projectedCost,
         note: mergeNote(
           material.note,
-          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.generalPurposeCement25Kg.label)} Cement is tied directly to the sharp-sand quantity using the same 4:1 mortar calculation, so impossible sand/cement ratios are avoided.`
-        ),
-      }
-    }
-
-    if (
-      name.includes('jointing') ||
-      name.includes('grout') ||
-      name.includes('easyjoint') ||
-      name.includes('easy joint')
-    ) {
-      const tub = TRAVIS_PERKINS_BENCHMARKS.easyJoint12_5KgTub
-      const tubsNeeded = Math.max(1, Math.ceil(areaM2 / tub.planningCoverageM2))
-      const tubsToOrder = Math.max(1, Math.floor(tubsNeeded * 0.8))
-      const projectedCost = roundMoney(tubsNeeded * tub.priceExVat)
-
-      return {
-        ...material,
-        quantity: `${tubsNeeded} × 12.5kg tubs needed`,
-        neededQuantity: `${tubsNeeded} × 12.5kg jointing-compound tubs`,
-        orderQuantity: `${tubsToOrder} × 12.5kg tubs initially; top up if joint widths/depth use more`,
-        estimatedCostExVat: projectedCost,
-        note: mergeNote(
-          material.note,
-          `${benchmarkNote(tub.label)} Planning coverage uses about ${tub.planningCoverageM2}m² per tub within the manufacturer's typical ${tub.coverageRangeM2}m² range; actual coverage depends heavily on joint size.`
+          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.generalPurposeCement25Kg.label)} Cement is for the bedding mortar only. Furlads uses a fixed site-order ratio of 6 × 25kg cement bags to every 1 bulk bag of sharp sand.`
         ),
       }
     }
@@ -243,22 +265,23 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
       gravelAreaM2 > 0 &&
       (name.includes('black-ice') || name.includes('black ice') || name.includes('decorative gravel'))
     ) {
-      const gravel = TRAVIS_PERKINS_BENCHMARKS.blackBasaltTradePack20Kg
+      const gravel = TRAVIS_PERKINS_BENCHMARKS.blackBasaltBulkBag
+      const bagTonnes = gravel.packedWeightKg / 1000
       const volumeM3 = gravelAreaM2 * 0.04
-      const requiredKg = volumeM3 * 1600
-      const fullBags = Math.max(1, Math.ceil(requiredKg / gravel.packedWeightKg))
-      const initialBags = Math.max(1, Math.floor(fullBags * 0.8))
-      const projectedCost = roundMoney(fullBags * gravel.priceExVat)
+      const requiredTonnes = roundTo(volumeM3 * 1.6, 2)
+      const requiredBagUnits = halfBagUnits(requiredTonnes, bagTonnes)
+      const orderBagUnits = requiredBagUnits <= 0.5 ? 0.5 : Math.max(0.5, requiredBagUnits - 0.5)
+      const projectedCost = roundMoney(requiredBagUnits * gravel.priceExVat)
 
       return {
         ...material,
-        quantity: `${fullBags} × 20kg bags needed for approx ${gravelAreaM2.toFixed(2)}m² at 40mm`,
-        neededQuantity: `${fullBags} × 20kg decorative-gravel bags`,
-        orderQuantity: `${initialBags} × 20kg bags initially; use matching stock/top up only if needed`,
+        quantity: `${formatBulkBagUnits(requiredBagUnits)} needed for approx ${gravelAreaM2.toFixed(2)}m² at 40mm`,
+        neededQuantity: `${formatBulkBagUnits(requiredBagUnits)} decorative gravel`,
+        orderQuantity: `${formatBulkBagUnits(orderBagUnits)} initially; top up by another ½ bag only if required`,
         estimatedCostExVat: projectedCost,
         note: mergeNote(
           material.note,
-          `${benchmarkNote(gravel.label)} Use the actual local decorative-stone pack size if buying elsewhere.`
+          `${benchmarkNote(gravel.label)} Decorative gravel is always shown in half-bulk-bag or full-bulk-bag increments so the order sheet is quick to use.`
         ),
       }
     }
@@ -299,6 +322,9 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
     commercialNotes: Array.from(
       new Set([
         ...plan.commercialNotes,
+        'Furlads patio ordering rule: 1 sharp-sand bulk bag = 6 × 25kg cement bags for bedding mortar.',
+        'Pointing/jointing is brush-in grout supplied in tubs; it must never be calculated as cement bags.',
+        'Decorative gravel is ordered/displayed only in half-bulk-bag or full-bulk-bag increments.',
         'All material quantities should be displayed in normal orderable merchant units: bulk bags, 25kg cement bags, jointing tubs, rolls, packs or supplier units — not just abstract tonnes/m³.',
         'Material purchase costs use Travis Perkins public ex-VAT prices as a fallback benchmark where a better local/trade price is not already known.',
         'Keep initial deliveries lean. It is preferable to top up a little material during the job than to leave the crew with excess aggregate, sand, paving or other stock to move/dispose of at completion.',
