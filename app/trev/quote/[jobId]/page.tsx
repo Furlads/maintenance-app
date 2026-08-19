@@ -53,10 +53,30 @@ type QuoteOption = {
   totalIncVat: number
 }
 
+type CombinedOffer = {
+  available: boolean
+  label: string
+  summary: string
+  includedOptionLabels: string[]
+  savingReason: string
+  separateTotalExVat: number
+  savingExVat: number
+  estimatedDuration: {
+    workingDays: number
+    teamSize: number
+    description: string
+  }
+  priceExVat: number
+  vatAmount: number
+  totalIncVat: number
+}
+
 type PricingResult = {
+  quoteMode?: 'single' | 'alternatives' | 'packages'
   optionMode?: boolean
   recommendedOptionLabel?: string
   options?: QuoteOption[]
+  combinedOffer?: CombinedOffer | null
   summary: string
   confirmedInformation: string[]
   assumptions: string[]
@@ -87,10 +107,15 @@ const QUOTE_INSTRUCTIONS = `
 Treat this as an ongoing conversation with Trevor while he is completing an assigned Furlads quote visit.
 The latest Trevor message overrides earlier details if anything has changed.
 Previous CHAS replies and prices are provisional context only. Do not treat them as extra scope and do not double-count them.
-If Trevor says the customer wants a couple of ideas, choices, options or different ways of doing the garden, give 2 or 3 genuinely different practical options with separate prices and durations.
-Keep options separate and never add their prices together.
-While options are still being considered, wait for Trevor to choose one or combine parts through a normal conversational reply.
-Once Trevor has clearly chosen the route, collapse it back into one final scope and one final price ready for Kelly.
+
+If the customer wants choices, work out whether they mean:
+- alternatives: different ways/materials/layouts where they would choose one route; or
+- packages: separate jobs they could buy individually, with an optional 'if all completed together' price where genuine shared efficiencies exist.
+
+Customers should be allowed to see several prices before deciding. Do not force Trevor to choose for them before the options go to Kelly.
+Give every option/package its own clear description, price and realistic duration.
+For packages, give an all-together price only where there is a genuine commercial saving from shared setup, deliveries, plant, waste handling or tidy-up.
+Do not invent discounts.
 
 Furlads OS pricing rules:
 - Standard selling rates are all-in selling prices and already include normal labour, materials, standard machinery, standard waste, deliveries, consumables, overheads and profit.
@@ -100,6 +125,7 @@ Furlads OS pricing rules:
 - Protect margin and flag anything Trevor should check rather than inventing hidden conditions.
 - Price excluding VAT, with VAT shown separately.
 - Keep assumptions sensible and practical.
+- Install times must be realistic for a human crew. Do not compress large scopes into attractive but impossible durations.
 `.trim()
 
 function createId(prefix: string) {
@@ -136,7 +162,11 @@ function pricingReply(result: PricingResult) {
   const options = Array.isArray(result.options) ? result.options : []
 
   if (result.optionMode && options.length >= 2) {
-    lines.push("Aye — there are a couple of good ways we could do this.")
+    if (result.quoteMode === 'packages') {
+      lines.push("Right — I’d break this into separate jobs so the customer can see exactly what each part costs.")
+    } else {
+      lines.push("Right — there are a few different ways we could do this, so I’d show the customer the choices rather than pick for them.")
+    }
     lines.push('')
 
     for (const option of options) {
@@ -152,6 +182,7 @@ function pricingReply(result: PricingResult) {
       }
 
       lines.push(`Price: ${money(option.priceExVat)} + VAT`)
+      lines.push(`VAT: ${money(option.vatAmount)}`)
       lines.push(`Total: ${money(option.totalIncVat)}`)
 
       if (option.estimatedDuration?.workingDays) {
@@ -165,13 +196,36 @@ function pricingReply(result: PricingResult) {
       lines.push('')
     }
 
-    if (result.recommendedOptionLabel) {
-      lines.push(`My leaning: ${result.recommendedOptionLabel}.`)
+    if (result.quoteMode === 'packages' && result.combinedOffer?.available) {
+      const combined = result.combinedOffer
+      lines.push(`${combined.label}`)
+      if (combined.summary) lines.push(combined.summary)
+      lines.push(`Price: ${money(combined.priceExVat)} + VAT`)
+      lines.push(`VAT: ${money(combined.vatAmount)}`)
+      lines.push(`Total: ${money(combined.totalIncVat)}`)
+      if (combined.savingExVat > 0) {
+        lines.push(`Saving compared with doing the packages separately: ${money(combined.savingExVat)} + VAT`)
+      }
+      if (combined.savingReason) {
+        lines.push(`Why it’s cheaper together: ${combined.savingReason}`)
+      }
+      if (combined.estimatedDuration?.workingDays) {
+        const days = combined.estimatedDuration.workingDays
+        const team = combined.estimatedDuration.teamSize || 1
+        lines.push(
+          `Likely combined install: ${days} ${days === 1 ? 'day' : 'days'} with ${team} ${team === 1 ? 'person' : 'people'}.`
+        )
+      }
+      lines.push('')
+    }
+
+    if (result.quoteMode === 'alternatives' && result.recommendedOptionLabel) {
+      lines.push(`If you want my view, I’d lean toward ${result.recommendedOptionLabel}, but the customer can see all of them first.`)
       lines.push('')
     }
 
     lines.push(
-      "Tell me which way you want to go — for example ‘go with Option B’, ‘A but use porcelain’, or ‘combine A and C’ — and I’ll turn it into one final quote."
+      "If those prices and descriptions look right, send the options to Kelly. The customer can choose after they’ve seen them."
     )
 
     return lines.join('\n')
@@ -381,7 +435,7 @@ export default function AssignedTrevQuotePage() {
         {
           id: 'welcome',
           role: 'assistant',
-          text: `Right — we're at the quote visit for ${saved.name}. Tell me what the customer wants, measurements, access, levels, drainage and anything unusual. If they want a couple of ideas rather than one fixed plan, just say so and I'll give you separate options. Add the site photos too and I'll build it with you.`,
+          text: `Right — we're at the quote visit for ${saved.name}. Tell me what the customer wants, measurements, access, levels, drainage and anything unusual. If they want different ideas or separate prices for different parts of the job, just say so and I'll break them out properly. Add the site photos too and I'll build it with you.`,
         },
       ])
     } catch (saveError) {
@@ -533,11 +587,6 @@ export default function AssignedTrevQuotePage() {
   }
 
   async function handleSendToKelly() {
-    if (pricingResult?.optionMode) {
-      setError('Choose or combine one of the options with CHAS first, then I can send the final quote to Kelly.')
-      return
-    }
-
     if (!job?.customer?.id || !pricingResult || pricingResult.recommendedPriceExVat <= 0) {
       setError('I need a complete customer and proper quote before sending to Kelly.')
       return
@@ -547,6 +596,8 @@ export default function AssignedTrevQuotePage() {
     setError('')
 
     try {
+      const options = Array.isArray(pricingResult.options) ? pricingResult.options : []
+      const quoteMode = pricingResult.quoteMode || (pricingResult.optionMode ? 'alternatives' : 'single')
       const confirmedScope = [
         pricingResult.summary,
         ...(Array.isArray(pricingResult.confirmedInformation)
@@ -562,9 +613,14 @@ export default function AssignedTrevQuotePage() {
         body: JSON.stringify({
           action: 'write',
           customerName,
+          quoteMode,
+          options,
+          combinedOffer: pricingResult.combinedOffer || null,
           jobDetails: confirmedScope || pricingResult.summary,
           additionalInstructions:
-            'Prepare the customer-ready draft for Kelly to review before she sends it. Do not invent any scope beyond the confirmed information.',
+            pricingResult.optionMode
+              ? 'Prepare a customer-ready options quotation for Kelly to review. Show every option/package separately. The customer has not chosen yet. If an all-together package price is supplied, show it clearly after the individual prices.'
+              : 'Prepare the customer-ready draft for Kelly to review before she sends it. Do not invent any scope beyond the confirmed information.',
           priceExVat: pricingResult.recommendedPriceExVat,
           vatRate: pricingResult.vatRate || 20,
           depositPercent: pricingResult.depositPercent ?? 25,
@@ -579,6 +635,31 @@ export default function AssignedTrevQuotePage() {
       const quote = quoteData as QuoteResult
       const transcript = buildTranscript(messages)
       const duration = pricingResult.estimatedDuration
+      const optionSummary = pricingResult.optionMode
+        ? options
+            .map((option) => {
+              const days = option.estimatedDuration?.workingDays || 0
+              const team = option.estimatedDuration?.teamSize || 1
+              return `${option.label} — ${option.title}: ${money(option.priceExVat)} + VAT (${money(option.totalIncVat)} total)${days ? ` — ${days} ${days === 1 ? 'day' : 'days'} with ${team}` : ''}\n${option.summary}`
+            })
+            .join('\n\n')
+        : ''
+
+      const combinedSummary = pricingResult.combinedOffer?.available
+        ? [
+            `${pricingResult.combinedOffer.label}: ${money(pricingResult.combinedOffer.priceExVat)} + VAT (${money(pricingResult.combinedOffer.totalIncVat)} total)`,
+            pricingResult.combinedOffer.estimatedDuration?.workingDays
+              ? `Combined install: ${pricingResult.combinedOffer.estimatedDuration.workingDays} ${pricingResult.combinedOffer.estimatedDuration.workingDays === 1 ? 'day' : 'days'} with ${pricingResult.combinedOffer.estimatedDuration.teamSize || 1}`
+              : '',
+            pricingResult.combinedOffer.savingExVat > 0
+              ? `Saving vs separate packages: ${money(pricingResult.combinedOffer.savingExVat)} + VAT`
+              : '',
+            pricingResult.combinedOffer.savingReason || '',
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : ''
+
       const internalWorkSummary = [
         'CHAS QUOTE DRAFT FOR KELLY',
         '',
@@ -588,8 +669,11 @@ export default function AssignedTrevQuotePage() {
         customerAddress ? `Address: ${customerAddress}` : '',
         customerEmail ? `Email: ${customerEmail}` : '',
         `Original quote visit job: #${job.id}`,
+        `Quote mode: ${quoteMode}`,
         '',
         `Scope: ${pricingResult.summary}`,
+        pricingResult.optionMode && optionSummary ? `Options / packages:\n${optionSummary}` : '',
+        combinedSummary ? `\n${combinedSummary}` : '',
         `Price ex VAT: ${money(pricingResult.recommendedPriceExVat)}`,
         `VAT: ${money(pricingResult.vatAmount)}`,
         `Total inc VAT: ${money(pricingResult.recommendedTotalIncVat)}`,
@@ -620,15 +704,21 @@ export default function AssignedTrevQuotePage() {
           customerPostcode,
           jobId: job.id,
           sessionId: sessionIdRef.current,
-          question: 'Quote draft ready for Kelly review',
+          question: pricingResult.optionMode
+            ? 'Options quote draft ready for Kelly review'
+            : 'Quote draft ready for Kelly review',
           answer: quote.whatsappQuote,
           intent: 'quote_request',
           confidence: 1,
           escalateTo: 'kelly',
           safetyFlag: false,
           workSummary: internalWorkSummary,
-          roughPriceText: `${money(pricingResult.recommendedPriceExVat)} + VAT / ${money(pricingResult.recommendedTotalIncVat)} total`,
-          enquirySummary: `Trevor completed assigned quote visit #${job.id}. ${pricingResult.summary}`,
+          roughPriceText: pricingResult.optionMode
+            ? `${options.length} priced ${quoteMode === 'packages' ? 'packages' : 'options'}${pricingResult.combinedOffer?.available ? ` / all together ${money(pricingResult.combinedOffer.priceExVat)} + VAT` : ''}`
+            : `${money(pricingResult.recommendedPriceExVat)} + VAT / ${money(pricingResult.recommendedTotalIncVat)} total`,
+          enquirySummary: pricingResult.optionMode
+            ? `Trevor completed assigned quote visit #${job.id} with ${options.length} customer choices ready for Kelly review. ${pricingResult.summary}`
+            : `Trevor completed assigned quote visit #${job.id}. ${pricingResult.summary}`,
           enquiryReadyForKelly: true,
         }),
       })
@@ -643,7 +733,9 @@ export default function AssignedTrevQuotePage() {
         {
           id: createId('chas'),
           role: 'assistant',
-          text: "Done 👍 I've sent this quote to Kelly and kept it linked to the original quote visit.",
+          text: pricingResult.optionMode
+            ? "Done 👍 I've sent all of the customer options to Kelly for review, including the all-together price where there is one."
+            : "Done 👍 I've sent this quote to Kelly and kept it linked to the original quote visit.",
         },
       ])
       setSentToKelly(true)
@@ -790,13 +882,17 @@ export default function AssignedTrevQuotePage() {
 
           {pricingResult?.optionMode && !sentToKelly ? (
             <div className="mb-3 rounded-2xl border border-yellow-300 bg-yellow-50 px-4 py-3 text-center text-sm font-bold text-yellow-900">
-              Pick or combine an option in the chat first — then CHAS will make the final quote.
+              These choices can go to the customer before they decide. Kelly can review and send the full options quote.
             </div>
           ) : null}
 
-          {pricingResult && !pricingResult.optionMode && !sentToKelly ? (
+          {pricingResult && !sentToKelly ? (
             <button type="button" onClick={handleSendToKelly} disabled={busy || sendingToKelly || uploadsInProgress} className="mb-3 min-h-12 w-full rounded-2xl bg-yellow-300 px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50">
-              {sendingToKelly ? 'Writing it up and sending to Kelly…' : 'Happy with this — send to Kelly'}
+              {sendingToKelly
+                ? 'Writing it up and sending to Kelly…'
+                : pricingResult.optionMode
+                  ? 'Happy with these options — send to Kelly'
+                  : 'Happy with this — send to Kelly'}
             </button>
           ) : null}
 
