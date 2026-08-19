@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 type Material = {
   item: string
   quantity: string
+  neededQuantity?: string
+  orderQuantity?: string
   orderFor: string
   estimatedCostExVat: number
   actualCostExVat: number | null
@@ -54,6 +56,9 @@ export default function CostTracker({
   actualCosts,
 }: Props) {
   const router = useRouter()
+  const [materialProjected, setMaterialProjected] = useState(
+    materials.map((material) => String(material.estimatedCostExVat ?? 0))
+  )
   const [materialActuals, setMaterialActuals] = useState(
     materials.map((material) => valueOrBlank(material.actualCostExVat))
   )
@@ -65,19 +70,15 @@ export default function CostTracker({
   const [error, setError] = useState('')
 
   const totals = useMemo(() => {
-    const projectedMaterials = materials.reduce(
-      (sum, material) => sum + material.estimatedCostExVat,
-      0
-    )
-
-    const actualMaterialsEntered = materialActuals.reduce((sum, value) => {
+    const projectedMaterials = materialProjected.reduce((sum, value, index) => {
       const parsed = parseOptional(value)
-      return sum + (parsed ?? 0)
+      return sum + (parsed ?? materials[index]?.estimatedCostExVat ?? 0)
     }, 0)
 
     const liveMaterials = materials.reduce((sum, material, index) => {
       const actual = parseOptional(materialActuals[index] || '')
-      return sum + (actual ?? material.estimatedCostExVat)
+      const projected = parseOptional(materialProjected[index] || '') ?? material.estimatedCostExVat
+      return sum + (actual ?? projected)
     }, 0)
 
     const labour = parseOptional(labourActual) ?? projectedLabourExVat
@@ -103,7 +104,6 @@ export default function CostTracker({
 
     return {
       projectedMaterials,
-      actualMaterialsEntered,
       liveMaterials,
       projectedTotal,
       liveTotal,
@@ -113,6 +113,7 @@ export default function CostTracker({
     }
   }, [
     materials,
+    materialProjected,
     materialActuals,
     labourActual,
     plantWasteActual,
@@ -133,6 +134,7 @@ export default function CostTracker({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          materialProjectedCosts: materialProjected.map(parseOptional),
           materialActualCosts: materialActuals.map(parseOptional),
           labourExVat: parseOptional(labourActual),
           plantWasteExVat: parseOptional(plantWasteActual),
@@ -142,13 +144,13 @@ export default function CostTracker({
 
       const data = await response.json().catch(() => null)
       if (!response.ok || data?.ok === false) {
-        throw new Error(data?.error || 'Could not save actual costs.')
+        throw new Error(data?.error || 'Could not save landscaping costs.')
       }
 
-      setMessage('Actual costs saved — the live margin is now stored with this job.')
+      setMessage('Costs saved — projected and live margin figures are now stored with this job.')
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save actual costs.')
+      setError(err instanceof Error ? err.message : 'Could not save landscaping costs.')
     } finally {
       setSaving(false)
     }
@@ -159,11 +161,11 @@ export default function CostTracker({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">
-            Live job costs
+            Materials & live job costs
           </div>
-          <h2 className="mt-1 text-xl font-black">Projected vs actual</h2>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-600">
-            Enter supplier invoices, plant/waste charges and actual labour as they become known. Blank actuals keep using the projected allowance, so the live margin stays useful throughout the job.
+          <h2 className="mt-1 text-xl font-black">What we need, what to order, what it costs</h2>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-zinc-600">
+            “Needed” is the calculated job requirement. “Order now” is deliberately rounded down where sensible so existing usable Furlads stock can cover the balance. Projected cost stays conservative and can be corrected before the invoice arrives; actual cost is what we really paid.
           </p>
         </div>
         <button
@@ -172,7 +174,7 @@ export default function CostTracker({
           disabled={saving}
           className="min-h-11 rounded-xl bg-zinc-950 px-4 text-sm font-black text-white disabled:opacity-50"
         >
-          {saving ? 'Saving costs…' : 'Save actual costs'}
+          {saving ? 'Saving costs…' : 'Save costs'}
         </button>
       </div>
 
@@ -208,12 +210,13 @@ export default function CostTracker({
       </div>
 
       <div className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
+        <table className="w-full min-w-[1260px] text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500">
               <th className="px-3 py-3">Item</th>
-              <th className="px-3 py-3">Quantity / assumption</th>
-              <th className="px-3 py-3">Projected</th>
+              <th className="px-3 py-3">Needed</th>
+              <th className="px-3 py-3">Order now</th>
+              <th className="px-3 py-3">Projected ex VAT</th>
               <th className="px-3 py-3">Actual ex VAT</th>
               <th className="px-3 py-3">Variance</th>
               <th className="px-3 py-3">Note</th>
@@ -221,36 +224,44 @@ export default function CostTracker({
           </thead>
           <tbody>
             {materials.map((material, index) => {
+              const projected = parseOptional(materialProjected[index] || '') ?? material.estimatedCostExVat
               const actual = parseOptional(materialActuals[index] || '')
-              const variance = actual == null ? null : actual - material.estimatedCostExVat
+              const variance = actual == null ? null : actual - projected
 
               return (
                 <tr key={`${material.item}-${index}`} className="border-b border-zinc-100 align-top">
                   <td className="px-3 py-3 font-bold text-zinc-900">{material.item}</td>
-                  <td className="px-3 py-3 text-zinc-700">{material.quantity}</td>
-                  <td className="px-3 py-3 font-bold text-zinc-900">{money(material.estimatedCostExVat)}</td>
+                  <td className="max-w-[260px] px-3 py-3 text-zinc-700">
+                    {material.neededQuantity || material.quantity}
+                  </td>
+                  <td className="max-w-[240px] px-3 py-3 font-semibold text-blue-900">
+                    {material.orderQuantity || material.neededQuantity || material.quantity}
+                  </td>
                   <td className="px-3 py-3">
-                    <div className="relative w-32">
-                      <span className="pointer-events-none absolute left-3 top-2.5 text-zinc-400">£</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={materialActuals[index] || ''}
-                        onChange={(event) => {
-                          const next = [...materialActuals]
-                          next[index] = event.target.value
-                          setMaterialActuals(next)
-                        }}
-                        placeholder="Enter"
-                        className="min-h-10 w-full rounded-xl border border-zinc-300 pl-7 pr-2 text-sm"
-                      />
-                    </div>
+                    <MoneyInput
+                      value={materialProjected[index] || ''}
+                      onChange={(value) => {
+                        const next = [...materialProjected]
+                        next[index] = value
+                        setMaterialProjected(next)
+                      }}
+                    />
+                  </td>
+                  <td className="px-3 py-3">
+                    <MoneyInput
+                      value={materialActuals[index] || ''}
+                      placeholder="Invoice"
+                      onChange={(value) => {
+                        const next = [...materialActuals]
+                        next[index] = value
+                        setMaterialActuals(next)
+                      }}
+                    />
                   </td>
                   <td className={`px-3 py-3 font-bold ${variance == null ? 'text-zinc-400' : variance <= 0 ? 'text-green-700' : 'text-red-700'}`}>
                     {variance == null ? '—' : `${variance > 0 ? '+' : ''}${money(variance)}`}
                   </td>
-                  <td className="px-3 py-3 text-zinc-600">{material.note || '—'}</td>
+                  <td className="max-w-[300px] px-3 py-3 text-zinc-600">{material.note || '—'}</td>
                 </tr>
               )
             })}
@@ -260,21 +271,21 @@ export default function CostTracker({
               projected={projectedLabourExVat}
               value={labourActual}
               onChange={setLabourActual}
-              note="Enter the actual labour cost when known. Until then the live margin uses the planned allowance."
+              note="Actual labour can replace the planned allowance when the job progresses/completes."
             />
             <CostRow
               label="Plant & waste"
               projected={projectedPlantWasteExVat}
               value={plantWasteActual}
               onChange={setPlantWasteActual}
-              note="Grab/skip, hired plant, fuel or waste costs grouped here."
+              note="Grab/skip, hired plant, fuel and waste charges grouped here."
             />
             <CostRow
               label="Other / consumables"
               projected={projectedOtherExVat}
               value={otherActual}
               onChange={setOtherActual}
-              note="Discs, blades, sundries and other job-specific costs not already captured above."
+              note="Discs, blades, sundries and other job-specific costs not captured above."
             />
           </tbody>
         </table>
@@ -291,6 +302,31 @@ export default function CostTracker({
         </div>
       </div>
     </section>
+  )
+}
+
+function MoneyInput({
+  value,
+  onChange,
+  placeholder = 'Enter',
+}: {
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+}) {
+  return (
+    <div className="relative w-32">
+      <span className="pointer-events-none absolute left-3 top-2.5 text-zinc-400">£</span>
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="min-h-10 w-full rounded-xl border border-zinc-300 bg-white pl-7 pr-2 text-sm"
+      />
+    </div>
   )
 }
 
@@ -314,20 +350,10 @@ function CostRow({
     <tr className="border-b border-zinc-100 align-top bg-zinc-50/60">
       <td className="px-3 py-3 font-bold text-zinc-900">{label}</td>
       <td className="px-3 py-3 text-zinc-500">—</td>
+      <td className="px-3 py-3 text-zinc-500">—</td>
       <td className="px-3 py-3 font-bold text-zinc-900">{money(projected)}</td>
       <td className="px-3 py-3">
-        <div className="relative w-32">
-          <span className="pointer-events-none absolute left-3 top-2.5 text-zinc-400">£</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            placeholder="Enter"
-            className="min-h-10 w-full rounded-xl border border-zinc-300 bg-white pl-7 pr-2 text-sm"
-          />
-        </div>
+        <MoneyInput value={value} onChange={onChange} />
       </td>
       <td className={`px-3 py-3 font-bold ${variance == null ? 'text-zinc-400' : variance <= 0 ? 'text-green-700' : 'text-red-700'}`}>
         {variance == null ? '—' : `${variance > 0 ? '+' : ''}${money(variance)}`}
