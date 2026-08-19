@@ -5,8 +5,10 @@ import {
   findNextAvailableInstallWindow,
   getLatestLandscapingPlan,
 } from '@/lib/landscaping-plan'
+import { getLatestLandscapingControls } from '@/lib/landscaping-controls'
 import PlanActions from './PlanActions'
 import CostTracker from './CostTracker'
+import LandscapingControlsPanel from './LandscapingControlsPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,19 +79,33 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
 
   const quote = job.quotes[0] || null
   const plan = await getLatestLandscapingPlan(job.id)
-  const availability = plan
-    ? await findNextAvailableInstallWindow({
-        jobId: job.id,
-        totalDays: plan.totalDays,
-        teamSize: plan.teamSize,
-      })
-    : null
+
+  const [availability, controls, reviewMessages] = plan
+    ? await Promise.all([
+        findNextAvailableInstallWindow({
+          jobId: job.id,
+          totalDays: plan.totalDays,
+          teamSize: plan.teamSize,
+        }),
+        getLatestLandscapingControls(job.id),
+        prisma.chasMessage.findMany({
+          where: { jobId: job.id, intent: 'landscaping_plan_review' },
+          orderBy: { createdAt: 'desc' },
+          take: 6,
+          select: { question: true, answer: true },
+        }),
+      ])
+    : [null, null, []]
 
   const assignedWorkers = job.assignments
     .map((assignment) => fullName(assignment.worker.firstName, assignment.worker.lastName))
     .filter(Boolean)
 
   const headerScope = compactScope(quote?.scope || job.title)
+  const bookedStartDate = job.visitDate ? job.visitDate.toISOString().slice(0, 10) : null
+  const teamBooked = Boolean(
+    plan && bookedStartDate && assignedWorkers.length >= plan.teamSize
+  )
 
   return (
     <div className="space-y-5">
@@ -161,6 +177,16 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
         </section>
       ) : (
         <>
+          <LandscapingControlsPanel
+            jobId={job.id}
+            materials={plan.materials}
+            initialControls={controls || { materials: {} }}
+            packReady={true}
+            teamBooked={teamBooked}
+            bookedStartDate={bookedStartDate}
+            initialMessages={reviewMessages.slice().reverse()}
+          />
+
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
               <div className="text-xs font-black uppercase tracking-wide text-zinc-500">Selling price ex VAT</div>
@@ -216,7 +242,7 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
               <div className="mt-2 text-2xl font-black">
                 {money(plan.projectedCosts.materialsExVat + plan.projectedCosts.plantWasteExVat + plan.projectedCosts.otherExVat)}
               </div>
-              <p className="mt-2 text-xs leading-5 text-zinc-500">Projected until actual costs are entered below.</p>
+              <p className="mt-2 text-xs leading-5 text-zinc-500">Projected baseline stays locked; enter actual costs below.</p>
             </div>
           </section>
 
