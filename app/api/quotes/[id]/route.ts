@@ -31,21 +31,12 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     }
 
     const body = await req.json()
-    const data: Record<string, unknown> = {}
-
-    if ('customerName' in body) data.customerName = cleanString(body.customerName) || null
-    if ('customerPhone' in body) data.customerPhone = cleanString(body.customerPhone) || null
-    if ('customerEmail' in body) data.customerEmail = cleanString(body.customerEmail) || null
-    if ('customerAddress' in body) data.customerAddress = cleanString(body.customerAddress) || null
-    if ('customerPostcode' in body) data.customerPostcode = cleanString(body.customerPostcode) || null
-    if ('scope' in body) data.scope = cleanString(body.scope)
-    if ('customerMessage' in body) data.customerMessage = cleanString(body.customerMessage) || null
-    if ('internalNotes' in body) data.internalNotes = cleanString(body.internalNotes) || null
-    if ('quoteWorking' in body) data.quoteWorking = cleanString(body.quoteWorking) || null
 
     const currentQuote = await prisma.quote.findUnique({
       where: { id },
       select: {
+        status: true,
+        jobId: true,
         priceExVat: true,
         depositPercent: true,
       },
@@ -57,6 +48,47 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
         { status: 404 }
       )
     }
+
+    const amendmentMode = body.amendmentMode === true
+    const protectedAcceptedQuote = currentQuote.status === 'accepted' || Boolean(currentQuote.jobId)
+    const commercialFields = [
+      'customerName',
+      'customerPhone',
+      'customerEmail',
+      'customerAddress',
+      'customerPostcode',
+      'scope',
+      'customerMessage',
+      'internalNotes',
+      'quoteWorking',
+      'priceExVat',
+      'depositPercent',
+      'estimatedDays',
+      'estimatedTeamSize',
+    ]
+    const isCommercialEdit = commercialFields.some((field) => field in body)
+
+    if (protectedAcceptedQuote && isCommercialEdit && !amendmentMode) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'This accepted quote is locked. Reopen it for amendment before changing the commercial baseline.',
+        },
+        { status: 409 }
+      )
+    }
+
+    const data: Record<string, unknown> = {}
+
+    if ('customerName' in body) data.customerName = cleanString(body.customerName) || null
+    if ('customerPhone' in body) data.customerPhone = cleanString(body.customerPhone) || null
+    if ('customerEmail' in body) data.customerEmail = cleanString(body.customerEmail) || null
+    if ('customerAddress' in body) data.customerAddress = cleanString(body.customerAddress) || null
+    if ('customerPostcode' in body) data.customerPostcode = cleanString(body.customerPostcode) || null
+    if ('scope' in body) data.scope = cleanString(body.scope)
+    if ('customerMessage' in body) data.customerMessage = cleanString(body.customerMessage) || null
+    if ('internalNotes' in body) data.internalNotes = cleanString(body.internalNotes) || null
+    if ('quoteWorking' in body) data.quoteWorking = cleanString(body.quoteWorking) || null
 
     const priceExVat =
       'priceExVat' in body
@@ -107,6 +139,16 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
         return NextResponse.json(
           { ok: false, error: 'Invalid quote status.' },
           { status: 400 }
+        )
+      }
+
+      if (protectedAcceptedQuote && status !== 'accepted' && !amendmentMode) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'This accepted quote is locked. Reopen it for amendment before changing its status.',
+          },
+          { status: 409 }
         )
       }
 
