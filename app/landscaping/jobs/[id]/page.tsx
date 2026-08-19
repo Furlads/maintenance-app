@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import { getLatestLandscapingPlan } from '@/lib/landscaping-plan'
+import { getLatestLandscapingControls } from '@/lib/landscaping-controls'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +26,45 @@ function formatDate(value?: Date | null) {
   }).format(value)
 }
 
+function workerTask(value: string) {
+  const text = String(value || '')
+
+  if (/prepare full-bedding mortar\s*\(1:4 cement\\?:sand/i.test(text)) {
+    return 'Prepare full-bedding mortar at 1:4 cement:sand with SBR/FEB admixture added to the mix in line with the product instructions. Mix workable quantities and maintain the planned ~40mm average full bed.'
+  }
+
+  if (/point joints with appropriate mortar mix/i.test(text)) {
+    return 'Point the joints with the specified brush-in jointing grout/compound. Work it fully into the joints and clean the paving in line with the jointing-product instructions.'
+  }
+
+  if (/begin pointing\/flush finishing of joints with mortar/i.test(text)) {
+    return 'If the paving and joints are ready, begin the specified brush-in jointing grout only where doing so will not disturb freshly laid slabs.'
+  }
+
+  return text
+}
+
+function materialStatus(value?: string) {
+  if (value === 'ordered') return 'Ordered'
+  if (value === 'delivered') return 'Delivered'
+  if (value === 'stock') return 'Using Furlads stock'
+  return 'Not yet marked as sorted'
+}
+
+function extraStatus(value: string) {
+  if (value === 'bought') return 'Bought'
+  if (value === 'on_site') return 'On site'
+  return 'Needed'
+}
+
+function needsSbr(scope: string) {
+  const text = scope.toLowerCase()
+  return (
+    (text.includes('patio') || text.includes('sandstone') || text.includes('porcelain') || text.includes('indian stone')) &&
+    !text.includes('block paving')
+  )
+}
+
 export default async function LandscapingWorkerJobPage({ params }: PageProps) {
   const jobId = Number(params.id)
   if (!Number.isInteger(jobId) || jobId <= 0) notFound()
@@ -42,7 +82,11 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
 
   if (!job || !String(job.jobType || '').toLowerCase().includes('land')) notFound()
 
-  const plan = await getLatestLandscapingPlan(job.id)
+  const [plan, controls] = await Promise.all([
+    getLatestLandscapingPlan(job.id),
+    getLatestLandscapingControls(job.id),
+  ])
+
   const assignedWorkers = job.assignments
     .map((assignment) => fullName(assignment.worker.firstName, assignment.worker.lastName))
     .filter(Boolean)
@@ -112,6 +156,44 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
               </div>
             </section>
 
+            {controls.customerExtras.length || controls.extraItems.length ? (
+              <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Live additions</div>
+                <h2 className="mt-1 text-xl font-black text-blue-950">Customer extras & extra kit</h2>
+                <p className="mt-1 text-sm leading-6 text-blue-900">
+                  These have been added after the original job pack. Check them before starting and flag anything unclear to the office.
+                </p>
+
+                {controls.customerExtras.length ? (
+                  <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-inset ring-blue-200">
+                    <div className="text-xs font-black uppercase tracking-wide text-blue-700">Customer-requested extras</div>
+                    <div className="mt-2 space-y-2 text-sm leading-6 text-zinc-800">
+                      {controls.customerExtras.map((item, index) => <div key={index}>• {item}</div>)}
+                    </div>
+                  </div>
+                ) : null}
+
+                {controls.extraItems.length ? (
+                  <div className="mt-3 space-y-2">
+                    {controls.extraItems.map((item) => (
+                      <div key={item.id} className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-blue-200">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="font-black text-zinc-950">
+                            {item.type === 'tool' ? '🛠 ' : '📦 '}{item.item}
+                          </div>
+                          <span className={`rounded-full px-3 py-1 text-xs font-black ${item.status === 'on_site' ? 'bg-green-100 text-green-800' : item.status === 'bought' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-900'}`}>
+                            {extraStatus(item.status)}
+                          </span>
+                        </div>
+                        {item.quantity ? <div className="mt-1 text-sm font-semibold text-zinc-700">Quantity: {item.quantity}</div> : null}
+                        {item.note ? <div className="mt-1 text-sm leading-6 text-zinc-600">{item.note}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
             <section className="space-y-3">
               <div className="px-1">
                 <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Programme</div>
@@ -137,7 +219,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                       {day.tasks.map((task, index) => (
                         <div key={`${day.day}-${index}`} className="flex gap-3 rounded-2xl bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-800">
                           <span className="font-black text-zinc-400">□</span>
-                          <span>{task}</span>
+                          <span>{workerTask(task)}</span>
                         </div>
                       ))}
                     </div>
@@ -147,7 +229,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                     <strong>⚡ If you’re ahead:</strong>
                     <div className="mt-2 space-y-1">
                       {day.ifAhead.map((task, index) => (
-                        <div key={`ahead-${day.day}-${index}`}>• {task}</div>
+                        <div key={`ahead-${day.day}-${index}`}>• {workerTask(task)}</div>
                       ))}
                     </div>
                     <div className="mt-2 text-xs font-semibold text-green-800">Only pull work forward when the previous stage is ready and it is safe to do so.</div>
@@ -162,16 +244,32 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
 
             <section className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                <h2 className="text-lg font-black">Materials expected on the job</h2>
-                <p className="mt-1 text-xs leading-5 text-zinc-500">Quantities are planned from the accepted measurements where possible; anything that still needs checking will say so clearly.</p>
+                <h2 className="text-lg font-black">Materials for this job</h2>
+                <p className="mt-1 text-xs leading-5 text-zinc-500">These are site quantities only. Pricing and supplier-cost notes stay in the office view.</p>
                 <div className="mt-4 space-y-2">
-                  {plan.materials.length ? plan.materials.map((material, index) => (
-                    <div key={`${material.item}-${index}`} className="rounded-2xl bg-zinc-50 p-4">
-                      <div className="font-bold">{material.item}</div>
-                      <div className="mt-1 text-sm text-zinc-700">{material.quantity}</div>
-                      {material.note ? <div className="mt-1 text-xs leading-5 text-zinc-500">{material.note}</div> : null}
+                  {plan.materials.length ? plan.materials.map((material, index) => {
+                    const tracking = controls.materials[material.item]
+                    return (
+                      <div key={`${material.item}-${index}`} className="rounded-2xl bg-zinc-50 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="font-bold">{material.item}</div>
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${tracking?.status === 'delivered' || tracking?.status === 'stock' ? 'bg-green-100 text-green-800' : tracking?.status === 'ordered' ? 'bg-blue-100 text-blue-800' : 'bg-zinc-200 text-zinc-700'}`}>
+                            {materialStatus(tracking?.status)}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-700">{material.neededQuantity || material.quantity}</div>
+                      </div>
+                    )
+                  }) : <p className="text-sm text-zinc-500">No material list has been added yet.</p>}
+
+                  {needsSbr(plan.scope) ? (
+                    <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4">
+                      <div className="font-bold text-yellow-950">SBR / FEB mortar admixture</div>
+                      <div className="mt-1 text-sm leading-6 text-yellow-900">
+                        Required in the 1:4 bedding mortar. Make sure SBR/FEB is available and add it in line with the product instructions for the mix being used.
+                      </div>
                     </div>
-                  )) : <p className="text-sm text-zinc-500">No material list has been added yet.</p>}
+                  ) : null}
                 </div>
               </div>
 
@@ -180,6 +278,9 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                   <h2 className="text-lg font-black">Plant & tools</h2>
                   <div className="mt-3 space-y-2 text-sm text-zinc-700">
                     {plan.plantTools.length ? plan.plantTools.map((item, index) => <div key={index}>• {item}</div>) : <div>Normal landscaping tools for the agreed scope.</div>}
+                    {controls.extraItems.filter((item) => item.type === 'tool').map((item) => (
+                      <div key={`extra-tool-${item.id}`} className="font-semibold text-blue-800">+ {item.item}{item.quantity ? ` — ${item.quantity}` : ''} ({extraStatus(item.status)})</div>
+                    ))}
                   </div>
                 </div>
 
