@@ -23,10 +23,10 @@ export const TRAVIS_PERKINS_BENCHMARKS = {
     coverageRangeM2: '6-9',
     priceExVat: 43.99,
   },
-  blackBasaltTradePack20Kg: {
-    label: 'Travis Perkins black basalt decorative gravel 20kg trade pack',
-    packedWeightKg: 20,
-    priceExVat: 5.95,
+  blackBasaltBulkBag: {
+    label: 'Travis Perkins Suburban Stone Black Basalt 20mm bulk bag',
+    packedWeightKg: 800,
+    priceExVat: 199.44,
   },
   heavyDutyLandscapeFabric2x25: {
     label: 'Travis Perkins 4Trade heavy duty landscape fabric 2m x 25m',
