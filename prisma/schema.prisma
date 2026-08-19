@@ -82,6 +82,7 @@ model Customer {
   archived      Boolean        @default(false)
   inboxMessages InboxMessage[]
   jobs          Job[]
+  quotes        Quote[]
 
   @@index([archived, createdAt])
   @@index([name])
@@ -130,6 +131,7 @@ model Job {
   auditLogs                 JobAuditLog[]
   notifications             Notification[]
   activityLogs              ActivityLog[]
+  quotes                    Quote[]
 
   @@index([customerId])
   @@index([status, createdAt])
@@ -167,13 +169,13 @@ model JobNote {
 
 model JobPhoto {
   id                 Int      @id @default(autoincrement())
-  jobId              Int
+  jobId               Int
   uploadedByWorkerId Int?
-  label              String?
-  imageUrl           String
-  createdAt          DateTime @default(now())
-  job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  uploadedByWorker   Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
+  label               String?
+  imageUrl            String
+  createdAt           DateTime @default(now())
+  job                 Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  uploadedByWorker    Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
 
   @@index([jobId, createdAt])
   @@index([uploadedByWorkerId, createdAt])
@@ -225,6 +227,7 @@ model Conversation {
   archived    Boolean        @default(false)
   createdAt   DateTime       @default(now())
   messages    InboxMessage[]
+  quotes      Quote[]
 
   @@index([archived])
   @@index([source, createdAt])
@@ -256,6 +259,46 @@ model InboxMessage {
   @@index([status, createdAt])
   @@index([customerId])
   @@index([jobId])
+}
+
+model Quote {
+  id                 Int       @id @default(autoincrement())
+  customerId         Int?
+  jobId              Int?
+  conversationId     String?
+  customerName       String?
+  customerPhone      String?
+  customerEmail      String?
+  customerAddress    String?
+  customerPostcode   String?
+  scope              String
+  customerMessage    String?
+  internalNotes      String?
+  quoteWorking       String?
+  priceExVat         Float     @default(0)
+  vatRate            Float     @default(20)
+  vatAmount          Float     @default(0)
+  totalIncVat        Float     @default(0)
+  depositPercent     Float     @default(25)
+  depositAmount      Float     @default(0)
+  estimatedDays      Float?
+  estimatedTeamSize  Int?
+  status             String    @default("needs_review")
+  sentAt             DateTime?
+  acceptedAt         DateTime?
+  declinedAt         DateTime?
+  archivedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  customer           Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  job                Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  conversation       Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([customerId, createdAt])
+  @@index([jobId])
+  @@index([conversationId])
+  @@index([archivedAt])
 }
 
 model InboxConnection {
@@ -360,18 +403,18 @@ model Notification {
 }
 
 model ActivityLog {
-  id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  workerId    Int?
-  workerName  String?
-  jobId       Int?
-  eventType   String
-  page        String?
-  details     String?
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  workerId     Int?
+  workerName   String?
+  jobId        Int?
+  eventType    String
+  page         String?
+  details      String?
   metadataJson String?
-  userAgent   String?
-  worker      Worker?  @relation(fields: [workerId], references: [id], onDelete: SetNull)
-  job         Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  userAgent    String?
+  worker       Worker?  @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  job          Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([workerId, createdAt])
