@@ -81,7 +81,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
             <div className="rounded-2xl bg-white/10 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Team</div>
               <div className="mt-1 text-xl font-black">
-                {assignedWorkers.length ? assignedWorkers.join(', ') : plan ? `${plan.teamSize} people planned` : 'TBC'}
+                {assignedWorkers.length ? assignedWorkers.join(', ') : plan ? `${plan.teamSize} people planned` : 'Not assigned'}
               </div>
             </div>
             <div className="rounded-2xl bg-white/10 p-4">
@@ -116,6 +116,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
               <div className="px-1">
                 <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Programme</div>
                 <h2 className="mt-1 text-xl font-black">What we’re aiming to achieve each day</h2>
+                <p className="mt-1 text-sm text-zinc-600">Finish the day target first. If you are ahead, keep the job moving by pulling forward the safe next-stage tasks shown below.</p>
               </div>
 
               {plan.dayPlan.map((day) => (
@@ -142,7 +143,17 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                     </div>
                   ) : null}
 
-                  <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950">
+                  <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm leading-6 text-green-950">
+                    <strong>⚡ If you’re ahead:</strong>
+                    <div className="mt-2 space-y-1">
+                      {day.ifAhead.map((task, index) => (
+                        <div key={`ahead-${day.day}-${index}`}>• {task}</div>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-xs font-semibold text-green-800">Only pull work forward when the previous stage is ready and it is safe to do so.</div>
+                  </div>
+
+                  <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950">
                     <strong>End-of-day checkpoint:</strong> {day.checkpoint}
                   </div>
                 </article>
@@ -152,7 +163,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
             <section className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
                 <h2 className="text-lg font-black">Materials expected on the job</h2>
-                <p className="mt-1 text-xs leading-5 text-zinc-500">Quantities marked TBC must be confirmed before the order is placed.</p>
+                <p className="mt-1 text-xs leading-5 text-zinc-500">Quantities are planned from the accepted measurements where possible; anything that still needs checking will say so clearly.</p>
                 <div className="mt-4 space-y-2">
                   {plan.materials.length ? plan.materials.map((material, index) => (
                     <div key={`${material.item}-${index}`} className="rounded-2xl bg-zinc-50 p-4">
