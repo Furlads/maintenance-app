@@ -344,18 +344,65 @@ function retainingRows(plan: LandscapingPlan) {
 }
 
 function drainageRows(plan: LandscapingPlan) {
-  if (!has(plan.scope, 'drainage', 'aco', 'channel drain', 'soakaway', 'drain pipe')) return []
-  const length = runM(plan.scope) || Math.max(1, widthM(plan.scope))
+  const scope = plan.scope.toLowerCase()
+
+  // Generic wording such as “lay to falls for drainage”, “allow for drainage” or
+  // “ensure adequate drainage” is a design/site requirement, not permission to add
+  // a drainage system to the accepted material order. Only create a row for a
+  // component that is explicitly named in the accepted scope.
+  const hasChannel = /\b(?:aco|channel drain|linear drain|drainage channel)\b/i.test(scope)
+  const hasPipe = /\b(?:110\s*mm\s*)?(?:drainage|drain)\s*pipe(?:work)?\b|\b110\s*mm\s*(?:pipe|drainage pipe)\b/i.test(scope)
+  const hasSoakaway = /\bsoakaway\b/i.test(scope)
+  const hasDrainageGravel = /\b(?:drainage gravel|pea gravel|pipe bedding|gravel bedding|soakaway gravel|soakaway stone)\b/i.test(scope)
+
+  if (!hasChannel && !hasPipe && !hasSoakaway && !hasDrainageGravel) return []
+
   const src = plan.materials
-  const channelM = Math.max(1, Math.ceil(length))
-  const pipeM = Math.max(3, Math.ceil(length))
-  const pipeLengths = Math.max(1, Math.ceil(pipeM / TP.drainagePipe110x3m.lengthM))
-  const gravelUnits = halfBagUnits(Math.max(400, pipeM * 0.25 * 0.25 * 1600), TP.gravelShingle10mmBulkBag.packedWeightKg)
-  return [
-    make('ACO channel drain', `${channelM} × 1m channels`, `${channelM} channels`, channelM * TP.acoHexDrain1m.priceExVat, benchmarkNote(TP.acoHexDrain1m.label), actualByWords(src, ['aco', 'channel'])),
-    make('110mm drainage pipe', `${pipeLengths} × 3m lengths`, `${pipeLengths} lengths`, pipeLengths * TP.drainagePipe110x3m.priceExVat, benchmarkNote(TP.drainagePipe110x3m.label), actualByWords(src, ['drainage pipe', '110mm'])),
-    make('Drainage gravel', `${bulkBagText(gravelUnits)}`, `${bulkBagText(Math.max(0.5, gravelUnits - 0.5))} initially; top up by ½ bag if required`, gravelUnits * TP.gravelShingle10mmBulkBag.priceExVat, benchmarkNote(TP.gravelShingle10mmBulkBag.label), actualByWords(src, ['drainage gravel', 'pea gravel'])),
-  ]
+  const rows: PlanMaterial[] = []
+  const explicitRun = runM(plan.scope)
+
+  if (hasChannel) {
+    const channelM = Math.max(1, Math.ceil(explicitRun || widthM(plan.scope) || 1))
+    rows.push(make(
+      'ACO channel drain',
+      `${channelM} × 1m channel${channelM === 1 ? '' : 's'}`,
+      `${channelM} channel${channelM === 1 ? '' : 's'}`,
+      channelM * TP.acoHexDrain1m.priceExVat,
+      benchmarkNote(TP.acoHexDrain1m.label),
+      actualByWords(src, ['aco', 'channel'])
+    ))
+  }
+
+  if (hasPipe) {
+    const pipeM = Math.max(3, Math.ceil(explicitRun || 3))
+    const pipeLengths = Math.max(1, Math.ceil(pipeM / TP.drainagePipe110x3m.lengthM))
+    rows.push(make(
+      '110mm drainage pipe',
+      `${pipeLengths} × 3m length${pipeLengths === 1 ? '' : 's'}`,
+      `${pipeLengths} length${pipeLengths === 1 ? '' : 's'}`,
+      pipeLengths * TP.drainagePipe110x3m.priceExVat,
+      benchmarkNote(TP.drainagePipe110x3m.label),
+      actualByWords(src, ['drainage pipe', '110mm'])
+    ))
+  }
+
+  if (hasSoakaway || hasDrainageGravel) {
+    const drainageLengthM = Math.max(1, Math.ceil(explicitRun || 1))
+    const gravelUnits = halfBagUnits(
+      Math.max(400, drainageLengthM * 0.25 * 0.25 * 1600),
+      TP.gravelShingle10mmBulkBag.packedWeightKg
+    )
+    rows.push(make(
+      'Drainage gravel',
+      bulkBagText(gravelUnits),
+      `${bulkBagText(Math.max(0.5, gravelUnits - 0.5))} initially; top up by ½ bag if required`,
+      gravelUnits * TP.gravelShingle10mmBulkBag.priceExVat,
+      benchmarkNote(TP.gravelShingle10mmBulkBag.label),
+      actualByWords(src, ['drainage gravel', 'pea gravel', 'soakaway'])
+    ))
+  }
+
+  return rows
 }
 
 function concreteBaseRows(plan: LandscapingPlan) {
@@ -420,6 +467,7 @@ function applyCommonLandscapingPolicy(plan: LandscapingPlan) {
     commercialNotes: Array.from(new Set([
       ...plan.commercialNotes,
       'Common Furlads landscaping jobs use deterministic merchant-unit order lists rather than free-form CHAS material rows.',
+      'Specialist extras such as drainage are only added when the accepted scope explicitly names the component; generic design wording does not create material order lines.',
       'Travis Perkins public ex-VAT prices are the frozen projected-cost baseline. Actual supplier invoices are entered separately and do not rewrite the projection.',
       'Initial deliveries stay deliberately lean where a same-job top-up is practical, because leftover stock creates labour and disposal problems.',
     ])),
