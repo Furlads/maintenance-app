@@ -55,7 +55,7 @@ export default async function JobDetailLayout({ children, params }: LayoutProps)
     })
 
     if (trevQuoteVisit) {
-      redirect(`/quote-test?jobId=${trevQuoteVisit.id}`)
+      redirect(`/trev/quote/${trevQuoteVisit.id}`)
     }
   }
 
