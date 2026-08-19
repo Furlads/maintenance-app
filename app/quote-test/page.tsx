@@ -26,6 +26,15 @@ type UploadedPhoto = {
   error?: string
 }
 
+type Customer = {
+  id: number
+  name: string
+  phone: string | null
+  email: string | null
+  address: string | null
+  postcode: string | null
+}
+
 type PricingResult = {
   summary: string
   confirmedInformation: string[]
@@ -78,6 +87,14 @@ function money(value: number | undefined) {
     style: 'currency',
     currency: 'GBP',
   }).format(Number.isFinite(Number(value)) ? Number(value) : 0)
+}
+
+function normalisePhone(value: string | null | undefined) {
+  return String(value || '').replace(/\D/g, '')
+}
+
+function normalisePostcode(value: string | null | undefined) {
+  return String(value || '').replace(/\s+/g, '').toUpperCase()
 }
 
 function buildTranscript(messages: ChatMessage[]) {
@@ -149,6 +166,19 @@ export default function QuoteTestPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const sessionIdRef = useRef('')
 
+  const [customerReady, setCustomerReady] = useState(false)
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [customersLoading, setCustomersLoading] = useState(true)
+  const [customerSaving, setCustomerSaving] = useState(false)
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [customerError, setCustomerError] = useState('')
+  const [customerId, setCustomerId] = useState<number | null>(null)
+  const [customerName, setCustomerName] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [customerEmail, setCustomerEmail] = useState('')
+  const [customerAddress, setCustomerAddress] = useState('')
+  const [customerPostcode, setCustomerPostcode] = useState('')
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
@@ -170,6 +200,44 @@ export default function QuoteTestPage() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+
+    async function loadCustomers() {
+      try {
+        setCustomersLoading(true)
+        const response = await fetch('/api/customers', { cache: 'no-store' })
+        const data = await response.json().catch(() => [])
+
+        if (!response.ok) {
+          throw new Error('Could not load existing customers.')
+        }
+
+        if (!cancelled) {
+          setCustomers(Array.isArray(data) ? data : [])
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setCustomerError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Could not load existing customers.'
+          )
+        }
+      } finally {
+        if (!cancelled) {
+          setCustomersLoading(false)
+        }
+      }
+    }
+
+    void loadCustomers()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, busy, error])
 
@@ -183,6 +251,30 @@ export default function QuoteTestPage() {
     }
   }, [photos])
 
+  const filteredCustomers = useMemo(() => {
+    const search = customerSearch.trim().toLowerCase()
+
+    if (!search) {
+      return customers.slice(0, 6)
+    }
+
+    return customers
+      .filter((customer) => {
+        const haystack = [
+          customer.name,
+          customer.phone,
+          customer.postcode,
+          customer.email,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+
+        return haystack.includes(search)
+      })
+      .slice(0, 8)
+  }, [customerSearch, customers])
+
   const uploadedPhotos = useMemo(
     () => photos.filter((photo) => photo.status === 'uploaded'),
     [photos]
@@ -191,6 +283,153 @@ export default function QuoteTestPage() {
   const uploadsInProgress = photos.some(
     (photo) => photo.status === 'uploading'
   )
+
+  function selectCustomer(customer: Customer) {
+    setCustomerId(customer.id)
+    setCustomerName(customer.name || '')
+    setCustomerPhone(customer.phone || '')
+    setCustomerEmail(customer.email || '')
+    setCustomerAddress(customer.address || '')
+    setCustomerPostcode(customer.postcode || '')
+    setCustomerSearch(customer.name || '')
+    setCustomerError('')
+  }
+
+  function clearCustomer() {
+    setCustomerId(null)
+    setCustomerName('')
+    setCustomerPhone('')
+    setCustomerEmail('')
+    setCustomerAddress('')
+    setCustomerPostcode('')
+    setCustomerSearch('')
+    setCustomerError('')
+  }
+
+  async function saveCustomerToId(id: number) {
+    const response = await fetch(`/api/customers/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: customerName.trim(),
+        phone: customerPhone.trim(),
+        email: customerEmail.trim(),
+        address: customerAddress.trim(),
+        postcode: customerPostcode.trim(),
+      }),
+    })
+
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Could not update customer details.')
+    }
+
+    return data as Customer
+  }
+
+  async function handleStartQuote() {
+    const name = customerName.trim()
+    const phone = customerPhone.trim()
+    const postcode = customerPostcode.trim().toUpperCase()
+
+    if (!name || !phone || !postcode) {
+      setCustomerError('Name, phone number and postcode are required.')
+      return
+    }
+
+    if (normalisePhone(phone).length < 7) {
+      setCustomerError('Please enter a valid phone number.')
+      return
+    }
+
+    setCustomerSaving(true)
+    setCustomerError('')
+
+    try {
+      let savedCustomer: Customer
+
+      if (customerId) {
+        savedCustomer = await saveCustomerToId(customerId)
+      } else {
+        const matchingCustomer = customers.find((customer) => {
+          const samePhone =
+            normalisePhone(customer.phone) &&
+            normalisePhone(customer.phone) === normalisePhone(phone)
+
+          const sameNameAndPostcode =
+            customer.name.trim().toLowerCase() === name.toLowerCase() &&
+            normalisePostcode(customer.postcode) === normalisePostcode(postcode)
+
+          return Boolean(samePhone || sameNameAndPostcode)
+        })
+
+        if (matchingCustomer) {
+          setCustomerId(matchingCustomer.id)
+          savedCustomer = await saveCustomerToId(matchingCustomer.id)
+        } else {
+          const response = await fetch('/api/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              phone,
+              email: customerEmail.trim(),
+              address: customerAddress.trim(),
+              postcode,
+            }),
+          })
+
+          const data = await response.json().catch(() => null)
+
+          if (
+            response.status === 409 &&
+            data?.requiresConfirmation &&
+            Array.isArray(data?.duplicates) &&
+            data.duplicates.length > 0
+          ) {
+            const duplicateId = Number(data.duplicates[0].id)
+            setCustomerId(duplicateId)
+            savedCustomer = await saveCustomerToId(duplicateId)
+          } else {
+            if (!response.ok) {
+              throw new Error(data?.error || 'Could not save customer details.')
+            }
+            savedCustomer = data as Customer
+          }
+        }
+      }
+
+      setCustomerId(savedCustomer.id)
+      setCustomerName(savedCustomer.name || name)
+      setCustomerPhone(savedCustomer.phone || phone)
+      setCustomerEmail(savedCustomer.email || '')
+      setCustomerAddress(savedCustomer.address || '')
+      setCustomerPostcode(savedCustomer.postcode || postcode)
+      setCustomerSearch(savedCustomer.name || name)
+      setCustomers((current) => {
+        const withoutSaved = current.filter((item) => item.id !== savedCustomer.id)
+        return [savedCustomer, ...withoutSaved]
+      })
+      setCustomerReady(true)
+      setMessages([
+        {
+          id: 'welcome',
+          role: 'assistant',
+          text: `Right — we're quoting for ${savedCustomer.name}. Tell me what we're doing, the measurements, access, levels, drainage or anything unusual. Add the site photos too and I'll build the quote with you.`,
+        },
+      ])
+      setError('')
+    } catch (saveError) {
+      setCustomerError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Could not save customer details.'
+      )
+    } finally {
+      setCustomerSaving(false)
+    }
+  }
 
   async function uploadPhoto(file: File, id: string) {
     const formData = new FormData()
@@ -333,7 +572,7 @@ export default function QuoteTestPage() {
         },
         body: JSON.stringify({
           action: 'price',
-          customerName: '',
+          customerName,
           jobDetails: buildTranscript(nextMessages),
           additionalInstructions: QUOTE_INSTRUCTIONS,
           photos: uploadedPhotos.map((photo) => ({
@@ -376,6 +615,11 @@ export default function QuoteTestPage() {
       return
     }
 
+    if (!customerId || !customerName.trim() || !customerPhone.trim() || !customerPostcode.trim()) {
+      setError('Customer name, phone number and postcode must be saved before sending to Kelly.')
+      return
+    }
+
     setSendingToKelly(true)
     setError('')
 
@@ -396,7 +640,7 @@ export default function QuoteTestPage() {
         },
         body: JSON.stringify({
           action: 'write',
-          customerName: '',
+          customerName,
           jobDetails: confirmedScope || pricingResult.summary,
           additionalInstructions:
             'Prepare the customer-ready draft for Kelly to review before she sends it. Do not invent any scope beyond the confirmed information.',
@@ -417,6 +661,12 @@ export default function QuoteTestPage() {
       const duration = pricingResult.estimatedDuration
       const internalWorkSummary = [
         'CHAS QUOTE DRAFT FOR KELLY',
+        '',
+        `Customer: ${customerName}`,
+        `Phone: ${customerPhone}`,
+        `Postcode: ${customerPostcode}`,
+        customerAddress ? `Address: ${customerAddress}` : '',
+        customerEmail ? `Email: ${customerEmail}` : '',
         '',
         `Scope: ${pricingResult.summary}`,
         `Price ex VAT: ${money(pricingResult.recommendedPriceExVat)}`,
@@ -446,6 +696,12 @@ export default function QuoteTestPage() {
         body: JSON.stringify({
           company: 'furlads',
           worker: 'Trevor',
+          customerId,
+          customerName,
+          customerPhone,
+          customerEmail,
+          customerAddress,
+          customerPostcode,
           sessionId,
           question: 'Quote draft ready for Kelly review',
           answer: quote.whatsappQuote,
@@ -489,12 +745,14 @@ export default function QuoteTestPage() {
   }
 
   function startNewQuote() {
+    setCustomerReady(false)
+    clearCustomer()
     setMessages([
       {
         id: 'welcome',
         role: 'assistant',
         text:
-          "Fresh quote. Tell me what we're looking at, give me the measurements and customer requirements, then add the site photos. I'll build it with you from there.",
+          "I'm Chas. Tell me about the job exactly as you would if we were stood in the garden together.",
       },
     ])
     setQuestion('')
@@ -522,6 +780,186 @@ export default function QuoteTestPage() {
     }
   }
 
+  if (!customerReady) {
+    return (
+      <main className="min-h-[100dvh] bg-zinc-100 px-3 py-4 text-zinc-950 sm:px-5">
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-zinc-950 text-sm font-black text-yellow-300">
+                C
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-base font-black">CHAS · New Quote</div>
+                <div className="truncate text-xs font-medium text-zinc-500">
+                  Customer details first, then we’ll build the quote.
+                </div>
+              </div>
+            </div>
+
+            <Link
+              href="/admin/quotes"
+              className="flex min-h-10 items-center rounded-xl bg-zinc-950 px-3 text-xs font-bold text-white"
+            >
+              Back
+            </Link>
+          </div>
+
+          <section className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">
+                Step 1
+              </p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight">
+                Who are we quoting for?
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-zinc-600">
+                Find an existing customer or enter a new one. Name, phone number and postcode are required.
+              </p>
+            </div>
+
+            <div className="mt-5">
+              <label className="text-sm font-bold text-zinc-800">
+                Search existing customers
+              </label>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={customerSearch}
+                  onChange={(event) => setCustomerSearch(event.target.value)}
+                  placeholder="Name, phone or postcode"
+                  className="min-h-12 flex-1 rounded-2xl border border-zinc-300 px-4 text-base outline-none focus:border-zinc-600"
+                />
+                <button
+                  type="button"
+                  onClick={clearCustomer}
+                  className="rounded-2xl border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-700"
+                >
+                  New
+                </button>
+              </div>
+
+              {customersLoading ? (
+                <div className="mt-2 text-sm text-zinc-500">Loading customers…</div>
+              ) : filteredCustomers.length ? (
+                <div className="mt-2 max-h-52 overflow-y-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-2">
+                  {filteredCustomers.map((customer) => (
+                    <button
+                      key={customer.id}
+                      type="button"
+                      onClick={() => selectCustomer(customer)}
+                      className={`mb-1 w-full rounded-xl px-3 py-2.5 text-left last:mb-0 ${
+                        customerId === customer.id
+                          ? 'bg-zinc-950 text-white'
+                          : 'bg-white text-zinc-900 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <div className="font-bold">{customer.name}</div>
+                      <div
+                        className={`mt-0.5 text-xs ${
+                          customerId === customer.id
+                            ? 'text-zinc-300'
+                            : 'text-zinc-500'
+                        }`}
+                      >
+                        {[customer.phone, customer.postcode]
+                          .filter(Boolean)
+                          .join(' · ') || 'No contact details saved'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : customerSearch.trim() ? (
+                <div className="mt-2 text-sm text-zinc-500">
+                  No matching customer found — enter them below as a new customer.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <label className="block sm:col-span-2">
+                <span className="text-sm font-bold text-zinc-800">Name *</span>
+                <input
+                  value={customerName}
+                  onChange={(event) => setCustomerName(event.target.value)}
+                  autoComplete="name"
+                  className="mt-2 min-h-12 w-full rounded-2xl border border-zinc-300 px-4 text-base outline-none focus:border-zinc-600"
+                  placeholder="Customer name"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-bold text-zinc-800">Phone number *</span>
+                <input
+                  value={customerPhone}
+                  onChange={(event) => setCustomerPhone(event.target.value)}
+                  type="tel"
+                  autoComplete="tel"
+                  className="mt-2 min-h-12 w-full rounded-2xl border border-zinc-300 px-4 text-base outline-none focus:border-zinc-600"
+                  placeholder="07…"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-bold text-zinc-800">Postcode *</span>
+                <input
+                  value={customerPostcode}
+                  onChange={(event) =>
+                    setCustomerPostcode(event.target.value.toUpperCase())
+                  }
+                  autoComplete="postal-code"
+                  className="mt-2 min-h-12 w-full rounded-2xl border border-zinc-300 px-4 text-base uppercase outline-none focus:border-zinc-600"
+                  placeholder="TF9 4BQ"
+                />
+              </label>
+
+              <label className="block sm:col-span-2">
+                <span className="text-sm font-bold text-zinc-800">Address</span>
+                <input
+                  value={customerAddress}
+                  onChange={(event) => setCustomerAddress(event.target.value)}
+                  autoComplete="street-address"
+                  className="mt-2 min-h-12 w-full rounded-2xl border border-zinc-300 px-4 text-base outline-none focus:border-zinc-600"
+                  placeholder="Optional address"
+                />
+              </label>
+
+              <label className="block sm:col-span-2">
+                <span className="text-sm font-bold text-zinc-800">Email</span>
+                <input
+                  value={customerEmail}
+                  onChange={(event) => setCustomerEmail(event.target.value)}
+                  type="email"
+                  autoComplete="email"
+                  className="mt-2 min-h-12 w-full rounded-2xl border border-zinc-300 px-4 text-base outline-none focus:border-zinc-600"
+                  placeholder="Optional email"
+                />
+              </label>
+            </div>
+
+            {customerError ? (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+                {customerError}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={handleStartQuote}
+              disabled={customerSaving}
+              className="mt-5 min-h-12 w-full rounded-2xl bg-yellow-300 px-4 py-3 text-sm font-black text-zinc-950 shadow-sm disabled:opacity-50"
+            >
+              {customerSaving
+                ? 'Saving customer…'
+                : customerId
+                  ? 'Update customer & start quote with CHAS'
+                  : 'Save customer & start quote with CHAS'}
+            </button>
+          </section>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="flex h-[100dvh] flex-col overflow-hidden bg-zinc-100 text-zinc-950">
       <header className="flex-none border-b border-zinc-200 bg-white px-3 py-3 sm:px-5">
@@ -532,9 +970,13 @@ export default function QuoteTestPage() {
             </div>
             <div className="min-w-0">
               <div className="truncate text-base font-black">CHAS · Quote</div>
-              <div className="truncate text-xs font-medium text-zinc-500">
-                Talk to me. I’ll build the Furlads quote with you.
-              </div>
+              <button
+                type="button"
+                onClick={() => setCustomerReady(false)}
+                className="block max-w-full truncate text-left text-xs font-bold text-zinc-500 underline decoration-zinc-300 underline-offset-2"
+              >
+                {customerName} · {customerPostcode}
+              </button>
             </div>
           </div>
 
@@ -547,7 +989,7 @@ export default function QuoteTestPage() {
               New quote
             </button>
             <Link
-              href="/jobs"
+              href="/admin/quotes"
               className="flex min-h-10 items-center rounded-xl bg-zinc-950 px-3 text-xs font-bold text-white"
             >
               Back
