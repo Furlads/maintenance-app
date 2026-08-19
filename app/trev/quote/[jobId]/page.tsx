@@ -37,7 +37,26 @@ type UploadedPhoto = {
   status: 'uploading' | 'uploaded' | 'failed'
 }
 
+type QuoteOption = {
+  label: string
+  title: string
+  summary: string
+  keyDifferences: string[]
+  whyChoose: string
+  estimatedDuration: {
+    workingDays: number
+    teamSize: number
+    description: string
+  }
+  priceExVat: number
+  vatAmount: number
+  totalIncVat: number
+}
+
 type PricingResult = {
+  optionMode?: boolean
+  recommendedOptionLabel?: string
+  options?: QuoteOption[]
   summary: string
   confirmedInformation: string[]
   assumptions: string[]
@@ -68,6 +87,10 @@ const QUOTE_INSTRUCTIONS = `
 Treat this as an ongoing conversation with Trevor while he is completing an assigned Furlads quote visit.
 The latest Trevor message overrides earlier details if anything has changed.
 Previous CHAS replies and prices are provisional context only. Do not treat them as extra scope and do not double-count them.
+If Trevor says the customer wants a couple of ideas, choices, options or different ways of doing the garden, give 2 or 3 genuinely different practical options with separate prices and durations.
+Keep options separate and never add their prices together.
+While options are still being considered, wait for Trevor to choose one or combine parts through a normal conversational reply.
+Once Trevor has clearly chosen the route, collapse it back into one final scope and one final price ready for Kelly.
 
 Furlads OS pricing rules:
 - Standard selling rates are all-in selling prices and already include normal labour, materials, standard machinery, standard waste, deliveries, consumables, overheads and profit.
@@ -110,6 +133,49 @@ function buildTranscript(messages: ChatMessage[]) {
 
 function pricingReply(result: PricingResult) {
   const lines: string[] = []
+  const options = Array.isArray(result.options) ? result.options : []
+
+  if (result.optionMode && options.length >= 2) {
+    lines.push("Aye — there are a couple of good ways we could do this.")
+    lines.push('')
+
+    for (const option of options) {
+      lines.push(`${option.label} — ${option.title}`)
+      lines.push(option.summary)
+
+      for (const difference of option.keyDifferences || []) {
+        lines.push(`• ${difference}`)
+      }
+
+      if (option.whyChoose) {
+        lines.push(`Why choose it: ${option.whyChoose}`)
+      }
+
+      lines.push(`Price: ${money(option.priceExVat)} + VAT`)
+      lines.push(`Total: ${money(option.totalIncVat)}`)
+
+      if (option.estimatedDuration?.workingDays) {
+        const days = option.estimatedDuration.workingDays
+        const team = option.estimatedDuration.teamSize || 1
+        lines.push(
+          `Likely install: ${days} ${days === 1 ? 'day' : 'days'} with ${team} ${team === 1 ? 'person' : 'people'}.`
+        )
+      }
+
+      lines.push('')
+    }
+
+    if (result.recommendedOptionLabel) {
+      lines.push(`My leaning: ${result.recommendedOptionLabel}.`)
+      lines.push('')
+    }
+
+    lines.push(
+      "Tell me which way you want to go — for example ‘go with Option B’, ‘A but use porcelain’, or ‘combine A and C’ — and I’ll turn it into one final quote."
+    )
+
+    return lines.join('\n')
+  }
 
   lines.push("Here's where I've got the quote from what you've told me.")
   lines.push('')
@@ -315,7 +381,7 @@ export default function AssignedTrevQuotePage() {
         {
           id: 'welcome',
           role: 'assistant',
-          text: `Right — we're at the quote visit for ${saved.name}. Tell me what the customer wants, measurements, access, levels, drainage and anything unusual. Add the site photos too and I'll build the quote with you.`,
+          text: `Right — we're at the quote visit for ${saved.name}. Tell me what the customer wants, measurements, access, levels, drainage and anything unusual. If they want a couple of ideas rather than one fixed plan, just say so and I'll give you separate options. Add the site photos too and I'll build it with you.`,
         },
       ])
     } catch (saveError) {
@@ -467,6 +533,11 @@ export default function AssignedTrevQuotePage() {
   }
 
   async function handleSendToKelly() {
+    if (pricingResult?.optionMode) {
+      setError('Choose or combine one of the options with CHAS first, then I can send the final quote to Kelly.')
+      return
+    }
+
     if (!job?.customer?.id || !pricingResult || pricingResult.recommendedPriceExVat <= 0) {
       setError('I need a complete customer and proper quote before sending to Kelly.')
       return
@@ -717,7 +788,13 @@ export default function AssignedTrevQuotePage() {
             </div>
           ) : null}
 
-          {pricingResult && !sentToKelly ? (
+          {pricingResult?.optionMode && !sentToKelly ? (
+            <div className="mb-3 rounded-2xl border border-yellow-300 bg-yellow-50 px-4 py-3 text-center text-sm font-bold text-yellow-900">
+              Pick or combine an option in the chat first — then CHAS will make the final quote.
+            </div>
+          ) : null}
+
+          {pricingResult && !pricingResult.optionMode && !sentToKelly ? (
             <button type="button" onClick={handleSendToKelly} disabled={busy || sendingToKelly || uploadsInProgress} className="mb-3 min-h-12 w-full rounded-2xl bg-yellow-300 px-4 py-3 text-sm font-black shadow-sm disabled:opacity-50">
               {sendingToKelly ? 'Writing it up and sending to Kelly…' : 'Happy with this — send to Kelly'}
             </button>
