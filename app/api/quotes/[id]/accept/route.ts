@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { generateLandscapingPlan } from '@/lib/landscaping-plan'
+import { applyAndSaveMaterialPolicy } from '@/lib/landscaping-material-policy'
 
 export const runtime = 'nodejs'
 
@@ -128,7 +129,8 @@ export async function POST(_req: Request, { params }: RouteContext) {
     let planningWarning: string | null = null
 
     try {
-      landscapingPlan = await generateLandscapingPlan(result.job.id)
+      const generatedPlan = await generateLandscapingPlan(result.job.id)
+      landscapingPlan = await applyAndSaveMaterialPolicy(generatedPlan)
     } catch (planningError) {
       console.error('LANDSCAPING PLAN GENERATION ERROR', planningError)
       planningWarning =
