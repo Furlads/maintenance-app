@@ -35,7 +35,47 @@ type Customer = {
   postcode: string | null
 }
 
+type QuoteOption = {
+  label: string
+  title: string
+  summary: string
+  keyDifferences: string[]
+  whyChoose: string
+  estimatedDuration: {
+    workingDays: number
+    teamSize: number
+    description: string
+  }
+  priceExVat: number
+  vatAmount: number
+  totalIncVat: number
+}
+
+type CombinedOffer = {
+  available: boolean
+  label: string
+  summary: string
+  includedOptionLabels: string[]
+  savingReason: string
+  separateTotalExVat: number
+  savingExVat: number
+  estimatedDuration: {
+    workingDays: number
+    teamSize: number
+    description: string
+  }
+  priceExVat: number
+  vatAmount: number
+  totalIncVat: number
+}
+
 type PricingResult = {
+  quoteMode?: 'single' | 'alternatives' | 'packages'
+  optionMode?: boolean
+  recommendedOptionLabel?: string
+  options?: QuoteOption[]
+  combinedOffers?: CombinedOffer[]
+  combinedOffer?: CombinedOffer | null
   summary: string
   confirmedInformation: string[]
   assumptions: string[]
@@ -68,6 +108,12 @@ Treat this as an ongoing conversation with Trevor while he is building a Furlads
 The latest Trevor message overrides earlier details if anything has changed.
 Previous CHAS replies and prices are provisional context only. Do not treat them as extra scope and do not double-count them.
 
+If the customer wants choices, separate prices, "another quote", or gives Option 1 / Option 2, show those customer-visible prices separately before asking them to choose.
+A quote can contain both mutually exclusive alternatives and separate purchasable jobs at the same time.
+Example: 20m fence Option 1, 20m fence Option 2, another 13m fence, and artificial grass. In that case show both 20m alternatives separately, show the 13m fence separately, show the artificial grass separately, and give valid all-together totals for each 20m alternative combined with the compatible extra jobs.
+Never put mutually exclusive alternatives into the same combined total.
+Customers should be able to see the options before making a decision, and the whole options quote can go to Kelly for review before they choose.
+
 Furlads OS pricing rules:
 - Standard selling rates are all-in selling prices and already include normal labour, materials, standard machinery, standard waste, deliveries, consumables, overheads and profit.
 - Do not add those normal components again on top of an applicable standard selling rate.
@@ -76,6 +122,7 @@ Furlads OS pricing rules:
 - Protect margin and flag anything Trevor should check rather than inventing hidden conditions.
 - Price excluding VAT, with VAT shown separately.
 - Keep assumptions sensible and practical.
+- Install times must be realistic for a human crew and should be rounded up rather than squeezed down.
 `.trim()
 
 function createId(prefix: string) {
@@ -111,8 +158,91 @@ function buildTranscript(messages: ChatMessage[]) {
     .join('\n\n')
 }
 
+function getCombinedOffers(result: PricingResult) {
+  if (Array.isArray(result.combinedOffers) && result.combinedOffers.length) {
+    return result.combinedOffers
+  }
+
+  return result.combinedOffer?.available ? [result.combinedOffer] : []
+}
+
 function pricingReply(result: PricingResult) {
   const lines: string[] = []
+  const options = Array.isArray(result.options) ? result.options : []
+  const combinedOffers = getCombinedOffers(result)
+
+  if (result.optionMode && options.length >= 2) {
+    if (result.quoteMode === 'packages') {
+      lines.push("Right — I’d show the customer these as separate priced choices/jobs rather than one lump sum.")
+    } else {
+      lines.push("Right — I’d show the customer the alternatives separately so they can compare them before deciding.")
+    }
+    lines.push('')
+
+    for (const option of options) {
+      lines.push(`${option.label} — ${option.title}`)
+      lines.push(option.summary)
+
+      for (const difference of option.keyDifferences || []) {
+        lines.push(`• ${difference}`)
+      }
+
+      if (option.whyChoose) {
+        lines.push(`Why choose it: ${option.whyChoose}`)
+      }
+
+      lines.push(`Price: ${money(option.priceExVat)} + VAT`)
+      lines.push(`VAT: ${money(option.vatAmount)}`)
+      lines.push(`Total: ${money(option.totalIncVat)}`)
+
+      if (option.estimatedDuration?.workingDays) {
+        const days = option.estimatedDuration.workingDays
+        const team = option.estimatedDuration.teamSize || 1
+        lines.push(
+          `Likely install: ${days} ${days === 1 ? 'day' : 'days'} with ${team} ${team === 1 ? 'person' : 'people'}.`
+        )
+      }
+
+      lines.push('')
+    }
+
+    for (const combined of combinedOffers) {
+      lines.push(combined.label)
+      if (combined.summary) lines.push(combined.summary)
+      if (combined.includedOptionLabels?.length) {
+        lines.push(`Includes: ${combined.includedOptionLabels.join(' + ')}`)
+      }
+      lines.push(`Price: ${money(combined.priceExVat)} + VAT`)
+      lines.push(`VAT: ${money(combined.vatAmount)}`)
+      lines.push(`Total: ${money(combined.totalIncVat)}`)
+
+      if (combined.savingExVat > 0) {
+        lines.push(
+          `Saving compared with those items separately: ${money(combined.savingExVat)} + VAT`
+        )
+      }
+
+      if (combined.savingReason) {
+        lines.push(`Why it’s cheaper together: ${combined.savingReason}`)
+      }
+
+      if (combined.estimatedDuration?.workingDays) {
+        const days = combined.estimatedDuration.workingDays
+        const team = combined.estimatedDuration.teamSize || 1
+        lines.push(
+          `Likely combined install: ${days} ${days === 1 ? 'day' : 'days'} with ${team} ${team === 1 ? 'person' : 'people'}.`
+        )
+      }
+
+      lines.push('')
+    }
+
+    lines.push(
+      "If those prices and descriptions look right, send the full options quote to Kelly. The customer can decide after they’ve seen it."
+    )
+
+    return lines.join('\n')
+  }
 
   lines.push("Here's where I've got the quote from what you've told me.")
   lines.push('')
@@ -416,7 +546,7 @@ export default function QuoteTestPage() {
         {
           id: 'welcome',
           role: 'assistant',
-          text: `Right — we're quoting for ${savedCustomer.name}. Tell me what we're doing, the measurements, access, levels, drainage or anything unusual. Add the site photos too and I'll build the quote with you.`,
+          text: `Right — we're quoting for ${savedCustomer.name}. Tell me what we're doing, the measurements, access, levels, drainage or anything unusual. If they want different options or separate prices for different parts, say that normally and I'll break them out properly. Add the site photos too and I'll build it with you.`,
         },
       ])
       setError('')
@@ -624,6 +754,9 @@ export default function QuoteTestPage() {
     setError('')
 
     try {
+      const options = Array.isArray(pricingResult.options) ? pricingResult.options : []
+      const combinedOffers = getCombinedOffers(pricingResult)
+      const quoteMode = pricingResult.quoteMode || (pricingResult.optionMode ? 'alternatives' : 'single')
       const confirmedScope = [
         pricingResult.summary,
         ...(Array.isArray(pricingResult.confirmedInformation)
@@ -641,9 +774,15 @@ export default function QuoteTestPage() {
         body: JSON.stringify({
           action: 'write',
           customerName,
+          quoteMode,
+          options,
+          combinedOffers,
+          combinedOffer: combinedOffers[0] || null,
           jobDetails: confirmedScope || pricingResult.summary,
           additionalInstructions:
-            'Prepare the customer-ready draft for Kelly to review before she sends it. Do not invent any scope beyond the confirmed information.',
+            pricingResult.optionMode
+              ? 'Prepare a customer-ready options quotation for Kelly to review. Show every separate option/package price and every valid all-together combination. The customer has not chosen yet. Never combine mutually exclusive alternatives.'
+              : 'Prepare the customer-ready draft for Kelly to review before she sends it. Do not invent any scope beyond the confirmed information.',
           priceExVat: pricingResult.recommendedPriceExVat,
           vatRate: pricingResult.vatRate || 20,
           depositPercent: pricingResult.depositPercent ?? 25,
@@ -659,6 +798,38 @@ export default function QuoteTestPage() {
       const quote = quoteData as QuoteResult
       const transcript = buildTranscript(messages)
       const duration = pricingResult.estimatedDuration
+      const optionSummary = pricingResult.optionMode
+        ? options
+            .map((option) => {
+              const days = option.estimatedDuration?.workingDays || 0
+              const team = option.estimatedDuration?.teamSize || 1
+              return `${option.label} — ${option.title}: ${money(option.priceExVat)} + VAT (${money(option.totalIncVat)} total)${days ? ` — ${days} ${days === 1 ? 'day' : 'days'} with ${team}` : ''}\n${option.summary}`
+            })
+            .join('\n\n')
+        : ''
+
+      const combinedSummary = combinedOffers.length
+        ? combinedOffers
+            .map((combined) =>
+              [
+                `${combined.label}: ${money(combined.priceExVat)} + VAT (${money(combined.totalIncVat)} total)`,
+                combined.includedOptionLabels?.length
+                  ? `Includes: ${combined.includedOptionLabels.join(' + ')}`
+                  : '',
+                combined.estimatedDuration?.workingDays
+                  ? `Combined install: ${combined.estimatedDuration.workingDays} ${combined.estimatedDuration.workingDays === 1 ? 'day' : 'days'} with ${combined.estimatedDuration.teamSize || 1}`
+                  : '',
+                combined.savingExVat > 0
+                  ? `Saving vs those items separately: ${money(combined.savingExVat)} + VAT`
+                  : '',
+                combined.savingReason || '',
+              ]
+                .filter(Boolean)
+                .join('\n')
+            )
+            .join('\n\n')
+        : ''
+
       const internalWorkSummary = [
         'CHAS QUOTE DRAFT FOR KELLY',
         '',
@@ -667,13 +838,16 @@ export default function QuoteTestPage() {
         `Postcode: ${customerPostcode}`,
         customerAddress ? `Address: ${customerAddress}` : '',
         customerEmail ? `Email: ${customerEmail}` : '',
+        `Quote mode: ${quoteMode}`,
         '',
         `Scope: ${pricingResult.summary}`,
-        `Price ex VAT: ${money(pricingResult.recommendedPriceExVat)}`,
-        `VAT: ${money(pricingResult.vatAmount)}`,
-        `Total inc VAT: ${money(pricingResult.recommendedTotalIncVat)}`,
+        pricingResult.optionMode && optionSummary ? `Options / packages:\n${optionSummary}` : '',
+        combinedSummary ? `All-together combinations:\n${combinedSummary}` : '',
+        `Reference price ex VAT: ${money(pricingResult.recommendedPriceExVat)}`,
+        `Reference VAT: ${money(pricingResult.vatAmount)}`,
+        `Reference total inc VAT: ${money(pricingResult.recommendedTotalIncVat)}`,
         duration?.workingDays
-          ? `Estimated install: ${duration.workingDays} ${duration.workingDays === 1 ? 'day' : 'days'}, ${duration.teamSize || 1} ${duration.teamSize === 1 ? 'person' : 'people'}`
+          ? `Reference estimated install: ${duration.workingDays} ${duration.workingDays === 1 ? 'day' : 'days'}, ${duration.teamSize || 1} ${duration.teamSize === 1 ? 'person' : 'people'}`
           : '',
         '',
         'Customer-ready draft:',
@@ -703,15 +877,21 @@ export default function QuoteTestPage() {
           customerAddress,
           customerPostcode,
           sessionId,
-          question: 'Quote draft ready for Kelly review',
+          question: pricingResult.optionMode
+            ? 'Options quote draft ready for Kelly review'
+            : 'Quote draft ready for Kelly review',
           answer: quote.whatsappQuote,
           intent: 'quote_request',
           confidence: 1,
           escalateTo: 'kelly',
           safetyFlag: false,
           workSummary: internalWorkSummary,
-          roughPriceText: `${money(pricingResult.recommendedPriceExVat)} + VAT / ${money(pricingResult.recommendedTotalIncVat)} total`,
-          enquirySummary: `Trevor has approved a CHAS quote draft for Kelly review. ${pricingResult.summary}`,
+          roughPriceText: pricingResult.optionMode
+            ? `${options.length} separate priced choices${combinedOffers.length ? ` / ${combinedOffers.length} all-together combination${combinedOffers.length === 1 ? '' : 's'}` : ''}`
+            : `${money(pricingResult.recommendedPriceExVat)} + VAT / ${money(pricingResult.recommendedTotalIncVat)} total`,
+          enquirySummary: pricingResult.optionMode
+            ? `Trevor has approved a CHAS multi-price quote for Kelly review with ${options.length} separate customer choices. ${pricingResult.summary}`
+            : `Trevor has approved a CHAS quote draft for Kelly review. ${pricingResult.summary}`,
           enquiryReadyForKelly: true,
         }),
       })
@@ -727,8 +907,9 @@ export default function QuoteTestPage() {
         {
           id: createId('chas'),
           role: 'assistant',
-          text:
-            "Done 👍 I've turned this into the customer-ready Furlads quote and sent the full draft to Kelly for her review before it goes to the customer.",
+          text: pricingResult.optionMode
+            ? "Done 👍 I've sent all of the separate customer prices and valid all-together combinations to Kelly for review."
+            : "Done 👍 I've turned this into the customer-ready Furlads quote and sent the full draft to Kelly for her review before it goes to the customer.",
         },
       ])
       setSentToKelly(true)
@@ -1078,6 +1259,12 @@ export default function QuoteTestPage() {
             </div>
           ) : null}
 
+          {pricingResult?.optionMode && !sentToKelly ? (
+            <div className="mb-3 rounded-2xl border border-yellow-300 bg-yellow-50 px-4 py-3 text-center text-sm font-bold text-yellow-900">
+              These separate prices can go to the customer before they decide. Kelly can review and send the full options quote.
+            </div>
+          ) : null}
+
           {pricingResult && !sentToKelly ? (
             <button
               type="button"
@@ -1087,7 +1274,9 @@ export default function QuoteTestPage() {
             >
               {sendingToKelly
                 ? 'Writing it up and sending to Kelly…'
-                : 'Happy with this — send to Kelly'}
+                : pricingResult.optionMode
+                  ? 'Happy with these options — send to Kelly'
+                  : 'Happy with this — send to Kelly'}
             </button>
           ) : null}
 
