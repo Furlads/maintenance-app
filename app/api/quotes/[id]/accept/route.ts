@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { generateLandscapingPlan } from '@/lib/landscaping-plan'
 
 export const runtime = 'nodejs'
 
@@ -123,7 +124,23 @@ export async function POST(_req: Request, { params }: RouteContext) {
       return { customer, job, quote: updatedQuote }
     })
 
-    return NextResponse.json({ ok: true, ...result })
+    let landscapingPlan = null
+    let planningWarning: string | null = null
+
+    try {
+      landscapingPlan = await generateLandscapingPlan(result.job.id)
+    } catch (planningError) {
+      console.error('LANDSCAPING PLAN GENERATION ERROR', planningError)
+      planningWarning =
+        'The job was created successfully, but the landscaping job pack still needs generating.'
+    }
+
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      landscapingPlan,
+      planningWarning,
+    })
   } catch (error) {
     console.error('ACCEPT QUOTE ERROR', error)
     return NextResponse.json(
