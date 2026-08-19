@@ -952,7 +952,7 @@ Work out the correct quote structure first. If there are options and separate jo
 
     if (
       standardRateGuard.extraDescription &&
-      !assumptions.some((item) =>
+      !assumptions.some((item: string) =>
         item.toLowerCase().includes('150mm')
       )
     ) {
