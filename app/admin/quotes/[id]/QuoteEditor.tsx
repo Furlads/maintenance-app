@@ -221,7 +221,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
     }
 
     try {
-      setActionBusy('regenerate')
+      setActionBusy('regenerate-kelly')
       setError('')
       setSuccess('')
 
@@ -246,6 +246,56 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
         err instanceof Error
           ? err.message
           : 'Could not regenerate the customer message.'
+      )
+    } finally {
+      setActionBusy('')
+    }
+  }
+
+  async function regenerateAsTrev() {
+    if (isMultiOptionQuote) {
+      setError('This is a multi-option quote. Regenerate it through CHAS so none of the separate prices or combinations are lost.')
+      return
+    }
+
+    if (!scope.trim() || figures.price <= 0) {
+      setError('The quote needs a scope and price before the customer message can be regenerated.')
+      return
+    }
+
+    try {
+      setActionBusy('regenerate-trev')
+      setError('')
+      setSuccess('')
+
+      const response = await fetch('/api/ai/quote/trev-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName,
+          scope,
+          priceExVat: figures.price,
+          vatRate: STANDARD_VAT_RATE,
+          depositPercent: figures.deposit,
+        }),
+      })
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Could not regenerate the Trev customer message.')
+      }
+
+      const message = String(data?.whatsappQuote || '').trim()
+      if (!message) throw new Error('The Trev message came back empty.')
+
+      setCustomerMessage(message)
+      setSuccess('Fresh post-visit Trev message generated. Review it, then press Save changes.')
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not regenerate the Trev customer message.'
       )
     } finally {
       setActionBusy('')
@@ -349,18 +399,28 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
           <div>
             <h2 className="text-lg font-black text-zinc-950">Customer-ready message</h2>
             <p className="mt-1 text-xs leading-5 text-zinc-500">
-              Kelly can regenerate this from the current scope and figures, then review it before saving.
+              Choose Kelly for the normal office follow-up, or Trev for a more personal message after the site visit.
             </p>
           </div>
           {!isMultiOptionQuote ? (
-            <button
-              type="button"
-              onClick={() => void regenerateCustomerMessage()}
-              disabled={disabled}
-              className="min-h-11 rounded-xl bg-yellow-300 px-4 text-sm font-black text-zinc-950 disabled:opacity-50"
-            >
-              {actionBusy === 'regenerate' ? 'Regenerating…' : '✨ Regenerate with Kelly'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void regenerateCustomerMessage()}
+                disabled={disabled}
+                className="min-h-11 rounded-xl bg-yellow-300 px-4 text-sm font-black text-zinc-950 disabled:opacity-50"
+              >
+                {actionBusy === 'regenerate-kelly' ? 'Regenerating…' : '✨ Regenerate with Kelly'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void regenerateAsTrev()}
+                disabled={disabled}
+                className="min-h-11 rounded-xl border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-900 disabled:opacity-50"
+              >
+                {actionBusy === 'regenerate-trev' ? 'Regenerating…' : '👋 Regenerate as Trev'}
+              </button>
+            </div>
           ) : null}
         </div>
         <textarea value={customerMessage} onChange={(e) => setCustomerMessage(e.target.value)} rows={14} className="mt-4 w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm leading-6" />
