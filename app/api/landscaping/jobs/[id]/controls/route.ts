@@ -70,6 +70,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         materials: body.materials,
         customerExtras: body.customerExtras,
         extraItems: body.extraItems,
+        siteIssues: body.siteIssues,
+        variations: body.variations,
+        completion: body.completion,
       },
       Number.isInteger(workerId) ? workerId : null
     )
