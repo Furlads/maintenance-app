@@ -19,6 +19,9 @@ type PageProps = {
 
 type QuoteDraftDetails = {
   scope: string
+  quoteMode: string
+  options: string
+  combinedOffers: string
   priceExVat: string
   vat: string
   totalIncVat: string
@@ -95,22 +98,27 @@ function isIncomingMessage(conversation: any, message: any) {
   return true
 }
 
-function valueBetween(text: string, start: string, end?: string) {
-  const startIndex = text.indexOf(start)
-  if (startIndex === -1) return ""
+function firstExistingMarker(text: string, markers: string[], afterIndex = 0) {
+  return markers
+    .map((marker) => ({ marker, index: text.indexOf(marker, afterIndex) }))
+    .filter((item) => item.index >= 0)
+    .sort((a, b) => a.index - b.index)[0]?.marker
+}
 
-  const contentStart = startIndex + start.length
+function valueAfterAny(
+  text: string,
+  starts: string[],
+  ends: string[] = []
+) {
+  const startMarker = firstExistingMarker(text, starts)
+  if (!startMarker) return ""
 
-  if (!end) {
-    return text.slice(contentStart).trim()
-  }
+  const contentStart = text.indexOf(startMarker) + startMarker.length
+  const endMarker = firstExistingMarker(text, ends, contentStart)
 
-  const endIndex = text.indexOf(end, contentStart)
-  if (endIndex === -1) {
-    return text.slice(contentStart).trim()
-  }
+  if (!endMarker) return text.slice(contentStart).trim()
 
-  return text.slice(contentStart, endIndex).trim()
+  return text.slice(contentStart, text.indexOf(endMarker, contentStart)).trim()
 }
 
 function parseQuoteDraft(value: unknown): QuoteDraftDetails | null {
@@ -120,22 +128,74 @@ function parseQuoteDraft(value: unknown): QuoteDraftDetails | null {
     return null
   }
 
-  return {
-    scope: valueBetween(text, "Scope:", "Price ex VAT:"),
-    priceExVat: valueBetween(text, "Price ex VAT:", "VAT:"),
-    vat: valueBetween(text, "VAT:", "Total inc VAT:"),
-    totalIncVat: valueBetween(text, "Total inc VAT:", "Estimated install:"),
-    estimatedInstall: valueBetween(
-      text,
-      "Estimated install:",
-      "Customer-ready draft:"
-    ),
-    customerDraft: valueBetween(
-      text,
+  const scope = valueAfterAny(
+    text,
+    ["Scope:"],
+    [
+      "Options / packages:",
+      "All-together combinations:",
+      "Reference price ex VAT:",
+      "Price ex VAT:",
       "Customer-ready draft:",
-      "Trevor / CHAS quote conversation:"
+    ]
+  )
+
+  return {
+    scope,
+    quoteMode: valueAfterAny(
+      text,
+      ["Quote mode:"],
+      ["Scope:"]
     ),
-    working: valueBetween(text, "Trevor / CHAS quote conversation:"),
+    options: valueAfterAny(
+      text,
+      ["Options / packages:"],
+      [
+        "All-together combinations:",
+        "Reference price ex VAT:",
+        "Price ex VAT:",
+        "Customer-ready draft:",
+      ]
+    ),
+    combinedOffers: valueAfterAny(
+      text,
+      ["All-together combinations:"],
+      [
+        "Reference price ex VAT:",
+        "Price ex VAT:",
+        "Customer-ready draft:",
+      ]
+    ),
+    priceExVat: valueAfterAny(
+      text,
+      ["Reference price ex VAT:", "Price ex VAT:"],
+      ["Reference VAT:", "VAT:"]
+    ),
+    vat: valueAfterAny(
+      text,
+      ["Reference VAT:", "VAT:"],
+      ["Reference total inc VAT:", "Total inc VAT:"]
+    ),
+    totalIncVat: valueAfterAny(
+      text,
+      ["Reference total inc VAT:", "Total inc VAT:"],
+      [
+        "Reference estimated install:",
+        "Estimated install:",
+        "Customer-ready draft:",
+      ]
+    ),
+    estimatedInstall: valueAfterAny(
+      text,
+      ["Reference estimated install:", "Estimated install:"],
+      ["Customer-ready draft:"]
+    ),
+    customerDraft: valueAfterAny(
+      text,
+      ["Customer-ready draft:"],
+      ["Trevor / CHAS quote conversation:"]
+    ),
+    working: valueAfterAny(text, ["Trevor / CHAS quote conversation:"]),
   }
 }
 
@@ -243,6 +303,10 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
       )?.externalThreadId || ""
     ).trim()
 
+  const isOptionsQuote = Boolean(
+    quoteDraft?.options || quoteDraft?.combinedOffers || quoteDraft?.quoteMode === "packages" || quoteDraft?.quoteMode === "alternatives"
+  )
+
   return (
     <div className="space-y-4 pb-36">
       <InboxAutoRefresh />
@@ -289,66 +353,89 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
       {isInternalQuoteDraft && quoteDraft ? (
         <>
           <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-3xl">
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">
-                  CHAS quote
-                </p>
-                <h2 className="mt-2 text-xl font-black text-zinc-950">
-                  {quoteDraft.scope || "Quote scope"}
-                </h2>
-                <p className="mt-2 text-sm text-zinc-500">
-                  Prepared by Trevor with CHAS · {formatDateTime(latestQuoteDraftMessage?.createdAt)}
-                </p>
-              </div>
+            <div className="max-w-4xl">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">
+                CHAS quote
+              </p>
+              <h2 className="mt-2 text-xl font-black text-zinc-950">
+                {quoteDraft.scope || "Quote scope"}
+              </h2>
+              <p className="mt-2 text-sm text-zinc-500">
+                Prepared by Trevor with CHAS · {formatDateTime(latestQuoteDraftMessage?.createdAt)}
+              </p>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
-                <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">
-                  Price
-                </div>
-                <div className="mt-1 text-xl font-black text-zinc-950">
-                  {quoteDraft.priceExVat || "—"}
-                </div>
-                <div className="mt-1 text-xs text-zinc-500">excluding VAT</div>
-              </div>
+            {isOptionsQuote ? (
+              <div className="mt-5 space-y-4">
+                {quoteDraft.options ? (
+                  <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
+                    <div className="text-xs font-black uppercase tracking-wide text-zinc-500">
+                      Separate prices / options
+                    </div>
+                    <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-900">
+                      {quoteDraft.options}
+                    </div>
+                  </div>
+                ) : null}
 
-              <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
-                <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">
-                  VAT
-                </div>
-                <div className="mt-1 text-xl font-black text-zinc-950">
-                  {quoteDraft.vat || "—"}
-                </div>
-              </div>
+                {quoteDraft.combinedOffers ? (
+                  <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-inset ring-yellow-200">
+                    <div className="text-xs font-black uppercase tracking-wide text-yellow-800">
+                      If completed together
+                    </div>
+                    <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-900">
+                      {quoteDraft.combinedOffers}
+                    </div>
+                  </div>
+                ) : null}
 
-              <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-inset ring-yellow-200">
-                <div className="text-xs font-bold uppercase tracking-wide text-yellow-800">
-                  Total
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
+                    <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Reference price</div>
+                    <div className="mt-1 text-xl font-black text-zinc-950">{quoteDraft.priceExVat || "—"}</div>
+                    <div className="mt-1 text-xs text-zinc-500">internal reference only</div>
+                  </div>
+                  <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
+                    <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Reference VAT</div>
+                    <div className="mt-1 text-xl font-black text-zinc-950">{quoteDraft.vat || "—"}</div>
+                  </div>
+                  <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-inset ring-yellow-200">
+                    <div className="text-xs font-bold uppercase tracking-wide text-yellow-800">Reference total</div>
+                    <div className="mt-1 text-xl font-black text-zinc-950">{quoteDraft.totalIncVat || "—"}</div>
+                  </div>
+                  <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
+                    <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Reference install</div>
+                    <div className="mt-1 text-base font-black text-zinc-950">{quoteDraft.estimatedInstall || "Not estimated"}</div>
+                  </div>
                 </div>
-                <div className="mt-1 text-xl font-black text-zinc-950">
-                  {quoteDraft.totalIncVat || "—"}
-                </div>
-                <div className="mt-1 text-xs text-yellow-800">including VAT</div>
               </div>
-
-              <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
-                <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">
-                  Install
+            ) : (
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
+                  <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Price</div>
+                  <div className="mt-1 text-xl font-black text-zinc-950">{quoteDraft.priceExVat || "—"}</div>
+                  <div className="mt-1 text-xs text-zinc-500">excluding VAT</div>
                 </div>
-                <div className="mt-1 text-base font-black text-zinc-950">
-                  {quoteDraft.estimatedInstall || "Not estimated"}
+                <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
+                  <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">VAT</div>
+                  <div className="mt-1 text-xl font-black text-zinc-950">{quoteDraft.vat || "—"}</div>
+                </div>
+                <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-inset ring-yellow-200">
+                  <div className="text-xs font-bold uppercase tracking-wide text-yellow-800">Total</div>
+                  <div className="mt-1 text-xl font-black text-zinc-950">{quoteDraft.totalIncVat || "—"}</div>
+                  <div className="mt-1 text-xs text-yellow-800">including VAT</div>
+                </div>
+                <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
+                  <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Install</div>
+                  <div className="mt-1 text-base font-black text-zinc-950">{quoteDraft.estimatedInstall || "Not estimated"}</div>
                 </div>
               </div>
-            </div>
+            )}
           </section>
 
           <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <div className="border-b border-zinc-200 px-5 py-4">
-              <h2 className="text-lg font-black text-zinc-950">
-                Customer-ready quote
-              </h2>
+              <h2 className="text-lg font-black text-zinc-950">Customer-ready quote</h2>
               <p className="mt-1 text-sm text-zinc-500">
                 This is the clean message for Kelly to review before sending.
               </p>
@@ -388,9 +475,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
           <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <div className="border-b border-zinc-200 px-4 py-3">
               <h2 className="text-base font-bold text-zinc-900">Conversation</h2>
-              <p className="text-xs text-zinc-500">
-                Full message history for this thread
-              </p>
+              <p className="text-xs text-zinc-500">Full message history for this thread</p>
             </div>
 
             <div className="space-y-4 p-4">
@@ -403,10 +488,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
                   const incoming = isIncomingMessage(conversation, message)
 
                   return (
-                    <div
-                      key={message.id}
-                      className={`flex ${incoming ? "justify-start" : "justify-end"}`}
-                    >
+                    <div key={message.id} className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
                       <div
                         className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
                           incoming
@@ -414,29 +496,15 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
                             : "bg-zinc-900 text-white"
                         }`}
                       >
-                        <div
-                          className={`mb-1 text-xs font-semibold ${
-                            incoming ? "text-zinc-500" : "text-zinc-300"
-                          }`}
-                        >
+                        <div className={`mb-1 text-xs font-semibold ${incoming ? "text-zinc-500" : "text-zinc-300"}`}>
                           {incoming
-                            ? message.senderName ||
-                              conversation.contactName ||
-                              "Customer"
+                            ? message.senderName || conversation.contactName || "Customer"
                             : "Furlads"}
                         </div>
-
                         <div className="whitespace-pre-wrap text-sm leading-6">
-                          {String(message.body || "").trim() ||
-                            String(message.preview || "").trim() ||
-                            "No message content."}
+                          {String(message.body || "").trim() || String(message.preview || "").trim() || "No message content."}
                         </div>
-
-                        <div
-                          className={`mt-2 text-xs ${
-                            incoming ? "text-zinc-400" : "text-zinc-300"
-                          }`}
-                        >
+                        <div className={`mt-2 text-xs ${incoming ? "text-zinc-400" : "text-zinc-300"}`}>
                           {formatDateTime(message.createdAt)}
                         </div>
                       </div>
@@ -453,29 +521,18 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
         <div className="sticky bottom-0 z-10 -mx-0 bg-white/95 pt-2 backdrop-blur supports-[backdrop-filter]:bg-white/85">
           <div className="border-t border-zinc-200 pt-2">
             {isWhatsAppThread ? (
-              <WhatsAppReplyComposer
-                conversationId={conversation.id}
-                contactName={conversation.contactName}
-              />
+              <WhatsAppReplyComposer conversationId={conversation.id} contactName={conversation.contactName} />
             ) : isFacebookThread ? (
               facebookExternalThreadId ? (
-                <FacebookReplyComposer
-                  conversationId={conversation.id}
-                  externalThreadId={facebookExternalThreadId}
-                  contactName={conversation.contactName}
-                />
+                <FacebookReplyComposer conversationId={conversation.id} externalThreadId={facebookExternalThreadId} contactName={conversation.contactName} />
               ) : null
             ) : isEmailThread ? (
-              <OutlookReplyComposer
-                conversationId={conversation.id}
-                contactName={conversation.contactName}
-              />
+              <OutlookReplyComposer conversationId={conversation.id} contactName={conversation.contactName} />
             ) : (
               <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
                 <h3 className="text-base font-bold text-zinc-900">Reply</h3>
                 <p className="mt-1 text-sm text-zinc-500">
-                  Direct reply is currently enabled for WhatsApp, Facebook and email
-                  threads.
+                  Direct reply is currently enabled for WhatsApp, Facebook and email threads.
                 </p>
               </section>
             )}
