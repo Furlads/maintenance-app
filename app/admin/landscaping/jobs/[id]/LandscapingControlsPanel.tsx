@@ -17,8 +17,19 @@ type TrackingRow = {
   deliveryDate: string
 }
 
+type ExtraItem = {
+  id: string
+  type: 'material' | 'tool'
+  item: string
+  quantity: string
+  status: 'needed' | 'bought' | 'on_site'
+  note: string
+}
+
 type InitialControls = {
   materials: Record<string, TrackingRow>
+  customerExtras?: string[]
+  extraItems?: ExtraItem[]
 }
 
 type ReviewMessage = {
@@ -49,6 +60,12 @@ function prettyStatus(value: TrackingStatus) {
   return 'Not ordered'
 }
 
+function prettyExtraStatus(value: ExtraItem['status']) {
+  if (value === 'bought') return 'Bought'
+  if (value === 'on_site') return 'On site'
+  return 'Needed'
+}
+
 function formatDate(value: string | null) {
   if (!value) return 'Not booked'
   const date = new Date(`${value}T12:00:00`)
@@ -58,6 +75,17 @@ function formatDate(value: string | null) {
     month: 'short',
     year: 'numeric',
   }).format(date)
+}
+
+function newExtraItem(): ExtraItem {
+  return {
+    id: `extra-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: 'material',
+    item: '',
+    quantity: '',
+    status: 'needed',
+    note: '',
+  }
 }
 
 export default function LandscapingControlsPanel({
@@ -76,6 +104,10 @@ export default function LandscapingControlsPanel({
     }
     return result
   })
+  const [customerExtrasText, setCustomerExtrasText] = useState(
+    (initialControls.customerExtras || []).join('\n')
+  )
+  const [extraItems, setExtraItems] = useState<ExtraItem[]>(initialControls.extraItems || [])
   const [saving, setSaving] = useState(false)
   const [savedMessage, setSavedMessage] = useState('')
   const [saveError, setSaveError] = useState('')
@@ -92,14 +124,16 @@ export default function LandscapingControlsPanel({
       if (row.status === 'ordered') return Boolean(row.deliveryDate)
       return false
     })
-    const readyToStart = packReady && materialsOrdered && teamBooked && deliveryConfirmed
+    const unresolvedExtras = extraItems.some((item) => item.item.trim() && item.status === 'needed')
+    const readyToStart = packReady && materialsOrdered && teamBooked && deliveryConfirmed && !unresolvedExtras
 
     return {
       materialsOrdered,
       deliveryConfirmed,
+      unresolvedExtras,
       readyToStart,
     }
-  }, [materials, tracking, packReady, teamBooked])
+  }, [materials, tracking, packReady, teamBooked, extraItems])
 
   function updateMaterial(item: string, patch: Partial<TrackingRow>) {
     setTracking((current) => ({
@@ -112,25 +146,41 @@ export default function LandscapingControlsPanel({
     setSavedMessage('')
   }
 
+  function updateExtra(id: string, patch: Partial<ExtraItem>) {
+    setExtraItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item))
+    setSavedMessage('')
+  }
+
   async function saveTracking() {
     try {
       setSaving(true)
       setSaveError('')
       setSavedMessage('')
 
+      const customerExtras = customerExtrasText
+        .split('\n')
+        .map((value) => value.trim())
+        .filter(Boolean)
+      const cleanedExtraItems = extraItems.filter((item) => item.item.trim())
+
       const response = await fetch(`/api/landscaping/jobs/${jobId}/controls`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ materials: tracking }),
+        body: JSON.stringify({
+          materials: tracking,
+          customerExtras,
+          extraItems: cleanedExtraItems,
+        }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok || data?.ok === false) {
-        throw new Error(data?.error || 'Could not save material ordering status.')
+        throw new Error(data?.error || 'Could not save landscaping controls.')
       }
 
-      setSavedMessage('Ordering status saved.')
+      setExtraItems(cleanedExtraItems)
+      setSavedMessage('Job controls saved — worker sheet updated.')
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Could not save material ordering status.')
+      setSaveError(error instanceof Error ? error.message : 'Could not save landscaping controls.')
     } finally {
       setSaving(false)
     }
@@ -177,11 +227,12 @@ export default function LandscapingControlsPanel({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
           <ReadinessPill label="Pack ready" ready={packReady} />
           <ReadinessPill label="Materials ordered" ready={readiness.materialsOrdered} />
           <ReadinessPill label="Team booked" ready={teamBooked} />
           <ReadinessPill label="Delivery confirmed" ready={readiness.deliveryConfirmed} />
+          <ReadinessPill label="Extras covered" ready={!readiness.unresolvedExtras} />
           <ReadinessPill label="Ready to start" ready={readiness.readyToStart} />
         </div>
       </section>
@@ -201,7 +252,7 @@ export default function LandscapingControlsPanel({
             disabled={saving}
             className="min-h-11 rounded-xl bg-zinc-950 px-4 text-sm font-black text-white disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Save ordering status'}
+            {saving ? 'Saving…' : 'Save job controls'}
           </button>
         </div>
 
@@ -258,6 +309,119 @@ export default function LandscapingControlsPanel({
             )
           })}
         </div>
+      </section>
+
+      <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Live site additions</div>
+            <h2 className="mt-1 text-xl font-black text-blue-950">Customer extras & additional materials/tools</h2>
+            <p className="mt-1 max-w-4xl text-sm leading-6 text-blue-900">
+              Put agreed customer add-ons here so the lads can see them. Add any extra material or tool that becomes necessary, including things already bought on the way to site. This does not rewrite the accepted quote or locked projected costs.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExtraItems((current) => [...current, newExtraItem()])}
+            className="min-h-10 rounded-xl border border-blue-300 bg-white px-4 text-sm font-black text-blue-900"
+          >
+            + Add material/tool
+          </button>
+        </div>
+
+        <label className="mt-4 block">
+          <span className="text-xs font-black uppercase tracking-wide text-blue-800">Customer-requested extras</span>
+          <textarea
+            value={customerExtrasText}
+            onChange={(event) => {
+              setCustomerExtrasText(event.target.value)
+              setSavedMessage('')
+            }}
+            rows={4}
+            placeholder={'One agreed extra per line\ne.g. Move two existing planters to rear corner'}
+            className="mt-2 w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-zinc-900"
+          />
+        </label>
+
+        <div className="mt-4 space-y-3">
+          {extraItems.length ? extraItems.map((item) => (
+            <div key={item.id} className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-blue-200">
+              <div className="grid gap-3 xl:grid-cols-[140px_1.3fr_180px_150px_1fr_auto] xl:items-end">
+                <label className="text-xs font-bold text-zinc-600">
+                  Type
+                  <select
+                    value={item.type}
+                    onChange={(event) => updateExtra(item.id, { type: event.target.value as ExtraItem['type'] })}
+                    className="mt-1 min-h-10 w-full rounded-xl border border-zinc-300 bg-white px-3 text-sm"
+                  >
+                    <option value="material">Material</option>
+                    <option value="tool">Tool / plant</option>
+                  </select>
+                </label>
+                <label className="text-xs font-bold text-zinc-600">
+                  Item
+                  <input
+                    value={item.item}
+                    onChange={(event) => updateExtra(item.id, { item: event.target.value })}
+                    placeholder="e.g. extra diamond blade"
+                    className="mt-1 min-h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-bold text-zinc-600">
+                  Quantity
+                  <input
+                    value={item.quantity}
+                    onChange={(event) => updateExtra(item.id, { quantity: event.target.value })}
+                    placeholder="e.g. 2 boxes"
+                    className="mt-1 min-h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-bold text-zinc-600">
+                  Status
+                  <select
+                    value={item.status}
+                    onChange={(event) => updateExtra(item.id, { status: event.target.value as ExtraItem['status'] })}
+                    className="mt-1 min-h-10 w-full rounded-xl border border-zinc-300 bg-white px-3 text-sm font-bold"
+                  >
+                    <option value="needed">Needed</option>
+                    <option value="bought">Bought</option>
+                    <option value="on_site">On site</option>
+                  </select>
+                </label>
+                <label className="text-xs font-bold text-zinc-600">
+                  Note
+                  <input
+                    value={item.note}
+                    onChange={(event) => updateExtra(item.id, { note: event.target.value })}
+                    placeholder="Why / where / who has it"
+                    className="mt-1 min-h-10 w-full rounded-xl border border-zinc-300 px-3 text-sm"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setExtraItems((current) => current.filter((row) => row.id !== item.id))}
+                  className="min-h-10 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700"
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="mt-2 text-xs font-bold text-blue-800">Worker sheet status: {prettyExtraStatus(item.status)}</div>
+            </div>
+          )) : (
+            <div className="rounded-2xl bg-white px-4 py-3 text-sm text-blue-900 ring-1 ring-inset ring-blue-200">
+              No additional materials or tools recorded yet.
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void saveTracking()}
+          disabled={saving}
+          className="mt-4 min-h-11 rounded-xl bg-blue-900 px-4 text-sm font-black text-white disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save extras to worker sheet'}
+        </button>
       </section>
 
       <section className="rounded-3xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm">
