@@ -135,6 +135,25 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
           </div>
         </section>
 
+        <section className="rounded-3xl border border-yellow-300 bg-yellow-50 p-5 shadow-sm">
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-yellow-800">Furlads site standard — every job</div>
+          <h2 className="mt-1 text-xl font-black text-zinc-950">Set it out properly. Protect the site. Keep the whole job moving.</h2>
+          <div className="mt-4 space-y-3 text-sm leading-6 text-zinc-800">
+            <div className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-yellow-200">
+              <strong>📐 Lines, levels and finish:</strong> Use string lines, profiles, levels and square checks properly. Do not eyeball work or cut corners to save time. Measure, check and build it to the agreed Furlads standard. If site conditions make the specification impossible, stop and speak to Trev/Kelly before changing the method.
+            </div>
+            <div className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-yellow-200">
+              <strong>🪵 Boards / ground protection:</strong> Put boards or suitable ground-protection sheets down before spoil or waste is stacked ready for the grabber. Once the waste has gone, move/reuse the boards under the mixer, cement, sand, paving and other materials so the customer’s drive, paths and garden are kept clean and protected.
+            </div>
+            <div className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-yellow-200">
+              <strong>⚡ Get ahead — don’t bank an early finish:</strong> Finishing today’s target early does not mean finishing early later in the week. If it is safe and the next stage is ready, use the time to pull work forward: set out the next area, move materials, make cuts, prep edges, compact, tidy waste, clean down, organise tools or complete snagging. A strong day should create headroom for weather, delays and problems later in the job.
+            </div>
+            <div className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-yellow-200">
+              <strong>✅ Before leaving:</strong> Leave the job safe, tidy and ready to restart quickly. Check the day target, photos, materials, tools and next-day setup before packing up.
+            </div>
+          </div>
+        </section>
+
         {!plan ? (
           <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
             <h2 className="text-lg font-black text-amber-950">Job pack is still being prepared</h2>
@@ -198,7 +217,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
               <div className="px-1">
                 <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Programme</div>
                 <h2 className="mt-1 text-xl font-black">What we’re aiming to achieve each day</h2>
-                <p className="mt-1 text-sm text-zinc-600">Finish the day target first. If you are ahead, keep the job moving by pulling forward the safe next-stage tasks shown below.</p>
+                <p className="mt-1 text-sm text-zinc-600">Finish the day target first. If you are ahead, keep the whole job moving by pulling forward safe next-stage work. Do not bank an early finish for later in the week.</p>
               </div>
 
               {plan.dayPlan.map((day) => (
@@ -232,7 +251,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                         <div key={`ahead-${day.day}-${index}`}>• {workerTask(task)}</div>
                       ))}
                     </div>
-                    <div className="mt-2 text-xs font-semibold text-green-800">Only pull work forward when the previous stage is ready and it is safe to do so.</div>
+                    <div className="mt-2 text-xs font-semibold text-green-800">Keep pulling safe work forward while the next stage is ready. The aim is to protect the whole programme, not just finish today’s list.</div>
                   </div>
 
                   <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950">
@@ -277,6 +296,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                 <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
                   <h2 className="text-lg font-black">Plant & tools</h2>
                   <div className="mt-3 space-y-2 text-sm text-zinc-700">
+                    <div className="font-semibold text-zinc-900">• Boards / plywood / suitable ground-protection sheets for waste, grabber area, mixer and material storage</div>
                     {plan.plantTools.length ? plan.plantTools.map((item, index) => <div key={index}>• {item}</div>) : <div>Normal landscaping tools for the agreed scope.</div>}
                     {controls.extraItems.filter((item) => item.type === 'tool').map((item) => (
                       <div key={`extra-tool-${item.id}`} className="font-semibold text-blue-800">+ {item.item}{item.quantity ? ` — ${item.quantity}` : ''} ({extraStatus(item.status)})</div>
@@ -287,6 +307,8 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                 <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
                   <h2 className="text-lg font-black text-amber-950">Checks before / during the job</h2>
                   <div className="mt-3 space-y-2 text-sm leading-6 text-amber-950">
+                    <div>• Confirm string lines/profiles/levels are set and checked before committing to excavation, edges or laying.</div>
+                    <div>• Confirm boards/ground protection are down before spoil, waste, mixer or materials are placed on customer surfaces.</div>
                     {plan.siteChecks.map((item, index) => <div key={index}>• {item}</div>)}
                     {plan.risks.map((item, index) => <div key={`risk-${index}`}>⚠ {item}</div>)}
                   </div>
