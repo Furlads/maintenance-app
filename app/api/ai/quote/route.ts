@@ -149,6 +149,47 @@ async function runOpenAI({
   return extractJson(output)
 }
 
+function normaliseOptions(value: unknown, vatRate: number) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .slice(0, 3)
+    .map((rawOption, index) => {
+      const option =
+        rawOption && typeof rawOption === 'object'
+          ? (rawOption as Record<string, unknown>)
+          : {}
+
+      const priceExVat = cleanNumber(option.priceExVat)
+      const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
+      const totalIncVat = Number((priceExVat + vatAmount).toFixed(2))
+
+      const durationRaw =
+        option.estimatedDuration && typeof option.estimatedDuration === 'object'
+          ? (option.estimatedDuration as Record<string, unknown>)
+          : {}
+
+      return {
+        label: cleanText(option.label) || `Option ${String.fromCharCode(65 + index)}`,
+        title: cleanText(option.title) || `Idea ${index + 1}`,
+        summary: cleanText(option.summary),
+        keyDifferences: Array.isArray(option.keyDifferences)
+          ? option.keyDifferences.map(cleanText).filter(Boolean).slice(0, 5)
+          : [],
+        whyChoose: cleanText(option.whyChoose),
+        estimatedDuration: {
+          workingDays: cleanNumber(durationRaw.workingDays),
+          teamSize: cleanNumber(durationRaw.teamSize, 1),
+          description: cleanText(durationRaw.description),
+        },
+        priceExVat,
+        vatAmount,
+        totalIncVat,
+      }
+    })
+    .filter((option) => option.priceExVat > 0 && option.summary)
+}
+
 async function priceJob(body: QuoteRequest) {
   const customerName = cleanText(body.customerName)
   const jobDetails = cleanText(body.jobDetails)
@@ -166,9 +207,9 @@ async function priceJob(body: QuoteRequest) {
   }
 
   const systemPrompt = `
-You are the internal landscaping estimator for Furlads, a VAT-registered UK landscaping business.
+You are the internal landscaping estimator and practical garden ideas assistant for Furlads, a VAT-registered UK landscaping business.
 
-Your task is to help Trevor price landscaping jobs commercially and realistically.
+Your task is to help Trevor price landscaping jobs commercially and realistically, and to help him develop practical alternatives when a customer is undecided.
 
 You may receive written survey notes and site photographs.
 
@@ -191,8 +232,9 @@ PRICING RULES:
 - VAT will be calculated separately by the app.
 - Do not invent exact supplier prices.
 - Clearly separate confirmed information from estimates.
-- Include labour, materials, waste, deliveries, machinery, fuel, consumables and contingency where relevant.
-- Allow for collection, loading, unloading, site setup and final tidy-up.
+- Include labour, materials, waste, deliveries, machinery, fuel, consumables and contingency where relevant unless the additional Furlads pricing instructions say an all-in standard selling rate already covers them.
+- Never add normal components twice when an all-in standard selling rate applies.
+- Allow for collection, loading, unloading, site setup and final tidy-up where they are not already covered by an all-in selling rate.
 - Consider access, excavation, ground conditions, waste removal and difficult cuts.
 - Protect Furlads against underpricing.
 - Include a sensible commercial margin.
@@ -200,10 +242,43 @@ PRICING RULES:
 - If important information is missing, provide a provisional estimate and identify what must be checked.
 - Keep the response practical.
 
+IDEAS / OPTIONS MODE:
+
+- If Trevor says the customer wants ideas, alternatives, choices, a couple of options, different ways of doing it, is undecided, or asks what could work in the space, switch to options mode.
+- In options mode, give 2 or 3 genuinely different and buildable routes. Do not merely rename the same design.
+- Useful differences can include layout, material, finish, amount of hard landscaping, planting, lawn, edging, levels or phasing, but only suggest things that make sense from the known site information.
+- Keep each option separate. Never add the option prices together.
+- Give each option its own short scope, key differences, provisional price excluding VAT and realistic install duration.
+- Explain briefly why a customer might choose each route, such as lower spend, lower maintenance, more usable patio space, softer garden feel or a more premium finish.
+- If Trevor has not supplied enough information for exact design choices, still give useful provisional ideas using clearly stated assumptions rather than refusing to help.
+- Set optionMode to true while multiple options are still being considered.
+- When Trevor later chooses an option, says to combine specific parts of options, or clearly settles the scope, leave options mode and return one normal quote with optionMode false.
+- In options mode, recommendedPriceExVat may represent the option you would recommend internally, but the options array is the source of truth for the individual option prices.
+- Do not treat an earlier option as confirmed scope unless Trevor explicitly selects it.
+
 Return only valid JSON using this exact structure:
 
 {
-  "summary": "Short description of the proposed works",
+  "optionMode": false,
+  "recommendedOptionLabel": "",
+  "options": [
+    {
+      "label": "Option A",
+      "title": "Short option name",
+      "summary": "What this option would include",
+      "keyDifferences": [
+        "What makes this route different"
+      ],
+      "whyChoose": "Why this route may suit the customer",
+      "estimatedDuration": {
+        "workingDays": 1,
+        "teamSize": 2,
+        "description": "One full day for two people"
+      },
+      "priceExVat": 0
+    }
+  ],
+  "summary": "Short description of the proposed works or the current decision",
   "confirmedInformation": [
     "Confirmed information from the notes or photographs"
   ],
@@ -251,6 +326,7 @@ Return only valid JSON using this exact structure:
   ]
 }
 
+When optionMode is false, return options as an empty array unless earlier options are still genuinely useful context.
 All monetary values must be JSON numbers without pound signs or commas.
 `.trim()
 
@@ -258,7 +334,7 @@ All monetary values must be JSON numbers without pound signs or commas.
 Customer:
 ${customerName || 'Not supplied'}
 
-Written job details:
+Written job details and conversation so far:
 ${jobDetails || 'No written notes supplied.'}
 
 Additional pricing instructions:
@@ -267,7 +343,7 @@ ${additionalInstructions || 'None supplied'}
 Number of site photographs:
 ${photos.length}
 
-Review the supplied notes and photographs, identify any potential issues and produce a provisional Furlads price.
+Review the supplied notes and photographs. If the customer or Trevor is asking for alternatives, produce useful separate options. Otherwise produce the current single provisional Furlads price.
 `.trim()
 
   const result = await runOpenAI({
@@ -284,9 +360,14 @@ Review the supplied notes and photographs, identify any potential issues and pro
   const depositAmount = Number(
     ((totalIncVat * depositPercent) / 100).toFixed(2)
   )
+  const options = normaliseOptions(result.options, vatRate)
+  const optionMode = result.optionMode === true && options.length >= 2
 
   return NextResponse.json({
     ...result,
+    optionMode,
+    recommendedOptionLabel: cleanText(result.recommendedOptionLabel),
+    options,
     recommendedPriceExVat: priceExVat,
     vatRate,
     vatAmount,
