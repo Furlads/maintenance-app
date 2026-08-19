@@ -42,6 +42,12 @@ export const TRAVIS_PERKINS_BENCHMARKS = {
     packedWeightKg: 25,
     priceExVat: 6.78,
   },
+  sbrBondingAgent5L: {
+    productCode: '985259',
+    label: 'Sika SikaBond SBR+ Bonding Agent 5L',
+    volumeL: 5,
+    priceExVat: 28.91,
+  },
   postcrete20Kg: {
     productCode: '519476',
     label: 'Blue Circle Ready to Use Postcrete 20kg',
