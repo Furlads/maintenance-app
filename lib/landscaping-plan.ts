@@ -17,6 +17,8 @@ type DayPlan = {
 type MaterialItem = {
   item: string
   quantity: string
+  neededQuantity: string
+  orderQuantity: string
   orderFor: string
   estimatedCostExVat: number
   actualCostExVat: number | null
@@ -31,7 +33,7 @@ type ActualCosts = {
 }
 
 export type LandscapingPlan = {
-  version: 1
+  version: 1 | 2
   generatedAt: string
   jobId: number
   quoteId: number
@@ -67,6 +69,7 @@ export type InstallWindow = {
 }
 
 export type LandscapingActualCostUpdate = {
+  materialProjectedCosts?: Array<number | null>
   materialActualCosts?: Array<number | null>
   labourExVat?: number | null
   plantWasteExVat?: number | null
@@ -93,6 +96,16 @@ function optionalMoney(value: unknown): number | null {
   return Number(parsed.toFixed(2))
 }
 
+function roundTo(value: number, decimals = 2) {
+  const factor = 10 ** decimals
+  return Math.round(value * factor) / factor
+}
+
+function roundDown(value: number, increment: number) {
+  if (!Number.isFinite(value) || value <= 0) return 0
+  return Math.floor((value + 1e-9) / increment) * increment
+}
+
 function extractJson(value: string) {
   const text = value.trim()
   try {
@@ -103,6 +116,52 @@ function extractJson(value: string) {
     if (start < 0 || end <= start) throw new Error('Planner did not return valid JSON.')
     return JSON.parse(text.slice(start, end + 1))
   }
+}
+
+function extractAreaM2(scope: string) {
+  const rectangle = scope.match(/(\d+(?:\.\d+)?)\s*(?:m)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:m)?/i)
+  if (rectangle) {
+    const length = Number(rectangle[1])
+    const width = Number(rectangle[2])
+    if (Number.isFinite(length) && Number.isFinite(width) && length > 0 && width > 0) {
+      return roundTo(length * width, 2)
+    }
+  }
+
+  const area = scope.match(/(\d+(?:\.\d+)?)\s*(?:m2|m²|sqm)/i)
+  if (!area) return 0
+  const parsed = Number(area[1])
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
+function extractGravelAreaM2(scope: string) {
+  const explicit = scope.match(/gravel[^.]{0,160}?(\d+(?:\.\d+)?)\s*(?:m2|m²|sqm)/i)
+  if (explicit) {
+    const parsed = Number(explicit[1])
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+
+  const dimensions = scope.match(/(\d+(?:\.\d+)?)\s*(?:m)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:m)?/i)
+  const width = scope.match(/(?:gravel|strip)[^.]{0,120}?(\d+(?:\.\d+)?)\s*mm/i)
+  if (!dimensions || !width) return 0
+
+  const length = Number(dimensions[1])
+  const patioWidth = Number(dimensions[2])
+  const borderWidthM = Number(width[1]) / 1000
+  if (![length, patioWidth, borderWidthM].every((value) => Number.isFinite(value) && value > 0)) return 0
+
+  return roundTo(2 * (length + patioWidth) * borderWidthM, 2)
+}
+
+function isStandardPatioScope(scope: string) {
+  const text = scope.toLowerCase()
+  return (
+    text.includes('patio') ||
+    text.includes('raj green') ||
+    text.includes('indian sandstone') ||
+    text.includes('indian stone') ||
+    text.includes('porcelain')
+  )
 }
 
 function isWeekend(date: Date) {
@@ -148,14 +207,22 @@ function normaliseStoredPlan(value: unknown): LandscapingPlan | null {
   const raw = value as Record<string, any>
   if (!Number.isFinite(Number(raw.jobId)) || !Array.isArray(raw.materials)) return null
 
-  const materials: MaterialItem[] = raw.materials.map((material: any) => ({
-    item: cleanText(material?.item),
-    quantity: cleanText(material?.quantity) || 'Confirm before order',
-    orderFor: cleanText(material?.orderFor) || 'Before job starts',
-    estimatedCostExVat: moneyNumber(material?.estimatedCostExVat),
-    actualCostExVat: optionalMoney(material?.actualCostExVat),
-    note: cleanText(material?.note),
-  }))
+  const materials: MaterialItem[] = raw.materials.map((material: any) => {
+    const legacyQuantity = cleanText(material?.quantity) || 'Confirm before order'
+    const neededQuantity = cleanText(material?.neededQuantity) || legacyQuantity
+    const orderQuantity = cleanText(material?.orderQuantity) || neededQuantity
+
+    return {
+      item: cleanText(material?.item),
+      quantity: neededQuantity,
+      neededQuantity,
+      orderQuantity,
+      orderFor: cleanText(material?.orderFor) || 'Before job starts',
+      estimatedCostExVat: moneyNumber(material?.estimatedCostExVat),
+      actualCostExVat: optionalMoney(material?.actualCostExVat),
+      note: cleanText(material?.note),
+    }
+  })
 
   const dayPlan: DayPlan[] = Array.isArray(raw.dayPlan)
     ? raw.dayPlan.map((day: any, index: number) => ({
@@ -170,6 +237,7 @@ function normaliseStoredPlan(value: unknown): LandscapingPlan | null {
 
   return {
     ...(raw as LandscapingPlan),
+    version: raw.version === 2 ? 2 : 1,
     materials,
     dayPlan,
     actualCosts: {
@@ -275,10 +343,14 @@ function normaliseMaterials(value: unknown, previousMaterials: MaterialItem[] = 
       const previous = previousMaterials.find(
         (material) => material.item.trim().toLowerCase() === itemName.trim().toLowerCase()
       )
+      const neededQuantity = cleanText(item.neededQuantity) || cleanText(item.quantity) || 'Confirm before order'
+      const orderQuantity = cleanText(item.orderQuantity) || neededQuantity
 
       return {
         item: itemName,
-        quantity: cleanText(item.quantity) || 'Confirm before order',
+        quantity: neededQuantity,
+        neededQuantity,
+        orderQuantity,
         orderFor: cleanText(item.orderFor) || 'Before job starts',
         estimatedCostExVat: moneyNumber(item.estimatedCostExVat),
         actualCostExVat: previous?.actualCostExVat ?? null,
@@ -288,13 +360,122 @@ function normaliseMaterials(value: unknown, previousMaterials: MaterialItem[] = 
     .filter((item) => item.item)
 }
 
+function applyFurladsMaterialRules(materials: MaterialItem[], scope: string) {
+  if (!isStandardPatioScope(scope)) return materials
+
+  const areaM2 = extractAreaM2(scope)
+  if (areaM2 <= 0) return materials
+
+  const gravelAreaM2 = extractGravelAreaM2(scope)
+
+  return materials.map((material) => {
+    const name = material.item.toLowerCase()
+
+    if (
+      name.includes('mot') ||
+      name.includes('type 1') ||
+      name.includes('type1') ||
+      name.includes('sub-base') ||
+      name.includes('sub base')
+    ) {
+      const compactedDepthM = 0.1
+      const densityTonnesPerM3 = 2
+      const volumeM3 = roundTo(areaM2 * compactedDepthM, 2)
+      const tonnesNeeded = roundTo(volumeM3 * densityTonnesPerM3, 1)
+      const tonnesToOrder = Math.max(0.5, roundDown(tonnesNeeded * 0.9, 0.5))
+
+      return {
+        ...material,
+        quantity: `${volumeM3.toFixed(1)} m³ compacted / approx ${tonnesNeeded.toFixed(1)}t needed`,
+        neededQuantity: `${volumeM3.toFixed(1)} m³ compacted / approx ${tonnesNeeded.toFixed(1)}t needed`,
+        orderQuantity: `${tonnesToOrder.toFixed(1)}t Type 1 — use existing Furlads stock for the balance`,
+        note: `Furlads planning assumption: 100mm compacted Type 1 at approx 2.0t/m³. Order quantity is deliberately rounded down to allow usable stock left from previous jobs. ${material.note}`.trim(),
+      }
+    }
+
+    if (
+      name.includes('raj green') ||
+      name.includes('sandstone paving') ||
+      name.includes('indian sandstone') ||
+      name.includes('porcelain') ||
+      name.includes('paving slabs')
+    ) {
+      const requirementM2 = roundTo(areaM2 * 1.05, 1)
+      const orderM2 = Math.max(areaM2, roundDown(requirementM2, 0.5))
+
+      return {
+        ...material,
+        quantity: `${areaM2.toFixed(1)}m² finished area; approx ${requirementM2.toFixed(1)}m² needed incl. 5% cuts/waste`,
+        neededQuantity: `${areaM2.toFixed(1)}m² finished area; approx ${requirementM2.toFixed(1)}m² needed incl. 5% cuts/waste`,
+        orderQuantity: `${orderM2.toFixed(1)}m² maximum new order — check/use matching stock for cuts and spares`,
+        note: `Keep the projected cost allowance based on the full requirement; the smaller order-now figure assumes usable matching stock may already be available. ${material.note}`.trim(),
+      }
+    }
+
+    if (name.includes('membrane') || name.includes('geotextile')) {
+      const neededM2 = roundTo(areaM2 * 1.05, 1)
+      const orderM2 = Math.max(areaM2, roundDown(neededM2 * 0.95, 1))
+
+      return {
+        ...material,
+        quantity: `Approx ${neededM2.toFixed(1)}m² needed including sensible overlaps`,
+        neededQuantity: `Approx ${neededM2.toFixed(1)}m² needed including sensible overlaps`,
+        orderQuantity: `Approx ${orderM2.toFixed(0)}m² new membrane — top up overlaps from existing stock`,
+        note: `Do not add oversized perimeter overlap allowances. Allow roughly 5% for sensible joints/overlap unless the site needs more. ${material.note}`.trim(),
+      }
+    }
+
+    if (
+      name.includes('sharp sand') ||
+      name.includes('bedding sand') ||
+      name.includes('mortar bed')
+    ) {
+      const mortarDepthM = 0.04
+      const mortarVolumeM3 = roundTo(areaM2 * mortarDepthM, 2)
+      const sharpSandTonnes = roundTo(mortarVolumeM3 * 1.65, 1)
+      const orderTonnes = Math.max(0.5, roundDown(sharpSandTonnes * 0.9, 0.5))
+
+      return {
+        ...material,
+        quantity: `${mortarVolumeM3.toFixed(1)}m³ full mortar-bed allowance / approx ${sharpSandTonnes.toFixed(1)}t sharp sand equivalent`,
+        neededQuantity: `${mortarVolumeM3.toFixed(1)}m³ full mortar-bed allowance / approx ${sharpSandTonnes.toFixed(1)}t sharp sand equivalent`,
+        orderQuantity: `${orderTonnes.toFixed(1)}t sharp sand equivalent — use existing stock for the balance`,
+        note: `Furlads planning assumption: roughly 40mm full bed for standard natural-stone patio work unless the accepted specification says otherwise. ${material.note}`.trim(),
+      }
+    }
+
+    if (
+      gravelAreaM2 > 0 &&
+      (name.includes('black-ice') || name.includes('black ice') || name.includes('decorative gravel'))
+    ) {
+      const depthM = 0.04
+      const density = 1.6
+      const volumeM3 = roundTo(gravelAreaM2 * depthM, 3)
+      const tonnesNeeded = roundTo(volumeM3 * density, 2)
+      const tonnesToOrder = Math.max(0.05, roundDown(tonnesNeeded * 0.9, 0.05))
+
+      return {
+        ...material,
+        quantity: `${gravelAreaM2.toFixed(2)}m² at approx 40mm deep = ${volumeM3.toFixed(2)}m³ / approx ${tonnesNeeded.toFixed(2)}t needed`,
+        neededQuantity: `${gravelAreaM2.toFixed(2)}m² at approx 40mm deep = ${volumeM3.toFixed(2)}m³ / approx ${tonnesNeeded.toFixed(2)}t needed`,
+        orderQuantity: `${tonnesToOrder.toFixed(2)}t new decorative gravel — use matching stock for the balance`,
+        note: `Order-now quantity is deliberately rounded down; keep the projected cost allowance unchanged until the supplier invoice is entered. ${material.note}`.trim(),
+      }
+    }
+
+    return material
+  })
+}
+
 function hasUsefulMeasurements(value: string) {
   return /\d+(?:\.\d+)?\s*(?:m|m2|m²|sqm|x|×)/i.test(value)
 }
 
 function hasTooManyTbcMaterials(materials: MaterialItem[]) {
   if (!materials.length) return false
-  const tbcCount = materials.filter((material) => /\bTBC\b/i.test(material.quantity)).length
+  const tbcCount = materials.filter(
+    (material) => /\bTBC\b/i.test(material.neededQuantity) || /\bTBC\b/i.test(material.orderQuantity)
+  ).length
   return tbcCount > Math.max(1, Math.floor(materials.length * 0.25))
 }
 
@@ -303,21 +484,54 @@ export async function saveLandscapingActualCosts(
   update: LandscapingActualCostUpdate
 ) {
   const current = await getLatestLandscapingPlan(jobId)
-  if (!current) throw new Error('Generate the landscaping pack before entering actual costs.')
+  if (!current) throw new Error('Generate the landscaping pack before entering costs.')
 
+  const materialProjectedCosts = Array.isArray(update.materialProjectedCosts)
+    ? update.materialProjectedCosts
+    : []
   const materialActualCosts = Array.isArray(update.materialActualCosts)
     ? update.materialActualCosts
     : []
 
+  const materials = current.materials.map((material, index) => ({
+    ...material,
+    estimatedCostExVat:
+      index < materialProjectedCosts.length && optionalMoney(materialProjectedCosts[index]) != null
+        ? optionalMoney(materialProjectedCosts[index]) as number
+        : material.estimatedCostExVat,
+    actualCostExVat:
+      index < materialActualCosts.length
+        ? optionalMoney(materialActualCosts[index])
+        : material.actualCostExVat,
+  }))
+
+  const materialsExVat = moneyNumber(
+    materials.reduce((sum, material) => sum + material.estimatedCostExVat, 0)
+  )
+  const totalCostExVat = moneyNumber(
+    current.projectedCosts.labourExVat +
+      materialsExVat +
+      current.projectedCosts.plantWasteExVat +
+      current.projectedCosts.otherExVat
+  )
+  const projectedGrossProfitExVat = moneyNumber(
+    current.projectedCosts.sellingPriceExVat - totalCostExVat
+  )
+  const projectedGrossProfitPercent = current.projectedCosts.sellingPriceExVat > 0
+    ? moneyNumber((projectedGrossProfitExVat / current.projectedCosts.sellingPriceExVat) * 100)
+    : 0
+
   const updated: LandscapingPlan = {
     ...current,
-    materials: current.materials.map((material, index) => ({
-      ...material,
-      actualCostExVat:
-        index < materialActualCosts.length
-          ? optionalMoney(materialActualCosts[index])
-          : material.actualCostExVat,
-    })),
+    version: 2,
+    materials,
+    projectedCosts: {
+      ...current.projectedCosts,
+      materialsExVat,
+      totalCostExVat,
+      projectedGrossProfitExVat,
+      projectedGrossProfitPercent,
+    },
     actualCosts: {
       labourExVat: optionalMoney(update.labourExVat),
       plantWasteExVat: optionalMoney(update.plantWasteExVat),
@@ -495,15 +709,28 @@ export async function generateLandscapingPlan(jobId: number): Promise<Landscapin
 
   const instructions = `You are CHAS creating an INTERNAL landscaping job pack for Furlads after a customer has accepted a quotation. This is not customer wording. Build a practical plan for UK/Shropshire landscaping crews. Do not change the accepted selling price or the approved total duration. The worker day plan must be achievable by humans, safe, practical and sequenced logically.
 
-MATERIAL QUANTITIES — IMPORTANT:
-- TBC is the exception, not the default.
-- If dimensions are supplied, calculate sensible provisional ordering quantities from them and state the assumption in the note.
-- For paving, turf, artificial grass and membrane, calculate area and include sensible wastage/overlap where appropriate.
-- For sub-base and bedding layers, calculate provisional volume from area × a sensible standard depth, and give a useful order quantity such as m³ and/or approximate tonnes where reasonable. State the assumed depth/density rather than writing TBC.
-- For gravel strips/borders, use supplied dimensions or the accepted quote assumption to calculate area/volume where possible.
-- For fencing, calculate panels/bays/posts/gravel boards from the accepted run length and specification where practical.
-- Use “Confirm before order” only for genuinely unknown product specifications or site-dependent quantities that cannot reasonably be calculated from the accepted information.
-- Never invent false precision. A clearly labelled provisional calculated quantity is better than TBC.
+MATERIAL PLANNING — IMPORTANT:
+- Every material has TWO quantities: neededQuantity and orderQuantity.
+- neededQuantity is the realistic total requirement for completing the job, including only sensible cuts/waste/overlap.
+- orderQuantity is what Furlads should actually buy now.
+- Furlads deliberately rounds orderQuantity DOWN because usable leftover stock from previous jobs can often cover the balance. Do not round orders up just to be safe.
+- The projected cost must stay based on the full/conservative material requirement. Do NOT reduce estimatedCostExVat just because orderQuantity is rounded down.
+- TBC is the exception, not the default. If measurements are supplied, calculate a useful provisional quantity and state the assumption.
+- Do not create excessive contingency or waste allowances.
+
+STANDARD FURLADS PATIO PLANNING ASSUMPTIONS UNLESS THE ACCEPTED SCOPE SAYS OTHERWISE:
+- Type 1 sub-base: 100mm compacted, not 150mm. Use approx 2.0 tonnes per compacted m³ for planning. A 30m² patio is therefore about 3.0m³ / 6.0t needed — it must NOT become 9t.
+- Natural-stone full mortar bed: plan around 40mm average bed, not an arbitrary 50mm.
+- Paving: around 5% cuts/waste is normally enough for planning unless the layout genuinely needs more.
+- Membrane: allow sensible joints/overlap, roughly 5%; do not add 300mm or 600mm around every outer edge unless the actual installation needs it.
+- Decorative gravel: calculate from the accepted border area/width and use a sensible decorative depth, normally around 40mm unless specified otherwise.
+- For fencing, calculate bays/posts/gravel boards from the accepted run length and specification where practical.
+
+PROJECTED COSTS:
+- estimatedCostExVat is an internal conservative allowance for the FULL requirement, not the deliberately smaller order-now quantity.
+- Do not lowball supplier/material costs simply to make gross margin look good.
+- Do not include the customer selling-price markup as a material cost; this is the expected Furlads purchase cost/allowance ex VAT.
+- If you are genuinely uncertain, use a conservative plausible allowance and flag it for Kelly/Trev to edit before ordering.
 
 DAY PLAN — IMPORTANT:
 - Every day must include an ifAhead list.
@@ -513,9 +740,9 @@ DAY PLAN — IMPORTANT:
 - Do not bring forward work that depends on curing, missing deliveries, customer approval or another unsafe/unready dependency.
 - On the final day, ifAhead should focus on snagging, cleaning, waste loading, photos and handover preparation.
 
-Include sensible material, waste, plant and consumable cost allowances for internal profitability planning, but clearly treat them as projected allowances to verify against supplier/order costs. Do not include selling prices in worker wording. Return JSON only.`
+Include sensible waste, plant and consumable cost allowances for internal profitability planning. Do not include selling prices in worker wording. Return JSON only.`
 
-  const input = `Accepted landscaping job\nCustomer: ${job.customer.name}\nPostcode: ${job.customer.postcode || ''}\nScope: ${quote.scope}\nInternal quote notes: ${quote.internalNotes || ''}\nCHAS quote working: ${quote.quoteWorking || ''}\nAccepted selling price ex VAT: £${quote.priceExVat.toFixed(2)}\nApproved install allowance: ${totalDays} working days\nRecommended team size: ${teamSize}\n\nReturn this exact JSON shape:\n{\n  "workerSummary": "short plain-English brief for the lads",\n  "dayPlan": [{"day":1,"heading":"","target":"","tasks":[""],"ifAhead":["safe task to bring forward from next day"],"checkpoint":""}],\n  "materials": [{"item":"","quantity":"calculated provisional order quantity where possible","orderFor":"Before job starts","estimatedCostExVat":0,"note":"assumptions/calculation or genuine confirmation needed"}],\n  "plantTools": [""],\n  "siteChecks": [""],\n  "risks": [""],\n  "plantWasteCostExVat": 0,\n  "otherCostExVat": 0,\n  "commercialNotes": ["Internal assumptions or things Kelly/Trev must verify before order"]\n}\n\nThe dayPlan must contain ${Math.ceil(totalDays)} entries, with the final entry described as a half-day finish if the approved duration ends in .5.`
+  const input = `Accepted landscaping job\nCustomer: ${job.customer.name}\nPostcode: ${job.customer.postcode || ''}\nScope: ${quote.scope}\nInternal quote notes: ${quote.internalNotes || ''}\nCHAS quote working: ${quote.quoteWorking || ''}\nAccepted selling price ex VAT: £${quote.priceExVat.toFixed(2)}\nApproved install allowance: ${totalDays} working days\nRecommended team size: ${teamSize}\n\nReturn this exact JSON shape:\n{\n  "workerSummary": "short plain-English brief for the lads",\n  "dayPlan": [{"day":1,"heading":"","target":"","tasks":[""],"ifAhead":["safe task to bring forward from next day"],"checkpoint":""}],\n  "materials": [{"item":"","neededQuantity":"realistic total job requirement","orderQuantity":"smaller practical order-now amount, rounded down where sensible","orderFor":"Before job starts","estimatedCostExVat":0,"note":"calculation/assumption and anything to verify"}],\n  "plantTools": [""],\n  "siteChecks": [""],\n  "risks": [""],\n  "plantWasteCostExVat": 0,\n  "otherCostExVat": 0,\n  "commercialNotes": ["Internal assumptions or things Kelly/Trev must verify before order"]\n}\n\nThe dayPlan must contain ${Math.ceil(totalDays)} entries, with the final entry described as a half-day finish if the approved duration ends in .5.`
 
   let response = await openai.responses.create({
     model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
@@ -529,12 +756,14 @@ Include sensible material, waste, plant and consumable cost allowances for inter
   if (hasUsefulMeasurements(quote.scope) && hasTooManyTbcMaterials(materials)) {
     response = await openai.responses.create({
       model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-      instructions: `${instructions}\n\nQUALITY CORRECTION: The first material list used too many TBC quantities even though measurements are available. Recalculate the material list. Use practical provisional quantities with clearly stated assumptions. Keep TBC only where a quantity genuinely cannot be derived.`,
+      instructions: `${instructions}\n\nQUALITY CORRECTION: The first material list used too many TBC quantities even though measurements are available. Recalculate neededQuantity and orderQuantity. Use practical provisional quantities with clearly stated assumptions. Keep TBC only where a quantity genuinely cannot be derived.`,
       input,
     })
     parsed = extractJson(response.output_text || '') as Record<string, unknown>
     materials = normaliseMaterials(parsed.materials, previousPlan?.materials || [])
   }
+
+  materials = applyFurladsMaterialRules(materials, quote.scope)
 
   const materialsExVat = moneyNumber(materials.reduce((sum, item) => sum + item.estimatedCostExVat, 0))
   const plantWasteExVat = moneyNumber(parsed.plantWasteCostExVat)
@@ -547,7 +776,7 @@ Include sensible material, waste, plant and consumable cost allowances for inter
     : 0
 
   const plan: LandscapingPlan = {
-    version: 1,
+    version: 2,
     generatedAt: new Date().toISOString(),
     jobId: job.id,
     quoteId: quote.id,
@@ -578,7 +807,8 @@ Include sensible material, waste, plant and consumable cost allowances for inter
     },
     commercialNotes: [
       `Labour uses a provisional internal planning allowance of £${FIELD_LABOUR_COST_PER_PERSON_DAY} per person-day.`,
-      'Material, plant and waste costs are projected planning allowances until replaced with actual order/invoice costs in the live cost tracker.',
+      'Order-now quantities are deliberately rounded down to allow for usable Furlads stock left from previous jobs; projected cost allowances remain based on the full requirement until edited or replaced by actual costs.',
+      'Material, plant and waste costs remain editable planning allowances until supplier/order costs are confirmed.',
       ...(Array.isArray(parsed.commercialNotes) ? parsed.commercialNotes.map(cleanText).filter(Boolean).slice(0, 12) : []),
     ],
   }
