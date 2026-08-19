@@ -2,12 +2,38 @@ export const MATERIAL_BENCHMARK_UPDATED = '2026-08-19'
 
 export const TRAVIS_PERKINS_BENCHMARKS = {
   motType1BulkBag: {
-    label: 'Travis Perkins MOT Type 1 bulk bag',
+    productCode: '938251',
+    label: 'Travis Perkins MOT Type 1 Sub Base Bulk Bag',
     packedWeightKg: 800,
     priceExVat: 62.7,
   },
   sharpSandBulkBag: {
-    label: 'Travis Perkins grit/sharp sand bulk bag',
+    productCode: '938208',
+    label: 'Travis Perkins Grit/Sharp Sand Bulk Bag',
+    packedWeightKg: 800,
+    priceExVat: 62.7,
+  },
+  ballastBulkBag: {
+    productCode: '938169',
+    label: 'Travis Perkins Sand and Stone Ballast Bulk Bag',
+    packedWeightKg: 800,
+    priceExVat: 62.7,
+  },
+  granoDustBulkBag: {
+    productCode: '938266',
+    label: 'Travis Perkins Grano Dust Bulk Bag 6mm',
+    packedWeightKg: 800,
+    priceExVat: 146.53,
+  },
+  gravelShingle20mmBulkBag: {
+    productCode: '938191',
+    label: 'Travis Perkins Gravel and Shingle Bulk Bag 20mm',
+    packedWeightKg: 800,
+    priceExVat: 62.7,
+  },
+  gravelShingle10mmBulkBag: {
+    productCode: '938182',
+    label: 'Travis Perkins Gravel and Shingle Bulk Bag 10mm',
     packedWeightKg: 800,
     priceExVat: 62.7,
   },
@@ -16,6 +42,18 @@ export const TRAVIS_PERKINS_BENCHMARKS = {
     packedWeightKg: 25,
     priceExVat: 6.78,
   },
+  postcrete20Kg: {
+    productCode: '519476',
+    label: 'Blue Circle Ready to Use Postcrete 20kg',
+    packedWeightKg: 20,
+    priceExVat: 6,
+  },
+  readyConcrete20Kg: {
+    productCode: '346656',
+    label: 'Blue Circle High Strength Ready to Use Concrete 20kg',
+    packedWeightKg: 20,
+    priceExVat: 10.19,
+  },
   easyJoint12_5KgTub: {
     label: 'Travis Perkins Azpects EASYJoint 12.5kg tub',
     packedWeightKg: 12.5,
@@ -23,13 +61,21 @@ export const TRAVIS_PERKINS_BENCHMARKS = {
     coverageRangeM2: '6-9',
     priceExVat: 43.99,
   },
+  kilnDriedPavingSand20Kg: {
+    productCode: '418391',
+    label: 'Kiln Dried Paving Sand 20kg',
+    packedWeightKg: 20,
+    planningCoverageM2: 6,
+    priceExVat: 4.79,
+  },
   blackBasaltBulkBag: {
     label: 'Travis Perkins Suburban Stone Black Basalt 20mm bulk bag',
     packedWeightKg: 800,
     priceExVat: 199.44,
   },
   heavyDutyLandscapeFabric2x25: {
-    label: 'Travis Perkins 4Trade heavy duty landscape fabric 2m x 25m',
+    productCode: '344304',
+    label: 'Travis Perkins 4Trade Heavy Duty Landscape Fabric 2m x 25m',
     coverageM2: 50,
     priceExVat: 24.16,
   },
@@ -38,8 +84,173 @@ export const TRAVIS_PERKINS_BENCHMARKS = {
     coverageM2: 22.2,
     priceExVat: 466.2,
   },
+  porcelainPavingPack: {
+    productCode: '391736',
+    label: 'Marshalls Anesso Core Porcelain Paving Dark Grey 600 x 600mm',
+    coverageM2: 23.04,
+    priceExVat: 594.56,
+  },
+  standardBlockPavingPack: {
+    productCode: '348019',
+    label: 'Marshalls Standard Concrete Block Paving Brindle 200 x 100 x 50mm',
+    coverageM2: 9.76,
+    priceExVat: 200.96,
+  },
+  fencePanel6x5: {
+    productCode: '160641',
+    label: 'Super Lap Pressure Treated Fence Panel 6ft x 5ft',
+    widthM: 1.83,
+    priceExVat: 29,
+  },
+  concreteFencePost2440: {
+    productCode: '700243',
+    label: 'Supreme Concrete Intermediate Slotted Fence Post 2440mm',
+    priceExVat: 29.04,
+  },
+  concreteGravelBoard6in: {
+    productCode: '700252',
+    label: 'Supreme Concrete Recessed Gravel Board 50 x 150 x 1830mm',
+    widthM: 1.83,
+    priceExVat: 21.27,
+  },
+  concreteGravelBoard12in: {
+    productCode: '805329',
+    label: 'Supreme Concrete Recessed Gravel Board 50 x 305 x 1830mm',
+    widthM: 1.83,
+    priceExVat: 30.77,
+  },
+  trellis6x1: {
+    productCode: '585055',
+    label: 'Forest Garden Smooth Planed Trellis 6ft x 1ft',
+    widthM: 1.8,
+    priceExVat: 26.52,
+  },
+  timberGate900x1800: {
+    productCode: '352209',
+    label: 'Heavy Duty Dome Tongue & Groove Gate 900mm x 1.8m',
+    widthM: 0.9,
+    priceExVat: 129.77,
+  },
+  gateHingesPair350: {
+    productCode: '802956',
+    label: '4Trade Tee Hinge Medium Black 350mm Pack of 2',
+    packQuantity: 2,
+    priceExVat: 6.03,
+  },
+  gateLatch: {
+    productCode: '802961',
+    label: '4Trade Suffolk Gate Latch',
+    priceExVat: 4.43,
+  },
+  treatedTimberPost100x100x2400: {
+    productCode: '946633',
+    label: 'ECC Green Treated UC4 Fence Post 100 x 100 x 2400mm',
+    priceExVat: 13.62,
+  },
+  artificialGrass30mm4m: {
+    productCode: '581577',
+    label: 'Luxigraze Premium Artificial Grass 30mm - 4m Width',
+    widthM: 4,
+    priceExVatPerLinearM: 88.04,
+  },
+  artificialGrassJointingTape20m: {
+    productCode: '775652',
+    label: 'Luxigraze Jointing Tape 20m x 20cm',
+    lengthM: 20,
+    priceExVat: 31.58,
+  },
+  artificialGrassSelfAdhesiveTape: {
+    productCode: '483291',
+    label: 'Luxigraze Artificial Grass Self Adhesive Jointing Tape',
+    priceExVat: 31.8,
+  },
+  artificialGrassAdhesive310ml: {
+    productCode: '581583',
+    label: 'Luxigraze Artificial Grass Adhesive 310ml',
+    priceExVat: 17.45,
+  },
+  artificialGrassUPins10: {
+    productCode: '775653',
+    label: 'Luxigraze U-pins 150 x 30mm Pack of 10',
+    packQuantity: 10,
+    priceExVat: 6.42,
+  },
+  turfRoll1M2: {
+    productCode: '991266',
+    label: 'Rolawn Medallion Grass Turf Roll 1m2',
+    coverageM2: 1,
+    priceExVat: 5.28,
+  },
+  topsoilBulkBag600L: {
+    productCode: '669469',
+    label: 'SupaGrow Standard Topsoil Bulk Bag 600L',
+    volumeM3: 0.6,
+    priceExVat: 91.65,
+  },
+  timberDeckBoard4200: {
+    productCode: '308681',
+    label: 'Travis Perkins Pressure Treated Decking Board 29 x 124 x 4200mm',
+    lengthM: 4.2,
+    finishedWidthM: 0.12,
+    priceExVat: 9.78,
+  },
+  treatedC16Joist47x100x4800: {
+    productCode: '947900',
+    label: 'Regularised Treated Timber C16 47 x 100 x 4800mm',
+    lengthM: 4.8,
+    priceExVat: 20.33,
+  },
+  timberDeckScrews1000: {
+    productCode: '732865',
+    label: '4Trade Decking Screw 5 x 75mm Brown Tub 1000',
+    packQuantity: 1000,
+    priceExVat: 40.34,
+  },
+  compositeDeckBoard3600: {
+    productCode: '278112',
+    label: 'Cladco Woodgrain Reversible Composite Decking 150 x 25 x 3600mm',
+    lengthM: 3.6,
+    widthM: 0.15,
+    priceExVat: 24.45,
+  },
+  compositeJoist4000: {
+    productCode: '106135',
+    label: 'Cladco WPC Hollow Joist 100 x 50 x 4000mm',
+    lengthM: 4,
+    priceExVat: 37.28,
+  },
+  compositeClips100: {
+    productCode: '106130',
+    label: 'Cladco WPC T-Clips + M4 x 45 Stainless Screws Pack 100',
+    packQuantity: 100,
+    priceExVat: 25.42,
+  },
+  timberSleeper2400: {
+    productCode: '946798',
+    label: 'ECC Brown Treated Sleeper 100 x 200 x 2400mm',
+    lengthM: 2.4,
+    priceExVat: 24.86,
+  },
+  denseConcreteBlock100: {
+    productCode: '700064',
+    label: 'Solid Dense 7.3N Concrete Block 440 x 100 x 215mm',
+    faceAreaM2: 0.0946,
+    priceExVat: 2.44,
+  },
+  acoHexDrain1m: {
+    productCode: '995256',
+    label: 'ACO HexDrain Channel + Black Plastic Grating 1000mm A15',
+    lengthM: 1,
+    priceExVat: 21.58,
+  },
+  drainagePipe110x3m: {
+    productCode: '710578',
+    label: 'Osmadrain Drainage Plain End Pipe 110mm x 3m',
+    lengthM: 3,
+    priceExVat: 31.39,
+  },
 } as const
 
 export function benchmarkNote(label: string) {
-  return `${label} public retail ex-VAT benchmark checked ${MATERIAL_BENCHMARK_UPDATED}. Use a cheaper local/trade supplier price when known.`
+  return `${label} public retail ex-VAT benchmark checked ${MATERIAL_BENCHMARK_UPDATED}. Travis Perkins is the frozen projected-cost baseline; enter the real supplier invoice in Actual cost.`
 }
