@@ -17,42 +17,142 @@ function between(text: string, start: string, end?: string) {
   return endIndex === -1 ? text.slice(from).trim() : text.slice(from, endIndex).trim()
 }
 
+function firstExistingMarker(text: string, markers: string[], afterIndex = 0) {
+  return markers
+    .map((marker) => ({ marker, index: text.indexOf(marker, afterIndex) }))
+    .filter((item) => item.index >= 0)
+    .sort((a, b) => a.index - b.index)[0]?.marker
+}
+
+function valueAfterAny(
+  text: string,
+  starts: string[],
+  ends: string[] = []
+) {
+  const startMarker = firstExistingMarker(text, starts)
+  if (!startMarker) return ""
+
+  const contentStart = text.indexOf(startMarker) + startMarker.length
+  const endMarker = firstExistingMarker(text, ends, contentStart)
+
+  if (!endMarker) return text.slice(contentStart).trim()
+
+  return text.slice(contentStart, text.indexOf(endMarker, contentStart)).trim()
+}
+
 function parseMoney(value: string) {
-  const parsed = Number(value.replace(/[^0-9.-]/g, ""))
+  const match = value.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/)
+  if (!match) return 0
+
+  const parsed = Number(match[0])
   return Number.isFinite(parsed) ? parsed : 0
 }
 
 function parseChasQuoteDraft(workSummary: string) {
   if (!workSummary.includes("CHAS QUOTE DRAFT FOR KELLY")) return null
 
-  const scope = between(workSummary, "Scope:", "Price ex VAT:")
-  const priceExVat = parseMoney(between(workSummary, "Price ex VAT:", "VAT:"))
-  const vatAmount = parseMoney(between(workSummary, "VAT:", "Total inc VAT:"))
+  const scope = valueAfterAny(
+    workSummary,
+    ["Scope:"],
+    [
+      "Options / packages:",
+      "All-together combinations:",
+      "Reference price ex VAT:",
+      "Price ex VAT:",
+      "Customer-ready draft:",
+    ]
+  )
+
+  const optionsAndPackages = valueAfterAny(
+    workSummary,
+    ["Options / packages:"],
+    [
+      "All-together combinations:",
+      "Reference price ex VAT:",
+      "Price ex VAT:",
+      "Customer-ready draft:",
+    ]
+  )
+
+  const allTogetherCombinations = valueAfterAny(
+    workSummary,
+    ["All-together combinations:"],
+    [
+      "Reference price ex VAT:",
+      "Price ex VAT:",
+      "Customer-ready draft:",
+    ]
+  )
+
+  const priceExVat = parseMoney(
+    valueAfterAny(
+      workSummary,
+      ["Reference price ex VAT:", "Price ex VAT:"],
+      ["Reference VAT:", "VAT:"]
+    )
+  )
+
+  const vatAmount = parseMoney(
+    valueAfterAny(
+      workSummary,
+      ["Reference VAT:", "VAT:"],
+      ["Reference total inc VAT:", "Total inc VAT:"]
+    )
+  )
+
   const totalIncVat = parseMoney(
-    between(workSummary, "Total inc VAT:", "Estimated install:")
+    valueAfterAny(
+      workSummary,
+      ["Reference total inc VAT:", "Total inc VAT:"],
+      [
+        "Reference estimated install:",
+        "Estimated install:",
+        "Customer-ready draft:",
+      ]
+    )
   )
-  const install = between(
+
+  const install = valueAfterAny(
     workSummary,
-    "Estimated install:",
-    "Customer-ready draft:"
+    ["Reference estimated install:", "Estimated install:"],
+    ["Customer-ready draft:"]
   )
-  const customerMessage = between(
+
+  const customerMessage = valueAfterAny(
     workSummary,
-    "Customer-ready draft:",
-    "Trevor / CHAS quote conversation:"
+    ["Customer-ready draft:"],
+    ["Trevor / CHAS quote conversation:"]
   )
-  const quoteWorking = between(
+
+  const conversationWorking = valueAfterAny(
     workSummary,
-    "Trevor / CHAS quote conversation:"
+    ["Trevor / CHAS quote conversation:"]
   )
+
+  const quoteWorking = [
+    optionsAndPackages ? `OPTIONS / PACKAGES\n${optionsAndPackages}` : "",
+    allTogetherCombinations
+      ? `ALL-TOGETHER COMBINATIONS\n${allTogetherCombinations}`
+      : "",
+    conversationWorking
+      ? `TREVOR / CHAS CONVERSATION\n${conversationWorking}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n")
 
   const daysMatch = install.match(/([0-9]+(?:\.[0-9]+)?)\s+day/i)
   const peopleMatch = install.match(/([0-9]+)\s+(?:person|people)/i)
   const estimatedDays = daysMatch ? Number(daysMatch[1]) : null
   const estimatedTeamSize = peopleMatch ? Number(peopleMatch[1]) : null
-  const vatRate = priceExVat > 0 ? Number(((vatAmount / priceExVat) * 100).toFixed(2)) : 20
+  const vatRate =
+    priceExVat > 0
+      ? Number(((vatAmount / priceExVat) * 100).toFixed(2))
+      : 20
   const depositPercent = 25
-  const depositAmount = Number(((totalIncVat * depositPercent) / 100).toFixed(2))
+  const depositAmount = Number(
+    ((totalIncVat * depositPercent) / 100).toFixed(2)
+  )
 
   if (!scope || priceExVat <= 0 || totalIncVat <= 0) return null
 
@@ -65,7 +165,9 @@ function parseChasQuoteDraft(workSummary: string) {
     depositPercent,
     depositAmount,
     estimatedDays:
-      estimatedDays != null && Number.isFinite(estimatedDays) ? estimatedDays : null,
+      estimatedDays != null && Number.isFinite(estimatedDays)
+        ? estimatedDays
+        : null,
     estimatedTeamSize:
       estimatedTeamSize != null && Number.isFinite(estimatedTeamSize)
         ? estimatedTeamSize
@@ -142,7 +244,8 @@ export async function POST(req: Request) {
         conversation = await prisma.conversation.create({
           data: {
             source: "worker-quote",
-            contactName: message.customerName ?? message.worker ?? "Unknown customer",
+            contactName:
+              message.customerName ?? message.worker ?? "Unknown customer",
             contactRef:
               contactKey ??
               message.customerEmail ??
@@ -199,6 +302,14 @@ export async function POST(req: Request) {
             status: "needs_review",
           },
         })
+      } else {
+        console.error(
+          "CHAS QUOTE PARSE ERROR: inbox handoff created but Quote record could not be parsed",
+          {
+            chasMessageId: message.id,
+            conversationId: conversation.id,
+          }
+        )
       }
     }
 
