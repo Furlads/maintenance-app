@@ -94,6 +94,16 @@ export async function POST(request: Request, { params }: RouteContext) {
       ].filter(Boolean).join('\n')
     }).join('\n')
 
+    const extraText = controls.extraItems.length
+      ? controls.extraItems.map((item) =>
+          `- ${item.type}: ${item.item}${item.quantity ? ` | ${item.quantity}` : ''} | ${item.status}${item.note ? ` | ${item.note}` : ''}`
+        ).join('\n')
+      : 'None recorded'
+
+    const customerExtraText = controls.customerExtras.length
+      ? controls.customerExtras.map((item) => `- ${item}`).join('\n')
+      : 'None recorded'
+
     const dayText = plan.dayPlan.map((day) =>
       `Day ${day.day} — ${day.heading}\nTarget: ${day.target}\nTasks: ${day.tasks.join('; ')}\nIf ahead: ${day.ifAhead.join('; ')}`
     ).join('\n\n')
@@ -105,8 +115,8 @@ export async function POST(request: Request, { params }: RouteContext) {
     const openai = new OpenAI({ apiKey })
     const response = await openai.responses.create({
       model: process.env.CHAS_MODEL || process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-      instructions: `You are CHAS reviewing an INTERNAL Furlads landscaping job plan with Trev or Kelly. Answer questions about the exact job context provided. Be practical, concise and commercially aware. Explain calculations clearly when challenged. Never invent materials or scope that are not in the accepted quote. Treat projected costs as a frozen baseline; only actual costs change after planning. Travis Perkins is the fallback projected material benchmark. If you think something is wrong, say exactly what looks wrong and suggest a correction, but do not claim you changed the plan. Do not silently approve changes. Keep replies easy to scan on a phone.`,
-      input: `Job #${job.id}\nCustomer: ${job.customer.name}\nAccepted scope: ${quote?.scope || plan.scope}\nInternal notes: ${quote?.internalNotes || ''}\nSelling price ex VAT: £${plan.projectedCosts.sellingPriceExVat.toFixed(2)}\nProjected total cost ex VAT: £${plan.projectedCosts.totalCostExVat.toFixed(2)}\nProjected GP: £${plan.projectedCosts.projectedGrossProfitExVat.toFixed(2)} (${plan.projectedCosts.projectedGrossProfitPercent.toFixed(1)}%)\nProgramme: ${plan.totalDays} working day(s), ${plan.teamSize}-person team\nAssigned team: ${team.length ? team.join(', ') : 'not booked'}\nBooked start: ${job.visitDate ? job.visitDate.toISOString().slice(0, 10) : 'not booked'}\n\nMaterials:\n${materialText}\n\nDay plan:\n${dayText}\n\nPlant/tools: ${plan.plantTools.join('; ')}\nSite checks: ${plan.siteChecks.join('; ')}\nRisks: ${plan.risks.join('; ')}\n\nRecent plan-review conversation:\n${historyText || 'None'}\n\nQuestion from ${workerName}: ${question}`,
+      instructions: `You are CHAS reviewing an INTERNAL Furlads landscaping job plan with Trev or Kelly. Answer questions about the exact job context provided. Be practical, concise and commercially aware. Explain calculations clearly when challenged. Never invent materials or scope that are not in the accepted quote. Customer-requested extras and live site additions are supplied separately and should be treated as additions, not silently merged into the original accepted scope. Treat projected costs as a frozen baseline; only actual costs change after planning. Travis Perkins is the fallback projected material benchmark. If you think something is wrong, say exactly what looks wrong and suggest a correction, but do not claim you changed the plan. Do not silently approve changes. Keep replies easy to scan on a phone.`,
+      input: `Job #${job.id}\nCustomer: ${job.customer.name}\nAccepted scope: ${quote?.scope || plan.scope}\nInternal notes: ${quote?.internalNotes || ''}\nSelling price ex VAT: £${plan.projectedCosts.sellingPriceExVat.toFixed(2)}\nProjected total cost ex VAT: £${plan.projectedCosts.totalCostExVat.toFixed(2)}\nProjected GP: £${plan.projectedCosts.projectedGrossProfitExVat.toFixed(2)} (${plan.projectedCosts.projectedGrossProfitPercent.toFixed(1)}%)\nProgramme: ${plan.totalDays} working day(s), ${plan.teamSize}-person team\nAssigned team: ${team.length ? team.join(', ') : 'not booked'}\nBooked start: ${job.visitDate ? job.visitDate.toISOString().slice(0, 10) : 'not booked'}\n\nMaterials:\n${materialText}\n\nCustomer-requested extras:\n${customerExtraText}\n\nAdditional materials/tools needed or bought:\n${extraText}\n\nDay plan:\n${dayText}\n\nPlant/tools: ${plan.plantTools.join('; ')}\nSite checks: ${plan.siteChecks.join('; ')}\nRisks: ${plan.risks.join('; ')}\n\nRecent plan-review conversation:\n${historyText || 'None'}\n\nQuestion from ${workerName}: ${question}`,
     })
 
     const answer = extractResponseText(response)
