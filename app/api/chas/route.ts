@@ -78,6 +78,11 @@ function parseChasQuoteDraft(workSummary: string) {
 export async function POST(req: Request) {
   try {
     const data = await req.json()
+    const requestedCustomerId = Number(data.customerId)
+    const customerId =
+      Number.isInteger(requestedCustomerId) && requestedCustomerId > 0
+        ? requestedCustomerId
+        : null
 
     const message = await prisma.chasMessage.create({
       data: {
@@ -156,6 +161,7 @@ export async function POST(req: Request) {
               id: conversation.id,
             },
           },
+          customerId,
           source: "worker-quote",
           senderName: message.customerName ?? message.worker,
           senderEmail: message.customerEmail ?? undefined,
@@ -173,6 +179,7 @@ export async function POST(req: Request) {
       if (parsedDraft) {
         createdQuote = await prisma.quote.create({
           data: {
+            customerId,
             conversationId: conversation.id,
             jobId: message.jobId ?? null,
             customerName: clean(message.customerName) || null,
