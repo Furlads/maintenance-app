@@ -12,6 +12,7 @@ type AdminLayoutProps = {
 const adminNavItems = [
   { href: '/admin/schedule', label: 'Schedule' },
   { href: '/admin/inbox', label: 'Inbox' },
+  { href: '/admin/quotes', label: 'Quotes' },
   { href: '/jobs', label: 'Jobs' },
   { href: '/customers', label: 'Customers' },
   { href: '/workers', label: 'Workers' },
@@ -195,7 +196,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           className="admin-main"
           style={{
             minWidth: 0,
-            padding: '16px 16px 96px',
+            padding: '16px 16px 104px',
           }}
         >
           <div
@@ -224,16 +225,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           backdropFilter: 'blur(10px)',
           WebkitBackdropFilter: 'blur(10px)',
           borderTop: '1px solid #e5e7eb',
-          padding: '10px 8px calc(10px + env(safe-area-inset-bottom))',
+          padding: '8px 6px calc(8px + env(safe-area-inset-bottom))',
         }}
       >
         <div
           style={{
-            maxWidth: 820,
+            maxWidth: 900,
             margin: '0 auto',
             display: 'grid',
-            gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-            gap: 8,
+            gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+            gap: 5,
           }}
         >
           {adminNavItems.map((item) => {
@@ -245,8 +246,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 href={item.href}
                 style={{
                   minWidth: 0,
-                  minHeight: 52,
-                  borderRadius: 14,
+                  minHeight: 50,
+                  borderRadius: 12,
                   textDecoration: 'none',
                   color: active ? '#ffffff' : '#111827',
                   background: active ? '#111827' : '#f9fafb',
@@ -255,10 +256,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   textAlign: 'center',
-                  padding: '8px 6px',
-                  fontSize: 11,
+                  padding: '7px 3px',
+                  fontSize: 10,
                   fontWeight: 800,
-                  lineHeight: 1.15,
+                  lineHeight: 1.1,
                   overflowWrap: 'break-word',
                   wordBreak: 'break-word',
                   boxShadow: active ? '0 8px 18px rgba(17,24,39,0.16)' : 'none',
