@@ -6,6 +6,7 @@ import {
   getLatestLandscapingPlan,
   saveLandscapingActualCosts,
 } from '@/lib/landscaping-plan'
+import { applyAndSaveMaterialPolicy } from '@/lib/landscaping-material-policy'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -85,7 +86,8 @@ export async function POST(_request: Request, { params }: RouteContext) {
       return NextResponse.json({ ok: false, error: 'This is not a landscaping job.' }, { status: 400 })
     }
 
-    const plan = await generateLandscapingPlan(id)
+    const generatedPlan = await generateLandscapingPlan(id)
+    const plan = await applyAndSaveMaterialPolicy(generatedPlan)
     const availability = await findNextAvailableInstallWindow({
       jobId: id,
       totalDays: plan.totalDays,
