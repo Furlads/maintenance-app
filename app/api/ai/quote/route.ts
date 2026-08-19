@@ -50,6 +50,7 @@ type QuoteRequest = {
   quoteMode?: QuoteMode
   options?: QuoteOptionInput[]
   combinedOffer?: CombinedOfferInput | null
+  combinedOffers?: CombinedOfferInput[]
 }
 
 function cleanText(value: unknown) {
@@ -69,6 +70,25 @@ function roundUpToHalfDay(value: number) {
 function normaliseQuoteMode(value: unknown): QuoteMode {
   if (value === 'alternatives' || value === 'packages') return value
   return 'single'
+}
+
+function looksLikeMultiChoiceQuote(text: string) {
+  const value = text.toLowerCase()
+
+  return (
+    /option\s*1/.test(value) ||
+    /option\s*a/.test(value) ||
+    /option\s*2/.test(value) ||
+    /option\s*b/.test(value) ||
+    value.includes('another quote') ||
+    value.includes('separate quote') ||
+    value.includes('separate price') ||
+    value.includes('priced separately') ||
+    value.includes('couple of options') ||
+    value.includes('a few options') ||
+    value.includes('different options') ||
+    value.includes('give them options')
+  )
 }
 
 function cleanPhotos(value: unknown): Array<{ url: string; label: string }> {
@@ -206,7 +226,7 @@ function normaliseOptions(value: unknown, vatRate: number) {
   if (!Array.isArray(value)) return []
 
   return value
-    .slice(0, 6)
+    .slice(0, 8)
     .map((rawOption, index) => {
       const option =
         rawOption && typeof rawOption === 'object'
@@ -234,6 +254,24 @@ function normaliseOptions(value: unknown, vatRate: number) {
     .filter((option) => option.priceExVat > 0 && option.summary)
 }
 
+function findIncludedOptions(
+  requestedLabels: string[],
+  options: ReturnType<typeof normaliseOptions>
+) {
+  if (!requestedLabels.length) return options
+
+  const wanted = requestedLabels.map((label) => label.trim().toLowerCase())
+
+  return options.filter((option) => {
+    const label = option.label.trim().toLowerCase()
+    const title = option.title.trim().toLowerCase()
+
+    return wanted.some(
+      (item) => item === label || item === title || label.includes(item) || item.includes(label)
+    )
+  })
+}
+
 function normaliseCombinedOffer(
   value: unknown,
   vatRate: number,
@@ -247,16 +285,20 @@ function normaliseCombinedOffer(
   const raw = value as Record<string, unknown>
   if (raw.available !== true || options.length < 2) return null
 
+  const requestedLabels = Array.isArray(raw.includedOptionLabels)
+    ? raw.includedOptionLabels.map(cleanText).filter(Boolean).slice(0, 8)
+    : []
+
+  const includedOptions = findIncludedOptions(requestedLabels, options)
+  if (includedOptions.length < 2) return null
+
   const separateTotal = Number(
-    options.reduce((sum, option) => sum + option.priceExVat, 0).toFixed(2)
+    includedOptions.reduce((sum, option) => sum + option.priceExVat, 0).toFixed(2)
   )
 
   let priceExVat = cleanNumber(raw.priceExVat)
   if (priceExVat <= 0) return null
 
-  // Protect margin: buying everything together may create genuine shared
-  // efficiencies, but CHAS must not invent a huge discount just to make the
-  // combined figure look attractive.
   const lowestSensibleCombinedPrice = Number((separateTotal * 0.9).toFixed(2))
   priceExVat = Math.max(priceExVat, lowestSensibleCombinedPrice)
   priceExVat = Math.min(priceExVat, separateTotal)
@@ -266,18 +308,15 @@ function normaliseCombinedOffer(
   const savingExVat = Number((separateTotal - priceExVat).toFixed(2))
 
   const rawDuration = normaliseDuration(raw.estimatedDuration)
-  const totalPackageDays = options.reduce(
+  const totalPackageDays = includedOptions.reduce(
     (sum, option) => sum + Math.max(0, option.estimatedDuration.workingDays),
     0
   )
-  const longestPackageDays = options.reduce(
+  const longestPackageDays = includedOptions.reduce(
     (longest, option) => Math.max(longest, option.estimatedDuration.workingDays),
     0
   )
 
-  // Shared setup, deliveries and tidy-up can save some time, but they cannot
-  // make most of the physical installation disappear. Allow no more than a
-  // 20% reduction from the summed package crew-days.
   const minimumCombinedDays = roundUpToHalfDay(
     Math.max(longestPackageDays, totalPackageDays * 0.8)
   )
@@ -288,9 +327,10 @@ function normaliseCombinedOffer(
     available: true,
     label: cleanText(raw.label) || 'If all completed together',
     summary: cleanText(raw.summary),
-    includedOptionLabels: Array.isArray(raw.includedOptionLabels)
-      ? raw.includedOptionLabels.map(cleanText).filter(Boolean).slice(0, 8)
-      : options.map((option) => option.label),
+    includedOptionLabels:
+      requestedLabels.length > 0
+        ? requestedLabels
+        : includedOptions.map((option) => option.label),
     savingReason: cleanText(raw.savingReason),
     priceExVat,
     vatAmount,
@@ -305,6 +345,24 @@ function normaliseCombinedOffer(
         `${workingDays} working days allowing only for genuine shared setup and logistics efficiencies`,
     },
   }
+}
+
+function normaliseCombinedOffers(
+  value: unknown,
+  fallbackValue: unknown,
+  vatRate: number,
+  options: ReturnType<typeof normaliseOptions>,
+  quoteMode: QuoteMode
+) {
+  const source = Array.isArray(value)
+    ? value.slice(0, 4)
+    : fallbackValue
+      ? [fallbackValue]
+      : []
+
+  return source
+    .map((offer) => normaliseCombinedOffer(offer, vatRate, options, quoteMode))
+    .filter((offer): offer is NonNullable<typeof offer> => offer !== null)
 }
 
 function optionSummaryForPrompt(options: ReturnType<typeof normaliseOptions>) {
@@ -324,6 +382,32 @@ function optionSummaryForPrompt(options: ReturnType<typeof normaliseOptions>) {
         .filter(Boolean)
         .join('\n')
     })
+    .join('\n\n')
+}
+
+function combinedOffersForPrompt(
+  combinedOffers: ReturnType<typeof normaliseCombinedOffers>
+) {
+  if (!combinedOffers.length) return 'No combined all-together offer supplied.'
+
+  return combinedOffers
+    .map((offer) =>
+      [
+        offer.label,
+        offer.summary,
+        `Includes: ${offer.includedOptionLabels.join(', ')}`,
+        `Price ex VAT: £${offer.priceExVat.toFixed(2)}`,
+        `VAT: £${offer.vatAmount.toFixed(2)}`,
+        `Total inc VAT: £${offer.totalIncVat.toFixed(2)}`,
+        `Saving vs those items separately ex VAT: £${offer.savingExVat.toFixed(2)}`,
+        offer.savingReason ? `Reason for saving: ${offer.savingReason}` : '',
+        offer.estimatedDuration.workingDays
+          ? `Install: ${offer.estimatedDuration.workingDays} working days with ${offer.estimatedDuration.teamSize} ${offer.estimatedDuration.teamSize === 1 ? 'person' : 'people'}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    )
     .join('\n\n')
 }
 
@@ -368,20 +452,30 @@ PRICING RULES:
 - Only add genuine exceptional extras not covered by the applicable standard rate.
 - Protect Furlads against underpricing and arbitrary discounting.
 - A combined "all done together" price may be lower than buying packages separately only where there are genuine shared efficiencies such as one setup, shared deliveries, shared plant, shared waste handling or one final tidy-up.
-- Do not invent a discount. If there is little or no genuine saving, the combined price may equal the sum of the individual packages.
+- Do not invent a discount. If there is little or no genuine saving, the combined price may equal the sum of the included package prices.
 - Keep the response practical.
 
 QUOTE MODE — CHOOSE THE RIGHT STRUCTURE:
 1. single
-   Use when the customer has one settled scope and wants one price.
+   Use only when the customer has one settled scope and wants one price.
 
 2. alternatives
-   Use when the customer is deciding between mutually exclusive ideas, materials, layouts or finishes. Give 2–3 genuinely different alternatives. Each alternative gets its own description, price and duration. The customer can choose one later. Do NOT add alternative prices together and normally do NOT provide an all-together price for mutually exclusive alternatives.
+   Use when the customer is deciding only between mutually exclusive ideas, materials, layouts or finishes. Give 2–3 genuinely different alternatives. Each alternative gets its own description, price and duration. Do NOT add alternative prices together.
 
 3. packages
-   Use when the customer wants separate prices for work that can be bought independently, or when a larger enquiry naturally breaks into separate jobs. Examples: front fence, rear fence, artificial grass area, patio, drainage, retaining wall. Give each logical package its own description, price and duration. If the packages can sensibly be completed during one mobilisation, also give an "If all completed together" price and combined duration.
+   Use when the customer wants separate prices for work that can be bought independently, or when a larger enquiry naturally breaks into separate jobs. Examples: front fence, rear fence, artificial grass area, patio, drainage, retaining wall. Give each logical package its own description, price and duration.
 
-If the customer asks for "options", decide whether they mean alternatives, separate packages, or both. Do not make Trevor choose before the customer has seen the choices. A multi-option/package quotation is itself a valid quote that can be sent to Kelly for review.
+MIXED ALTERNATIVES + PACKAGES — VERY IMPORTANT:
+- A single enquiry can contain BOTH alternatives and separate purchasable jobs.
+- Example: "20m fence Option 1 gravel board and panel; Option 2 same with trellis; another quote for 13m fence; artificial grass in three areas."
+- For this mixed case use quoteMode "packages", NOT single.
+- Put each customer-visible priced line into options: e.g. "20m Fence — Option 1", "20m Fence — Option 2", "13m Fence", "Artificial Grass — all three areas".
+- The alternative 20m fence versions are mutually exclusive. Never add both of them into the same combined total.
+- Use combinedOffers to provide one valid "all completed together" price for EACH alternative combination where appropriate. Example: one combined offer using 20m Option 1 + 13m fence + grass, and another using 20m Option 2 + 13m fence + grass.
+- Every combinedOffers item MUST list exactly which option labels it includes.
+- If the user says "another quote", "separate quote", "option 1 / option 2" or clearly asks for separate prices, that is a strong instruction to show those prices separately before asking the customer to choose.
+- Do NOT ask which alternative they want before showing the prices. The purpose of the quote is to help the customer decide.
+- A multi-price quotation is a valid finished quote that can go to Kelly before the customer chooses.
 
 REALISTIC INSTALL-TIME RULES — IMPORTANT:
 - Duration is an operational production estimate, not sales wording. Never compress a large scope into an attractive but physically impossible number of days.
@@ -392,7 +486,7 @@ REALISTIC INSTALL-TIME RULES — IMPORTANT:
 - For standard fencing as a planning sanity check, a two-person team in ordinary access/ground should not normally be assumed to install dramatically more than roughly 5–7 standard bays per working day once holes, posts, concrete, panels/boards, levels and tidy-up are considered. Removal, awkward ground, corners, slopes or restricted access slow this further.
 - For artificial grass with full ground preparation as a planning sanity check, a two-person team should normally be thought of in the region of roughly 20–30m² per working day in ordinary conditions once excavation, spoil, sub-base, compaction, laying, cutting, edging and tidy-up are included. Several separate areas usually push the output toward the slower end.
 - These are sanity checks, not rigid production rates. Use the actual site information and explain material deviations.
-- For package quotes, estimate each package separately first. The combined duration should normally be the sum of package crew-days minus only modest shared setup/logistics efficiencies. Never reduce combined duration by more than about 20% without a very specific physical reason.
+- For package quotes, estimate each package separately first. A combined duration should normally be the sum of the INCLUDED package crew-days minus only modest shared setup/logistics efficiencies. Never reduce combined duration by more than about 20% without a very specific physical reason.
 - Round uncertain durations UP to the nearest half day rather than down.
 - If a duration looks aggressive, choose the safer realistic figure and say what could change it.
 
@@ -409,8 +503,8 @@ Return only valid JSON using this exact structure:
   "recommendedOptionLabel": "",
   "options": [
     {
-      "label": "Option A",
-      "title": "Short option or package name",
+      "label": "20m Fence — Option 1",
+      "title": "Concrete gravel board + panel",
       "summary": "Exactly what this price includes",
       "keyDifferences": ["What makes this different or what is included"],
       "whyChoose": "Why this may suit the customer",
@@ -422,16 +516,31 @@ Return only valid JSON using this exact structure:
       "priceExVat": 0
     }
   ],
+  "combinedOffers": [
+    {
+      "available": true,
+      "label": "If all completed together — using 20m Option 1",
+      "summary": "All compatible packages completed in one mobilisation",
+      "includedOptionLabels": ["20m Fence — Option 1", "13m Fence", "Artificial Grass"],
+      "savingReason": "Only genuine shared setup/logistics efficiencies",
+      "estimatedDuration": {
+        "workingDays": 1,
+        "teamSize": 2,
+        "description": "Realistic combined duration for only the listed items"
+      },
+      "priceExVat": 0
+    }
+  ],
   "combinedOffer": {
     "available": false,
-    "label": "If all completed together",
-    "summary": "What is included when all packages are completed in one mobilisation",
-    "includedOptionLabels": ["Package 1", "Package 2"],
-    "savingReason": "Only the genuine shared efficiencies",
+    "label": "Legacy single combined offer",
+    "summary": "",
+    "includedOptionLabels": [],
+    "savingReason": "",
     "estimatedDuration": {
-      "workingDays": 1,
+      "workingDays": 0,
       "teamSize": 2,
-      "description": "Realistic combined duration"
+      "description": ""
     },
     "priceExVat": 0
   },
@@ -456,7 +565,7 @@ Return only valid JSON using this exact structure:
   "estimatedDuration": {
     "workingDays": 1,
     "teamSize": 2,
-    "description": "Realistic duration for the headline scope"
+    "description": "Realistic duration for the headline/reference combination"
   },
   "costBreakdown": [],
   "estimatedHardCosts": 0,
@@ -470,10 +579,12 @@ Return only valid JSON using this exact structure:
 }
 
 STRUCTURE RULES FOR THE JSON:
-- single: optionMode false, options [], combinedOffer.available false.
-- alternatives: optionMode true, quoteMode alternatives, normally 2–3 options, combinedOffer.available false.
-- packages: optionMode true, quoteMode packages, 2–6 logical packages, and combinedOffer.available true when doing all packages together makes commercial/operational sense.
-- For packages, recommendedPriceExVat should normally be the combined all-together price when a combinedOffer is available. Otherwise it may be the sum of the package prices.
+- single: optionMode false, options [], combinedOffers [], combinedOffer.available false.
+- alternatives: optionMode true, quoteMode alternatives, normally 2–3 options, combinedOffers [].
+- packages: optionMode true, quoteMode packages, 2–8 customer-visible priced items.
+- In a straightforward packages quote, combinedOffers may contain one all-together price.
+- In a mixed packages + alternatives quote, combinedOffers should contain each valid all-together combination without combining mutually exclusive alternatives.
+- For packages, recommendedPriceExVat is only an internal/reference headline price. The customer-facing source of truth is the individual options plus combinedOffers.
 - For alternatives, recommendedPriceExVat may be the internally preferred alternative, but each option price remains separate.
 - All monetary values must be JSON numbers without pound signs or commas.
 `.trim()
@@ -491,29 +602,54 @@ ${additionalInstructions || 'None supplied'}
 Number of site photographs:
 ${photos.length}
 
-Work out the correct quote structure first: single, alternatives or separately purchasable packages. Then price it and give a realistic install duration based on what a human crew can actually complete.
+Work out the correct quote structure first. If there are options and separate jobs in the same enquiry, use the mixed packages structure described above. Then price every customer-visible choice separately and give realistic install durations based on what a human crew can actually complete.
 `.trim()
 
-  const result = await runOpenAI({
+  let result = await runOpenAI({
     systemPrompt,
     userPrompt,
     photos,
   })
 
-  const vatRate = cleanNumber(result.vatRate, 20)
-  let quoteMode = normaliseQuoteMode(result.quoteMode)
-  const options = normaliseOptions(result.options, vatRate)
+  let preliminaryVatRate = cleanNumber(result.vatRate, 20)
+  let preliminaryMode = normaliseQuoteMode(result.quoteMode)
+  let preliminaryOptions = normaliseOptions(result.options, preliminaryVatRate)
+
+  if (
+    looksLikeMultiChoiceQuote(jobDetails) &&
+    (preliminaryMode === 'single' || preliminaryOptions.length < 2)
+  ) {
+    result = await runOpenAI({
+      systemPrompt:
+        systemPrompt +
+        '\n\nCORRECTION PASS: The user has explicitly described multiple options and/or separate quotes. You MUST NOT return quoteMode single. Return every customer-visible price separately using alternatives or packages, and use combinedOffers for valid all-together combinations.',
+      userPrompt:
+        userPrompt +
+        '\n\nThis wording explicitly contains multiple customer choices or separate jobs. Re-structure it so the customer can see the prices before deciding.',
+      photos,
+    })
+
+    preliminaryVatRate = cleanNumber(result.vatRate, 20)
+    preliminaryMode = normaliseQuoteMode(result.quoteMode)
+    preliminaryOptions = normaliseOptions(result.options, preliminaryVatRate)
+  }
+
+  const vatRate = preliminaryVatRate
+  let quoteMode = preliminaryMode
+  const options = preliminaryOptions
 
   if (quoteMode !== 'single' && options.length < 2) {
     quoteMode = 'single'
   }
 
-  const combinedOffer = normaliseCombinedOffer(
+  const combinedOffers = normaliseCombinedOffers(
+    result.combinedOffers,
     result.combinedOffer,
     vatRate,
     options,
     quoteMode
   )
+  const combinedOffer = combinedOffers[0] || null
 
   let priceExVat = cleanNumber(result.recommendedPriceExVat)
   let estimatedDuration = normaliseDuration(result.estimatedDuration)
@@ -541,7 +677,7 @@ Work out the correct quote structure first: single, alternatives or separately p
             1,
             ...options.map((option) => option.estimatedDuration.teamSize)
           ),
-          description: 'Sum of the separately estimated package working days.',
+          description: 'Reference duration from the separately estimated priced items.',
         }
       }
     }
@@ -571,6 +707,7 @@ Work out the correct quote structure first: single, alternatives or separately p
     optionMode: quoteMode !== 'single' && options.length >= 2,
     recommendedOptionLabel: cleanText(result.recommendedOptionLabel),
     options,
+    combinedOffers,
     combinedOffer,
     estimatedDuration,
     recommendedPriceExVat: priceExVat,
@@ -590,12 +727,14 @@ async function writeQuote(body: QuoteRequest) {
   const vatRate = cleanNumber(body.vatRate, 20)
   const depositPercent = cleanNumber(body.depositPercent, 25)
   const options = normaliseOptions(body.options, vatRate)
-  const combinedOffer = normaliseCombinedOffer(
+  const combinedOffers = normaliseCombinedOffers(
+    body.combinedOffers,
     body.combinedOffer,
     vatRate,
     options,
     quoteMode
   )
+  const combinedOffer = combinedOffers[0] || null
 
   let priceExVat = cleanNumber(body.priceExVat)
 
@@ -658,13 +797,15 @@ Write in Trevor and Furlads' natural style:
 
 MULTI-OPTION QUOTES:
 - A customer may receive several prices before making any decision. That is intentional.
-- For alternatives, present each alternative separately and make it clear they can choose whichever route suits them.
-- For packages, present each separately purchasable package with its own description and price.
-- If an "If all completed together" offer is supplied, show it clearly after the individual packages, including the exact combined price and the genuine reason for any saving.
-- Do not add mutually exclusive alternatives together.
-- Do not force the customer to choose before seeing the prices.
+- Present every supplied priced option/package separately with its own description, Price + VAT and Total.
+- Do not ask the customer to choose before showing the prices.
+- For mutually exclusive alternatives, make it clear they would choose one.
+- For separate packages, make it clear they can choose one, several or all.
+- Show EVERY supplied all-together offer after the individual prices. If there are two all-together offers because one package has two mutually exclusive versions, show both and make the difference clear.
+- Never combine mutually exclusive alternatives in one total.
+- Never invent or alter a discount.
 - For a multi-option quote, do not present the internal headline/reference price as though it is the only quote price.
-- If deposits vary depending on what is selected, say the deposit is calculated against the works they choose rather than cluttering every option with a deposit figure. If there is one combined offer, you may state its deposit only when helpful.
+- State that a 25% deposit is calculated against whichever works/package the customer chooses, unless a different supplied deposit percentage applies.
 
 SINGLE QUOTES:
 - Explain the finished result, list the scope, then show Price, VAT and Total clearly.
@@ -677,25 +818,6 @@ Return only valid JSON using this exact structure:
   "warnings": ["Anything Trevor should check before sending"]
 }
 `.trim()
-
-  const combinedText = combinedOffer
-    ? [
-        `${combinedOffer.label}`,
-        combinedOffer.summary,
-        `Price ex VAT: £${combinedOffer.priceExVat.toFixed(2)}`,
-        `VAT: £${combinedOffer.vatAmount.toFixed(2)}`,
-        `Total inc VAT: £${combinedOffer.totalIncVat.toFixed(2)}`,
-        `Saving vs separate packages ex VAT: £${combinedOffer.savingExVat.toFixed(2)}`,
-        combinedOffer.savingReason
-          ? `Reason for saving: ${combinedOffer.savingReason}`
-          : '',
-        combinedOffer.estimatedDuration.workingDays
-          ? `Install: ${combinedOffer.estimatedDuration.workingDays} working days with ${combinedOffer.estimatedDuration.teamSize} ${combinedOffer.estimatedDuration.teamSize === 1 ? 'person' : 'people'}`
-          : '',
-      ]
-        .filter(Boolean)
-        .join('\n')
-    : 'No combined offer supplied.'
 
   const userPrompt = `
 Customer name:
@@ -710,8 +832,8 @@ ${jobDetails || 'Use the priced options/packages below.'}
 Priced options or packages:
 ${options.length ? optionSummaryForPrompt(options) : 'None — this is a single quote.'}
 
-Combined all-together offer:
-${combinedText}
+Combined all-together offers:
+${combinedOffersForPrompt(combinedOffers)}
 
 Additional wording instructions:
 ${additionalInstructions || 'None supplied'}
@@ -726,7 +848,7 @@ Deposit amount on the headline/reference total: £${depositAmount.toFixed(2)}
 
 ${
   isMultiQuote
-    ? 'Write a customer-ready options/package quotation showing every supplied price separately. The customer has NOT decided yet.'
+    ? 'Write a customer-ready options/package quotation showing every supplied price and every valid all-together offer separately. The customer has NOT decided yet.'
     : 'Write the finished single Furlads WhatsApp quotation.'
 }
 `.trim()
@@ -740,6 +862,7 @@ ${
     ...result,
     quoteMode,
     options,
+    combinedOffers,
     combinedOffer,
     priceExVat,
     vatRate,
