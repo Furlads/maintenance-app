@@ -26,6 +26,16 @@ function formatDate(value?: Date | null) {
   }).format(value)
 }
 
+function workerSafeText(value: string) {
+  return String(value || '')
+    .replace(/£\s*\d[\d,]*(?:\.\d+)?(?:\s*\/\s*(?:m²|m2|m|day))?/gi, '')
+    .replace(/\b(?:ex|inc)\.?\s*VAT\b/gi, '')
+    .replace(/\bVAT\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;:])/g, '$1')
+    .trim()
+}
+
 function workerTask(value: string) {
   const text = String(value || '')
 
@@ -41,7 +51,7 @@ function workerTask(value: string) {
     return 'If the paving and joints are ready, begin the specified brush-in jointing grout only where doing so will not disturb freshly laid slabs.'
   }
 
-  return text
+  return workerSafeText(text)
 }
 
 function materialStatus(value?: string) {
@@ -115,7 +125,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
             </Link>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl bg-white/10 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Overall programme</div>
               <div className="mt-1 text-xl font-black">
@@ -131,6 +141,11 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
             <div className="rounded-2xl bg-white/10 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Start</div>
               <div className="mt-1 text-xl font-black">{formatDate(job.visitDate)}</div>
+            </div>
+            <div className="rounded-2xl bg-white/10 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Expected day finish</div>
+              <div className="mt-1 text-xl font-black">16:30</div>
+              <div className="mt-1 text-xs font-semibold text-zinc-400">Get ahead if today’s target is done</div>
             </div>
           </div>
         </section>
@@ -161,7 +176,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
               The job has been accepted, but the day-by-day landscaping plan has not been generated yet. Kelly or Trev can regenerate it from the internal job planning page.
             </p>
             <div className="mt-4 rounded-2xl bg-white p-4 text-sm leading-6 text-zinc-800 ring-1 ring-inset ring-amber-200">
-              <strong>Accepted scope:</strong><br />{job.title}
+              <strong>Accepted scope:</strong><br />{workerSafeText(job.title)}
             </div>
           </section>
         ) : (
@@ -169,9 +184,23 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
             <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
               <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">What we’re building</div>
               <h2 className="mt-2 text-xl font-black">The overall job</h2>
-              <p className="mt-3 text-sm leading-6 text-zinc-700">{plan.workerSummary}</p>
-              <div className="mt-4 rounded-2xl bg-zinc-50 p-4 text-sm leading-6 text-zinc-700">
-                {plan.scope}
+              <p className="mt-3 text-sm leading-6 text-zinc-700">{workerSafeText(plan.workerSummary)}</p>
+
+              <div className="mt-5 border-t border-zinc-200 pt-4">
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Programme at a glance</div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {plan.dayPlan.map((day) => (
+                    <div key={`summary-${day.day}`} className="flex items-center gap-3 rounded-2xl bg-zinc-50 px-3 py-3">
+                      <div className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-yellow-300 text-sm font-black text-zinc-950">
+                        {day.day}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Day {day.day}</div>
+                        <div className="text-sm font-black leading-5 text-zinc-900">{workerSafeText(day.heading)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
 
@@ -187,7 +216,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                   <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-inset ring-blue-200">
                     <div className="text-xs font-black uppercase tracking-wide text-blue-700">Customer-requested extras</div>
                     <div className="mt-2 space-y-2 text-sm leading-6 text-zinc-800">
-                      {controls.customerExtras.map((item, index) => <div key={index}>• {item}</div>)}
+                      {controls.customerExtras.map((item, index) => <div key={index}>• {workerSafeText(item)}</div>)}
                     </div>
                   </div>
                 ) : null}
@@ -198,14 +227,14 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                       <div key={item.id} className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-blue-200">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="font-black text-zinc-950">
-                            {item.type === 'tool' ? '🛠 ' : '📦 '}{item.item}
+                            {item.type === 'tool' ? '🛠 ' : '📦 '}{workerSafeText(item.item)}
                           </div>
                           <span className={`rounded-full px-3 py-1 text-xs font-black ${item.status === 'on_site' ? 'bg-green-100 text-green-800' : item.status === 'bought' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-900'}`}>
                             {extraStatus(item.status)}
                           </span>
                         </div>
-                        {item.quantity ? <div className="mt-1 text-sm font-semibold text-zinc-700">Quantity: {item.quantity}</div> : null}
-                        {item.note ? <div className="mt-1 text-sm leading-6 text-zinc-600">{item.note}</div> : null}
+                        {item.quantity ? <div className="mt-1 text-sm font-semibold text-zinc-700">Quantity: {workerSafeText(item.quantity)}</div> : null}
+                        {item.note ? <div className="mt-1 text-sm leading-6 text-zinc-600">{workerSafeText(item.note)}</div> : null}
                       </div>
                     ))}
                   </div>
@@ -215,7 +244,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
 
             <section className="space-y-3">
               <div className="px-1">
-                <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Programme</div>
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Detailed programme</div>
                 <h2 className="mt-1 text-xl font-black">What we’re aiming to achieve each day</h2>
                 <p className="mt-1 text-sm text-zinc-600">Finish the day target first. If you are ahead, keep the whole job moving by pulling forward safe next-stage work. Do not bank an early finish for later in the week.</p>
               </div>
@@ -228,8 +257,8 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-black uppercase tracking-wide text-zinc-500">Day {day.day}</div>
-                      <h3 className="mt-1 text-lg font-black">{day.heading}</h3>
-                      <p className="mt-2 text-sm leading-6 text-zinc-700">{day.target}</p>
+                      <h3 className="mt-1 text-lg font-black">{workerSafeText(day.heading)}</h3>
+                      <p className="mt-2 text-sm leading-6 text-zinc-700">{workerSafeText(day.target)}</p>
                     </div>
                   </div>
 
@@ -255,7 +284,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                   </div>
 
                   <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950">
-                    <strong>End-of-day checkpoint:</strong> {day.checkpoint}
+                    <strong>End-of-day checkpoint:</strong> {workerSafeText(day.checkpoint)}
                   </div>
                 </article>
               ))}
@@ -271,12 +300,12 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                     return (
                       <div key={`${material.item}-${index}`} className="rounded-2xl bg-zinc-50 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="font-bold">{material.item}</div>
+                          <div className="font-bold">{workerSafeText(material.item)}</div>
                           <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${tracking?.status === 'delivered' || tracking?.status === 'stock' ? 'bg-green-100 text-green-800' : tracking?.status === 'ordered' ? 'bg-blue-100 text-blue-800' : 'bg-zinc-200 text-zinc-700'}`}>
                             {materialStatus(tracking?.status)}
                           </span>
                         </div>
-                        <div className="mt-1 text-sm text-zinc-700">{material.neededQuantity || material.quantity}</div>
+                        <div className="mt-1 text-sm text-zinc-700">{workerSafeText(material.neededQuantity || material.quantity)}</div>
                       </div>
                     )
                   }) : <p className="text-sm text-zinc-500">No material list has been added yet.</p>}
@@ -297,9 +326,9 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                   <h2 className="text-lg font-black">Plant & tools</h2>
                   <div className="mt-3 space-y-2 text-sm text-zinc-700">
                     <div className="font-semibold text-zinc-900">• Boards / plywood / suitable ground-protection sheets for waste, grabber area, mixer and material storage</div>
-                    {plan.plantTools.length ? plan.plantTools.map((item, index) => <div key={index}>• {item}</div>) : <div>Normal landscaping tools for the agreed scope.</div>}
+                    {plan.plantTools.length ? plan.plantTools.map((item, index) => <div key={index}>• {workerSafeText(item)}</div>) : <div>Normal landscaping tools for the agreed scope.</div>}
                     {controls.extraItems.filter((item) => item.type === 'tool').map((item) => (
-                      <div key={`extra-tool-${item.id}`} className="font-semibold text-blue-800">+ {item.item}{item.quantity ? ` — ${item.quantity}` : ''} ({extraStatus(item.status)})</div>
+                      <div key={`extra-tool-${item.id}`} className="font-semibold text-blue-800">+ {workerSafeText(item.item)}{item.quantity ? ` — ${workerSafeText(item.quantity)}` : ''} ({extraStatus(item.status)})</div>
                     ))}
                   </div>
                 </div>
@@ -309,8 +338,8 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                   <div className="mt-3 space-y-2 text-sm leading-6 text-amber-950">
                     <div>• Confirm string lines/profiles/levels are set and checked before committing to excavation, edges or laying.</div>
                     <div>• Confirm boards/ground protection are down before spoil, waste, mixer or materials are placed on customer surfaces.</div>
-                    {plan.siteChecks.map((item, index) => <div key={index}>• {item}</div>)}
-                    {plan.risks.map((item, index) => <div key={`risk-${index}`}>⚠ {item}</div>)}
+                    {plan.siteChecks.map((item, index) => <div key={index}>• {workerSafeText(item)}</div>)}
+                    {plan.risks.map((item, index) => <div key={`risk-${index}`}>⚠ {workerSafeText(item)}</div>)}
                   </div>
                 </div>
               </div>
