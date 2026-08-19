@@ -35,6 +35,25 @@ function extractAreaM2(scope: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
 }
 
+function extractGravelAreaM2(scope: string) {
+  const explicit = scope.match(/gravel[^.]{0,160}?(\d+(?:\.\d+)?)\s*(?:m2|m²|sqm)/i)
+  if (explicit) {
+    const parsed = Number(explicit[1])
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+
+  const dimensions = scope.match(/(\d+(?:\.\d+)?)\s*(?:m)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:m)?/i)
+  const width = scope.match(/(?:gravel|strip)[^.]{0,120}?(\d+(?:\.\d+)?)\s*mm/i)
+  if (!dimensions || !width) return 0
+
+  const length = Number(dimensions[1])
+  const patioWidth = Number(dimensions[2])
+  const borderWidthM = Number(width[1]) / 1000
+  if (![length, patioWidth, borderWidthM].every((value) => Number.isFinite(value) && value > 0)) return 0
+
+  return roundTo(2 * (length + patioWidth) * borderWidthM, 2)
+}
+
 function isPatio(scope: string) {
   const value = scope.toLowerCase()
   return (
@@ -59,6 +78,19 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
   const areaM2 = extractAreaM2(plan.scope)
   if (areaM2 <= 0) return plan
 
+  const gravelAreaM2 = extractGravelAreaM2(plan.scope)
+
+  const mortarBedDepthM = 0.04
+  const wetMortarM3 = areaM2 * mortarBedDepthM
+  const dryMortarM3 = wetMortarM3 * 1.33
+  const sandShare = 4 / 5
+  const cementShare = 1 / 5
+  const sandDensityTPerM3 = 1.6
+  const cementDensityKgPerM3 = 1440
+  const sharpSandNeededTonnes = roundTo(dryMortarM3 * sandShare * sandDensityTPerM3, 2)
+  const cementNeededKg = dryMortarM3 * cementShare * cementDensityKgPerM3
+  const cementNeededBags = Math.max(1, Math.ceil(cementNeededKg / 25))
+
   const materials = plan.materials.map((material) => {
     const name = material.item.toLowerCase()
 
@@ -72,10 +104,7 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
       const neededTonnes = roundTo(areaM2 * 0.1 * 2, 1)
       const bagWeightTonnes = TRAVIS_PERKINS_BENCHMARKS.motType1BulkBag.packedWeightKg / 1000
       const fullRequirementBags = Math.ceil(neededTonnes / bagWeightTonnes)
-      const initialOrderBags = Math.max(
-        1,
-        Math.floor((neededTonnes * 0.8) / bagWeightTonnes)
-      )
+      const initialOrderBags = Math.max(1, Math.floor(fullRequirementBags * 0.8))
       const initialOrderTonnes = roundTo(initialOrderBags * bagWeightTonnes, 1)
       const projectedCost = roundMoney(
         fullRequirementBags * TRAVIS_PERKINS_BENCHMARKS.motType1BulkBag.priceExVat
@@ -83,13 +112,13 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
 
       return {
         ...material,
-        quantity: `${neededTonnes.toFixed(1)}t total requirement at 100mm compacted depth`,
-        neededQuantity: `${neededTonnes.toFixed(1)}t total requirement at 100mm compacted depth`,
-        orderQuantity: `${initialOrderBags} × 800kg bulk bags (${initialOrderTonnes.toFixed(1)}t) initially; use existing stock and top up only if needed`,
+        quantity: `${fullRequirementBags} bulk bags needed (${neededTonnes.toFixed(1)}t theoretical total)`,
+        neededQuantity: `${fullRequirementBags} × ~800kg Type 1 bulk bags`,
+        orderQuantity: `${initialOrderBags} × ~800kg Type 1 bulk bags initially (${initialOrderTonnes.toFixed(1)}t); top up only if required`,
         estimatedCostExVat: projectedCost,
         note: mergeNote(
           material.note,
-          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.motType1BulkBag.label)} Full requirement benchmark uses ${fullRequirementBags} bags, but the initial site order is deliberately smaller to avoid leftover stone.`
+          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.motType1BulkBag.label)} Listed in merchant bulk-bag units so ordering is simple. Initial site order is deliberately lean.`
         ),
       }
     }
@@ -99,35 +128,28 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
       name.includes('bedding sand') ||
       name.includes('mortar bed')
     ) {
-      const neededTonnes = roundTo(areaM2 * 0.04 * 1.65, 2)
       const bagWeightTonnes = TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.packedWeightKg / 1000
-      const fullRequirementBags = Math.ceil(neededTonnes / bagWeightTonnes)
-      const initialOrderBags = Math.max(
-        1,
-        Math.floor((neededTonnes * 0.8) / bagWeightTonnes)
-      )
-      const initialOrderTonnes = roundTo(initialOrderBags * bagWeightTonnes, 1)
+      const fullRequirementBags = Math.max(1, Math.ceil(sharpSandNeededTonnes / bagWeightTonnes))
+      const initialOrderBags = Math.max(1, Math.floor(fullRequirementBags * 0.8))
       const projectedCost = roundMoney(
         fullRequirementBags * TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.priceExVat
       )
 
       return {
         ...material,
-        quantity: `Approx ${neededTonnes.toFixed(2)}t sharp sand equivalent for a 40mm full mortar bed`,
-        neededQuantity: `Approx ${neededTonnes.toFixed(2)}t sharp sand equivalent for a 40mm full mortar bed`,
-        orderQuantity: `${initialOrderBags} × 800kg bulk bags (${initialOrderTonnes.toFixed(1)}t) initially; top up if the bed or levels require more`,
+        quantity: `${fullRequirementBags} bulk bags needed for the full 4:1 mortar-bed allowance`,
+        neededQuantity: `${fullRequirementBags} × ~800kg sharp-sand bulk bags`,
+        orderQuantity: `${initialOrderBags} × ~800kg sharp-sand bulk bags initially; top up only if levels/bed thickness need more`,
         estimatedCostExVat: projectedCost,
         note: mergeNote(
           material.note,
-          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.label)} Initial delivery is intentionally lean so excess sand is not left for the lads to move afterwards.`
+          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.sharpSandBulkBag.label)} Sand and cement are calculated together from the same 4:1 sand:cement mix at a 40mm average full bed.`
         ),
       }
     }
 
     if (name.includes('cement')) {
-      const mortarWetM3 = areaM2 * 0.04
-      const estimatedCementKg = mortarWetM3 * 1.33 * 0.2 * 1440
-      const fullBags = Math.max(1, Math.ceil(estimatedCementKg / 25))
+      const fullBags = cementNeededBags
       const initialBags = Math.max(1, Math.floor(fullBags * 0.85))
       const projectedCost = roundMoney(
         fullBags * TRAVIS_PERKINS_BENCHMARKS.generalPurposeCement25Kg.priceExVat
@@ -135,13 +157,37 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
 
       return {
         ...material,
-        quantity: `Approx ${fullBags} × 25kg cement bags for the full mortar allowance`,
-        neededQuantity: `Approx ${fullBags} × 25kg cement bags for the full mortar allowance`,
-        orderQuantity: `${initialBags} × 25kg bags initially; collect/top up the balance only if required`,
+        quantity: `${fullBags} × 25kg bags needed for the same 4:1 mortar mix`,
+        neededQuantity: `${fullBags} × 25kg cement bags`,
+        orderQuantity: `${initialBags} × 25kg bags initially; top up only if required`,
         estimatedCostExVat: projectedCost,
         note: mergeNote(
           material.note,
-          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.generalPurposeCement25Kg.label)} Keep dry stock lean and top up locally rather than returning or storing excess bags.`
+          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.generalPurposeCement25Kg.label)} Cement is tied directly to the sharp-sand quantity using the same 4:1 mortar calculation, so impossible sand/cement ratios are avoided.`
+        ),
+      }
+    }
+
+    if (
+      name.includes('jointing') ||
+      name.includes('grout') ||
+      name.includes('easyjoint') ||
+      name.includes('easy joint')
+    ) {
+      const tub = TRAVIS_PERKINS_BENCHMARKS.easyJoint12_5KgTub
+      const tubsNeeded = Math.max(1, Math.ceil(areaM2 / tub.planningCoverageM2))
+      const tubsToOrder = Math.max(1, Math.floor(tubsNeeded * 0.8))
+      const projectedCost = roundMoney(tubsNeeded * tub.priceExVat)
+
+      return {
+        ...material,
+        quantity: `${tubsNeeded} × 12.5kg tubs needed`,
+        neededQuantity: `${tubsNeeded} × 12.5kg jointing-compound tubs`,
+        orderQuantity: `${tubsToOrder} × 12.5kg tubs initially; top up if joint widths/depth use more`,
+        estimatedCostExVat: projectedCost,
+        note: mergeNote(
+          material.note,
+          `${benchmarkNote(tub.label)} Planning coverage uses about ${tub.planningCoverageM2}m² per tub within the manufacturer's typical ${tub.coverageRangeM2}m² range; actual coverage depends heavily on joint size.`
         ),
       }
     }
@@ -157,9 +203,9 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
 
       return {
         ...material,
-        quantity: `Approx ${neededM2.toFixed(1)}m² including sensible overlaps`,
-        neededQuantity: `Approx ${neededM2.toFixed(1)}m² including sensible overlaps`,
-        orderQuantity: `Use existing roll first; buy ${rollsForFullRequirement} × 2m × 25m roll only if stock is insufficient`,
+        quantity: `${rollsForFullRequirement} roll needed (${neededM2.toFixed(1)}m² requirement)`,
+        neededQuantity: `${rollsForFullRequirement} × 2m × 25m membrane roll`,
+        orderQuantity: `Check existing roll first; buy ${rollsForFullRequirement} × 2m × 25m roll only if stock is insufficient`,
         estimatedCostExVat: projectedCost,
         note: mergeNote(
           material.note,
@@ -182,13 +228,37 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
 
       return {
         ...material,
-        quantity: `${areaM2.toFixed(1)}m² finished area; approx ${requiredM2.toFixed(1)}m² including 5% cuts/waste`,
-        neededQuantity: `${areaM2.toFixed(1)}m² finished area; approx ${requiredM2.toFixed(1)}m² including 5% cuts/waste`,
-        orderQuantity: `Source as close to ${requiredM2.toFixed(1)}m² as possible locally. Avoid over-ordering full packs just for contingency; top up matching stone if needed.`,
+        quantity: `${requiredM2.toFixed(1)}m² needed incl. cuts/waste`,
+        neededQuantity: `${requiredM2.toFixed(1)}m² Raj Green / equivalent project-pack coverage`,
+        orderQuantity: `Buy as close to ${requiredM2.toFixed(1)}m² as supplier pack sizes allow; avoid a whole extra pack purely as contingency`,
         estimatedCostExVat: projectedCost,
         note: mergeNote(
           material.note,
-          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.rajGreenSandstonePack.label)} TP fallback would require ${fullPacks} project pack(s), so prefer a local supplier able to supply nearer the actual required quantity where that avoids substantial leftover paving.`
+          `${benchmarkNote(TRAVIS_PERKINS_BENCHMARKS.rajGreenSandstonePack.label)} Prefer a local supplier that can get closer to the actual required square meterage if that avoids substantial leftover paving.`
+        ),
+      }
+    }
+
+    if (
+      gravelAreaM2 > 0 &&
+      (name.includes('black-ice') || name.includes('black ice') || name.includes('decorative gravel'))
+    ) {
+      const gravel = TRAVIS_PERKINS_BENCHMARKS.blackBasaltTradePack20Kg
+      const volumeM3 = gravelAreaM2 * 0.04
+      const requiredKg = volumeM3 * 1600
+      const fullBags = Math.max(1, Math.ceil(requiredKg / gravel.packedWeightKg))
+      const initialBags = Math.max(1, Math.floor(fullBags * 0.8))
+      const projectedCost = roundMoney(fullBags * gravel.priceExVat)
+
+      return {
+        ...material,
+        quantity: `${fullBags} × 20kg bags needed for approx ${gravelAreaM2.toFixed(2)}m² at 40mm`,
+        neededQuantity: `${fullBags} × 20kg decorative-gravel bags`,
+        orderQuantity: `${initialBags} × 20kg bags initially; use matching stock/top up only if needed`,
+        estimatedCostExVat: projectedCost,
+        note: mergeNote(
+          material.note,
+          `${benchmarkNote(gravel.label)} Use the actual local decorative-stone pack size if buying elsewhere.`
         ),
       }
     }
@@ -229,6 +299,7 @@ function applyPatioBenchmarks(plan: LandscapingPlan): LandscapingPlan {
     commercialNotes: Array.from(
       new Set([
         ...plan.commercialNotes,
+        'All material quantities should be displayed in normal orderable merchant units: bulk bags, 25kg cement bags, jointing tubs, rolls, packs or supplier units — not just abstract tonnes/m³.',
         'Material purchase costs use Travis Perkins public ex-VAT prices as a fallback benchmark where a better local/trade price is not already known.',
         'Keep initial deliveries lean. It is preferable to top up a little material during the job than to leave the crew with excess aggregate, sand, paving or other stock to move/dispose of at completion.',
       ])
