@@ -175,11 +175,14 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || 'Failed to create job.')
 
-      setSuccess(`Accepted. Job #${data.job.id} created and waiting to be booked.`)
-      router.refresh()
+      const jobId = Number(data?.job?.id)
+      if (!Number.isInteger(jobId) || jobId <= 0) {
+        throw new Error('The quote was accepted, but the new landscaping job could not be opened.')
+      }
+
+      router.push(`/admin/landscaping/jobs/${jobId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept quote.')
-    } finally {
       setActionBusy('')
     }
   }
@@ -460,14 +463,17 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
 
           {!quote.jobId && quote.status !== 'archived' ? (
             <button type="button" onClick={acceptAndCreateJob} disabled={disabled} className="min-h-11 rounded-xl bg-green-700 px-4 text-sm font-black text-white disabled:opacity-50">
-              {actionBusy === 'accepted' ? 'Creating job…' : 'Accepted — create job'}
+              {actionBusy === 'accepted' ? 'Creating job pack…' : 'Accepted — create landscaping job'}
             </button>
           ) : null}
 
           {quote.jobId ? (
             <>
-              <Link href={`/jobs/${quote.jobId}`} className="inline-flex min-h-11 items-center rounded-xl border border-green-300 bg-green-50 px-4 text-sm font-black text-green-800">
-                Open job #{quote.jobId}
+              <Link href={`/admin/landscaping/jobs/${quote.jobId}`} className="inline-flex min-h-11 items-center rounded-xl border border-green-300 bg-green-50 px-4 text-sm font-black text-green-800">
+                Job planning #{quote.jobId}
+              </Link>
+              <Link href={`/landscaping/jobs/${quote.jobId}`} className="inline-flex min-h-11 items-center rounded-xl border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-800">
+                Worker job sheet
               </Link>
               <Link href="/admin/schedule" className="inline-flex min-h-11 items-center rounded-xl bg-green-700 px-4 text-sm font-black text-white">
                 Book in schedule
