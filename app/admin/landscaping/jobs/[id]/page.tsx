@@ -38,6 +38,21 @@ function fullName(firstName?: string | null, lastName?: string | null) {
   return `${firstName || ''} ${lastName || ''}`.trim()
 }
 
+function formatStatus(value: string) {
+  const cleaned = String(value || '').replaceAll('_', ' ').trim()
+  if (!cleaned) return 'Unscheduled'
+  return cleaned.replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function compactScope(value: string) {
+  const cleaned = String(value || '').replace(/\s+/g, ' ').trim()
+  if (cleaned.length <= 170) return cleaned
+
+  const shortened = cleaned.slice(0, 170)
+  const lastSpace = shortened.lastIndexOf(' ')
+  return `${shortened.slice(0, lastSpace > 130 ? lastSpace : 170).trim()}…`
+}
+
 export default async function LandscapingPlanningPage({ params }: PageProps) {
   const jobId = Number(params.id)
   if (!Number.isInteger(jobId) || jobId <= 0) notFound()
@@ -73,42 +88,61 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
     .map((assignment) => fullName(assignment.worker.firstName, assignment.worker.lastName))
     .filter(Boolean)
 
+  const headerScope = compactScope(quote?.scope || job.title)
+
   return (
     <div className="space-y-5">
-      <section className="rounded-3xl bg-zinc-950 p-5 text-white shadow-sm sm:p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-yellow-300">
-              Landscaping project planning
+      <section className="rounded-3xl bg-zinc-950 p-4 text-white shadow-sm sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em]">
+              <span className="text-yellow-300">Landscaping</span>
+              <span className="text-zinc-500">/</span>
+              <span className="text-zinc-400">Project planning</span>
             </div>
-            <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
-              {job.customer.name}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-300">
-              {quote?.scope || job.title}
+
+            <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
+              <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
+                {job.customer.name}
+              </h1>
+              <span className="text-sm font-bold text-zinc-500">Job #{job.id}</span>
+            </div>
+
+            <p className="mt-2 max-w-3xl text-sm leading-5 text-zinc-300">
+              {headerScope}
             </p>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold">
-              <span className="rounded-full bg-white/10 px-3 py-1.5">Job #{job.id}</span>
-              <span className="rounded-full bg-white/10 px-3 py-1.5">{job.status.replaceAll('_', ' ')}</span>
-              <span className="rounded-full bg-white/10 px-3 py-1.5">
-                {assignedWorkers.length ? assignedWorkers.join(', ') : 'Team not assigned yet'}
+
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+              <span className="rounded-full bg-white/10 px-3 py-1.5 text-zinc-200">
+                {formatStatus(job.status)}
+              </span>
+              <span className="rounded-full bg-yellow-300 px-3 py-1.5 text-zinc-950">
+                {plan ? `${plan.totalDays} working day${plan.totalDays === 1 ? '' : 's'}` : 'Pack pending'}
+              </span>
+              <span className="rounded-full bg-white/10 px-3 py-1.5 text-zinc-200">
+                {plan
+                  ? `${plan.teamSize}-person team`
+                  : assignedWorkers.length
+                    ? assignedWorkers.join(', ')
+                    : 'Team not assigned'}
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+
+          <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
             {quote ? (
               <Link
                 href={`/admin/quotes/${quote.id}`}
-                className="inline-flex min-h-11 items-center rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-black text-white"
+                className="inline-flex min-h-10 items-center rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-black text-white transition hover:bg-white/15"
               >
-                Open quote #{quote.id}
+                Quote #{quote.id}
               </Link>
             ) : null}
             <Link
               href="/jobs"
-              className="inline-flex min-h-11 items-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950"
+              className="inline-flex min-h-10 items-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950 transition hover:bg-zinc-100"
             >
-              Back to jobs
+              ← Jobs
             </Link>
           </div>
         </div>
