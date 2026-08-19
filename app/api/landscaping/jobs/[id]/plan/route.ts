@@ -127,9 +127,6 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     const body = await request.json().catch(() => ({}))
     const plan = await saveLandscapingActualCosts(id, {
-      materialProjectedCosts: Array.isArray(body.materialProjectedCosts)
-        ? body.materialProjectedCosts
-        : undefined,
       materialActualCosts: Array.isArray(body.materialActualCosts)
         ? body.materialActualCosts
         : undefined,
