@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
+const STANDARD_VAT_RATE = 20
+
 type RouteContext = {
   params: {
     id: string
@@ -40,12 +42,46 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     if ('customerMessage' in body) data.customerMessage = cleanString(body.customerMessage) || null
     if ('internalNotes' in body) data.internalNotes = cleanString(body.internalNotes) || null
     if ('quoteWorking' in body) data.quoteWorking = cleanString(body.quoteWorking) || null
-    if ('priceExVat' in body) data.priceExVat = cleanNumber(body.priceExVat)
-    if ('vatRate' in body) data.vatRate = cleanNumber(body.vatRate, 20)
-    if ('vatAmount' in body) data.vatAmount = cleanNumber(body.vatAmount)
-    if ('totalIncVat' in body) data.totalIncVat = cleanNumber(body.totalIncVat)
-    if ('depositPercent' in body) data.depositPercent = cleanNumber(body.depositPercent, 25)
-    if ('depositAmount' in body) data.depositAmount = cleanNumber(body.depositAmount)
+
+    const currentQuote = await prisma.quote.findUnique({
+      where: { id },
+      select: {
+        priceExVat: true,
+        depositPercent: true,
+      },
+    })
+
+    if (!currentQuote) {
+      return NextResponse.json(
+        { ok: false, error: 'Quote not found.' },
+        { status: 404 }
+      )
+    }
+
+    const priceExVat =
+      'priceExVat' in body
+        ? cleanNumber(body.priceExVat)
+        : currentQuote.priceExVat
+    const depositPercent =
+      'depositPercent' in body
+        ? cleanNumber(body.depositPercent, 25)
+        : currentQuote.depositPercent
+
+    const vatAmount = Number(
+      ((priceExVat * STANDARD_VAT_RATE) / 100).toFixed(2)
+    )
+    const totalIncVat = Number((priceExVat + vatAmount).toFixed(2))
+    const depositAmount = Number(
+      ((totalIncVat * depositPercent) / 100).toFixed(2)
+    )
+
+    data.priceExVat = priceExVat
+    data.vatRate = STANDARD_VAT_RATE
+    data.vatAmount = vatAmount
+    data.totalIncVat = totalIncVat
+    data.depositPercent = depositPercent
+    data.depositAmount = depositAmount
+
     if ('estimatedDays' in body) {
       data.estimatedDays = body.estimatedDays == null ? null : cleanNumber(body.estimatedDays)
     }
