@@ -156,11 +156,7 @@ export async function POST(req: Request) {
 
       await prisma.inboxMessage.create({
         data: {
-          conversation: {
-            connect: {
-              id: conversation.id,
-            },
-          },
+          conversationId: conversation.id,
           customerId,
           source: "worker-quote",
           senderName: message.customerName ?? message.worker,
