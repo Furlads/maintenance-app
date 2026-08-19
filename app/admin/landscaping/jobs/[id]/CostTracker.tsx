@@ -56,9 +56,6 @@ export default function CostTracker({
   actualCosts,
 }: Props) {
   const router = useRouter()
-  const [materialProjected, setMaterialProjected] = useState(
-    materials.map((material) => String(material.estimatedCostExVat ?? 0))
-  )
   const [materialActuals, setMaterialActuals] = useState(
     materials.map((material) => valueOrBlank(material.actualCostExVat))
   )
@@ -70,15 +67,14 @@ export default function CostTracker({
   const [error, setError] = useState('')
 
   const totals = useMemo(() => {
-    const projectedMaterials = materialProjected.reduce((sum, value, index) => {
-      const parsed = parseOptional(value)
-      return sum + (parsed ?? materials[index]?.estimatedCostExVat ?? 0)
-    }, 0)
+    const projectedMaterials = materials.reduce(
+      (sum, material) => sum + material.estimatedCostExVat,
+      0
+    )
 
     const liveMaterials = materials.reduce((sum, material, index) => {
       const actual = parseOptional(materialActuals[index] || '')
-      const projected = parseOptional(materialProjected[index] || '') ?? material.estimatedCostExVat
-      return sum + (actual ?? projected)
+      return sum + (actual ?? material.estimatedCostExVat)
     }, 0)
 
     const labour = parseOptional(labourActual) ?? projectedLabourExVat
@@ -113,7 +109,6 @@ export default function CostTracker({
     }
   }, [
     materials,
-    materialProjected,
     materialActuals,
     labourActual,
     plantWasteActual,
@@ -134,7 +129,6 @@ export default function CostTracker({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          materialProjectedCosts: materialProjected.map(parseOptional),
           materialActualCosts: materialActuals.map(parseOptional),
           labourExVat: parseOptional(labourActual),
           plantWasteExVat: parseOptional(plantWasteActual),
@@ -147,7 +141,7 @@ export default function CostTracker({
         throw new Error(data?.error || 'Could not save landscaping costs.')
       }
 
-      setMessage('Costs saved — projected and live margin figures are now stored with this job.')
+      setMessage('Actual costs saved — the original projected baseline remains locked for comparison.')
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save landscaping costs.')
@@ -163,9 +157,9 @@ export default function CostTracker({
           <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">
             Materials & live job costs
           </div>
-          <h2 className="mt-1 text-xl font-black">What we need, what to order, what it costs</h2>
+          <h2 className="mt-1 text-xl font-black">What we need, what to order, what it actually costs</h2>
           <p className="mt-1 max-w-4xl text-sm leading-6 text-zinc-600">
-            “Needed” is the calculated job requirement. “Order now” is deliberately rounded down where sensible so existing usable Furlads stock can cover the balance. Projected cost stays conservative and can be corrected before the invoice arrives; actual cost is what we really paid.
+            “Needed” is the calculated job requirement and “Order now” is the lean initial order. Projected costs are the locked planning baseline from when the job pack was created; only actual costs can be entered so the live margin shows the true difference against plan.
           </p>
         </div>
         <button
@@ -174,7 +168,7 @@ export default function CostTracker({
           disabled={saving}
           className="min-h-11 rounded-xl bg-zinc-950 px-4 text-sm font-black text-white disabled:opacity-50"
         >
-          {saving ? 'Saving costs…' : 'Save costs'}
+          {saving ? 'Saving actuals…' : 'Save actual costs'}
         </button>
       </div>
 
@@ -191,7 +185,7 @@ export default function CostTracker({
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
-          <div className="text-xs font-black uppercase tracking-wide text-zinc-500">Projected cost</div>
+          <div className="text-xs font-black uppercase tracking-wide text-zinc-500">Locked projected cost</div>
           <div className="mt-1 text-2xl font-black">{money(totals.projectedTotal)}</div>
         </div>
         <div className="rounded-2xl bg-blue-50 p-4 ring-1 ring-inset ring-blue-200">
@@ -224,7 +218,7 @@ export default function CostTracker({
           </thead>
           <tbody>
             {materials.map((material, index) => {
-              const projected = parseOptional(materialProjected[index] || '') ?? material.estimatedCostExVat
+              const projected = material.estimatedCostExVat
               const actual = parseOptional(materialActuals[index] || '')
               const variance = actual == null ? null : actual - projected
 
@@ -237,15 +231,9 @@ export default function CostTracker({
                   <td className="max-w-[240px] px-3 py-3 font-semibold text-blue-900">
                     {material.orderQuantity || material.neededQuantity || material.quantity}
                   </td>
-                  <td className="px-3 py-3">
-                    <MoneyInput
-                      value={materialProjected[index] || ''}
-                      onChange={(value) => {
-                        const next = [...materialProjected]
-                        next[index] = value
-                        setMaterialProjected(next)
-                      }}
-                    />
+                  <td className="px-3 py-3 font-black text-zinc-900">
+                    {money(projected)}
+                    <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Locked</div>
                   </td>
                   <td className="px-3 py-3">
                     <MoneyInput
@@ -271,21 +259,21 @@ export default function CostTracker({
               projected={projectedLabourExVat}
               value={labourActual}
               onChange={setLabourActual}
-              note="Actual labour can replace the planned allowance when the job progresses/completes."
+              note="Projected labour is locked; enter the actual labour cost as the job progresses or completes."
             />
             <CostRow
               label="Plant & waste"
               projected={projectedPlantWasteExVat}
               value={plantWasteActual}
               onChange={setPlantWasteActual}
-              note="Grab/skip, hired plant, fuel and waste charges grouped here."
+              note="Projected plant/waste allowance is locked; enter actual grab, skip, hire, fuel and waste charges here."
             />
             <CostRow
               label="Other / consumables"
               projected={projectedOtherExVat}
               value={otherActual}
               onChange={setOtherActual}
-              note="Discs, blades, sundries and other job-specific costs not captured above."
+              note="Projected consumables are locked; enter the actual discs, blades, sundries and other job-specific costs here."
             />
           </tbody>
         </table>
@@ -351,7 +339,10 @@ function CostRow({
       <td className="px-3 py-3 font-bold text-zinc-900">{label}</td>
       <td className="px-3 py-3 text-zinc-500">—</td>
       <td className="px-3 py-3 text-zinc-500">—</td>
-      <td className="px-3 py-3 font-bold text-zinc-900">{money(projected)}</td>
+      <td className="px-3 py-3 font-bold text-zinc-900">
+        {money(projected)}
+        <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Locked</div>
+      </td>
       <td className="px-3 py-3">
         <MoneyInput value={value} onChange={onChange} />
       </td>
