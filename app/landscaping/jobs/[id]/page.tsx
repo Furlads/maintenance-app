@@ -125,7 +125,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
             </Link>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl bg-white/10 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Overall programme</div>
               <div className="mt-1 text-xl font-black">
@@ -141,11 +141,6 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
             <div className="rounded-2xl bg-white/10 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Start</div>
               <div className="mt-1 text-xl font-black">{formatDate(job.visitDate)}</div>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Expected day finish</div>
-              <div className="mt-1 text-xl font-black">16:30</div>
-              <div className="mt-1 text-xs font-semibold text-zinc-400">Get ahead if today’s target is done</div>
             </div>
           </div>
         </section>
