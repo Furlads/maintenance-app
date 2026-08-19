@@ -9,6 +9,7 @@ import { getLatestLandscapingControls } from '@/lib/landscaping-controls'
 import PlanActions from './PlanActions'
 import CostTracker from './CostTracker'
 import LandscapingControlsPanel from './LandscapingControlsPanel'
+import VariationApprovalPanel from './VariationApprovalPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,6 @@ function formatStatus(value: string) {
 function compactScope(value: string) {
   const cleaned = String(value || '').replace(/\s+/g, ' ').trim()
   if (cleaned.length <= 170) return cleaned
-
   const shortened = cleaned.slice(0, 170)
   const lastSpace = shortened.lastIndexOf(' ')
   return `${shortened.slice(0, lastSpace > 130 ? lastSpace : 170).trim()}…`
@@ -103,9 +103,7 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
 
   const headerScope = compactScope(quote?.scope || job.title)
   const bookedStartDate = job.visitDate ? job.visitDate.toISOString().slice(0, 10) : null
-  const teamBooked = Boolean(
-    plan && bookedStartDate && assignedWorkers.length >= plan.teamSize
-  )
+  const teamBooked = Boolean(plan && bookedStartDate && assignedWorkers.length >= plan.teamSize)
 
   return (
     <div className="space-y-5">
@@ -117,50 +115,28 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
               <span className="text-zinc-500">/</span>
               <span className="text-zinc-400">Project planning</span>
             </div>
-
             <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
-              <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
-                {job.customer.name}
-              </h1>
+              <h1 className="text-2xl font-black tracking-tight sm:text-3xl">{job.customer.name}</h1>
               <span className="text-sm font-bold text-zinc-500">Job #{job.id}</span>
             </div>
-
-            <p className="mt-2 max-w-3xl text-sm leading-5 text-zinc-300">
-              {headerScope}
-            </p>
-
+            <p className="mt-2 max-w-3xl text-sm leading-5 text-zinc-300">{headerScope}</p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-              <span className="rounded-full bg-white/10 px-3 py-1.5 text-zinc-200">
-                {formatStatus(job.status)}
-              </span>
+              <span className="rounded-full bg-white/10 px-3 py-1.5 text-zinc-200">{formatStatus(job.status)}</span>
               <span className="rounded-full bg-yellow-300 px-3 py-1.5 text-zinc-950">
                 {plan ? `${plan.totalDays} working day${plan.totalDays === 1 ? '' : 's'}` : 'Pack pending'}
               </span>
               <span className="rounded-full bg-white/10 px-3 py-1.5 text-zinc-200">
-                {plan
-                  ? `${plan.teamSize}-person team`
-                  : assignedWorkers.length
-                    ? assignedWorkers.join(', ')
-                    : 'Team not assigned'}
+                {plan ? `${plan.teamSize}-person team` : assignedWorkers.length ? assignedWorkers.join(', ') : 'Team not assigned'}
               </span>
             </div>
           </div>
-
           <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
             {quote ? (
-              <Link
-                href={`/admin/quotes/${quote.id}`}
-                className="inline-flex min-h-10 items-center rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-black text-white transition hover:bg-white/15"
-              >
+              <Link href={`/admin/quotes/${quote.id}`} className="inline-flex min-h-10 items-center rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-black text-white transition hover:bg-white/15">
                 Quote #{quote.id}
               </Link>
             ) : null}
-            <Link
-              href="/jobs"
-              className="inline-flex min-h-10 items-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950 transition hover:bg-zinc-100"
-            >
-              ← Jobs
-            </Link>
+            <Link href="/jobs" className="inline-flex min-h-10 items-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950 transition hover:bg-zinc-100">← Jobs</Link>
           </div>
         </div>
       </section>
@@ -171,9 +147,7 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
           <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-900">
             The accepted job exists, but CHAS has not yet produced the internal programme, material-order list and projected profitability plan. Generate it here without changing the accepted quote.
           </p>
-          <div className="mt-4">
-            <PlanActions jobId={job.id} scheduleDate={null} />
-          </div>
+          <div className="mt-4"><PlanActions jobId={job.id} scheduleDate={null} /></div>
         </section>
       ) : (
         <>
@@ -186,6 +160,8 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
             bookedStartDate={bookedStartDate}
             initialMessages={reviewMessages.slice().reverse()}
           />
+
+          <VariationApprovalPanel jobId={job.id} initialVariations={controls?.variations || []} />
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -211,14 +187,10 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Next available install window</div>
                 <h2 className="mt-2 text-xl font-black text-blue-950">
-                  {availability?.startDate
-                    ? `${formatDate(availability.startDate)} → ${formatDate(availability.endDate)}`
-                    : 'No continuous slot found yet'}
+                  {availability?.startDate ? `${formatDate(availability.startDate)} → ${formatDate(availability.endDate)}` : 'No continuous slot found yet'}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-blue-900">
-                  {availability?.workerNames.length
-                    ? `Available team: ${availability.workerNames.join(', ')}. `
-                    : ''}
+                  {availability?.workerNames.length ? `Available team: ${availability.workerNames.join(', ')}. ` : ''}
                   {availability?.explanation || 'Generate the pack to calculate the first available install run.'}
                 </p>
               </div>
@@ -239,9 +211,7 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
             </div>
             <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
               <div className="text-xs font-black uppercase tracking-wide text-zinc-500">Materials + plant/waste</div>
-              <div className="mt-2 text-2xl font-black">
-                {money(plan.projectedCosts.materialsExVat + plan.projectedCosts.plantWasteExVat + plan.projectedCosts.otherExVat)}
-              </div>
+              <div className="mt-2 text-2xl font-black">{money(plan.projectedCosts.materialsExVat + plan.projectedCosts.plantWasteExVat + plan.projectedCosts.otherExVat)}</div>
               <p className="mt-2 text-xs leading-5 text-zinc-500">Projected baseline stays locked; enter actual costs below.</p>
             </div>
           </section>
@@ -265,14 +235,10 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
                     <div className="text-xs font-black uppercase tracking-wide text-zinc-500">Day {day.day}</div>
                     <div className="mt-1 font-black text-zinc-950">{day.heading}</div>
                     <p className="mt-2 text-sm leading-6 text-zinc-700">{day.target}</p>
-                    <div className="mt-2 space-y-1 text-sm text-zinc-600">
-                      {day.tasks.map((task, index) => <div key={index}>• {task}</div>)}
-                    </div>
+                    <div className="mt-2 space-y-1 text-sm text-zinc-600">{day.tasks.map((task, index) => <div key={index}>• {task}</div>)}</div>
                     <div className="mt-3 rounded-xl border border-green-200 bg-green-50 px-3 py-3 text-sm leading-6 text-green-950">
                       <strong>⚡ If ahead:</strong>
-                      <div className="mt-1 space-y-1">
-                        {day.ifAhead.map((task, index) => <div key={`ahead-${index}`}>• {task}</div>)}
-                      </div>
+                      <div className="mt-1 space-y-1">{day.ifAhead.map((task, index) => <div key={`ahead-${index}`}>• {task}</div>)}</div>
                     </div>
                   </div>
                 ))}
@@ -282,9 +248,7 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
             <div className="space-y-4">
               <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
                 <h2 className="text-lg font-black">Plant & tools</h2>
-                <div className="mt-3 space-y-2 text-sm text-zinc-700">
-                  {plan.plantTools.map((item, index) => <div key={index}>• {item}</div>)}
-                </div>
+                <div className="mt-3 space-y-2 text-sm text-zinc-700">{plan.plantTools.map((item, index) => <div key={index}>• {item}</div>)}</div>
               </div>
               <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
                 <h2 className="text-lg font-black text-amber-950">Site checks & risks</h2>
@@ -295,9 +259,7 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
               </div>
               <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
                 <h2 className="text-lg font-black">Commercial planning notes</h2>
-                <div className="mt-3 space-y-2 text-sm leading-6 text-zinc-700">
-                  {plan.commercialNotes.map((item, index) => <div key={index}>• {item}</div>)}
-                </div>
+                <div className="mt-3 space-y-2 text-sm leading-6 text-zinc-700">{plan.commercialNotes.map((item, index) => <div key={index}>• {item}</div>)}</div>
               </div>
             </div>
           </section>
