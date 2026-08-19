@@ -53,6 +53,26 @@ type QuoteRequest = {
   combinedOffers?: CombinedOfferInput[]
 }
 
+type StandardRateGuard = {
+  service: string
+  areaM2: number
+  unitRate: number
+  basePriceExVat: number
+  minimumDaysForTwo: number
+  extraPriceExVat: number
+  extraDescription: string
+  expectedMinimumPriceExVat: number
+  pricingNotes: string[]
+}
+
+const MASTER_RATES = {
+  indianSandstonePerM2: 140,
+  porcelainPerM2: 170,
+  artificialGrassPerM2: 110,
+  gravelSurfacingPerM2: 60.5,
+  fencingPerM: 121,
+} as const
+
 function cleanText(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -65,6 +85,10 @@ function cleanNumber(value: unknown, fallback = 0) {
 function roundUpToHalfDay(value: number) {
   if (!Number.isFinite(value) || value <= 0) return 0
   return Math.ceil(value * 2) / 2
+}
+
+function roundMoney(value: number) {
+  return Number(value.toFixed(2))
 }
 
 function normaliseQuoteMode(value: unknown): QuoteMode {
@@ -89,6 +113,130 @@ function looksLikeMultiChoiceQuote(text: string) {
     value.includes('different options') ||
     value.includes('give them options')
   )
+}
+
+function extractRectangleDimensionsM(text: string) {
+  const match = text.match(
+    /(?:^|\s)(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)?(?:\s|$|[^a-z])/i
+  )
+
+  if (!match) return null
+
+  const lengthM = Number(match[1])
+  const widthM = Number(match[2])
+
+  if (!Number.isFinite(lengthM) || !Number.isFinite(widthM)) return null
+  if (lengthM <= 0 || widthM <= 0) return null
+
+  return {
+    lengthM,
+    widthM,
+    areaM2: roundMoney(lengthM * widthM),
+    perimeterM: roundMoney(2 * (lengthM + widthM)),
+  }
+}
+
+function extractAreaM2(text: string) {
+  const dimensions = extractRectangleDimensionsM(text)
+  if (dimensions) return dimensions.areaM2
+
+  const areaMatch = text.match(
+    /(\d+(?:\.\d+)?)\s*(?:m2|m²|sqm|sq\.?\s*m(?:etres?)?)/i
+  )
+
+  if (!areaMatch) return 0
+
+  const area = Number(areaMatch[1])
+  return Number.isFinite(area) && area > 0 ? area : 0
+}
+
+function hasDecorativeGravelBorder(text: string) {
+  const value = text.toLowerCase()
+
+  return (
+    value.includes('black ice gravel') ||
+    /gravel[^\n]{0,40}(?:edge|border|around)/i.test(text) ||
+    /(?:edge|border)[^\n]{0,40}gravel/i.test(text)
+  )
+}
+
+function detectStandardRateGuard(text: string): StandardRateGuard | null {
+  const value = text.toLowerCase()
+  const areaM2 = extractAreaM2(text)
+
+  if (areaM2 <= 0) return null
+
+  let service = ''
+  let unitRate = 0
+  let minimumDaysForTwo = 0
+
+  if (
+    value.includes('raj green') ||
+    value.includes('indian sandstone') ||
+    value.includes('indian stone') ||
+    value.includes('sandstone patio')
+  ) {
+    service = 'Indian sandstone patio'
+    unitRate = MASTER_RATES.indianSandstonePerM2
+    minimumDaysForTwo = roundUpToHalfDay(areaM2 / 10 + 0.5)
+  } else if (value.includes('porcelain')) {
+    service = 'Porcelain patio'
+    unitRate = MASTER_RATES.porcelainPerM2
+    minimumDaysForTwo = roundUpToHalfDay(areaM2 / 8 + 0.5)
+  } else if (value.includes('artificial grass')) {
+    service = 'Artificial grass'
+    unitRate = MASTER_RATES.artificialGrassPerM2
+    minimumDaysForTwo = roundUpToHalfDay(areaM2 / 25 + 0.5)
+  } else {
+    return null
+  }
+
+  const basePriceExVat = roundMoney(areaM2 * unitRate)
+  let extraPriceExVat = 0
+  let extraDescription = ''
+  const pricingNotes = [
+    `${service}: ${areaM2.toFixed(2)}m² × £${unitRate.toFixed(2)}/m² = £${basePriceExVat.toFixed(2)} ex VAT.`,
+  ]
+
+  if (
+    service === 'Indian sandstone patio' &&
+    hasDecorativeGravelBorder(text)
+  ) {
+    const dimensions = extractRectangleDimensionsM(text)
+
+    if (dimensions) {
+      const assumedBorderWidthM = 0.15
+      const gravelAreaM2 = roundMoney(
+        dimensions.perimeterM * assumedBorderWidthM
+      )
+      extraPriceExVat = roundMoney(
+        gravelAreaM2 * MASTER_RATES.gravelSurfacingPerM2
+      )
+      extraDescription = `Provisional decorative gravel border allowance: ${dimensions.perimeterM.toFixed(2)}m perimeter × 0.15m assumed width = ${gravelAreaM2.toFixed(2)}m² at £${MASTER_RATES.gravelSurfacingPerM2.toFixed(2)}/m².`
+      pricingNotes.push(
+        `${extraDescription} Allowance = £${extraPriceExVat.toFixed(2)} ex VAT.`
+      )
+      minimumDaysForTwo = roundUpToHalfDay(minimumDaysForTwo + 0.5)
+    } else {
+      extraDescription =
+        'Decorative gravel border is additional to the patio rate; width/length must be confirmed or a provisional allowance used.'
+      pricingNotes.push(extraDescription)
+    }
+  }
+
+  return {
+    service,
+    areaM2,
+    unitRate,
+    basePriceExVat,
+    minimumDaysForTwo,
+    extraPriceExVat,
+    extraDescription,
+    expectedMinimumPriceExVat: roundMoney(
+      basePriceExVat + extraPriceExVat
+    ),
+    pricingNotes,
+  }
 }
 
 function cleanPhotos(value: unknown): Array<{ url: string; label: string }> {
@@ -217,7 +365,10 @@ function normaliseDuration(value: unknown, fallbackTeamSize = 2) {
 
   return {
     workingDays: roundUpToHalfDay(cleanNumber(duration.workingDays)),
-    teamSize: Math.max(1, Math.round(cleanNumber(duration.teamSize, fallbackTeamSize))),
+    teamSize: Math.max(
+      1,
+      Math.round(cleanNumber(duration.teamSize, fallbackTeamSize))
+    ),
     description: cleanText(duration.description),
   }
 }
@@ -238,7 +389,9 @@ function normaliseOptions(value: unknown, vatRate: number) {
       const totalIncVat = Number((priceExVat + vatAmount).toFixed(2))
 
       return {
-        label: cleanText(option.label) || `Option ${String.fromCharCode(65 + index)}`,
+        label:
+          cleanText(option.label) ||
+          `Option ${String.fromCharCode(65 + index)}`,
         title: cleanText(option.title) || `Option ${index + 1}`,
         summary: cleanText(option.summary),
         keyDifferences: Array.isArray(option.keyDifferences)
@@ -267,7 +420,11 @@ function findIncludedOptions(
     const title = option.title.trim().toLowerCase()
 
     return wanted.some(
-      (item) => item === label || item === title || label.includes(item) || item.includes(label)
+      (item) =>
+        item === label ||
+        item === title ||
+        label.includes(item) ||
+        item.includes(label)
     )
   })
 }
@@ -293,13 +450,17 @@ function normaliseCombinedOffer(
   if (includedOptions.length < 2) return null
 
   const separateTotal = Number(
-    includedOptions.reduce((sum, option) => sum + option.priceExVat, 0).toFixed(2)
+    includedOptions
+      .reduce((sum, option) => sum + option.priceExVat, 0)
+      .toFixed(2)
   )
 
   let priceExVat = cleanNumber(raw.priceExVat)
   if (priceExVat <= 0) return null
 
-  const lowestSensibleCombinedPrice = Number((separateTotal * 0.9).toFixed(2))
+  const lowestSensibleCombinedPrice = Number(
+    (separateTotal * 0.9).toFixed(2)
+  )
   priceExVat = Math.max(priceExVat, lowestSensibleCombinedPrice)
   priceExVat = Math.min(priceExVat, separateTotal)
 
@@ -313,7 +474,8 @@ function normaliseCombinedOffer(
     0
   )
   const longestPackageDays = includedOptions.reduce(
-    (longest, option) => Math.max(longest, option.estimatedDuration.workingDays),
+    (longest, option) =>
+      Math.max(longest, option.estimatedDuration.workingDays),
     0
   )
 
@@ -361,11 +523,15 @@ function normaliseCombinedOffers(
       : []
 
   return source
-    .map((offer) => normaliseCombinedOffer(offer, vatRate, options, quoteMode))
+    .map((offer) =>
+      normaliseCombinedOffer(offer, vatRate, options, quoteMode)
+    )
     .filter((offer): offer is NonNullable<typeof offer> => offer !== null)
 }
 
-function optionSummaryForPrompt(options: ReturnType<typeof normaliseOptions>) {
+function optionSummaryForPrompt(
+  options: ReturnType<typeof normaliseOptions>
+) {
   return options
     .map((option) => {
       const duration = option.estimatedDuration
@@ -388,7 +554,9 @@ function optionSummaryForPrompt(options: ReturnType<typeof normaliseOptions>) {
 function combinedOffersForPrompt(
   combinedOffers: ReturnType<typeof normaliseCombinedOffers>
 ) {
-  if (!combinedOffers.length) return 'No combined all-together offer supplied.'
+  if (!combinedOffers.length) {
+    return 'No combined all-together offer supplied.'
+  }
 
   return combinedOffers
     .map((offer) =>
@@ -400,7 +568,9 @@ function combinedOffersForPrompt(
         `VAT: £${offer.vatAmount.toFixed(2)}`,
         `Total inc VAT: £${offer.totalIncVat.toFixed(2)}`,
         `Saving vs those items separately ex VAT: £${offer.savingExVat.toFixed(2)}`,
-        offer.savingReason ? `Reason for saving: ${offer.savingReason}` : '',
+        offer.savingReason
+          ? `Reason for saving: ${offer.savingReason}`
+          : '',
         offer.estimatedDuration.workingDays
           ? `Install: ${offer.estimatedDuration.workingDays} working days with ${offer.estimatedDuration.teamSize} ${offer.estimatedDuration.teamSize === 1 ? 'person' : 'people'}`
           : '',
@@ -432,6 +602,22 @@ You are CHAS, the internal landscaping estimator and practical garden ideas assi
 
 Your job is to help Trevor turn a real site visit into a commercially sensible quotation. Customers often want choices before they decide, so do not force a multi-choice enquiry into one blended quote.
 
+MASTER FURLADS PRICE BOOK — THIS OVERRIDES CONFLICTING RATE EXAMPLES ELSEWHERE:
+- Indian sandstone / Raj Green patio: £${MASTER_RATES.indianSandstonePerM2}/m² ex VAT, all-in for the standard patio installation scope only.
+- Porcelain patio: £${MASTER_RATES.porcelainPerM2}/m² ex VAT, all-in for the standard patio installation scope only.
+- Artificial grass: £${MASTER_RATES.artificialGrassPerM2}/m² ex VAT for the standard installation scope.
+- Standard fencing baseline: £${MASTER_RATES.fencingPerM}/m ex VAT unless a clearly different fencing specification requires a genuine extra.
+- Gravel surfacing baseline: £${MASTER_RATES.gravelSurfacingPerM2}/m² ex VAT.
+
+STANDARD-RATE BOUNDARIES — CRITICAL:
+- A standard rate only covers the standard scope for that service. It does NOT automatically swallow extra items mentioned by Trevor.
+- If Trevor asks for a gravel border, decorative stone strip, drainage, steps, retaining work, concrete breakout, walls, unusual edging, gates, trellis or another distinct extra, price that extra separately and add it to the standard-rate base.
+- Never write wording such as "all-in including X" when X has not actually been added to the price.
+- If an extra is requested but an exact measurement is missing, prefer a sensible clearly labelled provisional assumption rather than silently omitting the extra.
+- For a decorative gravel border around a rectangular patio, if Trevor gives the patio dimensions but not the border width, use a provisional 150mm-wide border assumption. Calculate the patio perimeter, the gravel strip area and the additional gravel allowance. State the assumption clearly so Trevor can correct it.
+- The final recommendedPriceExVat must equal the standard-rate base plus all genuine extras included in the written scope.
+- Do not round away valid pence from calculated selling prices.
+
 You may receive written survey notes and site photographs.
 
 PHOTO REVIEW RULES:
@@ -448,8 +634,8 @@ PRICING RULES:
 - Recommended selling prices are excluding VAT. VAT is calculated separately by the app.
 - Do not invent exact supplier prices.
 - Clearly separate confirmed information from estimates.
-- Follow any supplied Furlads all-in selling rates. If an all-in rate applies, do not add normal labour, materials, waste, machinery, delivery or margin a second time.
-- Only add genuine exceptional extras not covered by the applicable standard rate.
+- Follow the master Furlads rates above. Do not add normal labour, materials, waste, machinery, delivery or margin a second time when a standard all-in rate applies.
+- Only add genuine extras outside that standard rate.
 - Protect Furlads against underpricing and arbitrary discounting.
 - A combined "all done together" price may be lower than buying packages separately only where there are genuine shared efficiencies such as one setup, shared deliveries, shared plant, shared waste handling or one final tidy-up.
 - Do not invent a discount. If there is little or no genuine saving, the combined price may equal the sum of the included package prices.
@@ -483,6 +669,8 @@ REALISTIC INSTALL-TIME RULES — IMPORTANT:
 - Break the work into physical operations: removal/excavation, loading/spoil, setting out, foundations/sub-base, compaction, posts, concrete, cutting, laying/fitting, edging, finishing and tidy-up.
 - Distinct trades or work types do not magically happen at the same time just because they are sold together.
 - Multiple separate areas reduce productivity because of repeated setting out, cuts, edges, transitions and moving materials.
+- Natural-stone patio with full preparation: for a normal two-person Furlads crew, use roughly 10m² per working day end-to-end as a planning sanity check, plus setup/finishing time. A 30m² Raj Green patio should therefore not normally be shown as a 2-day full-prep installation.
+- Porcelain with full preparation is normally slower than standard sandstone because of cutting, priming and accuracy requirements.
 - For standard fencing as a planning sanity check, a two-person team in ordinary access/ground should not normally be assumed to install dramatically more than roughly 5–7 standard bays per working day once holes, posts, concrete, panels/boards, levels and tidy-up are considered. Removal, awkward ground, corners, slopes or restricted access slow this further.
 - For artificial grass with full ground preparation as a planning sanity check, a two-person team should normally be thought of in the region of roughly 20–30m² per working day in ordinary conditions once excavation, spoil, sub-base, compaction, laying, cutting, edging and tidy-up are included. Several separate areas usually push the output toward the slower end.
 - These are sanity checks, not rigid production rates. Use the actual site information and explain material deviations.
@@ -544,7 +732,7 @@ Return only valid JSON using this exact structure:
     },
     "priceExVat": 0
   },
-  "summary": "Short description of the current proposal",
+  "summary": "Short description of the current proposal including any provisional extra assumptions that affect price",
   "confirmedInformation": ["Confirmed fact"],
   "photoObservations": [
     {
@@ -560,7 +748,7 @@ Return only valid JSON using this exact structure:
       "pricingImpact": "Possible effect on price or duration"
     }
   ],
-  "assumptions": ["Assumption used"],
+  "assumptions": ["Assumption used, including dimensions assumed for provisional extras"],
   "missingInformation": ["Important check still needed"],
   "estimatedDuration": {
     "workingDays": 1,
@@ -575,7 +763,7 @@ Return only valid JSON using this exact structure:
   "recommendedTotalIncVat": 0,
   "depositPercent": 25,
   "depositAmount": 0,
-  "pricingNotes": ["Internal note"]
+  "pricingNotes": ["Show the standard-rate calculation and every genuine extra calculation separately"]
 }
 
 STRUCTURE RULES FOR THE JSON:
@@ -613,7 +801,10 @@ Work out the correct quote structure first. If there are options and separate jo
 
   let preliminaryVatRate = cleanNumber(result.vatRate, 20)
   let preliminaryMode = normaliseQuoteMode(result.quoteMode)
-  let preliminaryOptions = normaliseOptions(result.options, preliminaryVatRate)
+  let preliminaryOptions = normaliseOptions(
+    result.options,
+    preliminaryVatRate
+  )
 
   if (
     looksLikeMultiChoiceQuote(jobDetails) &&
@@ -631,7 +822,38 @@ Work out the correct quote structure first. If there are options and separate jo
 
     preliminaryVatRate = cleanNumber(result.vatRate, 20)
     preliminaryMode = normaliseQuoteMode(result.quoteMode)
-    preliminaryOptions = normaliseOptions(result.options, preliminaryVatRate)
+    preliminaryOptions = normaliseOptions(
+      result.options,
+      preliminaryVatRate
+    )
+  }
+
+  const standardRateGuard = detectStandardRateGuard(jobDetails)
+
+  if (
+    standardRateGuard &&
+    preliminaryMode === 'single' &&
+    (cleanNumber(result.recommendedPriceExVat) <
+      standardRateGuard.expectedMinimumPriceExVat ||
+      cleanNumber(result.estimatedDuration?.workingDays) <
+        standardRateGuard.minimumDaysForTwo)
+  ) {
+    result = await runOpenAI({
+      systemPrompt:
+        systemPrompt +
+        `\n\nFURLADS PRICE/PRODUCTION CORRECTION PASS:\n${standardRateGuard.pricingNotes.join('\n')}\nThe recommended selling price must be at least £${standardRateGuard.expectedMinimumPriceExVat.toFixed(2)} ex VAT when the listed standard scope and provisional extra allowance are included. For a normal two-person crew, do not return fewer than ${standardRateGuard.minimumDaysForTwo} working days for this scope. State any provisional extra assumption clearly in summary and assumptions.`,
+      userPrompt:
+        userPrompt +
+        '\n\nRecalculate the quote using the deterministic Furlads rate check above. Do not omit an extra that Trevor explicitly requested.',
+      photos,
+    })
+
+    preliminaryVatRate = cleanNumber(result.vatRate, 20)
+    preliminaryMode = normaliseQuoteMode(result.quoteMode)
+    preliminaryOptions = normaliseOptions(
+      result.options,
+      preliminaryVatRate
+    )
   }
 
   const vatRate = preliminaryVatRate
@@ -653,6 +875,13 @@ Work out the correct quote structure first. If there are options and separate jo
 
   let priceExVat = cleanNumber(result.recommendedPriceExVat)
   let estimatedDuration = normaliseDuration(result.estimatedDuration)
+  let summary = cleanText(result.summary)
+  let pricingNotes = Array.isArray(result.pricingNotes)
+    ? result.pricingNotes.map(cleanText).filter(Boolean)
+    : []
+  let assumptions = Array.isArray(result.assumptions)
+    ? result.assumptions.map(cleanText).filter(Boolean)
+    : []
 
   if (quoteMode === 'packages' && options.length >= 2) {
     if (combinedOffer) {
@@ -660,7 +889,9 @@ Work out the correct quote structure first. If there are options and separate jo
       estimatedDuration = combinedOffer.estimatedDuration
     } else {
       const packageTotal = Number(
-        options.reduce((sum, option) => sum + option.priceExVat, 0).toFixed(2)
+        options
+          .reduce((sum, option) => sum + option.priceExVat, 0)
+          .toFixed(2)
       )
       if (packageTotal > 0) priceExVat = packageTotal
 
@@ -677,7 +908,8 @@ Work out the correct quote structure first. If there are options and separate jo
             1,
             ...options.map((option) => option.estimatedDuration.teamSize)
           ),
-          description: 'Reference duration from the separately estimated priced items.',
+          description:
+            'Reference duration from the separately estimated priced items.',
         }
       }
     }
@@ -686,11 +918,55 @@ Work out the correct quote structure first. If there are options and separate jo
   if (quoteMode === 'alternatives' && options.length >= 2) {
     const recommendedLabel = cleanText(result.recommendedOptionLabel)
     const recommended =
-      options.find((option) => option.label === recommendedLabel) || options[0]
+      options.find((option) => option.label === recommendedLabel) ||
+      options[0]
 
     if (recommended) {
       priceExVat = recommended.priceExVat
       estimatedDuration = recommended.estimatedDuration
+    }
+  }
+
+  if (standardRateGuard && quoteMode === 'single') {
+    priceExVat = Math.max(
+      priceExVat,
+      standardRateGuard.expectedMinimumPriceExVat
+    )
+
+    if (estimatedDuration.teamSize <= 2) {
+      estimatedDuration = {
+        ...estimatedDuration,
+        workingDays: Math.max(
+          estimatedDuration.workingDays,
+          standardRateGuard.minimumDaysForTwo
+        ),
+        description:
+          estimatedDuration.description ||
+          `Protected by Furlads production check for ${standardRateGuard.areaM2.toFixed(2)}m² of ${standardRateGuard.service.toLowerCase()}.`,
+      }
+    }
+
+    pricingNotes = Array.from(
+      new Set([...standardRateGuard.pricingNotes, ...pricingNotes])
+    )
+
+    if (
+      standardRateGuard.extraDescription &&
+      !assumptions.some((item) =>
+        item.toLowerCase().includes('150mm')
+      )
+    ) {
+      assumptions = [
+        ...assumptions,
+        standardRateGuard.extraDescription,
+      ]
+    }
+
+    if (
+      standardRateGuard.extraPriceExVat > 0 &&
+      !summary.toLowerCase().includes('150mm')
+    ) {
+      summary = `${summary}${summary ? ' ' : ''}Price includes a provisional 150mm-wide decorative gravel border allowance; Trevor can adjust the border width and CHAS will recalculate it.`
     }
   }
 
@@ -709,8 +985,11 @@ Work out the correct quote structure first. If there are options and separate jo
     options,
     combinedOffers,
     combinedOffer,
+    summary,
+    assumptions,
+    pricingNotes,
     estimatedDuration,
-    recommendedPriceExVat: priceExVat,
+    recommendedPriceExVat: roundMoney(priceExVat),
     vatRate,
     vatAmount,
     recommendedTotalIncVat: totalIncVat,
@@ -740,18 +1019,29 @@ async function writeQuote(body: QuoteRequest) {
 
   if (quoteMode === 'packages' && combinedOffer) {
     priceExVat = combinedOffer.priceExVat
-  } else if (quoteMode === 'packages' && options.length >= 2 && priceExVat <= 0) {
+  } else if (
+    quoteMode === 'packages' &&
+    options.length >= 2 &&
+    priceExVat <= 0
+  ) {
     priceExVat = Number(
-      options.reduce((sum, option) => sum + option.priceExVat, 0).toFixed(2)
+      options
+        .reduce((sum, option) => sum + option.priceExVat, 0)
+        .toFixed(2)
     )
-  } else if (quoteMode === 'alternatives' && options.length >= 2 && priceExVat <= 0) {
+  } else if (
+    quoteMode === 'alternatives' &&
+    options.length >= 2 &&
+    priceExVat <= 0
+  ) {
     priceExVat = options[0].priceExVat
   }
 
   if (!jobDetails && options.length === 0) {
     return NextResponse.json(
       {
-        error: 'Enter the confirmed scope of work before writing the quotation.',
+        error:
+          'Enter the confirmed scope of work before writing the quotation.',
       },
       { status: 400 }
     )
@@ -809,6 +1099,7 @@ MULTI-OPTION QUOTES:
 
 SINGLE QUOTES:
 - Explain the finished result, list the scope, then show Price, VAT and Total clearly.
+- If the confirmed scope contains a provisional allowance or assumption, explain it clearly but simply so the customer knows what that price is based on.
 
 Return only valid JSON using this exact structure:
 {
@@ -830,7 +1121,11 @@ Confirmed general scope / context:
 ${jobDetails || 'Use the priced options/packages below.'}
 
 Priced options or packages:
-${options.length ? optionSummaryForPrompt(options) : 'None — this is a single quote.'}
+${
+  options.length
+    ? optionSummaryForPrompt(options)
+    : 'None — this is a single quote.'
+}
 
 Combined all-together offers:
 ${combinedOffersForPrompt(combinedOffers)}
