@@ -31,6 +31,18 @@ function isLandscaping(jobType: string | null | undefined) {
   return String(jobType || '').toLowerCase().includes('land')
 }
 
+function withReporter(value: unknown, name: string, field: 'reportedBy' | 'requestedBy') {
+  if (!Array.isArray(value)) return value
+  return value.map((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return row
+    const item = row as Record<string, unknown>
+    return {
+      ...item,
+      [field]: typeof item[field] === 'string' && item[field].trim() ? item[field] : name,
+    }
+  })
+}
+
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
     const id = validId(params.id)
@@ -63,6 +75,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     const session = await getSession()
     const workerId = session?.workerId ? Number(session.workerId) : null
+    const workerName = String(session?.workerName || 'Worker').trim() || 'Worker'
     const body = await request.json().catch(() => ({}))
     const controls = await saveLandscapingControls(
       id,
@@ -70,8 +83,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         materials: body.materials,
         customerExtras: body.customerExtras,
         extraItems: body.extraItems,
-        siteIssues: body.siteIssues,
-        variations: body.variations,
+        siteIssues: withReporter(body.siteIssues, workerName, 'reportedBy'),
+        variations: withReporter(body.variations, workerName, 'requestedBy'),
         completion: body.completion,
       },
       Number.isInteger(workerId) ? workerId : null
