@@ -125,6 +125,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     const body = await request.json().catch(() => ({}))
     const plan = await saveLandscapingActualCosts(id, {
+      materialProjectedCosts: Array.isArray(body.materialProjectedCosts)
+        ? body.materialProjectedCosts
+        : undefined,
       materialActualCosts: Array.isArray(body.materialActualCosts)
         ? body.materialActualCosts
         : undefined,
@@ -135,14 +138,14 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     return NextResponse.json({ ok: true, plan })
   } catch (error) {
-    console.error('SAVE LANDSCAPING ACTUAL COSTS ERROR', error)
+    console.error('SAVE LANDSCAPING COSTS ERROR', error)
     return NextResponse.json(
       {
         ok: false,
         error:
           error instanceof Error
             ? error.message
-            : 'Failed to save actual landscaping costs.',
+            : 'Failed to save landscaping costs.',
       },
       { status: 500 }
     )
