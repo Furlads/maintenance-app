@@ -28,35 +28,47 @@ export default async function JobDetailLayout({ children, params }: LayoutProps)
   const workerId = Number(session?.workerId)
   const jobId = Number(params.id)
 
+  if (!Number.isInteger(jobId) || jobId <= 0) {
+    return children
+  }
+
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: {
+      id: true,
+      title: true,
+      jobType: true,
+      status: true,
+      assignments: {
+        select: { workerId: true },
+      },
+    },
+  })
+
+  if (!job || ['archived', 'cancelled'].includes(String(job.status || '').toLowerCase())) {
+    return children
+  }
+
   if (
     session &&
     Number.isInteger(workerId) &&
     workerId > 0 &&
-    Number.isInteger(jobId) &&
-    jobId > 0 &&
     isTrevName(session.workerName)
   ) {
-    const trevQuoteVisit = await prisma.job.findFirst({
-      where: {
-        id: jobId,
-        OR: [{ jobType: 'Quote' }, { title: 'Quote' }],
-        status: {
-          notIn: ['archived', 'cancelled'],
-        },
-        assignments: {
-          some: {
-            workerId,
-          },
-        },
-      },
-      select: {
-        id: true,
-      },
-    })
+    const isTrevAssigned = job.assignments.some(
+      (assignment) => assignment.workerId === workerId
+    )
+    const isQuoteVisit =
+      String(job.jobType || '').toLowerCase() === 'quote' ||
+      String(job.title || '').trim().toLowerCase() === 'quote'
 
-    if (trevQuoteVisit) {
-      redirect(`/trev/quote/${trevQuoteVisit.id}`)
+    if (isTrevAssigned && isQuoteVisit) {
+      redirect(`/trev/quote/${job.id}`)
     }
+  }
+
+  if (String(job.jobType || '').toLowerCase().includes('land')) {
+    redirect(`/landscaping/jobs/${job.id}`)
   }
 
   return children
