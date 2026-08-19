@@ -16,6 +16,18 @@ export const TRAVIS_PERKINS_BENCHMARKS = {
     packedWeightKg: 25,
     priceExVat: 6.78,
   },
+  easyJoint12_5KgTub: {
+    label: 'Travis Perkins Azpects EASYJoint 12.5kg tub',
+    packedWeightKg: 12.5,
+    planningCoverageM2: 7.5,
+    coverageRangeM2: '6-9',
+    priceExVat: 43.99,
+  },
+  blackBasaltTradePack20Kg: {
+    label: 'Travis Perkins black basalt decorative gravel 20kg trade pack',
+    packedWeightKg: 20,
+    priceExVat: 5.95,
+  },
   heavyDutyLandscapeFabric2x25: {
     label: 'Travis Perkins 4Trade heavy duty landscape fabric 2m x 25m',
     coverageM2: 50,
