@@ -6,6 +6,7 @@ import {
   getLatestLandscapingPlan,
 } from '@/lib/landscaping-plan'
 import PlanActions from './PlanActions'
+import CostTracker from './CostTracker'
 
 export const dynamic = 'force-dynamic'
 
@@ -215,46 +216,19 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
               <div className="mt-2 text-2xl font-black">
                 {money(plan.projectedCosts.materialsExVat + plan.projectedCosts.plantWasteExVat + plan.projectedCosts.otherExVat)}
               </div>
-              <p className="mt-2 text-xs leading-5 text-zinc-500">Projected until supplier/order costs are checked.</p>
+              <p className="mt-2 text-xs leading-5 text-zinc-500">Projected until actual costs are entered below.</p>
             </div>
           </section>
 
-          <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Ordering</div>
-                <h2 className="mt-1 text-xl font-black">Materials to order</h2>
-              </div>
-              <div className="text-xs font-semibold text-zinc-500">Check supplier quantities/prices before committing the order.</div>
-            </div>
-
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500">
-                    <th className="px-3 py-3">Item</th>
-                    <th className="px-3 py-3">Quantity</th>
-                    <th className="px-3 py-3">Needed</th>
-                    <th className="px-3 py-3">Projected cost ex VAT</th>
-                    <th className="px-3 py-3">Note</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.materials.length ? plan.materials.map((material, index) => (
-                    <tr key={`${material.item}-${index}`} className="border-b border-zinc-100 align-top">
-                      <td className="px-3 py-3 font-bold text-zinc-900">{material.item}</td>
-                      <td className="px-3 py-3 text-zinc-700">{material.quantity}</td>
-                      <td className="px-3 py-3 text-zinc-700">{material.orderFor}</td>
-                      <td className="px-3 py-3 font-bold text-zinc-900">{money(material.estimatedCostExVat)}</td>
-                      <td className="px-3 py-3 text-zinc-600">{material.note || '—'}</td>
-                    </tr>
-                  )) : (
-                    <tr><td colSpan={5} className="px-3 py-6 text-center text-zinc-500">No materials have been identified yet.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <CostTracker
+            jobId={job.id}
+            sellingPriceExVat={plan.projectedCosts.sellingPriceExVat}
+            projectedLabourExVat={plan.projectedCosts.labourExVat}
+            projectedPlantWasteExVat={plan.projectedCosts.plantWasteExVat}
+            projectedOtherExVat={plan.projectedCosts.otherExVat}
+            materials={plan.materials}
+            actualCosts={plan.actualCosts}
+          />
 
           <section className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -267,6 +241,12 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
                     <p className="mt-2 text-sm leading-6 text-zinc-700">{day.target}</p>
                     <div className="mt-2 space-y-1 text-sm text-zinc-600">
                       {day.tasks.map((task, index) => <div key={index}>• {task}</div>)}
+                    </div>
+                    <div className="mt-3 rounded-xl border border-green-200 bg-green-50 px-3 py-3 text-sm leading-6 text-green-950">
+                      <strong>⚡ If ahead:</strong>
+                      <div className="mt-1 space-y-1">
+                        {day.ifAhead.map((task, index) => <div key={`ahead-${index}`}>• {task}</div>)}
+                      </div>
                     </div>
                   </div>
                 ))}
