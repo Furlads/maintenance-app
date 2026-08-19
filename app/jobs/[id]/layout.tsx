@@ -23,6 +23,11 @@ function isTrevName(value: string | null | undefined) {
   )
 }
 
+function isAdminLikeRole(value: string | null | undefined) {
+  const role = String(value || '').trim().toLowerCase()
+  return ['admin', 'office', 'manager', 'owner'].includes(role)
+}
+
 export default async function JobDetailLayout({ children, params }: LayoutProps) {
   const session = await getSession()
   const workerId = Number(session?.workerId)
@@ -68,6 +73,10 @@ export default async function JobDetailLayout({ children, params }: LayoutProps)
   }
 
   if (String(job.jobType || '').toLowerCase().includes('land')) {
+    if (isAdminLikeRole(session?.role)) {
+      redirect(`/admin/landscaping/jobs/${job.id}`)
+    }
+
     redirect(`/landscaping/jobs/${job.id}`)
   }
 
