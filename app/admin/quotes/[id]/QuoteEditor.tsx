@@ -40,6 +40,21 @@ function asNumber(value: string, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+function messageNeedsKellyRewrite(value: unknown) {
+  const text = String(value || '').trim()
+  const lower = text.toLowerCase()
+
+  return (
+    !text ||
+    lower.includes('trevor at furlads') ||
+    lower.includes('cheers,\ntrevor') ||
+    lower.includes('cost (ex. vat)') ||
+    lower.includes('cost breakdown') ||
+    !lower.includes('kelly') ||
+    !lower.includes('main point of contact')
+  )
+}
+
 export default function QuoteEditor({ quote }: QuoteEditorProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -74,6 +89,12 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
 
     return { price, vat, deposit, vatAmount, totalIncVat, depositAmount }
   }, [priceExVat, depositPercent])
+
+  const isMultiOptionQuote = Boolean(
+    quote.quoteWorking &&
+      (quote.quoteWorking.includes('OPTIONS / PACKAGES') ||
+        quote.quoteWorking.includes('ALL-TOGETHER COMBINATIONS'))
+  )
 
   function payload() {
     return {
@@ -158,6 +179,74 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept quote.')
+    } finally {
+      setActionBusy('')
+    }
+  }
+
+  async function requestKellyMessage(additionalInstructions: string) {
+    const response = await fetch('/api/ai/quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'write',
+        customerName,
+        quoteMode: 'single',
+        jobDetails: scope,
+        additionalInstructions,
+        priceExVat: figures.price,
+        vatRate: STANDARD_VAT_RATE,
+        depositPercent: figures.deposit,
+      }),
+    })
+
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Could not regenerate the customer message.')
+    }
+
+    return String(data?.whatsappQuote || '').trim()
+  }
+
+  async function regenerateCustomerMessage() {
+    if (isMultiOptionQuote) {
+      setError('This is a multi-option quote. Regenerate it through CHAS so none of the separate prices or combinations are lost.')
+      return
+    }
+
+    if (!scope.trim() || figures.price <= 0) {
+      setError('The quote needs a scope and price before the customer message can be regenerated.')
+      return
+    }
+
+    try {
+      setActionBusy('regenerate')
+      setError('')
+      setSuccess('')
+
+      let message = await requestKellyMessage(
+        'Regenerate this existing customer quote in the current Furlads style. It must come from Kelly, feel warm, exciting and reassuring, lead with the finished transformation, keep the commercial figures clear but not invoice-like, and state that Kelly is the customer’s main point of contact from here. Do not sign off from Trevor and do not use a Cost breakdown heading.'
+      )
+
+      if (messageNeedsKellyRewrite(message)) {
+        message = await requestKellyMessage(
+          'QUALITY GATE: the previous draft failed the Furlads customer-experience standard. Rewrite it completely. Mandatory: write from Kelly; use the customer’s friendly first name where clear; open with excitement about the transformation; use friendly WhatsApp sections; do not use Cost breakdown or internal pricing-formula language; finish from Kelly at Furlads and explicitly say Kelly is the main point of contact from here. Keep every supplied price, VAT and deposit figure exact.'
+        )
+      }
+
+      if (messageNeedsKellyRewrite(message)) {
+        throw new Error('The regenerated draft still did not meet the Kelly-led quote standard. Please try again.')
+      }
+
+      setCustomerMessage(message)
+      setSuccess('Fresh Kelly-led customer message generated. Review it, then press Save changes.')
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not regenerate the customer message.'
+      )
     } finally {
       setActionBusy('')
     }
@@ -256,7 +345,24 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
       </section>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-black text-zinc-950">Customer-ready message</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-black text-zinc-950">Customer-ready message</h2>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              Kelly can regenerate this from the current scope and figures, then review it before saving.
+            </p>
+          </div>
+          {!isMultiOptionQuote ? (
+            <button
+              type="button"
+              onClick={() => void regenerateCustomerMessage()}
+              disabled={disabled}
+              className="min-h-11 rounded-xl bg-yellow-300 px-4 text-sm font-black text-zinc-950 disabled:opacity-50"
+            >
+              {actionBusy === 'regenerate' ? 'Regenerating…' : '✨ Regenerate with Kelly'}
+            </button>
+          ) : null}
+        </div>
         <textarea value={customerMessage} onChange={(e) => setCustomerMessage(e.target.value)} rows={14} className="mt-4 w-full rounded-xl border border-zinc-300 px-3 py-3 text-sm leading-6" />
       </section>
 
