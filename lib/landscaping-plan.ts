@@ -10,6 +10,7 @@ type DayPlan = {
   heading: string
   target: string
   tasks: string[]
+  ifAhead: string[]
   checkpoint: string
 }
 
@@ -18,7 +19,15 @@ type MaterialItem = {
   quantity: string
   orderFor: string
   estimatedCostExVat: number
+  actualCostExVat: number | null
   note: string
+}
+
+type ActualCosts = {
+  labourExVat: number | null
+  plantWasteExVat: number | null
+  otherExVat: number | null
+  updatedAt: string | null
 }
 
 export type LandscapingPlan = {
@@ -45,6 +54,7 @@ export type LandscapingPlan = {
     projectedGrossProfitExVat: number
     projectedGrossProfitPercent: number
   }
+  actualCosts: ActualCosts
   commercialNotes: string[]
 }
 
@@ -54,6 +64,13 @@ export type InstallWindow = {
   workerIds: number[]
   workerNames: string[]
   explanation: string
+}
+
+export type LandscapingActualCostUpdate = {
+  materialActualCosts?: Array<number | null>
+  labourExVat?: number | null
+  plantWasteExVat?: number | null
+  otherExVat?: number | null
 }
 
 function cleanText(value: unknown) {
@@ -67,6 +84,13 @@ function cleanNumber(value: unknown, fallback = 0) {
 
 function moneyNumber(value: unknown) {
   return Number(cleanNumber(value).toFixed(2))
+}
+
+function optionalMoney(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0) return null
+  return Number(parsed.toFixed(2))
 }
 
 function extractJson(value: string) {
@@ -119,13 +143,60 @@ function dateKey(date: Date) {
   return `${year}-${month}-${day}`
 }
 
+function normaliseStoredPlan(value: unknown): LandscapingPlan | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, any>
+  if (!Number.isFinite(Number(raw.jobId)) || !Array.isArray(raw.materials)) return null
+
+  const materials: MaterialItem[] = raw.materials.map((material: any) => ({
+    item: cleanText(material?.item),
+    quantity: cleanText(material?.quantity) || 'Confirm before order',
+    orderFor: cleanText(material?.orderFor) || 'Before job starts',
+    estimatedCostExVat: moneyNumber(material?.estimatedCostExVat),
+    actualCostExVat: optionalMoney(material?.actualCostExVat),
+    note: cleanText(material?.note),
+  }))
+
+  const dayPlan: DayPlan[] = Array.isArray(raw.dayPlan)
+    ? raw.dayPlan.map((day: any, index: number) => ({
+        day: Number(day?.day) || index + 1,
+        heading: cleanText(day?.heading) || `Installation day ${index + 1}`,
+        target: cleanText(day?.target),
+        tasks: Array.isArray(day?.tasks) ? day.tasks.map(cleanText).filter(Boolean) : [],
+        ifAhead: Array.isArray(day?.ifAhead) ? day.ifAhead.map(cleanText).filter(Boolean) : [],
+        checkpoint: cleanText(day?.checkpoint) || 'Photograph progress and flag anything that changes the agreed scope or programme.',
+      }))
+    : []
+
+  return {
+    ...(raw as LandscapingPlan),
+    materials,
+    dayPlan,
+    actualCosts: {
+      labourExVat: optionalMoney(raw.actualCosts?.labourExVat),
+      plantWasteExVat: optionalMoney(raw.actualCosts?.plantWasteExVat),
+      otherExVat: optionalMoney(raw.actualCosts?.otherExVat),
+      updatedAt: cleanText(raw.actualCosts?.updatedAt) || null,
+    },
+  }
+}
+
 function parsePlanNote(note: string | null | undefined): LandscapingPlan | null {
   if (!note || !note.startsWith(LANDSCAPING_PLAN_PREFIX)) return null
   try {
-    return JSON.parse(note.slice(LANDSCAPING_PLAN_PREFIX.length)) as LandscapingPlan
+    return normaliseStoredPlan(JSON.parse(note.slice(LANDSCAPING_PLAN_PREFIX.length)))
   } catch {
     return null
   }
+}
+
+async function savePlanVersion(plan: LandscapingPlan) {
+  await prisma.jobNote.create({
+    data: {
+      jobId: plan.jobId,
+      note: `${LANDSCAPING_PLAN_PREFIX}${JSON.stringify(plan)}`,
+    },
+  })
 }
 
 export async function getLatestLandscapingPlan(jobId: number) {
@@ -135,7 +206,7 @@ export async function getLatestLandscapingPlan(jobId: number) {
       note: { startsWith: LANDSCAPING_PLAN_PREFIX },
     },
     orderBy: { createdAt: 'desc' },
-    take: 5,
+    take: 10,
     select: { note: true, createdAt: true },
   })
 
@@ -156,8 +227,27 @@ function normaliseDayPlan(value: unknown, totalDays: number): DayPlan[] {
     const raw = input[index] && typeof input[index] === 'object'
       ? (input[index] as Record<string, unknown>)
       : {}
+    const nextRaw = input[index + 1] && typeof input[index + 1] === 'object'
+      ? (input[index + 1] as Record<string, unknown>)
+      : {}
 
     const finalHalfDay = index === requiredEntries - 1 && totalDays % 1 !== 0
+    const nextTasks = Array.isArray(nextRaw.tasks)
+      ? nextRaw.tasks.map(cleanText).filter(Boolean).slice(0, 3)
+      : []
+    const suppliedIfAhead = Array.isArray(raw.ifAhead)
+      ? raw.ifAhead.map(cleanText).filter(Boolean).slice(0, 5)
+      : []
+
+    const ifAhead = suppliedIfAhead.length
+      ? suppliedIfAhead
+      : nextTasks.length
+        ? nextTasks
+        : [
+            finalHalfDay
+              ? 'Bring forward final snagging, clean-down, waste loading and completion photos if the installation is ahead of programme.'
+              : 'If the planned work is finished early, bring forward safe preparation or installation tasks from the next day rather than stopping early.',
+          ]
 
     result.push({
       day: index + 1,
@@ -166,6 +256,7 @@ function normaliseDayPlan(value: unknown, totalDays: number): DayPlan[] {
       tasks: Array.isArray(raw.tasks)
         ? raw.tasks.map(cleanText).filter(Boolean).slice(0, 8)
         : [],
+      ifAhead,
       checkpoint: cleanText(raw.checkpoint) || 'Photograph progress and flag anything that changes the agreed scope or programme.',
     })
   }
@@ -173,22 +264,70 @@ function normaliseDayPlan(value: unknown, totalDays: number): DayPlan[] {
   return result
 }
 
-function normaliseMaterials(value: unknown): MaterialItem[] {
+function normaliseMaterials(value: unknown, previousMaterials: MaterialItem[] = []): MaterialItem[] {
   if (!Array.isArray(value)) return []
 
   return value
     .slice(0, 30)
     .map((raw) => {
       const item = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+      const itemName = cleanText(item.item)
+      const previous = previousMaterials.find(
+        (material) => material.item.trim().toLowerCase() === itemName.trim().toLowerCase()
+      )
+
       return {
-        item: cleanText(item.item),
-        quantity: cleanText(item.quantity) || 'TBC before order',
+        item: itemName,
+        quantity: cleanText(item.quantity) || 'Confirm before order',
         orderFor: cleanText(item.orderFor) || 'Before job starts',
         estimatedCostExVat: moneyNumber(item.estimatedCostExVat),
+        actualCostExVat: previous?.actualCostExVat ?? null,
         note: cleanText(item.note),
       }
     })
     .filter((item) => item.item)
+}
+
+function hasUsefulMeasurements(value: string) {
+  return /\d+(?:\.\d+)?\s*(?:m|m2|m²|sqm|x|×)/i.test(value)
+}
+
+function hasTooManyTbcMaterials(materials: MaterialItem[]) {
+  if (!materials.length) return false
+  const tbcCount = materials.filter((material) => /\bTBC\b/i.test(material.quantity)).length
+  return tbcCount > Math.max(1, Math.floor(materials.length * 0.25))
+}
+
+export async function saveLandscapingActualCosts(
+  jobId: number,
+  update: LandscapingActualCostUpdate
+) {
+  const current = await getLatestLandscapingPlan(jobId)
+  if (!current) throw new Error('Generate the landscaping pack before entering actual costs.')
+
+  const materialActualCosts = Array.isArray(update.materialActualCosts)
+    ? update.materialActualCosts
+    : []
+
+  const updated: LandscapingPlan = {
+    ...current,
+    materials: current.materials.map((material, index) => ({
+      ...material,
+      actualCostExVat:
+        index < materialActualCosts.length
+          ? optionalMoney(materialActualCosts[index])
+          : material.actualCostExVat,
+    })),
+    actualCosts: {
+      labourExVat: optionalMoney(update.labourExVat),
+      plantWasteExVat: optionalMoney(update.plantWasteExVat),
+      otherExVat: optionalMoney(update.otherExVat),
+      updatedAt: new Date().toISOString(),
+    },
+  }
+
+  await savePlanVersion(updated)
+  return updated
 }
 
 export async function findNextAvailableInstallWindow(params: {
@@ -342,6 +481,7 @@ export async function generateLandscapingPlan(jobId: number): Promise<Landscapin
   const quote = job.quotes[0]
   if (!quote) throw new Error('This landscaping job is not linked to a quote.')
 
+  const previousPlan = await getLatestLandscapingPlan(jobId)
   const totalDays = Math.max(
     1,
     cleanNumber(quote.estimatedDays, job.durationMinutes ? job.durationMinutes / INSTALL_DAY_MINUTES : 1)
@@ -353,14 +493,49 @@ export async function generateLandscapingPlan(jobId: number): Promise<Landscapin
   if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.')
   const openai = new OpenAI({ apiKey })
 
-  const response = await openai.responses.create({
+  const instructions = `You are CHAS creating an INTERNAL landscaping job pack for Furlads after a customer has accepted a quotation. This is not customer wording. Build a practical plan for UK/Shropshire landscaping crews. Do not change the accepted selling price or the approved total duration. The worker day plan must be achievable by humans, safe, practical and sequenced logically.
+
+MATERIAL QUANTITIES — IMPORTANT:
+- TBC is the exception, not the default.
+- If dimensions are supplied, calculate sensible provisional ordering quantities from them and state the assumption in the note.
+- For paving, turf, artificial grass and membrane, calculate area and include sensible wastage/overlap where appropriate.
+- For sub-base and bedding layers, calculate provisional volume from area × a sensible standard depth, and give a useful order quantity such as m³ and/or approximate tonnes where reasonable. State the assumed depth/density rather than writing TBC.
+- For gravel strips/borders, use supplied dimensions or the accepted quote assumption to calculate area/volume where possible.
+- For fencing, calculate panels/bays/posts/gravel boards from the accepted run length and specification where practical.
+- Use “Confirm before order” only for genuinely unknown product specifications or site-dependent quantities that cannot reasonably be calculated from the accepted information.
+- Never invent false precision. A clearly labelled provisional calculated quantity is better than TBC.
+
+DAY PLAN — IMPORTANT:
+- Every day must include an ifAhead list.
+- ifAhead tells the crew exactly what safe work can be brought forward from the NEXT day if today's target is completed early.
+- Pull forward preparation, setting out, excavation, sub-base, cuts, material moves, edging, snagging or other logical next-stage tasks where dependencies allow.
+- Do not tell the crew to stop early just because the day's target is complete.
+- Do not bring forward work that depends on curing, missing deliveries, customer approval or another unsafe/unready dependency.
+- On the final day, ifAhead should focus on snagging, cleaning, waste loading, photos and handover preparation.
+
+Include sensible material, waste, plant and consumable cost allowances for internal profitability planning, but clearly treat them as projected allowances to verify against supplier/order costs. Do not include selling prices in worker wording. Return JSON only.`
+
+  const input = `Accepted landscaping job\nCustomer: ${job.customer.name}\nPostcode: ${job.customer.postcode || ''}\nScope: ${quote.scope}\nInternal quote notes: ${quote.internalNotes || ''}\nCHAS quote working: ${quote.quoteWorking || ''}\nAccepted selling price ex VAT: £${quote.priceExVat.toFixed(2)}\nApproved install allowance: ${totalDays} working days\nRecommended team size: ${teamSize}\n\nReturn this exact JSON shape:\n{\n  "workerSummary": "short plain-English brief for the lads",\n  "dayPlan": [{"day":1,"heading":"","target":"","tasks":[""],"ifAhead":["safe task to bring forward from next day"],"checkpoint":""}],\n  "materials": [{"item":"","quantity":"calculated provisional order quantity where possible","orderFor":"Before job starts","estimatedCostExVat":0,"note":"assumptions/calculation or genuine confirmation needed"}],\n  "plantTools": [""],\n  "siteChecks": [""],\n  "risks": [""],\n  "plantWasteCostExVat": 0,\n  "otherCostExVat": 0,\n  "commercialNotes": ["Internal assumptions or things Kelly/Trev must verify before order"]\n}\n\nThe dayPlan must contain ${Math.ceil(totalDays)} entries, with the final entry described as a half-day finish if the approved duration ends in .5.`
+
+  let response = await openai.responses.create({
     model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-    instructions: `You are CHAS creating an INTERNAL landscaping job pack for Furlads after a customer has accepted a quotation. This is not customer wording. Build a practical plan for UK/Shropshire landscaping crews. Do not change the accepted selling price or the approved total duration. The worker day plan must be achievable by humans, safe, practical and sequenced logically. Materials must be items that should genuinely be ordered for the accepted scope. If a quantity cannot be known from the scope, write TBC before order rather than inventing false precision. Include sensible waste/plant/consumable cost allowances for internal profitability planning, but clearly treat them as projected allowances to verify before ordering. Do not include selling prices in the worker wording. Return JSON only.`,
-    input: `Accepted landscaping job\nCustomer: ${job.customer.name}\nPostcode: ${job.customer.postcode || ''}\nScope: ${quote.scope}\nInternal quote notes: ${quote.internalNotes || ''}\nCHAS quote working: ${quote.quoteWorking || ''}\nAccepted selling price ex VAT: £${quote.priceExVat.toFixed(2)}\nApproved install allowance: ${totalDays} working days\nRecommended team size: ${teamSize}\n\nReturn this exact JSON shape:\n{\n  "workerSummary": "short plain-English brief for the lads",\n  "dayPlan": [{"day":1,"heading":"","target":"","tasks":[""],"checkpoint":""}],\n  "materials": [{"item":"","quantity":"","orderFor":"Before job starts","estimatedCostExVat":0,"note":""}],\n  "plantTools": [""],\n  "siteChecks": [""],\n  "risks": [""],\n  "plantWasteCostExVat": 0,\n  "otherCostExVat": 0,\n  "commercialNotes": ["Internal assumptions or things Kelly/Trev must verify before order"]\n}\n\nThe dayPlan must contain ${Math.ceil(totalDays)} entries, with the final entry described as a half-day finish if the approved duration ends in .5.`,
+    instructions,
+    input,
   })
 
-  const parsed = extractJson(response.output_text || '') as Record<string, unknown>
-  const materials = normaliseMaterials(parsed.materials)
+  let parsed = extractJson(response.output_text || '') as Record<string, unknown>
+  let materials = normaliseMaterials(parsed.materials, previousPlan?.materials || [])
+
+  if (hasUsefulMeasurements(quote.scope) && hasTooManyTbcMaterials(materials)) {
+    response = await openai.responses.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
+      instructions: `${instructions}\n\nQUALITY CORRECTION: The first material list used too many TBC quantities even though measurements are available. Recalculate the material list. Use practical provisional quantities with clearly stated assumptions. Keep TBC only where a quantity genuinely cannot be derived.`,
+      input,
+    })
+    parsed = extractJson(response.output_text || '') as Record<string, unknown>
+    materials = normaliseMaterials(parsed.materials, previousPlan?.materials || [])
+  }
+
   const materialsExVat = moneyNumber(materials.reduce((sum, item) => sum + item.estimatedCostExVat, 0))
   const plantWasteExVat = moneyNumber(parsed.plantWasteCostExVat)
   const otherExVat = moneyNumber(parsed.otherCostExVat)
@@ -395,19 +570,19 @@ export async function generateLandscapingPlan(jobId: number): Promise<Landscapin
       projectedGrossProfitExVat,
       projectedGrossProfitPercent,
     },
+    actualCosts: previousPlan?.actualCosts || {
+      labourExVat: null,
+      plantWasteExVat: null,
+      otherExVat: null,
+      updatedAt: null,
+    },
     commercialNotes: [
       `Labour uses a provisional internal planning allowance of £${FIELD_LABOUR_COST_PER_PERSON_DAY} per person-day.`,
-      'Material, plant and waste costs are projected planning allowances and must be checked against supplier/order costs before relying on final margin.',
+      'Material, plant and waste costs are projected planning allowances until replaced with actual order/invoice costs in the live cost tracker.',
       ...(Array.isArray(parsed.commercialNotes) ? parsed.commercialNotes.map(cleanText).filter(Boolean).slice(0, 12) : []),
     ],
   }
 
-  await prisma.jobNote.create({
-    data: {
-      jobId: job.id,
-      note: `${LANDSCAPING_PLAN_PREFIX}${JSON.stringify(plan)}`,
-    },
-  })
-
+  await savePlanVersion(plan)
   return plan
 }
