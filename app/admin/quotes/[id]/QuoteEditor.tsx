@@ -26,6 +26,8 @@ type QuoteEditorProps = {
   }
 }
 
+const STANDARD_VAT_RATE = 20
+
 function money(value: number) {
   return new Intl.NumberFormat('en-GB', {
     style: 'currency',
@@ -54,7 +56,6 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
   const [customerMessage, setCustomerMessage] = useState(quote.customerMessage || '')
   const [internalNotes, setInternalNotes] = useState(quote.internalNotes || '')
   const [priceExVat, setPriceExVat] = useState(String(quote.priceExVat || 0))
-  const [vatRate, setVatRate] = useState(String(quote.vatRate || 20))
   const [depositPercent, setDepositPercent] = useState(String(quote.depositPercent ?? 25))
   const [estimatedDays, setEstimatedDays] = useState(
     quote.estimatedDays == null ? '' : String(quote.estimatedDays)
@@ -65,14 +66,14 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
 
   const figures = useMemo(() => {
     const price = asNumber(priceExVat)
-    const vat = asNumber(vatRate, 20)
+    const vat = STANDARD_VAT_RATE
     const deposit = asNumber(depositPercent, 25)
     const vatAmount = Number(((price * vat) / 100).toFixed(2))
     const totalIncVat = Number((price + vatAmount).toFixed(2))
     const depositAmount = Number(((totalIncVat * deposit) / 100).toFixed(2))
 
     return { price, vat, deposit, vatAmount, totalIncVat, depositAmount }
-  }, [priceExVat, vatRate, depositPercent])
+  }, [priceExVat, depositPercent])
 
   function payload() {
     return {
@@ -85,7 +86,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
       customerMessage,
       internalNotes,
       priceExVat: figures.price,
-      vatRate: figures.vat,
+      vatRate: STANDARD_VAT_RATE,
       vatAmount: figures.vatAmount,
       totalIncVat: figures.totalIncVat,
       depositPercent: figures.deposit,
@@ -219,7 +220,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-zinc-500">VAT %</span>
-            <input type="number" step="0.01" value={vatRate} onChange={(e) => setVatRate(e.target.value)} className="min-h-11 w-full rounded-xl border border-zinc-300 px-3 text-sm" />
+            <input type="number" value={STANDARD_VAT_RATE} readOnly className="min-h-11 w-full cursor-not-allowed rounded-xl border border-zinc-200 bg-zinc-100 px-3 text-sm font-bold text-zinc-600" />
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-zinc-500">Deposit %</span>
