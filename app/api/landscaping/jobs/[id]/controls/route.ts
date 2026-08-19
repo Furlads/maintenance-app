@@ -66,7 +66,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const body = await request.json().catch(() => ({}))
     const controls = await saveLandscapingControls(
       id,
-      body.materials,
+      {
+        materials: body.materials,
+        customerExtras: body.customerExtras,
+        extraItems: body.extraItems,
+      },
       Number.isInteger(workerId) ? workerId : null
     )
 
