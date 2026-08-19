@@ -72,7 +72,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
           internalNotes: quote.internalNotes,
           quoteWorking: quote.quoteWorking,
           priceExVat: quote.priceExVat,
-          vatRate: quote.vatRate,
+          vatRate: 20,
           depositPercent: quote.depositPercent,
           estimatedDays: quote.estimatedDays,
           estimatedTeamSize: quote.estimatedTeamSize,
