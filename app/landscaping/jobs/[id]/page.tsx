@@ -200,6 +200,19 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
               </div>
             </section>
 
+            <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+              <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Load before leaving</div>
+              <h2 className="mt-1 text-xl font-black text-blue-950">Plant & tools needed for this job</h2>
+              <p className="mt-1 text-sm leading-6 text-blue-900">Check this list before setting off so the right kit, boards and any extra tools are on the van.</p>
+              <div className="mt-4 space-y-2 rounded-2xl bg-white p-4 text-sm leading-6 text-zinc-800 ring-1 ring-inset ring-blue-200">
+                <div className="font-semibold text-zinc-950">• Boards / plywood / suitable ground-protection sheets for waste, grabber area, mixer and material storage</div>
+                {plan.plantTools.length ? plan.plantTools.map((item, index) => <div key={index}>• {workerSafeText(item)}</div>) : <div>• Normal landscaping tools for the agreed scope.</div>}
+                {controls.extraItems.filter((item) => item.type === 'tool').map((item) => (
+                  <div key={`extra-tool-${item.id}`} className="font-bold text-blue-800">+ {workerSafeText(item.item)}{item.quantity ? ` — ${workerSafeText(item.quantity)}` : ''} ({extraStatus(item.status)})</div>
+                ))}
+              </div>
+            </section>
+
             {controls.customerExtras.length || controls.extraItems.length ? (
               <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
                 <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Live additions</div>
@@ -291,23 +304,13 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-                  <h2 className="text-lg font-black">Plant & tools</h2>
-                  <div className="mt-3 space-y-2 text-sm text-zinc-700">
-                    <div className="font-semibold text-zinc-900">• Boards / plywood / suitable ground-protection sheets for waste, grabber area, mixer and material storage</div>
-                    {plan.plantTools.length ? plan.plantTools.map((item, index) => <div key={index}>• {workerSafeText(item)}</div>) : <div>Normal landscaping tools for the agreed scope.</div>}
-                    {controls.extraItems.filter((item) => item.type === 'tool').map((item) => <div key={`extra-tool-${item.id}`} className="font-semibold text-blue-800">+ {workerSafeText(item.item)}{item.quantity ? ` — ${workerSafeText(item.quantity)}` : ''} ({extraStatus(item.status)})</div>)}
-                  </div>
-                </div>
-                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-                  <h2 className="text-lg font-black text-amber-950">Checks before / during the job</h2>
-                  <div className="mt-3 space-y-2 text-sm leading-6 text-amber-950">
-                    <div>• Confirm string lines/profiles/levels are set and checked before committing to excavation, edges or laying.</div>
-                    <div>• Confirm boards/ground protection are down before spoil, waste, mixer or materials are placed on customer surfaces.</div>
-                    {plan.siteChecks.map((item, index) => <div key={index}>• {workerSafeText(item)}</div>)}
-                    {plan.risks.map((item, index) => <div key={`risk-${index}`}>⚠ {workerSafeText(item)}</div>)}
-                  </div>
+              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <h2 className="text-lg font-black text-amber-950">Checks before / during the job</h2>
+                <div className="mt-3 space-y-2 text-sm leading-6 text-amber-950">
+                  <div>• Confirm string lines/profiles/levels are set and checked before committing to excavation, edges or laying.</div>
+                  <div>• Confirm boards/ground protection are down before spoil, waste, mixer or materials are placed on customer surfaces.</div>
+                  {plan.siteChecks.map((item, index) => <div key={index}>• {workerSafeText(item)}</div>)}
+                  {plan.risks.map((item, index) => <div key={`risk-${index}`}>⚠ {workerSafeText(item)}</div>)}
                 </div>
               </div>
             </section>
