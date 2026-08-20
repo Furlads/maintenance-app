@@ -3,9 +3,12 @@ import { notFound } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import {
   getMaintenanceControls,
+  getMaintenancePhotoHistory,
+  getMaintenancePropertyMemory,
   getPreviousMaintenanceNextVisitNote,
 } from '@/lib/maintenance-controls'
 import MaintenanceVisitActions from './MaintenanceVisitActions'
+import MaintenanceChas from './MaintenanceChas'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +32,15 @@ function formatDate(value?: Date | null) {
   }).format(value)
 }
 
+function formatShortDate(value?: Date | null) {
+  if (!value) return ''
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(value)
+}
+
 export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
   const jobId = Number(params.id)
   if (!Number.isInteger(jobId) || jobId <= 0) notFound()
@@ -46,9 +58,11 @@ export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
 
   if (!job || String(job.jobType || '').trim().toLowerCase() !== 'maintenance') notFound()
 
-  const [controls, previousNextVisitNote] = await Promise.all([
+  const [controls, previousNextVisitNote, previousPropertyMemory, photoHistory] = await Promise.all([
     getMaintenanceControls(job.id),
     getPreviousMaintenanceNextVisitNote(job.customerId, job.id),
+    getMaintenancePropertyMemory(job.customerId, job.id),
+    getMaintenancePhotoHistory(job.customerId, job.id),
   ])
 
   const assigned = job.assignments
@@ -57,6 +71,7 @@ export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
 
   const workText = String(job.notes || '').trim() || String(job.title || '').trim() || 'Carry out the agreed maintenance visit.'
   const address = job.address || job.customer.address || job.customer.postcode || 'Address not saved'
+  const propertyMemory = controls.propertyMemory || previousPropertyMemory
 
   return (
     <main className="min-h-screen bg-zinc-100 px-3 py-4 text-zinc-950 sm:px-5">
@@ -91,6 +106,16 @@ export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
           </div>
         </section>
 
+        {propertyMemory ? (
+          <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">Property memory</div>
+            <h2 className="mt-1 text-xl font-black text-amber-950">Know this before you start</h2>
+            <div className="mt-3 whitespace-pre-wrap rounded-2xl bg-white p-4 text-sm font-semibold leading-6 text-zinc-800 ring-1 ring-inset ring-amber-200">
+              {propertyMemory}
+            </div>
+          </section>
+        ) : null}
+
         {previousNextVisitNote ? (
           <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
             <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">From the last visit</div>
@@ -100,6 +125,8 @@ export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
             </div>
           </section>
         ) : null}
+
+        <MaintenanceChas jobId={job.id} />
 
         <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
           <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Property / access</div>
@@ -115,7 +142,27 @@ export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
           </div>
         </section>
 
-        <MaintenanceVisitActions jobId={job.id} initialControls={controls} />
+        {photoHistory.length ? (
+          <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Previous maintenance photos</div>
+            <h2 className="mt-1 text-xl font-black text-blue-950">Quick property history</h2>
+            <p className="mt-1 text-sm leading-6 text-blue-900">Useful for seeing how hedges, borders, lawns, weeds or recurring issues have changed over time.</p>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {photoHistory.slice(0, 9).map((photo) => (
+                <a key={photo.id} href={photo.imageUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-2xl bg-white ring-1 ring-inset ring-blue-200">
+                  <img src={photo.imageUrl} alt="Previous maintenance visit" className="aspect-square w-full object-cover" />
+                  <div className="px-3 py-2 text-[11px] font-bold text-zinc-600">{formatShortDate(photo.createdAt)} · Job #{photo.jobId}</div>
+                </a>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <MaintenanceVisitActions
+          jobId={job.id}
+          initialControls={controls}
+          initialPropertyMemory={propertyMemory}
+        />
 
         <div className="pb-5 text-center text-xs font-medium text-zinc-400">
           Job #{job.id} · Maintenance is intentionally quick: do the work, leave useful notes, flag opportunities, finish the visit.
