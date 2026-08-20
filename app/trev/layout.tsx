@@ -14,6 +14,10 @@ export default function TrevLayout({ children }: Props) {
           -webkit-tap-highlight-color: transparent;
         }
 
+        .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(5) {
+          display: none !important;
+        }
+
         @media (max-width: 767px) {
           .trev-mobile-shell > main > div {
             padding-left: 10px !important;
@@ -75,28 +79,20 @@ export default function TrevLayout({ children }: Props) {
             line-height: 1.25 !important;
           }
 
-          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(5) {
-            order: 1;
-            grid-column: 1 / -1;
-            min-height: 94px;
-            border-color: rgba(250, 204, 21, 0.45) !important;
-            background: rgba(250, 204, 21, 0.14) !important;
-          }
-
           .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(1) {
-            order: 2;
+            order: 1;
           }
 
           .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(3) {
-            order: 3;
+            order: 2;
           }
 
           .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(4) {
-            order: 4;
+            order: 3;
           }
 
           .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(2) {
-            order: 5;
+            order: 4;
           }
 
           .trev-mobile-shell main section a,
