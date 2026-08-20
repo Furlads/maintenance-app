@@ -20,6 +20,11 @@ function validId(value: string) {
   return Number.isInteger(id) && id > 0 ? id : null
 }
 
+function isAdminLikeRole(role: string | null | undefined) {
+  const value = String(role || '').trim().toLowerCase()
+  return value === 'admin' || value === 'office' || value === 'manager' || value === 'owner'
+}
+
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
     const jobId = validId(params.jobId)
@@ -28,7 +33,15 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     const session = await getSession()
-    const workerId = session?.workerId ? Number(session.workerId) : null
+    if (!session?.workerId) {
+      return NextResponse.json({ ok: false, error: 'Unauthenticated.' }, { status: 401 })
+    }
+
+    if (!isAdminLikeRole(session.role)) {
+      return NextResponse.json({ ok: false, error: 'Forbidden.' }, { status: 403 })
+    }
+
+    const workerId = Number(session.workerId)
     const body = await request.json().catch(() => ({}))
     const action = String(body.action || '')
 

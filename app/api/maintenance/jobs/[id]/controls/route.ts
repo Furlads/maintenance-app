@@ -46,6 +46,11 @@ async function getJob(id: number) {
 
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
+    const session = await getSession()
+    if (!session?.workerId) {
+      return NextResponse.json({ ok: false, error: 'Unauthenticated.' }, { status: 401 })
+    }
+
     const id = validId(params.id)
     if (!id) return NextResponse.json({ ok: false, error: 'Invalid job id.' }, { status: 400 })
 
@@ -65,6 +70,11 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
+    const session = await getSession()
+    if (!session?.workerId) {
+      return NextResponse.json({ ok: false, error: 'Unauthenticated.' }, { status: 401 })
+    }
+
     const id = validId(params.id)
     if (!id) return NextResponse.json({ ok: false, error: 'Invalid job id.' }, { status: 400 })
 
@@ -74,9 +84,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ ok: false, error: 'This is not a maintenance job.' }, { status: 400 })
     }
 
-    const session = await getSession()
-    const workerId = session?.workerId ? Number(session.workerId) : null
-    const workerName = String(session?.workerName || 'Worker').trim() || 'Worker'
+    const workerId = Number(session.workerId)
+    const workerName = String(session.workerName || 'Worker').trim() || 'Worker'
     const body = await request.json().catch(() => ({}))
 
     const controls = await saveMaintenanceControls(
