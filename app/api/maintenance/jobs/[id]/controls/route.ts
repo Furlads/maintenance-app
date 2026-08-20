@@ -76,9 +76,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const controls = await saveMaintenanceControls(
       id,
       {
+        propertyMemory: body.propertyMemory,
         nextVisitNote: body.nextVisitNote,
         extraWork: withReporter(body.extraWork, workerName),
         outcome: body.outcome,
+        completionReason: body.completionReason,
         completionNote: body.completionNote,
         completedAt: body.completedAt,
       },
