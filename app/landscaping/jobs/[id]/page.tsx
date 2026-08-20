@@ -246,6 +246,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
               initialSiteIssues={controls.siteIssues}
               initialVariations={controls.variations}
               initialCompletion={controls.completion}
+              section="variation"
             />
 
             <section className="space-y-3">
@@ -314,6 +315,14 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
                 </div>
               </div>
             </section>
+
+            <WorkerSiteActions
+              jobId={job.id}
+              initialSiteIssues={controls.siteIssues}
+              initialVariations={controls.variations}
+              initialCompletion={controls.completion}
+              section="bottom"
+            />
           </>
         )}
 
