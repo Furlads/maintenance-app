@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import prisma from '@/lib/prisma'
-import MaintenanceTimerCleaner from './MaintenanceTimerCleaner'
+import MaintenanceTodayBridge from './MaintenanceTodayBridge'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +19,7 @@ export default async function TodayLayout({ children }: Props) {
 
   return (
     <>
-      <MaintenanceTimerCleaner maintenanceJobIds={maintenanceJobs.map((job) => job.id)} />
+      <MaintenanceTodayBridge maintenanceJobIds={maintenanceJobs.map((job) => job.id)} />
       {children}
     </>
   )
