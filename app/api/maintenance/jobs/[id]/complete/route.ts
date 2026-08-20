@@ -17,6 +17,13 @@ function cleanText(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function cleanReason(value: unknown) {
+  const text = cleanText(value)
+  return ['no_access', 'weather', 'customer_cancelled', 'materials', 'ran_out_of_time', 'other'].includes(text)
+    ? text
+    : ''
+}
+
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     const id = validId(params.id)
@@ -34,11 +41,16 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const body = await request.json().catch(() => ({}))
     const outcome = body.outcome === 'could_not_complete' ? 'could_not_complete' : 'completed'
+    const completionReason = cleanReason(body.completionReason)
     const completionNote = cleanText(body.completionNote)
     const nextVisitNote = cleanText(body.nextVisitNote)
 
-    if (outcome === 'could_not_complete' && !completionNote) {
-      return NextResponse.json({ ok: false, error: 'Add a short reason before marking the visit as not completed.' }, { status: 400 })
+    if (outcome === 'could_not_complete' && !completionReason) {
+      return NextResponse.json({ ok: false, error: 'Choose why the visit could not be completed.' }, { status: 400 })
+    }
+
+    if (outcome === 'could_not_complete' && completionReason === 'other' && !completionNote) {
+      return NextResponse.json({ ok: false, error: 'Add a short note explaining what stopped the visit.' }, { status: 400 })
     }
 
     const session = await getSession()
@@ -49,9 +61,11 @@ export async function POST(request: Request, { params }: RouteContext) {
     const controls = await saveMaintenanceControls(
       id,
       {
+        propertyMemory: current.propertyMemory,
         nextVisitNote,
         extraWork: current.extraWork,
         outcome,
+        completionReason: outcome === 'could_not_complete' ? completionReason as any : '',
         completionNote,
         completedAt,
       },
