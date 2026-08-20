@@ -48,6 +48,7 @@ export type LandscapingCompletion = {
   workerSignedOffAt: string
   customerStatus: CustomerCompletionStatus
   customerName: string
+  customerConfirmed: boolean
   customerSignedOffAt: string
   outstandingItems: string
   completedAt: string
@@ -71,6 +72,7 @@ const EMPTY_COMPLETION: LandscapingCompletion = {
   workerSignedOffAt: '',
   customerStatus: '',
   customerName: '',
+  customerConfirmed: false,
   customerSignedOffAt: '',
   outstandingItems: '',
   completedAt: '',
@@ -206,13 +208,15 @@ function normaliseCompletion(value: unknown): LandscapingCompletion {
   const legacyQualityChecked = Boolean(row.levelsFallsChecked) && Boolean(row.finishChecked) && Boolean(row.siteClean)
   const legacyWorkerSignedOff = Boolean(row.toolsMaterialsCollected) && Boolean(row.issueReportedIfNeeded)
   const legacyCustomerChecked = Boolean(row.customerChecked)
+  const customerStatus = row.customerStatus === undefined && legacyCustomerChecked ? 'happy' : cleanCustomerStatus(row.customerStatus)
 
   return {
     qualityChecked: row.qualityChecked === undefined ? legacyQualityChecked : Boolean(row.qualityChecked),
     workerSignedOff: row.workerSignedOff === undefined ? legacyWorkerSignedOff : Boolean(row.workerSignedOff),
     workerSignedOffAt: cleanText(row.workerSignedOffAt),
-    customerStatus: row.customerStatus === undefined && legacyCustomerChecked ? 'happy' : cleanCustomerStatus(row.customerStatus),
+    customerStatus,
     customerName: cleanText(row.customerName),
+    customerConfirmed: row.customerConfirmed === undefined ? legacyCustomerChecked : Boolean(row.customerConfirmed),
     customerSignedOffAt: cleanText(row.customerSignedOffAt),
     outstandingItems: cleanText(row.outstandingItems),
     completedAt: cleanText(row.completedAt),
