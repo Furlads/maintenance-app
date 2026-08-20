@@ -80,5 +80,9 @@ export default async function JobDetailLayout({ children, params }: LayoutProps)
     redirect(`/landscaping/jobs/${job.id}`)
   }
 
+  if (String(job.jobType || '').trim().toLowerCase() === 'maintenance') {
+    redirect(`/maintenance/jobs/${job.id}`)
+  }
+
   return children
 }
