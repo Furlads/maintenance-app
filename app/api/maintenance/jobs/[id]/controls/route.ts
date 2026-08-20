@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
-import { getMaintenanceControls, saveMaintenanceControls } from '@/lib/maintenance-controls'
+import {
+  getMaintenanceControls,
+  saveMaintenanceControls,
+  type MaintenanceExtraWork,
+} from '@/lib/maintenance-controls'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,8 +21,10 @@ function isMaintenance(jobType: string | null | undefined) {
   return String(jobType || '').trim().toLowerCase() === 'maintenance'
 }
 
-function withReporter(value: unknown, reporter: string) {
-  if (!Array.isArray(value)) return value
+function withReporter(value: unknown, reporter: string): MaintenanceExtraWork[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) return []
+
   return value.map((row) => {
     if (!row || typeof row !== 'object' || Array.isArray(row)) return row
     const item = row as Record<string, unknown>
@@ -28,7 +34,7 @@ function withReporter(value: unknown, reporter: string) {
         ? item.reportedBy
         : reporter,
     }
-  })
+  }) as MaintenanceExtraWork[]
 }
 
 async function getJob(id: number) {
