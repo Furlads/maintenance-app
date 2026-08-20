@@ -2,6 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { ensureRollingRecurringMaintenanceJobs } from '@/lib/recurring-maintenance'
 
 const PREP_START = '08:30'
 const PREP_START_MINUTES = 8 * 60 + 30
@@ -628,6 +629,8 @@ export async function POST() {
     const today = startOfToday()
     travelCache.clear()
 
+    const recurring = await ensureRollingRecurringMaintenanceJobs()
+
     const workers = (await prisma.worker.findMany({
       where: { active: true },
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
@@ -682,6 +685,7 @@ export async function POST() {
 
     return NextResponse.json({
       ok: true,
+      recurringCreated: recurring.createdCount,
       scheduled,
       message: 'Diary rebuilt successfully.',
     })
