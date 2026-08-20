@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import TrevLegacyPauseCleaner from './TrevLegacyPauseCleaner'
 import TrevMobileDock from './TrevMobileDock'
 
 type Props = {
@@ -129,6 +130,7 @@ export default function TrevLayout({ children }: Props) {
         }
       `}</style>
       {children}
+      <TrevLegacyPauseCleaner />
       <TrevMobileDock />
     </div>
   )
