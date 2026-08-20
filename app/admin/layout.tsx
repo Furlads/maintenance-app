@@ -13,6 +13,7 @@ const adminNavItems = [
   { href: '/admin/schedule', label: 'Schedule' },
   { href: '/admin/inbox', label: 'Inbox' },
   { href: '/admin/quotes', label: 'Quotes' },
+  { href: '/admin/maintenance-opportunities', label: 'Opportunities' },
   { href: '/jobs', label: 'Jobs' },
   { href: '/customers', label: 'Customers' },
   { href: '/workers', label: 'Workers' },
@@ -233,7 +234,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             maxWidth: 900,
             margin: '0 auto',
             display: 'grid',
-            gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+            gridTemplateColumns: 'repeat(8, minmax(0, 1fr))',
             gap: 5,
           }}
         >
@@ -275,7 +276,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <style jsx>{`
         @media (min-width: 1024px) {
           .admin-layout-shell {
-            grid-template-columns: 260px minmax(0, 1fr) !important;
+            grid-templateColumns: 260px minmax(0, 1fr) !important;
           }
 
           .admin-sidebar {
