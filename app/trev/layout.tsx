@@ -19,20 +19,84 @@ export default function TrevLayout({ children }: Props) {
             padding-left: 10px !important;
             padding-right: 10px !important;
             padding-top: 10px !important;
-            padding-bottom: 96px !important;
+            padding-bottom: 108px !important;
           }
 
           .trev-mobile-shell > main > div > section:first-child {
             border-radius: 20px !important;
+            padding: 16px !important;
           }
 
-          .trev-mobile-shell > main > div > section:first-child a {
-            min-height: 48px;
-            flex: 1 1 46%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
+          .trev-mobile-shell > main > div > section:first-child > div:first-child {
+            gap: 10px !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div:first-child > div:first-child > p {
+            display: none !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div:first-child > div:first-child > h1 {
+            margin-top: 6px !important;
+            font-size: 2rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div:first-child > div:first-child > div:last-child {
+            margin-top: 10px !important;
+            padding: 5px 10px !important;
+            font-size: 11px !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div:first-child > div:last-child {
+            display: none !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid {
+            margin-top: 14px !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div {
+            min-height: 108px;
+            padding: 12px !important;
+            border-radius: 18px !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div > div:nth-child(2) {
+            margin-top: 2px !important;
+            font-size: 2rem !important;
+            line-height: 1 !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div > div:last-child {
+            margin-top: 5px !important;
+            font-size: 11px !important;
+            line-height: 1.25 !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(5) {
+            order: 1;
+            grid-column: 1 / -1;
+            min-height: 94px;
+            border-color: rgba(250, 204, 21, 0.45) !important;
+            background: rgba(250, 204, 21, 0.14) !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(1) {
+            order: 2;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(3) {
+            order: 3;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(4) {
+            order: 4;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(2) {
+            order: 5;
           }
 
           .trev-mobile-shell main section a,
