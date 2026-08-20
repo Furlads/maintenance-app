@@ -48,6 +48,17 @@ export type MaintenanceIncompleteRow = {
   completedAt: string
 }
 
+export type MaintenanceOfficeNoteRow = {
+  jobId: number
+  customerId: number
+  customerName: string
+  address: string
+  postcode: string
+  visitDate: Date | null
+  text: string
+  updatedAt: string
+}
+
 const EMPTY: Omit<MaintenanceControls, 'jobId'> = {
   version: 3,
   updatedAt: '',
@@ -241,6 +252,9 @@ export async function getMaintenanceOfficeOverview() {
 
   const opportunities: MaintenanceOpportunityRow[] = []
   const incomplete: MaintenanceIncompleteRow[] = []
+  const nextVisitNotes: MaintenanceOfficeNoteRow[] = []
+  const propertyNotes: MaintenanceOfficeNoteRow[] = []
+  const propertyCustomersSeen = new Set<number>()
 
   for (const job of jobs) {
     const controls = parseMaintenanceControlsNote(job.jobNotes[0]?.note)
@@ -258,6 +272,33 @@ export async function getMaintenanceOfficeOverview() {
       })
     }
 
+    if (controls.nextVisitNote) {
+      nextVisitNotes.push({
+        jobId: job.id,
+        customerId: job.customerId,
+        customerName: job.customer.name,
+        address: job.address,
+        postcode: job.customer.postcode || '',
+        visitDate: job.visitDate,
+        text: controls.nextVisitNote,
+        updatedAt: controls.updatedAt,
+      })
+    }
+
+    if (controls.propertyMemory && !propertyCustomersSeen.has(job.customerId)) {
+      propertyCustomersSeen.add(job.customerId)
+      propertyNotes.push({
+        jobId: job.id,
+        customerId: job.customerId,
+        customerName: job.customer.name,
+        address: job.address,
+        postcode: job.customer.postcode || '',
+        visitDate: job.visitDate,
+        text: controls.propertyMemory,
+        updatedAt: controls.updatedAt,
+      })
+    }
+
     if (controls.outcome === 'could_not_complete') {
       incomplete.push({
         jobId: job.id,
@@ -272,8 +313,10 @@ export async function getMaintenanceOfficeOverview() {
 
   opportunities.sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime())
   incomplete.sort((a, b) => new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime())
+  nextVisitNotes.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+  propertyNotes.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
 
-  return { opportunities, incomplete }
+  return { opportunities, incomplete, nextVisitNotes, propertyNotes }
 }
 
 export async function saveMaintenanceControls(

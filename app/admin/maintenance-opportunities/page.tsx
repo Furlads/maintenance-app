@@ -26,7 +26,7 @@ function formatDate(value: Date | string | null | undefined) {
 }
 
 export default async function MaintenanceOpportunitiesPage() {
-  const { opportunities, incomplete } = await getMaintenanceOfficeOverview()
+  const { opportunities, incomplete, nextVisitNotes, propertyNotes } = await getMaintenanceOfficeOverview()
   const open = opportunities.filter((item) => item.status === 'open')
   const quoteCreated = opportunities.filter((item) => item.status === 'quote_created')
   const dismissed = opportunities.filter((item) => item.status === 'dismissed')
@@ -44,17 +44,19 @@ export default async function MaintenanceOpportunitiesPage() {
           <div>
             <div className="text-xs font-black uppercase tracking-[0.18em] text-yellow-300">Maintenance sales & follow-up</div>
             <h1 className="mt-2 text-2xl font-black sm:text-3xl">Opportunities from the round</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-300">Customer requests become quote drafts immediately. Work the lads spot sits here for Trev/Kelly to decide whether to turn into a quote.</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-300">Customer requests, work spotted, next-visit notes and property knowledge all land here so the office can see what needs following up.</p>
           </div>
           <Link href="/admin" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950">Back to admin</Link>
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <Stat label="Open opportunities" value={open.length} />
         <Stat label="Quote drafts created" value={quoteCreated.length} />
         <Stat label="Dismissed" value={dismissed.length} />
         <Stat label="Couldn’t complete" value={incomplete.length} />
+        <Stat label="Next-visit notes" value={nextVisitNotes.length} />
+        <Stat label="Property notes" value={propertyNotes.length} />
       </section>
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -92,6 +94,48 @@ export default async function MaintenanceOpportunitiesPage() {
             </article>
           )) : (
             <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">No maintenance opportunities have been logged yet.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+        <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Needs attention next visit</div>
+        <h2 className="mt-1 text-xl font-black text-blue-950">Notes the lads have left for the next maintenance visit</h2>
+        <p className="mt-1 text-sm leading-6 text-blue-900">Use this to spot anything the office may need to prepare, order or make sure the next worker knows about.</p>
+
+        <div className="mt-4 space-y-2">
+          {nextVisitNotes.length ? nextVisitNotes.slice(0, 40).map((row) => (
+            <div key={`${row.jobId}-${row.updatedAt}`} className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-blue-200">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="font-black text-zinc-950">{row.customerName}</div>
+                  <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-700">{row.text}</div>
+                  <div className="mt-2 text-xs text-zinc-500">Job #{row.jobId} · Visit {formatDate(row.visitDate)}{row.address || row.postcode ? ` · ${row.address || row.postcode}` : ''}</div>
+                </div>
+                <Link href={`/jobs/${row.jobId}`} className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-900">Open job</Link>
+              </div>
+            </div>
+          )) : (
+            <div className="rounded-2xl border border-dashed border-blue-300 bg-white/60 p-5 text-sm text-blue-900">No next-visit notes have been logged yet.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+        <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Property notes</div>
+        <h2 className="mt-1 text-xl font-black text-emerald-950">Useful permanent knowledge about maintenance properties</h2>
+        <p className="mt-1 text-sm leading-6 text-emerald-900">One latest property-memory entry per customer, so access details, preferences and recurring site issues are visible to the office as well as the worker.</p>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {propertyNotes.length ? propertyNotes.slice(0, 40).map((row) => (
+            <div key={row.customerId} className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-emerald-200">
+              <div className="font-black text-zinc-950">{row.customerName}</div>
+              <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-700">{row.text}</div>
+              <div className="mt-2 text-xs text-zinc-500">Latest from job #{row.jobId}{row.address || row.postcode ? ` · ${row.address || row.postcode}` : ''}</div>
+              <Link href={`/jobs/${row.jobId}`} className="mt-3 inline-flex min-h-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-900">Open latest job</Link>
+            </div>
+          )) : (
+            <div className="rounded-2xl border border-dashed border-emerald-300 bg-white/60 p-5 text-sm text-emerald-900">No property notes have been saved yet.</div>
           )}
         </div>
       </section>
