@@ -321,6 +321,7 @@ export default async function LandscapingWorkerJobPage({ params }: PageProps) {
               initialSiteIssues={controls.siteIssues}
               initialVariations={controls.variations}
               initialCompletion={controls.completion}
+              defaultCustomerName={job.customer.name}
               section="bottom"
             />
           </>
