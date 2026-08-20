@@ -276,7 +276,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <style jsx>{`
         @media (min-width: 1024px) {
           .admin-layout-shell {
-            grid-templateColumns: 260px minmax(0, 1fr) !important;
+            grid-template-columns: 260px minmax(0, 1fr) !important;
           }
 
           .admin-sidebar {
