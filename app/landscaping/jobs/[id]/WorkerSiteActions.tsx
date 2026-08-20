@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type SiteIssue = {
   id: string
@@ -22,14 +22,22 @@ type Variation = {
 }
 
 type Completion = {
-  levelsFallsChecked: boolean
-  finishChecked: boolean
-  siteClean: boolean
-  toolsMaterialsCollected: boolean
-  photosCompleted: boolean
-  customerChecked: boolean
-  issueReportedIfNeeded: boolean
+  qualityChecked: boolean
+  workerSignedOff: boolean
+  workerSignedOffAt: string
+  customerStatus: '' | 'happy' | 'issue' | 'not_available'
+  customerName: string
+  customerConfirmed: boolean
+  customerSignedOffAt: string
+  outstandingItems: string
   completedAt: string
+}
+
+type JobPhoto = {
+  id: number
+  label: string | null
+  imageUrl: string
+  createdAt: string
 }
 
 type Props = {
@@ -37,6 +45,7 @@ type Props = {
   initialSiteIssues: SiteIssue[]
   initialVariations: Variation[]
   initialCompletion: Completion
+  defaultCustomerName?: string
   section?: 'all' | 'variation' | 'bottom'
 }
 
@@ -44,24 +53,71 @@ function newId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
+function isAfterPhoto(photo: JobPhoto) {
+  return String(photo.label || '').trim().toLowerCase() === 'after'
+}
+
 export default function WorkerSiteActions({
   jobId,
   initialSiteIssues,
   initialVariations,
   initialCompletion,
+  defaultCustomerName = '',
   section = 'all',
 }: Props) {
   const [issues, setIssues] = useState(initialSiteIssues)
   const [variations, setVariations] = useState(initialVariations)
-  const [completion, setCompletion] = useState(initialCompletion)
+  const [completion, setCompletion] = useState<Completion>({
+    ...initialCompletion,
+    customerName: initialCompletion.customerName || defaultCustomerName,
+  })
+  const [photos, setPhotos] = useState<JobPhoto[]>([])
   const [issueText, setIssueText] = useState('')
   const [variationText, setVariationText] = useState('')
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [completing, setCompleting] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
   const showVariation = section === 'all' || section === 'variation'
   const showBottom = section === 'all' || section === 'bottom'
+  const afterPhotos = useMemo(() => photos.filter(isAfterPhoto), [photos])
+
+  const openIssues = issues.filter((issue) => !issue.resolved).length
+  const pendingVariations = variations.filter((variation) => variation.status === 'pending').length
+  const customerReady = completion.customerStatus === 'not_available' || (
+    completion.customerStatus === 'happy' &&
+    completion.customerName.trim() !== '' &&
+    completion.customerConfirmed
+  )
+  const canComplete = (
+    afterPhotos.length >= 3 &&
+    completion.qualityChecked &&
+    completion.workerSignedOff &&
+    customerReady &&
+    openIssues === 0 &&
+    pendingVariations === 0 &&
+    !completion.completedAt
+  )
+
+  useEffect(() => {
+    if (!showBottom) return
+
+    let cancelled = false
+    async function loadPhotos() {
+      try {
+        const response = await fetch(`/api/jobs/${jobId}/photos`, { cache: 'no-store' })
+        const data = await response.json().catch(() => [])
+        if (!cancelled && response.ok && Array.isArray(data)) setPhotos(data)
+      } catch {
+        // The completion panel still works; upload will surface any real error.
+      }
+    }
+
+    void loadPhotos()
+    return () => { cancelled = true }
+  }, [jobId, showBottom])
 
   async function patch(body: Record<string, unknown>) {
     const response = await fetch(`/api/landscaping/jobs/${jobId}/controls`, {
@@ -72,6 +128,21 @@ export default function WorkerSiteActions({
     const data = await response.json().catch(() => null)
     if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Could not save update.')
     return data.controls
+  }
+
+  async function saveCompletion(next: Completion, successMessage?: string) {
+    setCompletion(next)
+    try {
+      setSaving(true)
+      setError('')
+      const controls = await patch({ completion: next })
+      setCompletion(controls.completion || next)
+      if (successMessage) setMessage(successMessage)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save sign-off.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function submitIssue() {
@@ -127,25 +198,88 @@ export default function WorkerSiteActions({
     }
   }
 
-  async function updateCompletion(key: keyof Completion, value: boolean) {
-    if (key === 'completedAt') return
-    const next = { ...completion, [key]: value }
-    const checks = [
-      next.levelsFallsChecked,
-      next.finishChecked,
-      next.siteClean,
-      next.toolsMaterialsCollected,
-      next.photosCompleted,
-      next.customerChecked,
-      next.issueReportedIfNeeded,
-    ]
-    next.completedAt = checks.every(Boolean) ? new Date().toISOString() : ''
-    setCompletion(next)
+  async function uploadAfterPhotos(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || [])
+    if (!files.length) return
+
     try {
+      setUploading(true)
       setError('')
-      await patch({ completion: next })
+      setMessage('')
+
+      const uploaded: JobPhoto[] = []
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('label', 'After')
+
+        const response = await fetch(`/api/jobs/${jobId}/photos`, {
+          method: 'POST',
+          body: formData,
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(data?.error || 'Could not upload after photo.')
+        uploaded.push(data as JobPhoto)
+      }
+
+      setPhotos((current) => [...uploaded, ...current])
+      setMessage(`${uploaded.length} after photo${uploaded.length === 1 ? '' : 's'} uploaded.`)
+      event.target.value = ''
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save completion check.')
+      setError(err instanceof Error ? err.message : 'Could not upload after photos.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function recordWorkerSignOff() {
+    if (!completion.qualityChecked || afterPhotos.length < 3) return
+    await saveCompletion({
+      ...completion,
+      workerSignedOff: true,
+      workerSignedOffAt: new Date().toISOString(),
+    }, 'Worker sign-off recorded.')
+  }
+
+  async function recordCustomerHandover() {
+    if (!completion.customerStatus) {
+      setError('Choose the customer handover outcome first.')
+      return
+    }
+    if (completion.customerStatus === 'happy' && !completion.customerName.trim()) {
+      setError('Enter the customer name for sign-off.')
+      return
+    }
+    if (completion.customerStatus === 'happy' && !completion.customerConfirmed) {
+      setError('Confirm that the customer has seen and accepted the completed work.')
+      return
+    }
+    if (completion.customerStatus === 'issue' && !completion.outstandingItems.trim()) {
+      setError('Record the customer concern / outstanding item before saving the handover.')
+      return
+    }
+
+    await saveCompletion({
+      ...completion,
+      customerSignedOffAt: new Date().toISOString(),
+    }, 'Customer handover recorded.')
+  }
+
+  async function completeJob() {
+    if (!canComplete || completing) return
+    try {
+      setCompleting(true)
+      setError('')
+      setMessage('')
+      const response = await fetch(`/api/landscaping/jobs/${jobId}/complete`, { method: 'POST' })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Could not complete the job.')
+      setCompletion(data.completion || { ...completion, completedAt: data.completedAt })
+      setMessage('✓ Job completed and handover saved.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not complete the job.')
+    } finally {
+      setCompleting(false)
     }
   }
 
@@ -187,22 +321,162 @@ export default function WorkerSiteActions({
             <h2 className="mt-1 text-xl font-black text-red-950">Tell Trev / Kelly before it becomes a bigger problem</h2>
             <textarea value={issueText} onChange={(event) => setIssueText(event.target.value)} rows={3} placeholder="e.g. Found buried concrete across the patio area / access is blocked / customer has moved the agreed line" className="mt-4 w-full rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm leading-6 text-zinc-900" />
             <button type="button" onClick={() => void submitIssue()} disabled={saving || !issueText.trim()} className="mt-3 min-h-11 rounded-xl bg-red-900 px-4 text-sm font-black text-white disabled:opacity-50">Report problem</button>
-            {issues.filter((issue) => !issue.resolved).length ? <div className="mt-3 text-xs font-bold text-red-800">{issues.filter((issue) => !issue.resolved).length} open site issue{issues.filter((issue) => !issue.resolved).length === 1 ? '' : 's'} recorded.</div> : null}
+            {openIssues ? <div className="mt-3 text-xs font-bold text-red-800">{openIssues} open site issue{openIssues === 1 ? '' : 's'} recorded.</div> : null}
           </section>
 
           <section className="rounded-3xl border border-green-200 bg-green-50 p-5 shadow-sm">
-            <div className="text-xs font-black uppercase tracking-[0.16em] text-green-700">Before the job is finished</div>
-            <h2 className="mt-1 text-xl font-black text-green-950">Completion checks</h2>
-            <div className="mt-4 space-y-2">
-              <Check label="Final lines, levels and falls checked" checked={completion.levelsFallsChecked} onChange={(v) => void updateCompletion('levelsFallsChecked', v)} />
-              <Check label="Finish / pointing / edges / snagging checked" checked={completion.finishChecked} onChange={(v) => void updateCompletion('finishChecked', v)} />
-              <Check label="Site cleaned and customer areas left tidy" checked={completion.siteClean} onChange={(v) => void updateCompletion('siteClean', v)} />
-              <Check label="Tools, boards and leftover materials collected" checked={completion.toolsMaterialsCollected} onChange={(v) => void updateCompletion('toolsMaterialsCollected', v)} />
-              <Check label="Required before / progress / after photos completed" checked={completion.photosCompleted} onChange={(v) => void updateCompletion('photosCompleted', v)} />
-              <Check label="Customer has seen the finished work / any concern has been flagged" checked={completion.customerChecked} onChange={(v) => void updateCompletion('customerChecked', v)} />
-              <Check label="Any unresolved issue or extra has been reported to Trev/Kelly" checked={completion.issueReportedIfNeeded} onChange={(v) => void updateCompletion('issueReportedIfNeeded', v)} />
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-green-700">Job handover</div>
+            <h2 className="mt-1 text-xl font-black text-green-950">Photos, checks & sign-off</h2>
+            <p className="mt-1 text-sm leading-6 text-green-900">Finish with evidence, not paperwork for paperwork’s sake. Upload the finished job, check the quality, hand it over to the customer, then complete it.</p>
+
+            <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-inset ring-green-200">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="font-black text-zinc-950">1. After photos</div>
+                  <div className="mt-1 text-sm text-zinc-600">Minimum 3: a good overall view plus useful finish/detail shots.</div>
+                </div>
+                <div className={`rounded-full px-3 py-1 text-xs font-black ${afterPhotos.length >= 3 ? 'bg-green-100 text-green-900' : 'bg-amber-100 text-amber-900'}`}>
+                  {afterPhotos.length}/3 minimum
+                </div>
+              </div>
+
+              <label className="mt-4 flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-green-300 bg-green-50 px-4 text-sm font-black text-green-900">
+                {uploading ? 'Uploading…' : '+ Take / upload after photos'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  capture="environment"
+                  multiple
+                  disabled={uploading}
+                  onChange={(event) => void uploadAfterPhotos(event)}
+                  className="hidden"
+                />
+              </label>
+
+              {afterPhotos.length ? (
+                <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {afterPhotos.slice(0, 8).map((photo) => (
+                    <img key={photo.id} src={photo.imageUrl} alt="After job" className="aspect-square w-full rounded-xl object-cover ring-1 ring-zinc-200" />
+                  ))}
+                </div>
+              ) : null}
             </div>
-            {completion.completedAt ? <div className="mt-4 rounded-2xl bg-green-100 px-4 py-3 text-sm font-black text-green-950">✓ Completion checks finished</div> : null}
+
+            <div className="mt-3 rounded-2xl bg-white p-4 ring-1 ring-inset ring-green-200">
+              <div className="font-black text-zinc-950">2. Final quality check</div>
+              <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl bg-zinc-50 p-3 text-sm font-semibold leading-6 text-zinc-800">
+                <input
+                  type="checkbox"
+                  checked={completion.qualityChecked}
+                  onChange={(event) => void saveCompletion({ ...completion, qualityChecked: event.target.checked })}
+                  className="mt-1 h-5 w-5"
+                />
+                <span>I have checked the finished lines / levels / falls, pointing / edges / snagging, site cleanliness, tools / boards / leftover materials, and that any issue or extra has been reported.</span>
+              </label>
+            </div>
+
+            <div className="mt-3 rounded-2xl bg-white p-4 ring-1 ring-inset ring-green-200">
+              <div className="font-black text-zinc-950">3. Worker sign-off</div>
+              <p className="mt-1 text-sm leading-6 text-zinc-600">Confirm the job has been checked against the plan and is ready to hand over.</p>
+              <button
+                type="button"
+                onClick={() => void recordWorkerSignOff()}
+                disabled={saving || completion.workerSignedOff || !completion.qualityChecked || afterPhotos.length < 3}
+                className="mt-3 min-h-11 rounded-xl bg-zinc-950 px-4 text-sm font-black text-white disabled:opacity-40"
+              >
+                {completion.workerSignedOff ? '✓ Worker signed off' : 'Sign off finished work'}
+              </button>
+            </div>
+
+            <div className="mt-3 rounded-2xl bg-white p-4 ring-1 ring-inset ring-green-200">
+              <div className="font-black text-zinc-950">4. Customer handover</div>
+              <p className="mt-1 text-sm leading-6 text-zinc-600">This confirms the physical work they have seen. It does not waive customer rights or approve unknown charges.</p>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                {([
+                  ['happy', '✓ Happy with completed work'],
+                  ['issue', '⚠ Issue / snag raised'],
+                  ['not_available', 'Customer not available'],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setCompletion((current) => ({
+                      ...current,
+                      customerStatus: value,
+                      customerConfirmed: value === 'happy' ? current.customerConfirmed : false,
+                      customerSignedOffAt: '',
+                    }))}
+                    className={`min-h-11 rounded-xl px-3 text-sm font-black ring-1 ring-inset ${completion.customerStatus === value ? 'bg-green-100 text-green-950 ring-green-300' : 'bg-zinc-50 text-zinc-700 ring-zinc-200'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {completion.customerStatus === 'happy' ? (
+                <div className="mt-3 space-y-3">
+                  <label className="block text-xs font-bold text-zinc-600">
+                    Customer name
+                    <input
+                      value={completion.customerName}
+                      onChange={(event) => setCompletion((current) => ({ ...current, customerName: event.target.value, customerSignedOffAt: '' }))}
+                      className="mt-1 min-h-11 w-full rounded-xl border border-zinc-300 px-3 text-sm text-zinc-900"
+                    />
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-green-50 p-3 text-sm font-semibold leading-6 text-green-950">
+                    <input
+                      type="checkbox"
+                      checked={completion.customerConfirmed}
+                      onChange={(event) => setCompletion((current) => ({ ...current, customerConfirmed: event.target.checked, customerSignedOffAt: '' }))}
+                      className="mt-1 h-5 w-5"
+                    />
+                    <span>The customer has seen the completed work and confirms they are happy with the physical work shown to them.</span>
+                  </label>
+                </div>
+              ) : null}
+
+              <label className="mt-3 block text-xs font-bold text-zinc-600">
+                Outstanding items / customer concern
+                <textarea
+                  value={completion.outstandingItems}
+                  onChange={(event) => setCompletion((current) => ({ ...current, outstandingItems: event.target.value, customerSignedOffAt: '' }))}
+                  rows={3}
+                  placeholder={completion.customerStatus === 'issue' ? 'Required: describe the issue / snag and what happens next' : 'Optional: anything to return for or note for Trev/Kelly'}
+                  className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm leading-6 text-zinc-900"
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={() => void recordCustomerHandover()}
+                disabled={saving || !completion.customerStatus}
+                className="mt-3 min-h-11 rounded-xl bg-green-800 px-4 text-sm font-black text-white disabled:opacity-40"
+              >
+                {completion.customerSignedOffAt ? '✓ Customer handover recorded' : 'Record customer handover'}
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-2xl bg-zinc-950 p-4 text-white">
+              <div className="font-black">5. Complete job</div>
+              <div className="mt-2 grid gap-1 text-xs font-semibold text-zinc-300 sm:grid-cols-2">
+                <div>{afterPhotos.length >= 3 ? '✓' : '○'} 3+ after photos</div>
+                <div>{completion.qualityChecked ? '✓' : '○'} Quality checked</div>
+                <div>{completion.workerSignedOff ? '✓' : '○'} Worker signed off</div>
+                <div>{customerReady ? '✓' : '○'} Customer handover</div>
+                <div>{openIssues === 0 ? '✓' : '○'} No open site issues</div>
+                <div>{pendingVariations === 0 ? '✓' : '○'} No extras awaiting decision</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void completeJob()}
+                disabled={!canComplete || completing}
+                className="mt-4 min-h-12 w-full rounded-xl bg-green-400 px-4 text-sm font-black text-zinc-950 disabled:bg-zinc-700 disabled:text-zinc-400"
+              >
+                {completion.completedAt ? '✓ Job completed' : completing ? 'Completing…' : 'Complete job'}
+              </button>
+              {completion.customerStatus === 'issue' ? <div className="mt-2 text-xs font-bold text-amber-300">Customer issue raised — job cannot be completed until it is dealt with.</div> : null}
+            </div>
           </section>
         </>
       ) : null}
@@ -210,14 +484,5 @@ export default function WorkerSiteActions({
       {message ? <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm font-bold text-green-900 ring-1 ring-inset ring-green-200">{message}</div> : null}
       {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-900 ring-1 ring-inset ring-red-200">{error}</div> : null}
     </div>
-  )
-}
-
-function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-zinc-800 ring-1 ring-inset ring-green-200">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 h-5 w-5" />
-      <span>{label}</span>
-    </label>
   )
 }
