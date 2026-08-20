@@ -38,14 +38,14 @@ export default function MaintenanceChas({ jobId }: Props) {
   }
 
   return (
-    <section className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5 text-white shadow-sm">
+    <section className="rounded-3xl border border-zinc-800 bg-zinc-950 p-4 text-white shadow-sm sm:p-5">
       <div className="text-xs font-black uppercase tracking-[0.16em] text-yellow-300">Ask CHAS about this property</div>
       <h2 className="mt-1 text-xl font-black">Job-aware help without re-explaining everything</h2>
       <p className="mt-1 text-sm leading-6 text-zinc-300">CHAS can see today’s maintenance brief, property memory, last-visit note and any extras already logged.</p>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" onClick={() => void ask('What should I prioritise on this maintenance visit today?')} disabled={busy} className="rounded-xl bg-yellow-300 px-3 py-2 text-xs font-black text-zinc-950 disabled:opacity-50">What should I prioritise?</button>
-        <button type="button" onClick={() => void ask('Is there anything seasonal I should be careful about on this visit?')} disabled={busy} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-black text-white ring-1 ring-inset ring-white/15 disabled:opacity-50">Seasonal check</button>
+      <div className="mt-4 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+        <button type="button" onClick={() => void ask('What should I prioritise on this maintenance visit today?')} disabled={busy} className="min-h-11 rounded-xl bg-yellow-300 px-3 py-2 text-sm font-black text-zinc-950 disabled:opacity-50 sm:text-xs">What should I prioritise?</button>
+        <button type="button" onClick={() => void ask('Is there anything seasonal I should be careful about on this visit?')} disabled={busy} className="min-h-11 rounded-xl bg-white/10 px-3 py-2 text-sm font-black text-white ring-1 ring-inset ring-white/15 disabled:opacity-50 sm:text-xs">Seasonal check</button>
       </div>
 
       <textarea
@@ -55,7 +55,7 @@ export default function MaintenanceChas({ jobId }: Props) {
         placeholder="e.g. Customer wants the hedge lower — what should I check before doing anything?"
         className="mt-4 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white placeholder:text-zinc-500"
       />
-      <button type="button" onClick={() => void ask()} disabled={busy || !question.trim()} className="mt-3 min-h-11 rounded-xl bg-yellow-300 px-4 text-sm font-black text-zinc-950 disabled:opacity-50">{busy ? 'CHAS is thinking…' : 'Ask CHAS'}</button>
+      <button type="button" onClick={() => void ask()} disabled={busy || !question.trim()} className="mt-3 min-h-12 w-full rounded-xl bg-yellow-300 px-4 text-sm font-black text-zinc-950 disabled:opacity-50 sm:w-auto">{busy ? 'CHAS is thinking…' : 'Ask CHAS'}</button>
 
       {answer ? <div className="mt-4 whitespace-pre-wrap rounded-2xl bg-white p-4 text-sm leading-6 text-zinc-900">{answer}</div> : null}
       {error ? <div className="mt-4 rounded-2xl bg-red-950/60 px-4 py-3 text-sm font-bold text-red-100 ring-1 ring-inset ring-red-700">{error}</div> : null}
