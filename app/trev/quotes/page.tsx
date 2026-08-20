@@ -112,49 +112,45 @@ export default async function TrevQuotesPage() {
               {quotes.map((quote) => {
                 const customerName = quote.customerName || quote.customer?.name || `Quote #${quote.id}`
                 const status = statusLabel(quote.status)
-                const href = quote.jobId ? `/trev/quote/${quote.jobId}` : null
+                const href = `/trev/quotes/${quote.id}`
 
-                const card = (
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-zinc-300 hover:bg-zinc-100">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="break-words text-base font-black text-zinc-950">{customerName}</h2>
-                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClasses(quote.status)}`}>{status}</span>
+                return (
+                  <Link key={quote.id} href={href} className="block">
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-zinc-300 hover:bg-zinc-100">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="break-words text-base font-black text-zinc-950">{customerName}</h2>
+                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClasses(quote.status)}`}>{status}</span>
+                          </div>
+                          <p className="mt-1 line-clamp-2 text-sm leading-5 text-zinc-600">{quote.scope}</p>
                         </div>
-                        <p className="mt-1 line-clamp-2 text-sm leading-5 text-zinc-600">{quote.scope}</p>
+                        <div className="shrink-0 text-right">
+                          <div className="text-lg font-black text-zinc-950">{formatMoney(quote.totalIncVat)}</div>
+                          <div className="mt-1 text-[11px] font-semibold text-zinc-500">Quote #{quote.id}</div>
+                        </div>
                       </div>
-                      <div className="shrink-0 text-right">
-                        <div className="text-lg font-black text-zinc-950">{formatMoney(quote.totalIncVat)}</div>
-                        <div className="mt-1 text-[11px] font-semibold text-zinc-500">Quote #{quote.id}</div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Updated</div>
+                          <div className="mt-1 font-semibold text-zinc-800">{formatDate(quote.updatedAt)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Sent</div>
+                          <div className="mt-1 font-semibold text-zinc-800">{formatDate(quote.sentAt)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Accepted</div>
+                          <div className="mt-1 font-semibold text-zinc-800">{formatDate(quote.acceptedAt)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Job</div>
+                          <div className="mt-1 font-semibold text-zinc-800">{quote.job ? `#${quote.job.id}` : '—'}</div>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Updated</div>
-                        <div className="mt-1 font-semibold text-zinc-800">{formatDate(quote.updatedAt)}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Sent</div>
-                        <div className="mt-1 font-semibold text-zinc-800">{formatDate(quote.sentAt)}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Accepted</div>
-                        <div className="mt-1 font-semibold text-zinc-800">{formatDate(quote.acceptedAt)}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Job</div>
-                        <div className="mt-1 font-semibold text-zinc-800">{quote.job ? `#${quote.job.id}` : '—'}</div>
-                      </div>
-                    </div>
-                  </div>
-                )
-
-                return href ? (
-                  <Link key={quote.id} href={href} className="block">{card}</Link>
-                ) : (
-                  <div key={quote.id}>{card}</div>
+                  </Link>
                 )
               })}
             </div>
