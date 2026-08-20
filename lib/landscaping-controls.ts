@@ -6,6 +6,7 @@ export type MaterialOrderStatus = 'not_ordered' | 'ordered' | 'delivered' | 'sto
 export type ExtraItemType = 'material' | 'tool'
 export type ExtraItemStatus = 'needed' | 'bought' | 'on_site'
 export type VariationStatus = 'pending' | 'agreed' | 'declined'
+export type CustomerCompletionStatus = '' | 'happy' | 'issue' | 'not_available'
 
 export type MaterialOrderTracking = {
   status: MaterialOrderStatus
@@ -42,18 +43,18 @@ export type LandscapingVariation = {
 }
 
 export type LandscapingCompletion = {
-  levelsFallsChecked: boolean
-  finishChecked: boolean
-  siteClean: boolean
-  toolsMaterialsCollected: boolean
-  photosCompleted: boolean
-  customerChecked: boolean
-  issueReportedIfNeeded: boolean
+  qualityChecked: boolean
+  workerSignedOff: boolean
+  workerSignedOffAt: string
+  customerStatus: CustomerCompletionStatus
+  customerName: string
+  customerSignedOffAt: string
+  outstandingItems: string
   completedAt: string
 }
 
 export type LandscapingControls = {
-  version: 3
+  version: 4
   jobId: number
   updatedAt: string
   materials: Record<string, MaterialOrderTracking>
@@ -65,13 +66,13 @@ export type LandscapingControls = {
 }
 
 const EMPTY_COMPLETION: LandscapingCompletion = {
-  levelsFallsChecked: false,
-  finishChecked: false,
-  siteClean: false,
-  toolsMaterialsCollected: false,
-  photosCompleted: false,
-  customerChecked: false,
-  issueReportedIfNeeded: false,
+  qualityChecked: false,
+  workerSignedOff: false,
+  workerSignedOffAt: '',
+  customerStatus: '',
+  customerName: '',
+  customerSignedOffAt: '',
+  outstandingItems: '',
   completedAt: '',
 }
 
@@ -106,6 +107,12 @@ function cleanVariationStatus(value: unknown): VariationStatus {
   const text = cleanText(value)
   if (text === 'agreed' || text === 'declined') return text
   return 'pending'
+}
+
+function cleanCustomerStatus(value: unknown): CustomerCompletionStatus {
+  const text = cleanText(value)
+  if (text === 'happy' || text === 'issue' || text === 'not_available') return text
+  return ''
 }
 
 function normaliseMaterials(value: unknown) {
@@ -195,14 +202,19 @@ function normaliseVariations(value: unknown): LandscapingVariation[] {
 
 function normaliseCompletion(value: unknown): LandscapingCompletion {
   const row = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+
+  const legacyQualityChecked = Boolean(row.levelsFallsChecked) && Boolean(row.finishChecked) && Boolean(row.siteClean)
+  const legacyWorkerSignedOff = Boolean(row.toolsMaterialsCollected) && Boolean(row.issueReportedIfNeeded)
+  const legacyCustomerChecked = Boolean(row.customerChecked)
+
   return {
-    levelsFallsChecked: Boolean(row.levelsFallsChecked),
-    finishChecked: Boolean(row.finishChecked),
-    siteClean: Boolean(row.siteClean),
-    toolsMaterialsCollected: Boolean(row.toolsMaterialsCollected),
-    photosCompleted: Boolean(row.photosCompleted),
-    customerChecked: Boolean(row.customerChecked),
-    issueReportedIfNeeded: Boolean(row.issueReportedIfNeeded),
+    qualityChecked: row.qualityChecked === undefined ? legacyQualityChecked : Boolean(row.qualityChecked),
+    workerSignedOff: row.workerSignedOff === undefined ? legacyWorkerSignedOff : Boolean(row.workerSignedOff),
+    workerSignedOffAt: cleanText(row.workerSignedOffAt),
+    customerStatus: row.customerStatus === undefined && legacyCustomerChecked ? 'happy' : cleanCustomerStatus(row.customerStatus),
+    customerName: cleanText(row.customerName),
+    customerSignedOffAt: cleanText(row.customerSignedOffAt),
+    outstandingItems: cleanText(row.outstandingItems),
     completedAt: cleanText(row.completedAt),
   }
 }
@@ -214,7 +226,7 @@ function parseControls(note: string | null | undefined): LandscapingControls | n
     const jobId = Number(raw.jobId)
     if (!Number.isInteger(jobId) || jobId <= 0) return null
     return {
-      version: 3,
+      version: 4,
       jobId,
       updatedAt: cleanText(raw.updatedAt),
       materials: normaliseMaterials(raw.materials),
@@ -243,7 +255,7 @@ export async function getLatestLandscapingControls(jobId: number): Promise<Lands
   }
 
   return {
-    version: 3,
+    version: 4,
     jobId,
     updatedAt: '',
     materials: {},
@@ -269,7 +281,7 @@ export async function saveLandscapingControls(
 ) {
   const current = await getLatestLandscapingControls(jobId)
   const controls: LandscapingControls = {
-    version: 3,
+    version: 4,
     jobId,
     updatedAt: new Date().toISOString(),
     materials: input.materials === undefined ? current.materials : normaliseMaterials(input.materials),
