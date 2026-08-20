@@ -2,15 +2,22 @@ import prisma from '@/lib/prisma'
 
 export const MAINTENANCE_CONTROLS_PREFIX = 'MAINTENANCE_CONTROLS_JSON:'
 
+export type MaintenanceOpportunitySource = 'worker_spotted' | 'customer_requested'
+export type MaintenanceOpportunityStatus = 'open' | 'quoted' | 'dismissed'
+
 export type MaintenanceExtraWork = {
   id: string
   description: string
+  source: MaintenanceOpportunitySource
+  status: MaintenanceOpportunityStatus
   reportedBy: string
   reportedAt: string
+  quoteId: number | null
+  photoUrl: string
 }
 
 export type MaintenanceControls = {
-  version: 1
+  version: 2
   jobId: number
   updatedAt: string
   nextVisitNote: string
@@ -21,7 +28,7 @@ export type MaintenanceControls = {
 }
 
 const EMPTY: Omit<MaintenanceControls, 'jobId'> = {
-  version: 1,
+  version: 2,
   updatedAt: '',
   nextVisitNote: '',
   extraWork: [],
@@ -32,6 +39,21 @@ const EMPTY: Omit<MaintenanceControls, 'jobId'> = {
 
 function cleanText(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function cleanSource(value: unknown): MaintenanceOpportunitySource {
+  return cleanText(value) === 'customer_requested' ? 'customer_requested' : 'worker_spotted'
+}
+
+function cleanOpportunityStatus(value: unknown): MaintenanceOpportunityStatus {
+  const text = cleanText(value)
+  if (text === 'quoted' || text === 'dismissed') return text
+  return 'open'
+}
+
+function cleanQuoteId(value: unknown) {
+  const id = Number(value)
+  return Number.isInteger(id) && id > 0 ? id : null
 }
 
 function normaliseExtraWork(value: unknown): MaintenanceExtraWork[] {
@@ -46,12 +68,16 @@ function normaliseExtraWork(value: unknown): MaintenanceExtraWork[] {
       return {
         id: cleanText(row.id) || `extra-${Date.now()}-${index}`,
         description,
+        source: cleanSource(row.source),
+        status: cleanOpportunityStatus(row.status),
         reportedBy: cleanText(row.reportedBy) || 'Worker',
         reportedAt: cleanText(row.reportedAt) || new Date().toISOString(),
+        quoteId: cleanQuoteId(row.quoteId),
+        photoUrl: cleanText(row.photoUrl),
       }
     })
     .filter((row): row is MaintenanceExtraWork => Boolean(row))
-    .slice(0, 50)
+    .slice(0, 100)
 }
 
 function parse(note: string | null | undefined): MaintenanceControls | null {
@@ -63,7 +89,7 @@ function parse(note: string | null | undefined): MaintenanceControls | null {
     const rawOutcome = cleanText(raw.outcome)
     const outcome = rawOutcome === 'completed' || rawOutcome === 'could_not_complete' ? rawOutcome : ''
     return {
-      version: 1,
+      version: 2,
       jobId,
       updatedAt: cleanText(raw.updatedAt),
       nextVisitNote: cleanText(raw.nextVisitNote),
@@ -101,7 +127,7 @@ export async function getPreviousMaintenanceNextVisitNote(customerId: number, cu
       id: { not: currentJobId },
     },
     orderBy: [{ visitDate: 'desc' }, { createdAt: 'desc' }],
-    take: 12,
+    take: 30,
     select: {
       id: true,
       jobNotes: {
@@ -121,6 +147,27 @@ export async function getPreviousMaintenanceNextVisitNote(customerId: number, cu
   return ''
 }
 
+export async function getMaintenancePhotoHistory(customerId: number, currentJobId: number) {
+  return prisma.jobPhoto.findMany({
+    where: {
+      job: {
+        customerId,
+        jobType: { equals: 'Maintenance', mode: 'insensitive' },
+      },
+      jobId: { not: currentJobId },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 12,
+    select: {
+      id: true,
+      imageUrl: true,
+      label: true,
+      createdAt: true,
+      jobId: true,
+    },
+  })
+}
+
 export async function saveMaintenanceControls(
   jobId: number,
   input: Partial<Pick<MaintenanceControls, 'nextVisitNote' | 'extraWork' | 'outcome' | 'completionNote' | 'completedAt'>>,
@@ -128,7 +175,7 @@ export async function saveMaintenanceControls(
 ) {
   const current = await getMaintenanceControls(jobId)
   const next: MaintenanceControls = {
-    version: 1,
+    version: 2,
     jobId,
     updatedAt: new Date().toISOString(),
     nextVisitNote: input.nextVisitNote === undefined ? current.nextVisitNote : cleanText(input.nextVisitNote),
