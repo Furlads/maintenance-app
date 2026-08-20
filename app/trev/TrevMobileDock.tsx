@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 
 const items = [
@@ -16,6 +17,18 @@ export default function TrevMobileDock() {
   const pathname = usePathname()
   const isTrevOverview = pathname === '/trev'
   const isTrevQuotes = pathname === '/trev/quotes'
+
+  useEffect(() => {
+    if (!isTrevOverview) return
+
+    const workerQuoteLinks = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>('a[href="/admin/inbox?source=worker-quote"]')
+    )
+
+    for (const link of workerQuoteLinks) {
+      link.href = '/trev/quotes'
+    }
+  }, [isTrevOverview])
 
   if (!isTrevOverview && !isTrevQuotes) return null
 
