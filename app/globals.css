@@ -19,12 +19,12 @@ body {
 
 body {
   margin: 0;
-  background: #f8fafc;
+  background: #f3f4f1;
   color: #18181b;
   -webkit-text-size-adjust: 100%;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* Prevent media overflow */
 img,
 video,
 canvas,
@@ -33,14 +33,162 @@ svg {
   height: auto;
 }
 
-/* Improve touch feel */
-button {
+button,
+a,
+input,
+textarea,
+select {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* iOS safe area support */
+button,
+a {
+  touch-action: manipulation;
+}
+
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ===== APP-WIDE POLISH ===== */
+
+body.app-polished {
+  --brand-primary: #facc15;
+  --brand-primary-strong: #eab308;
+  --brand-ink: #111111;
+  --brand-soft: #fff7bf;
+  --brand-page: #f3f4f1;
+  --brand-panel: #ffffff;
+  --brand-muted: #71717a;
+  --brand-border: #e4e4e7;
+  --brand-dark: #111111;
+  background:
+    radial-gradient(circle at top left, rgba(250,204,21,.08), transparent 28rem),
+    var(--brand-page);
+}
+
+body.app-brand-three-counties {
+  --brand-primary: #8eb43c;
+  --brand-primary-strong: #638126;
+  --brand-ink: #163111;
+  --brand-soft: #eef6df;
+  --brand-page: #eef1e8;
+  --brand-panel: #ffffff;
+  --brand-muted: #64705e;
+  --brand-border: #d8e4c8;
+  --brand-dark: #13220f;
+  background:
+    radial-gradient(circle at top left, rgba(142,180,60,.12), transparent 28rem),
+    var(--brand-page);
+}
+
+body.app-polished main {
+  width: 100%;
+}
+
+body.app-polished :where(section, article, form) {
+  scroll-margin-top: 92px;
+}
+
+body.app-polished :where(button, a)[class*="rounded"] {
+  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease, border-color .16s ease;
+}
+
+body.app-polished :where(button, a)[class*="rounded"]:active {
+  transform: scale(.985);
+}
+
+body.app-polished :where(input, textarea, select) {
+  font: inherit;
+}
+
+body.app-polished :where(input, textarea, select):focus {
+  outline: 3px solid color-mix(in srgb, var(--brand-primary) 30%, transparent);
+  outline-offset: 1px;
+}
+
+body.app-polished :where(.shadow-sm, .shadow, .shadow-md) {
+  box-shadow: 0 10px 28px rgba(24,24,27,.06);
+}
+
+body.app-polished :where(.rounded-xl, .rounded-2xl, .rounded-3xl) {
+  overflow-wrap: anywhere;
+}
+
+/* Let major app surfaces breathe and use the device width rather than sitting in a narrow column. */
+body.app-polished.app-worker-view main > div,
+body.app-polished.app-office-view main > div,
+body.app-polished.app-admin-view .admin-main > div {
+  width: 100%;
+  max-width: none !important;
+}
+
+body.app-polished.app-worker-view main {
+  padding-left: clamp(10px, 2vw, 24px) !important;
+  padding-right: clamp(10px, 2vw, 24px) !important;
+}
+
+body.app-polished.app-worker-view [data-today-dashboard-home] {
+  margin-left: calc(clamp(10px, 2vw, 24px) * -1);
+  margin-right: calc(clamp(10px, 2vw, 24px) * -1);
+}
+
+body.app-polished.app-worker-view [data-today-dashboard-home] .worker-home-shell {
+  max-width: none !important;
+}
+
+body.app-polished.app-office-view > main,
+body.app-polished.app-admin-view .admin-main {
+  background: transparent !important;
+}
+
+body.app-polished.app-admin-view .admin-main {
+  width: 100%;
+}
+
+/* Keep desktop layouts expansive, but readable. */
+@media (min-width: 900px) {
+  body.app-polished.app-worker-view main,
+  body.app-polished.app-office-view main,
+  body.app-polished.app-admin-view .admin-main {
+    padding-left: clamp(22px, 3vw, 48px) !important;
+    padding-right: clamp(22px, 3vw, 48px) !important;
+  }
+
+  body.app-polished .worker-home-actions,
+  body.app-polished [class*="grid-cols-2"] {
+    align-items: stretch;
+  }
+}
+
+/* Mobile: use almost every available pixel while respecting safe areas. */
+@media (max-width: 760px) {
+  body.app-polished {
+    background: var(--brand-page);
+  }
+
+  body.app-polished.app-worker-view main,
+  body.app-polished.app-office-view main,
+  body.app-polished.app-admin-view .admin-main {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  body.app-polished :where(.rounded-3xl) {
+    border-radius: 22px;
+  }
+
+  body.app-polished :where(.rounded-2xl) {
+    border-radius: 18px;
+  }
+
+  body.app-polished :where(.rounded-xl) {
+    border-radius: 14px;
+  }
+
+  body.app-polished :where(button, a) {
+    min-height: 44px;
+  }
 }
 
 /* ===== TODAY JOB CARDS: NO WORKER CLOCKING =====
@@ -51,18 +199,14 @@ button {
   display: none !important;
 }
 
-/* Hide the legacy Couldn't Complete / Add time action group that follows
-   the old clocking controls. Quote cards do not have this button group. */
 .today-quick-actions + .today-job-actions:has(> button) {
   display: none !important;
 }
 
-/* Legacy active-job cards can still contain an Undo Start button. */
 .today-active-actions > button {
   display: none !important;
 }
 
-/* The first card action opens the full job. Make that purpose explicit. */
 .today-job-actions > a:first-child,
 .today-active-actions > a:first-child {
   font-size: 0 !important;
