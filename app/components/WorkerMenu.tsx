@@ -8,6 +8,8 @@ type AuthMeResponse = {
   role?: string | null;
 };
 
+const CODIE_AVATAR_URL = "/branding/workers/codie-furlads-avatar.jpg";
+
 function clearClientAuthStorage() {
   localStorage.removeItem("worker");
   localStorage.removeItem("workerId");
@@ -20,6 +22,10 @@ function clearClientAuthStorage() {
   localStorage.removeItem("selectedLoginWorkerName");
   localStorage.removeItem("selectedLoginWorkerPhone");
   localStorage.removeItem("selectedLoginWorkerPhotoUrl");
+}
+
+function isCodie(name: string) {
+  return name.trim().toLowerCase().split(/\s+/)[0] === "codie";
 }
 
 export default function WorkerMenu() {
@@ -180,9 +186,19 @@ export default function WorkerMenu() {
           lineHeight: 1,
           cursor: "pointer",
           boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+          overflow: "hidden",
+          padding: isCodie(workerName) ? 0 : undefined,
         }}
       >
-        ☰
+        {isCodie(workerName) ? (
+          <img
+            src={CODIE_AVATAR_URL}
+            alt="Codie"
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
+        ) : (
+          "☰"
+        )}
       </button>
 
       {open && (
@@ -206,22 +222,41 @@ export default function WorkerMenu() {
               marginBottom: 12,
               paddingBottom: 12,
               borderBottom: "1px solid #eee",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
             }}
           >
-            <div style={{ fontSize: 14, color: "#666", marginBottom: 4 }}>
-              Logged in as
-            </div>
+            {isCodie(workerName) ? (
+              <img
+                src={CODIE_AVATAR_URL}
+                alt="Codie"
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  flexShrink: 0,
+                }}
+              />
+            ) : null}
 
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 800,
-                color: "#111",
-                overflowWrap: "anywhere",
-                wordBreak: "break-word",
-              }}
-            >
-              {workerName || "Worker"}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, color: "#666", marginBottom: 4 }}>
+                Logged in as
+              </div>
+
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: "#111",
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
+                {workerName || "Worker"}
+              </div>
             </div>
           </div>
 
