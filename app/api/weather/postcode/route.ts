@@ -3,131 +3,134 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 
-type AccuWeatherLocation = {
-  Key?: string;
-  EnglishName?: string;
-  LocalizedName?: string;
+type PostcodesIoResponse = {
+  status?: number;
+  result?: {
+    postcode?: string;
+    latitude?: number;
+    longitude?: number;
+    admin_district?: string | null;
+    parish?: string | null;
+  } | null;
 };
 
-type AccuWeatherForecast = {
-  Headline?: {
-    Text?: string;
+type OpenMeteoResponse = {
+  daily?: {
+    time?: string[];
+    weather_code?: number[];
+    temperature_2m_max?: number[];
+    temperature_2m_min?: number[];
+    precipitation_probability_max?: number[];
+    precipitation_sum?: number[];
+    wind_gusts_10m_max?: number[];
   };
-  DailyForecasts?: Array<{
-    Date?: string;
-    Day?: {
-      IconPhrase?: string;
-      HasPrecipitation?: boolean;
-      PrecipitationType?: string;
-      PrecipitationIntensity?: string;
-    };
-    Night?: {
-      IconPhrase?: string;
-      HasPrecipitation?: boolean;
-      PrecipitationType?: string;
-      PrecipitationIntensity?: string;
-    };
-    Temperature?: {
-      Minimum?: {
-        Value?: number;
-        Unit?: string;
-      };
-      Maximum?: {
-        Value?: number;
-        Unit?: string;
-      };
-    };
-  }>;
 };
 
 function cleanPostcode(value: string | null) {
   return String(value || "").trim().toUpperCase().replace(/\s+/g, " ");
 }
 
-function postcodeCandidates(postcode: string) {
-  const compact = postcode.replace(/\s+/g, "");
-  const spaced = compact.length > 3
-    ? `${compact.slice(0, -3)} ${compact.slice(-3)}`
-    : postcode;
-  const outward = compact.length > 3 ? compact.slice(0, -3) : compact;
-
-  return Array.from(new Set([spaced, compact, outward].filter(Boolean)));
+function weatherPhrase(code: number | undefined) {
+  if (code === 0) return "Clear";
+  if (code === 1) return "Mainly clear";
+  if (code === 2) return "Partly cloudy";
+  if (code === 3) return "Overcast";
+  if (code === 45 || code === 48) return "Foggy";
+  if ([51, 53, 55, 56, 57].includes(code ?? -1)) return "Drizzle";
+  if ([61, 63, 65, 66, 67].includes(code ?? -1)) return "Rain";
+  if ([71, 73, 75, 77].includes(code ?? -1)) return "Snow";
+  if ([80, 81, 82].includes(code ?? -1)) return "Rain showers";
+  if ([85, 86].includes(code ?? -1)) return "Snow showers";
+  if ([95, 96, 99].includes(code ?? -1)) return "Thunderstorms";
+  return "Forecast available";
 }
 
-function buildWeatherSummary(forecast: AccuWeatherForecast) {
-  const day = forecast.DailyForecasts?.[0];
-
-  if (!day) {
-    return "Weather unavailable — check conditions before setting off.";
-  }
-
-  const dayPhrase = day.Day?.IconPhrase || "Forecast available";
-  const headline = forecast.Headline?.Text || "";
-  const min = day.Temperature?.Minimum?.Value;
-  const max = day.Temperature?.Maximum?.Value;
-  const unit = day.Temperature?.Maximum?.Unit || "C";
-
-  const hasRain =
-    day.Day?.HasPrecipitation || day.Night?.HasPrecipitation || false;
-
-  const tempText =
-    typeof min === "number" && typeof max === "number"
-      ? ` ${Math.round(min)}-${Math.round(max)}°${unit}.`
-      : "";
-
-  if (hasRain) {
-    const rainType =
-      day.Day?.PrecipitationType ||
-      day.Night?.PrecipitationType ||
-      "precipitation";
-
-    return `🌧️ ${dayPhrase}. ${rainType} expected today.${tempText}`;
-  }
-
-  if (headline) {
-    return `🌦️ ${dayPhrase}. ${headline}${tempText}`;
-  }
-
-  return `🌦️ ${dayPhrase}.${tempText}`;
+function weatherEmoji(code: number | undefined) {
+  if (code === 0 || code === 1) return "☀️";
+  if (code === 2) return "⛅";
+  if (code === 3) return "☁️";
+  if (code === 45 || code === 48) return "🌫️";
+  if ([71, 73, 75, 77, 85, 86].includes(code ?? -1)) return "🌨️";
+  if ([95, 96, 99].includes(code ?? -1)) return "⛈️";
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code ?? -1)) return "🌧️";
+  return "🌦️";
 }
 
-async function findAccuWeatherLocation(apiKey: string, postcode: string) {
-  for (const candidate of postcodeCandidates(postcode)) {
-    const locationUrl = `https://dataservice.accuweather.com/locations/v1/postalcodes/GB/search?apikey=${encodeURIComponent(
-      apiKey
-    )}&q=${encodeURIComponent(candidate)}`;
+function buildSummary(forecast: OpenMeteoResponse) {
+  const daily = forecast.daily;
+  const code = daily?.weather_code?.[0];
+  const min = daily?.temperature_2m_min?.[0];
+  const max = daily?.temperature_2m_max?.[0];
+  const rainChance = daily?.precipitation_probability_max?.[0];
+  const rainTotal = daily?.precipitation_sum?.[0];
+  const gust = daily?.wind_gusts_10m_max?.[0];
 
-    const locationRes = await fetch(locationUrl, { cache: "no-store" });
-    const locations: AccuWeatherLocation[] = await locationRes
-      .json()
-      .catch(() => []);
+  const parts = [`${weatherEmoji(code)} ${weatherPhrase(code)}`];
 
-    if (locationRes.ok && locations?.[0]?.Key) {
-      return {
-        location: locations[0],
-        matchedQuery: candidate,
-      };
-    }
+  if (typeof min === "number" && typeof max === "number") {
+    parts.push(`${Math.round(min)}–${Math.round(max)}°C`);
   }
 
-  return null;
+  if (typeof rainChance === "number" && rainChance > 15) {
+    parts.push(`${Math.round(rainChance)}% chance of rain`);
+  } else if (typeof rainTotal === "number" && rainTotal > 0) {
+    parts.push(`${rainTotal.toFixed(1)}mm rain`);
+  }
+
+  if (typeof gust === "number" && gust >= 40) {
+    parts.push(`gusts up to ${Math.round(gust)} km/h`);
+  }
+
+  return `${parts.join(" · ")}.`;
+}
+
+async function lookupPostcode(postcode: string) {
+  const url = `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode.replace(/\s+/g, ""))}`;
+  const response = await fetch(url, { cache: "no-store" });
+  const data: PostcodesIoResponse | null = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.result) return null;
+
+  const latitude = Number(data.result.latitude);
+  const longitude = Number(data.result.longitude);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  return {
+    latitude,
+    longitude,
+    postcode: data.result.postcode || postcode,
+    locationName: data.result.admin_district || data.result.parish || data.result.postcode || postcode,
+  };
+}
+
+async function loadOpenMeteo(latitude: number, longitude: number) {
+  const params = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+    daily: [
+      "weather_code",
+      "temperature_2m_max",
+      "temperature_2m_min",
+      "precipitation_probability_max",
+      "precipitation_sum",
+      "wind_gusts_10m_max",
+    ].join(","),
+    timezone: "Europe/London",
+    forecast_days: "1",
+  });
+
+  const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`, {
+    cache: "no-store",
+  });
+  const data: OpenMeteoResponse | null = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.daily) return null;
+  return data;
 }
 
 export async function GET(req: Request) {
   try {
-    const apiKey = process.env.ACCUWEATHER_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json(
-        {
-          ok: false,
-          summary:
-            "Weather unavailable — AccuWeather API key has not been added.",
-        },
-        { status: 200 }
-      );
-    }
-
     const { searchParams } = new URL(req.url);
     const postcode = cleanPostcode(searchParams.get("postcode"));
 
@@ -141,38 +144,27 @@ export async function GET(req: Request) {
       );
     }
 
-    const match = await findAccuWeatherLocation(apiKey, postcode);
-    const locationKey = match?.location?.Key;
+    const location = await lookupPostcode(postcode);
 
-    if (!locationKey) {
+    if (!location) {
       return NextResponse.json(
         {
           ok: false,
           postcode,
-          summary:
-            "Weather unavailable — postcode could not be matched to a forecast location.",
+          summary: "Weather unavailable — postcode could not be located.",
         },
         { status: 200 }
       );
     }
 
-    const forecastUrl = `https://dataservice.accuweather.com/forecasts/v1/daily/1day/${encodeURIComponent(
-      locationKey
-    )}?apikey=${encodeURIComponent(apiKey)}&metric=true&details=true`;
+    const forecast = await loadOpenMeteo(location.latitude, location.longitude);
 
-    const forecastRes = await fetch(forecastUrl, {
-      cache: "no-store",
-    });
-
-    const forecast: AccuWeatherForecast | null = await forecastRes
-      .json()
-      .catch(() => null);
-
-    if (!forecastRes.ok || !forecast) {
+    if (!forecast) {
       return NextResponse.json(
         {
           ok: false,
-          postcode,
+          postcode: location.postcode,
+          locationName: location.locationName,
           summary: "Weather unavailable — forecast could not be loaded.",
         },
         { status: 200 }
@@ -182,12 +174,9 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         ok: true,
-        postcode,
-        matchedQuery: match?.matchedQuery || postcode,
-        locationKey,
-        locationName:
-          match?.location?.EnglishName || match?.location?.LocalizedName || null,
-        summary: buildWeatherSummary(forecast),
+        postcode: location.postcode,
+        locationName: location.locationName,
+        summary: buildSummary(forecast),
         forecast,
       },
       {
