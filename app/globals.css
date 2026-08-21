@@ -42,3 +42,35 @@ button {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* ===== TODAY JOB CARDS: NO WORKER CLOCKING =====
+   Workers no longer start, pause, resume, finish or extend jobs from the cards.
+   Keep the useful job actions only: open the job, call the customer and navigate.
+*/
+.today-quick-actions {
+  display: none !important;
+}
+
+/* Hide the legacy Couldn't Complete / Add time action group that follows
+   the old clocking controls. Quote cards do not have this button group. */
+.today-quick-actions + .today-job-actions:has(> button) {
+  display: none !important;
+}
+
+/* Legacy active-job cards can still contain an Undo Start button. */
+.today-active-actions > button {
+  display: none !important;
+}
+
+/* The first card action opens the full job. Make that purpose explicit. */
+.today-job-actions > a:first-child,
+.today-active-actions > a:first-child {
+  font-size: 0 !important;
+}
+
+.today-job-actions > a:first-child::after,
+.today-active-actions > a:first-child::after {
+  content: 'Open Job';
+  font-size: 15px;
+  font-weight: 700;
+}
