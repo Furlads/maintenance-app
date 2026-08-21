@@ -24,6 +24,29 @@ Do not use benchmark customer rates such as £170/m2 as hard costs.
 Do not put gross profit, markup or generic complexity percentages inside hard costs.
 If hard costs look high, re-check them before the 30% margin floor is applied.
 
+CUSTOMER-FACING PRICING STRUCTURE
+Waste removal, grab lorries, skips, disposal fees, deliveries, standard plant hire, fixings, adhesives, sub-base, mortar, protection materials and other normal job inputs are INTERNAL COSTS unless the user explicitly asks to show them separately.
+
+Do NOT create a standalone customer-facing option or line item called:
+- Grab lorry
+- Waste removal
+- Disposal
+- Skip
+- Materials
+- Delivery
+- Plant hire
+- Site protection
+unless the user specifically requests an itemised cost breakdown.
+
+Instead, absorb those costs into the relevant work package exactly like normal material costs.
+Examples:
+- Patio removal and disposal costs belong inside the patio package.
+- Wall excavation and spoil removal belong inside the wall/patio structural package.
+- Old decking disposal belongs inside the decking package.
+- Shared grab or skip cost on a combined job should be spread across the relevant packages internally and hidden from the customer-facing option list.
+
+Customer scope text may say things such as 'including removal of associated waste' or 'all waste removed from site', but the disposal method and supplier charge should normally stay hidden.
+
 LABOUR
 Calculate in man-days.
 Build the programme from tasks first, then add only genuine extra time for logistics.
@@ -76,9 +99,14 @@ A provisional single grab should be priced close to the real expected supplier/d
 Do not inflate a grab price because garden access is awkward.
 Old decking waste should not automatically be treated as heavy inert spoil.
 
+Crucially, waste/disposal remains an INTERNAL cost component by default.
+Do not expose grab, skip or disposal as a standalone customer option unless explicitly requested.
+Where several work packages create waste, allocate the expected disposal cost internally across those packages or into the combined hard cost.
+
 PLANT
 If a machine cannot access, add the realistic replacement labour once.
 Do not add both 'no digger labour' and another full access multiplier for the same lost productivity.
+Standard plant hire should normally be hidden inside the relevant quoted work package, just like materials.
 
 CONTINGENCY
 Use only for residual unknown risk:
@@ -95,6 +123,8 @@ Do not simply sum every standalone package and call that the combined price.
 Do not create token savings such as a few hundred pounds on a £25k-£30k multi-package job if the separate options each include duplicated setup.
 For several substantial packages completed together, a genuine combined saving often lands in the rough region of 3-8% of the separate total, but calculate it from real duplicated costs rather than forcing a percentage.
 
+Shared disposal is part of those combined efficiencies, but do not show the grab/skip as a separate customer line. Keep it inside the package pricing.
+
 COMBINED PROGRAMME
 Do not add all standalone durations and then only shave a little off.
 Standalone durations contain duplicated setup and tidy time.
@@ -109,6 +139,7 @@ Before accepting the quote ask:
 4. Have I already charged for that difficulty elsewhere?
 5. Does the effective £/m2 or £/m still look commercially sensible?
 6. Is a margin floor inflating the quote only because the hard-cost estimate itself is wrong?
+7. Have normal waste/material/plant costs accidentally been exposed as customer options instead of being absorbed into the work packages?
 
 If a final price differs by more than about 15% from the first benchmark sense-check, explain the specific real costs causing the difference. If the explanation is only 'complexity' or 'restricted access', recalculate with explicit man-days and handling costs.
 
@@ -118,6 +149,7 @@ AUTOMATIC REVIEW FLAGS
 - retaining wall cost duplicated in patio complexity
 - combined package saving below about 2% despite multiple standalone mobilisations
 - grab/disposal allowance far above expected supplier cost without multiple loads
+- grab/skip/waste shown as a separate customer-facing option without explicit user request
 - combined duration close to the sum of every standalone duration
 - labour duration cannot be explained by task sequence
 - estimated hard costs appear to contain selling-rate assumptions
@@ -126,10 +158,12 @@ OUTPUT INTERNALLY
 Show measurements, materials cost, labour man-days and labour cost, plant, waste, logistics, contingency, total hard cost, 30/35/40% margin prices, effective unit-rate sanity checks, recommended price and any review flags.
 
 CUSTOMER OUTPUT
-Keep internal costing hidden unless requested. Show clear scope, measurements, finish, important assumptions, ex-VAT price, VAT and total.
+Keep internal costing hidden unless requested.
+Show clear scope, measurements, finish, important assumptions, ex-VAT price, VAT and total.
+Normal materials, waste removal, grab/skip, deliveries and standard plant should be included within the relevant work price and not separately itemised.
 
 FINAL INTERNAL QUESTION
-What will genuinely cost Furlads more on this site, and have I priced that actual cost once - not twice?
+What will genuinely cost Furlads more on this site, have I priced that actual cost once - not twice - and have I kept normal internal costs hidden inside the work package?
 `;
 
 export function sellingPriceForMargin(jobCost: number, margin: number) {
