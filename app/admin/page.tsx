@@ -132,7 +132,6 @@ function buildThreadKey(message: InboxMessageRow) {
   })
 
   if (contactKey) return contactKey
-
   return message.conversationId || `message-${message.id}`
 }
 
@@ -145,11 +144,7 @@ function buildUnreadCountsBySource(messages: InboxMessageRow[]) {
 
   for (const message of messages) {
     const key = buildThreadKey(message)
-
-    if (!grouped.has(key)) {
-      grouped.set(key, [])
-    }
-
+    if (!grouped.has(key)) grouped.set(key, [])
     grouped.get(key)!.push(message)
   }
 
@@ -163,28 +158,19 @@ function buildUnreadCountsBySource(messages: InboxMessageRow[]) {
   }
 
   for (const items of grouped.values()) {
-    const sorted = [...items].sort(
+    const latest = [...items].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
-
-    const latest = sorted[0]
-    const source = normaliseSource(latest.source)
+    )[0]
 
     if (statusIsUnread(latest.status)) {
-      counts[source] += 1
+      counts[normaliseSource(latest.source)] += 1
     }
   }
 
   return counts
 }
 
-function DashboardSourceLink({
-  source,
-  unreadCount,
-}: {
-  source: DashboardInboxSource
-  unreadCount: number
-}) {
+function DashboardSourceLink({ source, unreadCount }: { source: DashboardInboxSource; unreadCount: number }) {
   return (
     <Link
       href={`/admin/inbox?source=${encodeURIComponent(source)}`}
@@ -226,9 +212,7 @@ function StatCard({
 
   return (
     <div className={`rounded-2xl border p-4 shadow-sm ${toneClasses}`}>
-      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
-        {label}
-      </div>
+      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</div>
       <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">{value}</div>
     </div>
   )
@@ -239,127 +223,87 @@ export default async function AdminPage() {
   const todayEnd = endOfToday()
   const tomorrowStart = startOfTomorrow()
 
-  const [
-    jobsTodayRaw,
-    workers,
-    quotesWaiting,
-    inboxMessages,
-    overdueCount,
-    unscheduledCount,
-  ] = await Promise.all([
-    prisma.job.findMany({
-      where: {
-        visitDate: {
-          gte: todayStart,
-          lte: todayEnd,
+  const [jobsTodayRaw, workers, quotesWaiting, inboxMessages, overdueCount, unscheduledCount] =
+    await Promise.all([
+      prisma.job.findMany({
+        where: {
+          visitDate: { gte: todayStart, lte: todayEnd },
+          status: { notIn: ['cancelled', 'archived'] },
         },
-        status: {
-          notIn: ['cancelled', 'archived'],
+        orderBy: [{ visitDate: 'asc' }, { startTime: 'asc' }, { createdAt: 'asc' }],
+        take: 50,
+        include: {
+          customer: true,
+          assignments: { include: { worker: true } },
         },
-      },
-      orderBy: [{ visitDate: 'asc' }, { startTime: 'asc' }, { createdAt: 'asc' }],
-      take: 50,
-      include: {
-        customer: true,
-        assignments: {
-          include: {
-            worker: true,
-          },
+      }),
+      prisma.worker.findMany({
+        where: { active: true },
+        orderBy: { firstName: 'asc' },
+        take: 30,
+      }),
+      prisma.quote.count({
+        where: {
+          status: { in: ['needs_review', 'ready_to_send'] },
+          archivedAt: null,
         },
-      },
-    }),
-    prisma.worker.findMany({
-      where: {
-        active: true,
-      },
-      orderBy: {
-        firstName: 'asc',
-      },
-      take: 30,
-    }),
-    prisma.chasMessage.count({
-      where: {
-        enquiryReadyForKelly: true,
-      },
-    }),
-    prisma.inboxMessage.findMany({
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: 300,
-      include: {
-        conversation: true,
-      },
-      where: {
-        OR: [{ conversation: { archived: false } }, { conversation: null }],
-      },
-    }) as Promise<InboxMessageRow[]>,
-    prisma.job.count({
-      where: {
-        visitDate: {
-          lt: todayStart,
+      }),
+      prisma.inboxMessage.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 300,
+        include: { conversation: true },
+        where: {
+          OR: [{ conversation: { archived: false } }, { conversation: null }],
         },
-        status: {
-          notIn: ['done', 'completed', 'cancelled', 'archived'],
+      }) as Promise<InboxMessageRow[]>,
+      prisma.job.count({
+        where: {
+          visitDate: { lt: todayStart },
+          status: { notIn: ['done', 'completed', 'cancelled', 'archived'] },
         },
-      },
-    }),
-    prisma.job.count({
-      where: {
-        OR: [{ visitDate: null }, { status: 'unscheduled' }],
-        status: {
-          notIn: ['cancelled', 'archived'],
+      }),
+      prisma.job.count({
+        where: {
+          OR: [{ visitDate: null }, { status: 'unscheduled' }],
+          status: { notIn: ['cancelled', 'archived'] },
         },
-      },
-    }),
-  ])
+      }),
+    ])
 
   const jobsToday = [...jobsTodayRaw].sort((a: any, b: any) => {
     const aTime = String(a.startTime || '99:99')
     const bTime = String(b.startTime || '99:99')
 
-    if (aTime !== bTime) {
-      return aTime.localeCompare(bTime)
-    }
-
-    return new Date(a.createdAt).getTime() - new Date(a.createdAt).getTime()
+    if (aTime !== bTime) return aTime.localeCompare(bTime)
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   })
 
   const maintenanceToday = jobsToday.filter((job: any) =>
     String(job.jobType || '').toLowerCase().includes('maint')
   )
-
   const landscapingToday = jobsToday.filter((job: any) =>
     String(job.jobType || '').toLowerCase().includes('land')
   )
-
   const quotesToday = jobsToday.filter((job: any) =>
     String(job.jobType || '').toLowerCase().includes('quote')
   )
 
-  const workersActive = jobsToday.filter((job: any) => {
-    const status = String(job.status || '').toLowerCase()
-    return (job.arrivedAt && !job.finishedAt) || status.includes('progress')
-  })
-
-  const activeWorkerIds = new Set<number>()
-  for (const job of workersActive) {
+  const todayWorkerJobCounts = new Map<number, number>()
+  for (const job of jobsToday) {
     for (const assignment of job.assignments || []) {
-      activeWorkerIds.add(assignment.worker.id)
+      const workerId = assignment.worker?.id
+      if (!workerId) continue
+      todayWorkerJobCounts.set(workerId, (todayWorkerJobCounts.get(workerId) || 0) + 1)
     }
   }
 
-  const activeWorkers = workers.filter((worker: any) => activeWorkerIds.has(worker.id))
+  const todaysTeam = workers.filter((worker: any) => todayWorkerJobCounts.has(worker.id))
   const unreadBySource = buildUnreadCountsBySource(inboxMessages)
 
   const tomorrowJobsCount = await prisma.job.count({
     where: {
-      visitDate: {
-        gte: tomorrowStart,
-      },
-      status: {
-        notIn: ['cancelled', 'archived'],
-      },
+      visitDate: { gte: tomorrowStart },
+      status: { notIn: ['cancelled', 'archived'] },
     },
   })
 
@@ -368,71 +312,32 @@ export default async function AdminPage() {
       <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-800 p-5 text-white shadow-sm">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="min-w-0">
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-zinc-300">
-              Daily overview
-            </div>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
-              Office control for today
-            </h2>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-zinc-300">Daily overview</div>
+            <h2 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Office control for today</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-300">
-              One dashboard for today&apos;s jobs, inbox pressure, quote follow-up and Kelly&apos;s
-              main diary view.
+              Today&apos;s jobs, inbox pressure, quote follow-up and the main schedule in one place.
             </p>
           </div>
 
-          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-2">
+          <div className="grid w-full gap-2 sm:grid-cols-3 xl:w-auto">
             <Link
               href="/admin/inbox"
               className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-bold text-zinc-900 transition hover:bg-zinc-100"
             >
               Open inbox
             </Link>
-
             <Link
-              href="/jobs"
+              href="/admin/schedule"
               className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
             >
-              View jobs
+              Open schedule
             </Link>
-
-            <Link
-              href="/admin/calendar"
-              className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-            >
-              Open calendar
-            </Link>
-
             <Link
               href="/kelly/time-off"
               className="inline-flex items-center justify-center rounded-xl bg-amber-400 px-4 py-3 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
             >
               Time Off / Holidays
             </Link>
-
-            <Link
-  href="/kelly/notes-summary"
-  className="inline-flex items-center justify-center rounded-xl bg-amber-400 px-4 py-3 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
->
-  Notes summary
-</Link>
-
-<Link
-  href="/admin/activity"
-  className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
->
-  Activity log
-</Link>
-
-<Link
-  href="/admin/todos"
-  className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
->
-  To-Do List
-</Link>
-
-            <div className="flex sm:col-span-2 xl:col-span-2">
-              <AdminSchedulerButton />
-            </div>
           </div>
         </div>
       </section>
@@ -452,13 +357,9 @@ export default async function AdminPage() {
             <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-base font-bold text-zinc-900">Today&apos;s jobs</h3>
-                <p className="text-xs text-zinc-500">
-                  First job at the top, then the rest of the diary flows down the page
-                </p>
+                <p className="text-xs text-zinc-500">First job at the top, then the rest of the schedule flows down the page</p>
               </div>
-              <Link href="/jobs" className="text-sm font-semibold text-zinc-700">
-                All jobs
-              </Link>
+              <Link href="/jobs" className="text-sm font-semibold text-zinc-700">All jobs</Link>
             </div>
 
             <div className="p-3 sm:p-4">
@@ -480,9 +381,7 @@ export default async function AdminPage() {
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${jobType.className}`}
-                                >
+                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${jobType.className}`}>
                                   {jobType.label}
                                 </span>
                                 <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
@@ -493,7 +392,6 @@ export default async function AdminPage() {
                               <h4 className="mt-3 text-lg font-bold leading-tight text-zinc-900">
                                 {job.customer?.name || 'Unknown customer'}
                               </h4>
-
                               <p className="mt-1 text-sm leading-6 text-zinc-500">
                                 {job.address || 'No address'} • {formatDate(job.visitDate)}
                               </p>
@@ -505,13 +403,8 @@ export default async function AdminPage() {
                           </div>
 
                           <div className="grid gap-2 rounded-2xl bg-zinc-50 p-3 text-sm text-zinc-700 sm:grid-cols-2">
-                            <div>
-                              <span className="font-semibold">Start:</span>{' '}
-                              {job.startTime || 'Time TBC'}
-                            </div>
-                            <div>
-                              <span className="font-semibold">Job ID:</span> #{job.id}
-                            </div>
+                            <div><span className="font-semibold">Start:</span> {job.startTime || 'Time TBC'}</div>
+                            <div><span className="font-semibold">Job ID:</span> #{job.id}</div>
                             <div className="sm:col-span-2">
                               <span className="font-semibold">Assigned:</span>{' '}
                               {assignedNames.length > 0 ? assignedNames.join(', ') : 'Unassigned'}
@@ -525,14 +418,12 @@ export default async function AdminPage() {
                             >
                               Open
                             </Link>
-
                             <Link
                               href={`/jobs/edit/${job.id}`}
                               className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
                             >
                               Edit
                             </Link>
-
                             <Link
                               href={`/jobs/edit/${job.id}`}
                               className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
@@ -554,91 +445,80 @@ export default async function AdminPage() {
           <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
             <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-bold text-zinc-900">Workers active</h3>
-                <p className="text-xs text-zinc-500">
-                  Live view from jobs currently in progress
-                </p>
+                <h3 className="text-base font-bold text-zinc-900">Today&apos;s team</h3>
+                <p className="text-xs text-zinc-500">Everyone assigned to at least one job today</p>
               </div>
-              <Link href="/workers" className="text-sm font-semibold text-zinc-700">
-                Workers
-              </Link>
+              <Link href="/workers" className="text-sm font-semibold text-zinc-700">Workers</Link>
             </div>
 
             <div className="p-3 sm:p-4">
-              {activeWorkers.length === 0 ? (
+              {todaysTeam.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-5 text-sm text-zinc-600">
-                  No workers currently marked active.
+                  No workers are assigned to today&apos;s jobs yet.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {activeWorkers.map((worker: any) => (
-                    <div key={worker.id} className="rounded-2xl border border-zinc-200 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-bold text-zinc-900">
-                            {fullName(worker.firstName, worker.lastName)}
+                  {todaysTeam.map((worker: any) => {
+                    const jobCount = todayWorkerJobCounts.get(worker.id) || 0
+                    return (
+                      <div key={worker.id} className="rounded-2xl border border-zinc-200 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-zinc-900">{fullName(worker.firstName, worker.lastName)}</div>
+                            <div className="mt-1 text-xs text-zinc-500">{worker.jobTitle || 'Worker'}</div>
                           </div>
-                          <div className="mt-1 text-xs text-zinc-500">
-                            {worker.jobTitle || 'Worker'}
-                          </div>
+                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
+                            {jobCount} job{jobCount === 1 ? '' : 's'}
+                          </span>
                         </div>
-
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
-                          Active
-                        </span>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
           </div>
 
           <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-base font-bold text-zinc-900">Kelly quick actions</h3>
-                <p className="text-xs text-zinc-500">
-                  Main diary, absences, quote follow-up and office shortcuts
-                </p>
-              </div>
+            <div className="border-b border-zinc-200 px-4 py-4">
+              <h3 className="text-base font-bold text-zinc-900">Kelly quick actions</h3>
+              <p className="text-xs text-zinc-500">Secondary office tools without cluttering the top of the dashboard</p>
             </div>
 
             <div className="grid gap-3 p-4 sm:grid-cols-2">
-              <Link
-                href="/admin/calendar"
-                className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-black"
-              >
-                Open calendar
-              </Link>
-
-              <Link
-                href="/kelly/time-off"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
-              >
-                Manage time off
-              </Link>
-
               <Link
                 href="/kelly/notes-summary"
                 className="inline-flex items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 transition hover:bg-amber-100"
               >
                 Notes summary
               </Link>
-
               <Link
                 href="/jobs"
                 className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
               >
                 Check all jobs
               </Link>
-
               <Link
                 href="/admin/inbox?source=worker-quote"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 sm:col-span-2"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
               >
                 Worker quotes
               </Link>
+              <Link
+                href="/admin/todos"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+              >
+                To-Do List
+              </Link>
+              <Link
+                href="/admin/activity"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100"
+              >
+                Activity log
+              </Link>
+              <div className="flex min-w-0">
+                <AdminSchedulerButton />
+              </div>
             </div>
           </div>
 
@@ -646,41 +526,19 @@ export default async function AdminPage() {
             <div className="flex flex-col gap-3 border-b border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-base font-bold text-zinc-900">Inbox sources</h3>
-                <p className="text-xs text-zinc-500">
-                  Unread thread counts with click-through to each channel
-                </p>
+                <p className="text-xs text-zinc-500">Unread thread counts with click-through to each channel</p>
               </div>
-              <Link href="/admin/inbox" className="text-sm font-semibold text-zinc-700">
-                Inbox
-              </Link>
+              <Link href="/admin/inbox" className="text-sm font-semibold text-zinc-700">Inbox</Link>
             </div>
 
             <div className="p-4">
               <div className="flex flex-wrap gap-2">
-                <DashboardSourceLink
-                  source="whatsapp"
-                  unreadCount={unreadBySource.whatsapp}
-                />
-                <DashboardSourceLink
-                  source="furlads-email"
-                  unreadCount={unreadBySource['furlads-email']}
-                />
-                <DashboardSourceLink
-                  source="threecounties-email"
-                  unreadCount={unreadBySource['threecounties-email']}
-                />
-                <DashboardSourceLink
-                  source="worker-quote"
-                  unreadCount={unreadBySource['worker-quote']}
-                />
-                <DashboardSourceLink
-                  source="facebook"
-                  unreadCount={unreadBySource.facebook}
-                />
-                <DashboardSourceLink
-                  source="wix"
-                  unreadCount={unreadBySource.wix}
-                />
+                <DashboardSourceLink source="whatsapp" unreadCount={unreadBySource.whatsapp} />
+                <DashboardSourceLink source="furlads-email" unreadCount={unreadBySource['furlads-email']} />
+                <DashboardSourceLink source="threecounties-email" unreadCount={unreadBySource['threecounties-email']} />
+                <DashboardSourceLink source="worker-quote" unreadCount={unreadBySource['worker-quote']} />
+                <DashboardSourceLink source="facebook" unreadCount={unreadBySource.facebook} />
+                <DashboardSourceLink source="wix" unreadCount={unreadBySource.wix} />
               </div>
             </div>
           </div>
@@ -688,29 +546,19 @@ export default async function AdminPage() {
           <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
             <div className="border-b border-zinc-200 px-4 py-4">
               <h3 className="text-base font-bold text-zinc-900">Forward view</h3>
-              <p className="text-xs text-zinc-500">
-                Quick office pressure check beyond today
-              </p>
+              <p className="text-xs text-zinc-500">Quick office pressure check beyond today</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 p-4">
               <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                  Tomorrow onwards
-                </div>
-                <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
-                  {tomorrowJobsCount}
-                </div>
+                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">Tomorrow onwards</div>
+                <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">{tomorrowJobsCount}</div>
               </div>
-
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                  Quotes waiting
-                </div>
-                <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
-                  {quotesWaiting}
-                </div>
-              </div>
+              <Link href="/admin/quotes?status=needs_review" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 transition hover:bg-amber-100">
+                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-700">Quotes waiting</div>
+                <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">{quotesWaiting}</div>
+                <div className="mt-1 text-xs font-semibold text-amber-800">Needs review or ready to send</div>
+              </Link>
             </div>
           </div>
         </section>
