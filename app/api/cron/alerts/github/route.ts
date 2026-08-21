@@ -78,7 +78,7 @@ async function verifyGitHubOidcToken(token: string) {
   const jwk = jwks.keys?.find((key) => key.kid === header.kid)
   if (!jwk) return false
 
-  const publicKey = crypto.createPublicKey({ key: jwk as crypto.JsonWebKey, format: 'jwk' })
+  const publicKey = crypto.createPublicKey({ key: jwk as any, format: 'jwk' })
   const signingInput = Buffer.from(`${headerPart}.${payloadPart}`)
   const signature = decodeBase64Url(signaturePart)
 
