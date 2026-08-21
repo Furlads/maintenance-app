@@ -182,6 +182,7 @@ export default function TodayDashboardHome() {
   const nextJob = activeJobs[0] || null
   const toolSuggestions = useMemo(() => getToolSuggestions(activeJobs), [activeJobs])
   const extraTools = toolSuggestions.filter((tool) => tool.extra)
+  const isJacob = /^jacob(?:\s|$)/i.test(workerName.trim())
 
   useEffect(() => {
     const hideLegacyHeader = () => {
@@ -284,7 +285,7 @@ export default function TodayDashboardHome() {
     : ''
 
   return (
-    <div data-today-dashboard-home className="worker-home-page">
+    <div data-today-dashboard-home className={`worker-home-page ${isJacob ? 'worker-home-three-counties' : ''}`}>
       <style>{`
         .worker-home-page { background:#f3f4f1; padding:14px 14px 8px; }
         .worker-home-shell { max-width:984px; margin:0 auto; }
@@ -292,6 +293,7 @@ export default function TodayDashboardHome() {
         .worker-home-top { display:flex; align-items:center; justify-content:space-between; gap:14px; }
         .worker-home-person { display:flex; align-items:center; gap:12px; min-width:0; }
         .worker-home-kicker { font-size:12px; opacity:.68; font-weight:850; text-transform:uppercase; letter-spacing:.7px; }
+        .worker-home-brand { margin-top:4px; font-size:10px; font-weight:900; letter-spacing:.85px; text-transform:uppercase; color:#9ac43c; }
         .worker-home-title { margin:3px 0 0; font-size:34px; line-height:1; font-weight:950; }
         .worker-home-status { font-size:13px; font-weight:800; color:#d4d4d8; text-align:right; }
         .worker-home-status strong { color:#facc15; }
@@ -321,6 +323,21 @@ export default function TodayDashboardHome() {
         .worker-home-empty { margin-top:14px; display:flex; align-items:center; justify-content:space-between; gap:10px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.1); border-radius:15px; padding:12px 14px; }
         .worker-home-empty strong { font-size:14px; }
         .worker-home-empty a { color:#facc15; text-decoration:none; font-size:13px; font-weight:900; }
+
+        .worker-home-three-counties { background:#eef1e8; }
+        .worker-home-three-counties .worker-home-hero { background:linear-gradient(145deg,#13220f,#253817 58%,#31481b); box-shadow:0 16px 38px rgba(25,46,17,.24); }
+        .worker-home-three-counties .worker-home-status strong { color:#a8cf45; }
+        .worker-home-three-counties .worker-home-next { border:2px solid #91b83d; }
+        .worker-home-three-counties .worker-home-label { color:#638126; opacity:1; }
+        .worker-home-three-counties .worker-home-weather .worker-home-label { color:#b8d874; }
+        .worker-home-three-counties .worker-home-tools { border:1px solid #d7e3bf; }
+        .worker-home-three-counties .worker-home-tool { background:#f1f6e8; border-color:#d8e6bf; }
+        .worker-home-three-counties .worker-home-tool-extra { background:#edf6dc; border-color:#9cc34b; }
+        .worker-home-three-counties .worker-home-extra { color:#58751e; }
+        .worker-home-three-counties .worker-home-action-primary { background:#8eb43c; border-color:#8eb43c; color:#10200b; }
+        .worker-home-three-counties .worker-home-action-primary small { color:#26370f; }
+        .worker-home-three-counties .worker-home-empty a { color:#acd354; }
+
         @media(max-width:760px) {
           .worker-home-page { padding:10px 10px 6px; }
           .worker-home-hero { border-radius:20px; padding:15px; }
@@ -344,6 +361,7 @@ export default function TodayDashboardHome() {
                 <div className="worker-home-kicker">
                   {workerName ? `Morning, ${workerName.split(/\s+/)[0]}` : 'Morning'}
                 </div>
+                {isJacob && <div className="worker-home-brand">Three Counties Property Care</div>}
                 <h1 className="worker-home-title">Today</h1>
               </div>
             </div>
