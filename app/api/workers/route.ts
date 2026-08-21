@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
 const CODIE_AVATAR_URL = "/branding/workers/codie-furlads-avatar.jpg";
+const STEVE_AVATAR_URL = "/branding/workers/steve-furlads-avatar.webp";
 
 function norm(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
@@ -41,7 +42,10 @@ function splitName(name: string) {
 }
 
 function workerPhotoUrl(firstName: string | null | undefined) {
-  return norm(firstName) === "codie" ? CODIE_AVATAR_URL : "";
+  const first = norm(firstName);
+  if (first === "codie") return CODIE_AVATAR_URL;
+  if (first === "steve") return STEVE_AVATAR_URL;
+  return "";
 }
 
 export async function GET(req: Request) {
