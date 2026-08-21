@@ -30,8 +30,8 @@ const WORKER_AVATARS: WorkerAvatarConfig[] = [
   },
   {
     key: 'steve',
-    namePattern: /^steve(?:\s|$)/i,
-    assignedPattern: /\bSteve\b/i,
+    namePattern: /^(?:steve|stephen)(?:\s|$)/i,
+    assignedPattern: /\b(?:Steve|Stephen)\b/i,
     src: '/branding/workers/steve-furlads-avatar.webp',
     title: 'Steve · Furlads Garden Services',
     border: '#facc15',
