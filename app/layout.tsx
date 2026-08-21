@@ -39,25 +39,52 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               (function () {
-                function enableQuotePhotoChoice() {
-                  if (!window.location.pathname.startsWith('/trev/quote/')) return;
+                function isQuoteVisit() {
+                  return window.location.pathname.startsWith('/trev/quote/');
+                }
+
+                function tidyQuotePhotoUi() {
+                  if (!isQuoteVisit()) return;
 
                   document
                     .querySelectorAll('input[type="file"][accept*="image"]')
                     .forEach(function (input) {
                       input.removeAttribute('capture');
                     });
+
+                  document.querySelectorAll('div').forEach(function (element) {
+                    if (element.childElementCount !== 0) return;
+                    if ((element.textContent || '').trim() === 'Retry on reopen') {
+                      element.textContent = 'Saved — will upload';
+                    }
+                  });
                 }
 
-                enableQuotePhotoChoice();
+                function hasSavedPhotosWaiting() {
+                  return Array.from(document.querySelectorAll('div')).some(function (element) {
+                    var text = (element.textContent || '').trim();
+                    return text === 'Saved — will upload' || text === 'Retry on reopen';
+                  });
+                }
 
-                var observer = new MutationObserver(enableQuotePhotoChoice);
+                function retrySavedQuotePhotos() {
+                  if (!isQuoteVisit()) return;
+                  if (!navigator.onLine) return;
+                  if (!hasSavedPhotosWaiting()) return;
+                  window.location.reload();
+                }
+
+                tidyQuotePhotoUi();
+
+                var observer = new MutationObserver(tidyQuotePhotoUi);
                 observer.observe(document.documentElement, {
                   childList: true,
                   subtree: true,
                   attributes: true,
                   attributeFilter: ['capture']
                 });
+
+                window.addEventListener('online', retrySavedQuotePhotos);
               })();
             `,
           }}
