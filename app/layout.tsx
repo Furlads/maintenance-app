@@ -30,11 +30,38 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         {children}
         <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script
-  dangerouslySetInnerHTML={{
-    __html: `eruda.init();`,
-  }}
-/>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `eruda.init();`,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                function enableQuotePhotoChoice() {
+                  if (!window.location.pathname.startsWith('/trev/quote/')) return;
+
+                  document
+                    .querySelectorAll('input[type="file"][accept*="image"]')
+                    .forEach(function (input) {
+                      input.removeAttribute('capture');
+                    });
+                }
+
+                enableQuotePhotoChoice();
+
+                var observer = new MutationObserver(enableQuotePhotoChoice);
+                observer.observe(document.documentElement, {
+                  childList: true,
+                  subtree: true,
+                  attributes: true,
+                  attributeFilter: ['capture']
+                });
+              })();
+            `,
+          }}
+        />
       </body>
     </html>
   );
