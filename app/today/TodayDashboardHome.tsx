@@ -63,7 +63,7 @@ function todayKey() {
     timeZone: 'Europe/London',
     year: 'numeric',
     month: '2-digit',
-    day: '2-digit'
+    day: '2-digit',
   }).format(new Date())
 }
 
@@ -93,8 +93,8 @@ function toDashboardJob(job: ScheduleJob): Job {
     customer: {
       name: job.customerName,
       postcode: job.postcode,
-      address: job.address
-    }
+      address: job.address,
+    },
   }
 }
 
@@ -103,7 +103,6 @@ function getToolSuggestions(jobs: Job[]): ToolSuggestion[] {
 
   const text = jobs.map((job) => `${job.title} ${job.jobType || ''}`).join(' ').toLowerCase()
   const tools = new Map<string, ToolSuggestion>()
-
   const add = (name: string, extra = false) => {
     if (!tools.has(name)) tools.set(name, { name, extra })
   }
@@ -168,7 +167,14 @@ function getToolSuggestions(jobs: Job[]): ToolSuggestion[] {
     add('Hose / connectors')
   }
 
-  return Array.from(tools.values()).slice(0, 9)
+  return Array.from(tools.values()).slice(0, 6)
+}
+
+function greeting() {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Morning'
+  if (hour < 18) return 'Afternoon'
+  return 'Evening'
 }
 
 export default function TodayDashboardHome() {
@@ -183,6 +189,11 @@ export default function TodayDashboardHome() {
   const toolSuggestions = useMemo(() => getToolSuggestions(activeJobs), [activeJobs])
   const extraTools = toolSuggestions.filter((tool) => tool.extra)
   const isJacob = /^jacob(?:\s|$)/i.test(workerName.trim())
+  const firstName = workerName.split(/\s+/)[0] || ''
+  const brandLogo = isJacob
+    ? '/branding/three-counties/three-counties-property-care-logo.webp'
+    : '/branding/furlads-logo.png'
+  const brandAlt = isJacob ? 'Three Counties Property Care Ltd' : 'Furlads Garden Services'
 
   useEffect(() => {
     const hideLegacyHeader = () => {
@@ -220,7 +231,6 @@ export default function TodayDashboardHome() {
       try {
         const authRes = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'include' })
         const auth: AuthResponse | null = await authRes.json().catch(() => null)
-
         if (!authRes.ok || !auth?.authenticated || !auth.workerId) return
         if (cancelled) return
 
@@ -228,19 +238,18 @@ export default function TodayDashboardHome() {
 
         const scheduleRes = await fetch(`/api/schedule/day?date=${encodeURIComponent(todayKey())}`, {
           cache: 'no-store',
-          credentials: 'include'
+          credentials: 'include',
         })
         const scheduleData: ScheduleResponse | null = await scheduleRes.json().catch(() => null)
         const workerSchedule = scheduleData?.workers?.find((worker) => worker.id === auth.workerId)
         const nextJobs = (workerSchedule?.jobs || []).map(toDashboardJob)
-
         if (!cancelled) setJobs(nextJobs)
 
         const nextActive = nextJobs.find((job) => !isFinished(job)) || null
         const postcode = nextActive?.customer?.postcode || DEFAULT_POSTCODE
         const weatherRes = await fetch(`/api/weather/postcode?postcode=${encodeURIComponent(postcode)}`, {
           cache: 'no-store',
-          credentials: 'include'
+          credentials: 'include',
         })
         const weatherData: WeatherResponse | null = await weatherRes.json().catch(() => null)
 
@@ -273,9 +282,10 @@ export default function TodayDashboardHome() {
   function scrollToJobs() {
     const main = document.querySelector('main')
     if (!main) return
-
     const sections = Array.from(main.querySelectorAll('section')) as HTMLElement[]
-    const firstVisible = sections.find((section) => section.style.display !== 'none' && !section.closest('[data-today-dashboard-home]'))
+    const firstVisible = sections.find(
+      (section) => section.style.display !== 'none' && !section.closest('[data-today-dashboard-home]'),
+    )
     firstVisible?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -285,167 +295,239 @@ export default function TodayDashboardHome() {
     : ''
 
   return (
-    <div data-today-dashboard-home className={`worker-home-page ${isJacob ? 'worker-home-three-counties' : ''}`}>
+    <div data-today-dashboard-home className={`today-v2 ${isJacob ? 'today-v2-three-counties' : 'today-v2-furlads'}`}>
       <style>{`
-        .worker-home-page { background:#f3f4f1; padding:14px 14px 8px; }
-        .worker-home-shell { max-width:984px; margin:0 auto; }
-        .worker-home-hero { background:linear-gradient(145deg,#111,#1d1d1d); color:#fff; border-radius:24px; padding:20px; box-shadow:0 16px 38px rgba(0,0,0,.14); }
-        .worker-home-top { display:flex; align-items:center; justify-content:space-between; gap:14px; }
-        .worker-home-person { display:flex; align-items:center; gap:12px; min-width:0; }
-        .worker-home-kicker { font-size:12px; opacity:.68; font-weight:850; text-transform:uppercase; letter-spacing:.7px; }
-        .worker-home-brand { margin-top:4px; font-size:10px; font-weight:900; letter-spacing:.85px; text-transform:uppercase; color:#9ac43c; }
-        .worker-home-title { margin:3px 0 0; font-size:34px; line-height:1; font-weight:950; }
-        .worker-home-status { font-size:13px; font-weight:800; color:#d4d4d8; text-align:right; }
-        .worker-home-status strong { color:#facc15; }
-        .worker-home-brief { display:grid; grid-template-columns:1.12fr .88fr; gap:12px; margin-top:16px; }
-        .worker-home-next { background:#fff; color:#111; border-radius:18px; padding:17px; }
-        .worker-home-weather { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.11); border-radius:18px; padding:17px; }
-        .worker-home-label { font-size:11px; opacity:.62; font-weight:900; text-transform:uppercase; letter-spacing:.75px; }
-        .worker-home-next-name { font-size:22px; font-weight:950; line-height:1.08; margin-top:6px; }
-        .worker-home-next-meta { margin-top:7px; color:#666; font-size:14px; font-weight:650; }
-        .worker-home-next-link { color:#111; text-decoration:none; display:inline-flex; margin-top:11px; font-size:13px; font-weight:900; border-bottom:1px solid #aaa; }
-        .worker-home-weather-main { font-size:19px; font-weight:900; margin-top:6px; line-height:1.25; }
-        .worker-home-weather-place { margin-top:5px; font-size:12px; opacity:.62; }
-        .worker-home-tools { margin-top:12px; background:#fff; color:#111; border-radius:18px; padding:15px 16px; }
-        .worker-home-tools-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-        .worker-home-tools-title { font-size:16px; font-weight:950; }
-        .worker-home-tools-sub { margin-top:2px; color:#71717a; font-size:12px; line-height:1.35; }
-        .worker-home-tool-list { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
-        .worker-home-tool { background:#f4f4f5; border:1px solid #e4e4e7; border-radius:999px; padding:6px 9px; font-size:12px; font-weight:800; }
-        .worker-home-tool-extra { background:#fff8db; border-color:#f5cf38; }
-        .worker-home-extra { color:#8a6700; font-size:11px; font-weight:900; white-space:nowrap; }
-        .worker-home-actions { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; margin-top:12px; }
-        .worker-home-action { border:1px solid rgba(255,255,255,.16); border-radius:15px; min-height:70px; padding:12px; background:rgba(255,255,255,.96); color:#111; font-weight:900; cursor:pointer; text-decoration:none; display:flex; flex-direction:column; justify-content:center; gap:4px; text-align:left; }
-        .worker-home-action-primary { background:#facc15; border-color:#facc15; }
-        .worker-home-action-icon { font-size:19px; line-height:1; }
-        .worker-home-action small { font-weight:650; color:#666; line-height:1.2; }
-        .worker-home-action-primary small { color:#514100; }
-        .worker-home-empty { margin-top:14px; display:flex; align-items:center; justify-content:space-between; gap:10px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.1); border-radius:15px; padding:12px 14px; }
-        .worker-home-empty strong { font-size:14px; }
-        .worker-home-empty a { color:#facc15; text-decoration:none; font-size:13px; font-weight:900; }
+        .today-v2 { --accent:#facc15; --accentText:#18130a; --hero:#111111; --hero2:#1c1c1c; --soft:#fff9d9; --muted:#666; --page:#f4f4f0; background:var(--page); padding:10px 10px 102px; min-height:100dvh; }
+        .today-v2-three-counties { --accent:#93b83d; --accentText:#14200d; --hero:#10240f; --hero2:#29401c; --soft:#eef5e2; --page:#eef1e8; }
+        .today-v2-shell { width:100%; max-width:980px; margin:0 auto; }
+        .today-v2-hero { position:relative; overflow:hidden; background:linear-gradient(145deg,var(--hero),var(--hero2)); color:white; border-radius:28px; padding:22px; box-shadow:0 20px 48px rgba(0,0,0,.16); }
+        .today-v2-hero:after { content:''; position:absolute; right:-100px; top:-120px; width:300px; height:300px; border-radius:50%; background:radial-gradient(circle, color-mix(in srgb, var(--accent) 20%, transparent), transparent 68%); pointer-events:none; }
+        .today-v2-header { position:relative; z-index:1; display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:16px; align-items:center; }
+        .today-v2-person { display:flex; gap:14px; align-items:center; min-width:0; }
+        .today-v2-greeting { font-size:13px; text-transform:uppercase; letter-spacing:1px; font-weight:900; color:#d7d7d7; }
+        .today-v2-three-counties .today-v2-greeting { color:#b9d777; }
+        .today-v2-title { margin:4px 0 0; font-size:46px; line-height:.95; letter-spacing:-1.8px; font-weight:950; }
+        .today-v2-brand { width:105px; height:105px; display:flex; align-items:center; justify-content:center; border-radius:20px; overflow:hidden; background:var(--accent); padding:7px; box-shadow:0 10px 28px rgba(0,0,0,.22); position:relative; z-index:1; }
+        .today-v2-brand img { width:100%; height:100%; object-fit:contain; border-radius:13px; }
+        .today-v2-three-counties .today-v2-brand { background:white; }
+        .today-v2-status { position:relative; z-index:1; min-width:110px; text-align:right; font-size:15px; line-height:1.45; font-weight:800; color:#e3e3e3; }
+        .today-v2-status strong { color:var(--accent); font-size:17px; }
+        .today-v2-next { position:relative; z-index:1; margin-top:22px; background:white; color:#111; border-radius:24px; padding:22px; display:flex; align-items:center; justify-content:space-between; gap:16px; box-shadow:0 10px 26px rgba(0,0,0,.08); }
+        .today-v2-three-counties .today-v2-next { border:1px solid #9abb55; }
+        .today-v2-label { font-size:11px; font-weight:950; text-transform:uppercase; letter-spacing:.9px; color:#7a7a7a; }
+        .today-v2-three-counties .today-v2-label { color:#64812c; }
+        .today-v2-next-name { margin-top:7px; font-size:29px; line-height:1.05; font-weight:950; letter-spacing:-.8px; }
+        .today-v2-next-meta { margin-top:8px; color:#696969; font-size:15px; line-height:1.45; font-weight:650; }
+        .today-v2-next-link { flex:0 0 auto; min-width:54px; min-height:54px; border-radius:18px; display:flex; align-items:center; justify-content:center; text-decoration:none; background:var(--soft); color:var(--accentText); font-size:25px; font-weight:900; }
+        .today-v2-mid { position:relative; z-index:1; display:grid; grid-template-columns:.9fr 1.1fr; gap:14px; margin-top:14px; }
+        .today-v2-weather,.today-v2-tools { border-radius:22px; padding:20px; min-height:205px; }
+        .today-v2-weather { background:linear-gradient(145deg,var(--hero),var(--hero2)); border:1px solid rgba(255,255,255,.1); color:white; }
+        .today-v2-weather .today-v2-label { color:var(--accent); }
+        .today-v2-weather-main { margin-top:15px; font-size:24px; line-height:1.22; font-weight:950; }
+        .today-v2-weather-place { margin-top:14px; color:#c7c7c7; font-size:13px; font-weight:700; }
+        .today-v2-tools { background:white; color:#111; border:1px solid #e5e5e5; box-shadow:0 10px 28px rgba(0,0,0,.05); }
+        .today-v2-three-counties .today-v2-tools { border-color:#d7e4bf; }
+        .today-v2-tools-title { font-size:17px; font-weight:950; }
+        .today-v2-tools-sub { margin-top:3px; color:#777; font-size:12px; font-weight:650; }
+        .today-v2-tool-list { display:grid; gap:7px; margin-top:13px; }
+        .today-v2-tool { display:flex; align-items:center; justify-content:space-between; gap:10px; border-radius:11px; padding:7px 10px; background:#f4f4f4; font-size:12px; font-weight:850; }
+        .today-v2-furlads .today-v2-tool { background:#fff9d9; }
+        .today-v2-three-counties .today-v2-tool { background:#eef5e3; }
+        .today-v2-tool-extra { outline:1px solid color-mix(in srgb, var(--accent) 70%, #b98d00); }
+        .today-v2-tool-mark { color:var(--accentText); font-size:10px; font-weight:950; }
+        .today-v2-no-tools { margin-top:18px; border-radius:15px; padding:16px; background:var(--soft); color:#555; font-size:13px; line-height:1.45; font-weight:750; }
+        .today-v2-actions { position:relative; z-index:1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:14px; }
+        .today-v2-action { min-height:112px; border:1px solid #e4e4e4; border-radius:22px; background:#fff; color:#111; padding:18px; text-decoration:none; display:flex; align-items:center; justify-content:space-between; gap:14px; text-align:left; cursor:pointer; box-shadow:0 8px 22px rgba(0,0,0,.045); }
+        .today-v2-action-primary { background:linear-gradient(145deg,var(--hero),var(--hero2)); border-color:transparent; color:white; }
+        .today-v2-action-icon { width:52px; height:52px; flex:0 0 52px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:var(--soft); font-size:24px; }
+        .today-v2-action-primary .today-v2-action-icon { background:var(--accent); }
+        .today-v2-action-copy { min-width:0; flex:1; }
+        .today-v2-action-title { font-size:18px; font-weight:950; }
+        .today-v2-action-sub { margin-top:4px; color:#777; font-size:12px; font-weight:650; }
+        .today-v2-action-primary .today-v2-action-sub { color:#d6d6d6; }
+        .today-v2-action-arrow { font-size:25px; font-weight:800; color:#777; }
+        .today-v2-action-primary .today-v2-action-arrow { color:var(--accent); }
+        .today-v2-lookahead { position:relative; z-index:1; margin-top:14px; border-radius:22px; padding:17px 20px; display:flex; align-items:center; justify-content:space-between; gap:14px; background:var(--soft); color:#111; }
+        .today-v2-lookahead strong { font-size:16px; }
+        .today-v2-lookahead a { text-decoration:none; color:var(--accentText); border:1px solid color-mix(in srgb,var(--accent) 72%, #777); padding:9px 13px; border-radius:12px; font-size:13px; font-weight:950; white-space:nowrap; }
+        .today-v2-three-counties .today-v2-lookahead a { color:#395017; }
+        .today-v2-nav { position:fixed; left:10px; right:10px; bottom:calc(8px + env(safe-area-inset-bottom)); z-index:70; max-width:760px; margin:0 auto; display:grid; grid-template-columns:repeat(5,1fr); gap:3px; padding:8px; border-radius:23px; background:linear-gradient(145deg,var(--hero),var(--hero2)); box-shadow:0 16px 38px rgba(0,0,0,.24); }
+        .today-v2-nav a,.today-v2-nav button { min-width:0; border:0; background:transparent; color:#d4d4d4; text-decoration:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:56px; border-radius:15px; padding:4px 2px; font-size:10px; font-weight:850; cursor:pointer; }
+        .today-v2-nav .active { color:var(--accent); background:rgba(255,255,255,.06); }
+        .today-v2-nav-icon { font-size:20px; line-height:1; }
 
-        .worker-home-three-counties { background:#eef1e8; }
-        .worker-home-three-counties .worker-home-hero { background:linear-gradient(145deg,#13220f,#253817 58%,#31481b); box-shadow:0 16px 38px rgba(25,46,17,.24); }
-        .worker-home-three-counties .worker-home-status strong { color:#a8cf45; }
-        .worker-home-three-counties .worker-home-next { border:2px solid #91b83d; }
-        .worker-home-three-counties .worker-home-label { color:#638126; opacity:1; }
-        .worker-home-three-counties .worker-home-weather .worker-home-label { color:#b8d874; }
-        .worker-home-three-counties .worker-home-tools { border:1px solid #d7e3bf; }
-        .worker-home-three-counties .worker-home-tool { background:#f1f6e8; border-color:#d8e6bf; }
-        .worker-home-three-counties .worker-home-tool-extra { background:#edf6dc; border-color:#9cc34b; }
-        .worker-home-three-counties .worker-home-extra { color:#58751e; }
-        .worker-home-three-counties .worker-home-action-primary { background:#8eb43c; border-color:#8eb43c; color:#10200b; }
-        .worker-home-three-counties .worker-home-action-primary small { color:#26370f; }
-        .worker-home-three-counties .worker-home-empty a { color:#acd354; }
+        @media(max-width:680px) {
+          .today-v2 { padding:0 0 96px; background:#f2f3f1; }
+          .today-v2-three-counties { background:#eef1e8; }
+          .today-v2-shell { max-width:none; }
+          .today-v2-hero { border-radius:0 0 28px 28px; padding:18px 14px 20px; min-height:calc(100dvh - 96px); box-shadow:none; }
+          .today-v2-header { grid-template-columns:minmax(0,1fr) 76px; gap:10px; }
+          .today-v2-person { gap:10px; }
+          .today-v2-greeting { font-size:11px; }
+          .today-v2-title { font-size:40px; }
+          .today-v2-brand { width:76px; height:76px; border-radius:18px; padding:5px; }
+          .today-v2-status { grid-column:1 / -1; text-align:left; display:flex; gap:7px; align-items:baseline; min-width:0; margin-top:-2px; font-size:12px; }
+          .today-v2-status br { display:none; }
+          .today-v2-status strong { font-size:13px; }
+          .today-v2-next { margin-top:15px; border-radius:22px; padding:18px; }
+          .today-v2-next-name { font-size:25px; }
+          .today-v2-next-meta { font-size:13px; }
+          .today-v2-mid { grid-template-columns:1fr 1.12fr; gap:10px; }
+          .today-v2-weather,.today-v2-tools { min-height:190px; border-radius:20px; padding:16px; }
+          .today-v2-weather-main { font-size:18px; }
+          .today-v2-tools-title { font-size:15px; }
+          .today-v2-tools-sub { font-size:10px; }
+          .today-v2-tool-list { gap:5px; margin-top:10px; }
+          .today-v2-tool { padding:6px 7px; font-size:10px; }
+          .today-v2-actions { gap:10px; }
+          .today-v2-action { min-height:96px; border-radius:19px; padding:13px; gap:9px; }
+          .today-v2-action-icon { width:42px; height:42px; flex-basis:42px; font-size:20px; }
+          .today-v2-action-title { font-size:15px; }
+          .today-v2-action-sub { font-size:10px; }
+          .today-v2-action-arrow { display:none; }
+          .today-v2-lookahead { border-radius:19px; padding:14px 15px; }
+          .today-v2-lookahead strong { font-size:14px; }
+          .today-v2-nav { left:6px; right:6px; bottom:calc(5px + env(safe-area-inset-bottom)); border-radius:20px; padding:6px; }
+          .today-v2-nav a,.today-v2-nav button { min-height:52px; font-size:9px; }
+          .today-v2-nav-icon { font-size:18px; }
+        }
 
-        @media(max-width:760px) {
-          .worker-home-page { padding:10px 10px 6px; }
-          .worker-home-hero { border-radius:20px; padding:15px; }
-          .worker-home-top { align-items:flex-start; }
-          .worker-home-title { font-size:30px; }
-          .worker-home-status { font-size:12px; padding-top:4px; }
-          .worker-home-brief { grid-template-columns:1fr; gap:9px; margin-top:13px; }
-          .worker-home-next,.worker-home-weather { padding:14px; }
-          .worker-home-weather-main { font-size:17px; }
-          .worker-home-actions { grid-template-columns:repeat(2,minmax(0,1fr)); }
-          .worker-home-action { min-height:76px; }
+        @media(max-width:390px) {
+          .today-v2-mid { grid-template-columns:1fr; }
+          .today-v2-weather,.today-v2-tools { min-height:0; }
+          .today-v2-header { grid-template-columns:minmax(0,1fr) 66px; }
+          .today-v2-brand { width:66px; height:66px; }
         }
       `}</style>
 
-      <div className="worker-home-shell">
-        <section className="worker-home-hero">
-          <div className="worker-home-top">
-            <div className="worker-home-person">
-              {workerName ? <WorkerAvatar name={workerName} size={62} /> : null}
+      <div className="today-v2-shell">
+        <section className="today-v2-hero">
+          <div className="today-v2-header">
+            <div className="today-v2-person">
+              {workerName ? <WorkerAvatar name={workerName} size={70} /> : null}
               <div>
-                <div className="worker-home-kicker">
-                  {workerName ? `Morning, ${workerName.split(/\s+/)[0]}` : 'Morning'}
-                </div>
-                {isJacob && <div className="worker-home-brand">Three Counties Property Care</div>}
-                <h1 className="worker-home-title">Today</h1>
+                <div className="today-v2-greeting">{workerName ? `${greeting()}, ${firstName}` : greeting()}</div>
+                <h1 className="today-v2-title">Today</h1>
               </div>
             </div>
-            <div className="worker-home-status">
-              {loading ? 'Loading your day…' : activeJobs.length === 0 ? <><strong>Clear day</strong><br />No jobs booked</> : <><strong>{activeJobs.length} job{activeJobs.length === 1 ? '' : 's'}</strong><br />on your run</>}
+
+            <div className="today-v2-brand">
+              <img src={brandLogo} alt={brandAlt} />
+            </div>
+
+            <div className="today-v2-status">
+              {loading ? (
+                'Loading your day…'
+              ) : activeJobs.length === 0 ? (
+                <><strong>Clear day</strong><br />No jobs booked</>
+              ) : (
+                <><strong>{activeJobs.length} job{activeJobs.length === 1 ? '' : 's'} today</strong><br />Ready to go</>
+              )}
             </div>
           </div>
 
-          <div className="worker-home-brief">
-            <div className="worker-home-next">
-              <div className="worker-home-label">{nextJob ? 'Next up' : 'Your day'}</div>
+          <div className="today-v2-next">
+            <div>
+              <div className="today-v2-label">{nextJob ? 'Next job' : 'Your day'}</div>
               {nextJob ? (
                 <>
-                  <div className="worker-home-next-name">{nextJob.customer?.name || nextJob.title}</div>
-                  <div className="worker-home-next-meta">
-                    {displayTime(nextJob.startTime)}{destination ? ` · ${destination}` : ''}
-                  </div>
-                  {mapsHref && <a className="worker-home-next-link" href={mapsHref} target="_blank" rel="noreferrer">Directions →</a>}
+                  <div className="today-v2-next-name">{nextJob.customer?.name || nextJob.title}</div>
+                  <div className="today-v2-next-meta">{displayTime(nextJob.startTime)}{destination ? ` · ${destination}` : ''}</div>
                 </>
               ) : (
                 <>
-                  <div className="worker-home-next-name">Nothing booked today 🎉</div>
-                  <div className="worker-home-next-meta">A clear run — check tomorrow or the calendar if you’re planning ahead.</div>
+                  <div className="today-v2-next-name">Nothing else booked today 🎉</div>
+                  <div className="today-v2-next-meta">You’re all clear. Check tomorrow’s schedule or use the time to prep and get ahead.</div>
                 </>
               )}
             </div>
+            {mapsHref ? (
+              <a className="today-v2-next-link" href={mapsHref} target="_blank" rel="noreferrer" aria-label="Directions">➜</a>
+            ) : (
+              <a className="today-v2-next-link" href="/calendar" aria-label="Calendar">📅</a>
+            )}
+          </div>
 
-            <div className="worker-home-weather">
-              <div className="worker-home-label">Weather</div>
-              <div className="worker-home-weather-main">{weather}</div>
-              {weatherLocation && <div className="worker-home-weather-place">{weatherLocation}</div>}
+          <div className="today-v2-mid">
+            <div className="today-v2-weather">
+              <div className="today-v2-label">Today’s weather</div>
+              <div className="today-v2-weather-main">🌦️ {weather}</div>
+              {weatherLocation && <div className="today-v2-weather-place">📍 {weatherLocation}</div>}
+            </div>
+
+            <div className="today-v2-tools">
+              <div className="today-v2-tools-title">🔧 Quick tool check</div>
+              <div className="today-v2-tools-sub">Based on today’s booked work</div>
+              {toolSuggestions.length > 0 ? (
+                <div className="today-v2-tool-list">
+                  {toolSuggestions.map((tool) => (
+                    <div key={tool.name} className={`today-v2-tool ${tool.extra ? 'today-v2-tool-extra' : ''}`}>
+                      <span>{tool.name}</span>
+                      <span className="today-v2-tool-mark">{tool.extra ? 'EXTRA' : '✓'}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="today-v2-no-tools">Nothing special flagged today. Standard PPE, hand tools and tidy-up kit should cover the basics.</div>
+              )}
+              {extraTools.length > 0 && <div className="today-v2-tools-sub" style={{ marginTop: 8 }}>⚠ {extraTools.length} easy-to-forget extra{extraTools.length === 1 ? '' : 's'}</div>}
             </div>
           </div>
 
-          {activeJobs.length > 0 && (
-            <div className="worker-home-tools">
-              <div className="worker-home-tools-head">
-                <div>
-                  <div className="worker-home-tools-title">🧰 Quick tool check</div>
-                  <div className="worker-home-tools-sub">Suggested from today’s job types — worth a glance before you leave the yard.</div>
-                </div>
-                {extraTools.length > 0 && <div className="worker-home-extra">⚠ {extraTools.length} extra</div>}
-              </div>
-              <div className="worker-home-tool-list">
-                {toolSuggestions.map((tool) => (
-                  <span key={tool.name} className={`worker-home-tool ${tool.extra ? 'worker-home-tool-extra' : ''}`}>
-                    {tool.extra ? '⚠ ' : ''}{tool.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="today-v2-actions">
+            <button type="button" className="today-v2-action today-v2-action-primary" onClick={scrollToJobs}>
+              <span className="today-v2-action-icon">📋</span>
+              <span className="today-v2-action-copy">
+                <span className="today-v2-action-title">Today’s Jobs</span>
+                <span className="today-v2-action-sub">See the full running order</span>
+              </span>
+              <span className="today-v2-action-arrow">›</span>
+            </button>
 
-          <div className="worker-home-actions">
-            <button type="button" className="worker-home-action worker-home-action-primary" onClick={scrollToJobs}>
-              <span className="worker-home-action-icon">📋</span>
-              Today’s Jobs
-              <small>Full running order</small>
+            <button type="button" className="today-v2-action" onClick={openChas}>
+              <span className="today-v2-action-icon">💬</span>
+              <span className="today-v2-action-copy">
+                <span className="today-v2-action-title">Ask CHAS</span>
+                <span className="today-v2-action-sub">Jobs, plants and safety</span>
+              </span>
+              <span className="today-v2-action-arrow">›</span>
             </button>
-            <button type="button" className="worker-home-action" onClick={openChas}>
-              <span className="worker-home-action-icon">💬</span>
-              Ask CHAS
-              <small>Jobs, plants & safety</small>
-            </button>
-            <a className="worker-home-action" href="/worker/time-off">
-              <span className="worker-home-action-icon">🏖️</span>
-              Holiday
-              <small>View or request leave</small>
+
+            <a className="today-v2-action" href="/worker/time-off">
+              <span className="today-v2-action-icon">📅</span>
+              <span className="today-v2-action-copy">
+                <span className="today-v2-action-title">Holiday Request</span>
+                <span className="today-v2-action-sub">View or request time off</span>
+              </span>
+              <span className="today-v2-action-arrow">›</span>
             </a>
-            <a className="worker-home-action" href={`tel:${OFFICE_PHONE}`}>
-              <span className="worker-home-action-icon">☎️</span>
-              Office
-              <small>Call Kelly or Trev</small>
+
+            <a className="today-v2-action" href={`tel:${OFFICE_PHONE}`}>
+              <span className="today-v2-action-icon">☎️</span>
+              <span className="today-v2-action-copy">
+                <span className="today-v2-action-title">Contact Office</span>
+                <span className="today-v2-action-sub">Call Kelly or Trevor</span>
+              </span>
+              <span className="today-v2-action-arrow">›</span>
             </a>
           </div>
 
           {!loading && activeJobs.length === 0 && (
-            <div className="worker-home-empty">
-              <strong>Want to look ahead?</strong>
-              <a href="/calendar">View calendar →</a>
+            <div className="today-v2-lookahead">
+              <strong>Nothing booked today 🎉</strong>
+              <a href="/calendar">View calendar</a>
             </div>
           )}
         </section>
       </div>
+
+      <nav className="today-v2-nav" aria-label="Today navigation">
+        <a href="/today" className="active"><span className="today-v2-nav-icon">⌂</span><span>Today</span></a>
+        <button type="button" onClick={scrollToJobs}><span className="today-v2-nav-icon">🚚</span><span>Next Job</span></button>
+        <button type="button" onClick={openChas}><span className="today-v2-nav-icon">💬</span><span>Ask CHAS</span></button>
+        <a href="/worker/time-off"><span className="today-v2-nav-icon">📅</span><span>Holiday</span></a>
+        <a href={`tel:${OFFICE_PHONE}`}><span className="today-v2-nav-icon">☎</span><span>Office</span></a>
+      </nav>
     </div>
   )
 }
