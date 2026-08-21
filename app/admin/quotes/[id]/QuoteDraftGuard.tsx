@@ -88,8 +88,9 @@ function restore(root: HTMLElement, draft: SavedDraft) {
 
 export default function QuoteDraftGuard({ quoteId }: { quoteId: number }) {
   useEffect(() => {
-    const root = document.getElementById('quote-editor-autosave')
-    if (!root) return
+    const foundRoot = document.getElementById('quote-editor-autosave')
+    if (!foundRoot) return
+    const root: HTMLElement = foundRoot
 
     const storageKey = `${STORAGE_PREFIX}${quoteId}`
     let saveTimer: number | null = null
