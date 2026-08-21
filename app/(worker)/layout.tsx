@@ -9,15 +9,71 @@ type WorkerLayoutProps = {
   children: React.ReactNode
 }
 
-const workerNavItems = [
-  { href: '/today', label: 'Today' },
-  { href: '/my-visits', label: 'My Visits' },
-  { href: '/chas', label: 'CHAS' },
-  { href: '/worker', label: 'Time Off' },
+type WorkerIconName = 'today' | 'visits' | 'chas' | 'timeoff'
+
+const workerNavItems: Array<{
+  href: string
+  label: string
+  icon: WorkerIconName
+}> = [
+  { href: '/today', label: 'Today', icon: 'today' },
+  { href: '/my-visits', label: 'Visits', icon: 'visits' },
+  { href: '/chas', label: 'CHAS', icon: 'chas' },
+  { href: '/worker', label: 'Time Off', icon: 'timeoff' },
 ]
 
 function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
+}
+
+function WorkerNavIcon({ name }: { name: WorkerIconName }) {
+  const commonProps = {
+    width: 21,
+    height: 21,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  }
+
+  if (name === 'today') {
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="5" width="18" height="16" rx="2" />
+        <path d="M16 3v4M8 3v4M3 10h18" />
+        <path d="M8 14h3v3H8z" />
+      </svg>
+    )
+  }
+
+  if (name === 'visits') {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 21s7-5.2 7-12a7 7 0 1 0-14 0c0 6.8 7 12 7 12Z" />
+        <circle cx="12" cy="9" r="2.5" />
+      </svg>
+    )
+  }
+
+  if (name === 'chas') {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 5h16v11H8l-4 4V5Z" />
+        <path d="M8 10h.01M12 10h.01M16 10h.01" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg {...commonProps}>
+      <path d="M5 4h14v16H5z" />
+      <path d="M8 2v4M16 2v4M5 9h14" />
+      <path d="M9 13h6M9 17h4" />
+    </svg>
+  )
 }
 
 export default function WorkerLayout({ children }: WorkerLayoutProps) {
@@ -105,7 +161,7 @@ export default function WorkerLayout({ children }: WorkerLayoutProps) {
       <main
         style={{
           minWidth: 0,
-          padding: '16px 16px 96px',
+          padding: '16px 16px 106px',
         }}
       >
         <div
@@ -124,24 +180,26 @@ export default function WorkerLayout({ children }: WorkerLayoutProps) {
         aria-label="Worker navigation"
         style={{
           position: 'fixed',
-          left: 0,
-          right: 0,
-          bottom: 0,
+          left: 10,
+          right: 10,
+          bottom: 'calc(8px + env(safe-area-inset-bottom))',
           zIndex: 50,
-          background: 'rgba(255,255,255,0.96)',
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          borderTop: '1px solid #e5e7eb',
-          padding: '10px 8px calc(10px + env(safe-area-inset-bottom))',
+          maxWidth: 620,
+          margin: '0 auto',
+          background: 'rgba(255,255,255,0.97)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+          border: '1px solid #e5e7eb',
+          borderRadius: 20,
+          boxShadow: '0 12px 34px rgba(17,24,39,0.14)',
+          padding: 6,
         }}
       >
         <div
           style={{
-            maxWidth: 720,
-            margin: '0 auto',
             display: 'grid',
             gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-            gap: 8,
+            gap: 3,
           }}
         >
           {workerNavItems.map((item) => {
@@ -153,26 +211,26 @@ export default function WorkerLayout({ children }: WorkerLayoutProps) {
                 href={item.href}
                 style={{
                   minWidth: 0,
-                  minHeight: 56,
-                  borderRadius: 14,
+                  minHeight: 58,
+                  borderRadius: 15,
                   textDecoration: 'none',
-                  color: active ? '#ffffff' : '#111827',
-                  background: active ? '#111827' : '#f9fafb',
-                  border: active ? '1px solid #111827' : '1px solid #e5e7eb',
+                  color: active ? '#ffffff' : '#4b5563',
+                  background: active ? '#111827' : 'transparent',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  textAlign: 'center',
-                  padding: '8px 6px',
-                  fontSize: 12,
-                  fontWeight: 800,
-                  lineHeight: 1.15,
-                  overflowWrap: 'break-word',
-                  wordBreak: 'break-word',
+                  gap: 3,
+                  padding: '5px 2px',
+                  fontSize: 11,
+                  fontWeight: 750,
+                  lineHeight: 1,
+                  whiteSpace: 'nowrap',
                   boxShadow: active ? '0 8px 18px rgba(17,24,39,0.16)' : 'none',
                 }}
               >
-                {item.label}
+                <WorkerNavIcon name={item.icon} />
+                <span>{item.label}</span>
               </Link>
             )
           })}
