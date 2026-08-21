@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import {
+  FURLADS_QUOTE_PRICING_RULES,
+  grossMarginPercent,
+  sellingPriceForMargin,
+} from '@/lib/quotePricingRules'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -26,6 +31,7 @@ type QuoteOptionInput = {
   whyChoose?: string
   estimatedDuration?: DurationInput
   priceExVat?: number
+  estimatedHardCosts?: number
 }
 
 type CombinedOfferInput = {
@@ -36,6 +42,7 @@ type CombinedOfferInput = {
   savingReason?: string
   estimatedDuration?: DurationInput
   priceExVat?: number
+  estimatedHardCosts?: number
 }
 
 type QuoteRequest = {
@@ -53,19 +60,7 @@ type QuoteRequest = {
   combinedOffers?: CombinedOfferInput[]
 }
 
-type StandardRateGuard = {
-  service: string
-  areaM2: number
-  unitRate: number
-  basePriceExVat: number
-  minimumDaysForTwo: number
-  extraPriceExVat: number
-  extraDescription: string
-  expectedMinimumPriceExVat: number
-  pricingNotes: string[]
-}
-
-const MASTER_RATES = {
+const BENCHMARK_RATES = {
   indianSandstonePerM2: 140,
   porcelainPerM2: 170,
   artificialGrassPerM2: 110,
@@ -113,130 +108,6 @@ function looksLikeMultiChoiceQuote(text: string) {
     value.includes('different options') ||
     value.includes('give them options')
   )
-}
-
-function extractRectangleDimensionsM(text: string) {
-  const match = text.match(
-    /(?:^|\s)(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)?(?:\s|$|[^a-z])/i
-  )
-
-  if (!match) return null
-
-  const lengthM = Number(match[1])
-  const widthM = Number(match[2])
-
-  if (!Number.isFinite(lengthM) || !Number.isFinite(widthM)) return null
-  if (lengthM <= 0 || widthM <= 0) return null
-
-  return {
-    lengthM,
-    widthM,
-    areaM2: roundMoney(lengthM * widthM),
-    perimeterM: roundMoney(2 * (lengthM + widthM)),
-  }
-}
-
-function extractAreaM2(text: string) {
-  const dimensions = extractRectangleDimensionsM(text)
-  if (dimensions) return dimensions.areaM2
-
-  const areaMatch = text.match(
-    /(\d+(?:\.\d+)?)\s*(?:m2|m²|sqm|sq\.?\s*m(?:etres?)?)/i
-  )
-
-  if (!areaMatch) return 0
-
-  const area = Number(areaMatch[1])
-  return Number.isFinite(area) && area > 0 ? area : 0
-}
-
-function hasDecorativeGravelBorder(text: string) {
-  const value = text.toLowerCase()
-
-  return (
-    value.includes('black ice gravel') ||
-    /gravel[^\n]{0,40}(?:edge|border|around)/i.test(text) ||
-    /(?:edge|border)[^\n]{0,40}gravel/i.test(text)
-  )
-}
-
-function detectStandardRateGuard(text: string): StandardRateGuard | null {
-  const value = text.toLowerCase()
-  const areaM2 = extractAreaM2(text)
-
-  if (areaM2 <= 0) return null
-
-  let service = ''
-  let unitRate = 0
-  let minimumDaysForTwo = 0
-
-  if (
-    value.includes('raj green') ||
-    value.includes('indian sandstone') ||
-    value.includes('indian stone') ||
-    value.includes('sandstone patio')
-  ) {
-    service = 'Indian sandstone patio'
-    unitRate = MASTER_RATES.indianSandstonePerM2
-    minimumDaysForTwo = roundUpToHalfDay(areaM2 / 10 + 0.5)
-  } else if (value.includes('porcelain')) {
-    service = 'Porcelain patio'
-    unitRate = MASTER_RATES.porcelainPerM2
-    minimumDaysForTwo = roundUpToHalfDay(areaM2 / 8 + 0.5)
-  } else if (value.includes('artificial grass')) {
-    service = 'Artificial grass'
-    unitRate = MASTER_RATES.artificialGrassPerM2
-    minimumDaysForTwo = roundUpToHalfDay(areaM2 / 25 + 0.5)
-  } else {
-    return null
-  }
-
-  const basePriceExVat = roundMoney(areaM2 * unitRate)
-  let extraPriceExVat = 0
-  let extraDescription = ''
-  const pricingNotes = [
-    `${service}: ${areaM2.toFixed(2)}m² × £${unitRate.toFixed(2)}/m² = £${basePriceExVat.toFixed(2)} ex VAT.`,
-  ]
-
-  if (
-    service === 'Indian sandstone patio' &&
-    hasDecorativeGravelBorder(text)
-  ) {
-    const dimensions = extractRectangleDimensionsM(text)
-
-    if (dimensions) {
-      const assumedBorderWidthM = 0.15
-      const gravelAreaM2 = roundMoney(
-        dimensions.perimeterM * assumedBorderWidthM
-      )
-      extraPriceExVat = roundMoney(
-        gravelAreaM2 * MASTER_RATES.gravelSurfacingPerM2
-      )
-      extraDescription = `Provisional decorative gravel border allowance: ${dimensions.perimeterM.toFixed(2)}m perimeter × 0.15m assumed width = ${gravelAreaM2.toFixed(2)}m² at £${MASTER_RATES.gravelSurfacingPerM2.toFixed(2)}/m².`
-      pricingNotes.push(
-        `${extraDescription} Allowance = £${extraPriceExVat.toFixed(2)} ex VAT.`
-      )
-      minimumDaysForTwo = roundUpToHalfDay(minimumDaysForTwo + 0.5)
-    } else {
-      extraDescription =
-        'Decorative gravel border is additional to the patio rate; width/length must be confirmed or a provisional allowance used.'
-      pricingNotes.push(extraDescription)
-    }
-  }
-
-  return {
-    service,
-    areaM2,
-    unitRate,
-    basePriceExVat,
-    minimumDaysForTwo,
-    extraPriceExVat,
-    extraDescription,
-    expectedMinimumPriceExVat: roundMoney(
-      basePriceExVat + extraPriceExVat
-    ),
-    pricingNotes,
-  }
 }
 
 function cleanPhotos(value: unknown): Array<{ url: string; label: string }> {
@@ -373,6 +244,12 @@ function normaliseDuration(value: unknown, fallbackTeamSize = 2) {
   }
 }
 
+function protectPriceAgainstCost(priceExVat: number, hardCosts: number) {
+  if (hardCosts <= 0) return roundMoney(priceExVat)
+  const minimum = sellingPriceForMargin(hardCosts, 0.3)
+  return roundMoney(Math.max(priceExVat, minimum))
+}
+
 function normaliseOptions(value: unknown, vatRate: number) {
   if (!Array.isArray(value)) return []
 
@@ -384,9 +261,15 @@ function normaliseOptions(value: unknown, vatRate: number) {
           ? (rawOption as Record<string, unknown>)
           : {}
 
-      const priceExVat = cleanNumber(option.priceExVat)
-      const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
-      const totalIncVat = Number((priceExVat + vatAmount).toFixed(2))
+      const estimatedHardCosts = roundMoney(
+        Math.max(0, cleanNumber(option.estimatedHardCosts))
+      )
+      const priceExVat = protectPriceAgainstCost(
+        cleanNumber(option.priceExVat),
+        estimatedHardCosts
+      )
+      const vatAmount = roundMoney((priceExVat * vatRate) / 100)
+      const totalIncVat = roundMoney(priceExVat + vatAmount)
 
       return {
         label:
@@ -399,9 +282,14 @@ function normaliseOptions(value: unknown, vatRate: number) {
           : [],
         whyChoose: cleanText(option.whyChoose),
         estimatedDuration: normaliseDuration(option.estimatedDuration),
+        estimatedHardCosts,
         priceExVat,
         vatAmount,
         totalIncVat,
+        grossMarginPercent:
+          estimatedHardCosts > 0
+            ? grossMarginPercent(priceExVat, estimatedHardCosts)
+            : null,
       }
     })
     .filter((option) => option.priceExVat > 0 && option.summary)
@@ -449,24 +337,30 @@ function normaliseCombinedOffer(
   const includedOptions = findIncludedOptions(requestedLabels, options)
   if (includedOptions.length < 2) return null
 
-  const separateTotal = Number(
-    includedOptions
-      .reduce((sum, option) => sum + option.priceExVat, 0)
-      .toFixed(2)
+  const separateTotal = roundMoney(
+    includedOptions.reduce((sum, option) => sum + option.priceExVat, 0)
   )
+
+  const optionHardCosts = roundMoney(
+    includedOptions.reduce(
+      (sum, option) => sum + Math.max(0, option.estimatedHardCosts),
+      0
+    )
+  )
+  const suppliedHardCosts = roundMoney(
+    Math.max(0, cleanNumber(raw.estimatedHardCosts))
+  )
+  const estimatedHardCosts = suppliedHardCosts || optionHardCosts
 
   let priceExVat = cleanNumber(raw.priceExVat)
   if (priceExVat <= 0) return null
 
-  const lowestSensibleCombinedPrice = Number(
-    (separateTotal * 0.9).toFixed(2)
-  )
-  priceExVat = Math.max(priceExVat, lowestSensibleCombinedPrice)
+  priceExVat = protectPriceAgainstCost(priceExVat, estimatedHardCosts)
   priceExVat = Math.min(priceExVat, separateTotal)
 
-  const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
-  const totalIncVat = Number((priceExVat + vatAmount).toFixed(2))
-  const savingExVat = Number((separateTotal - priceExVat).toFixed(2))
+  const vatAmount = roundMoney((priceExVat * vatRate) / 100)
+  const totalIncVat = roundMoney(priceExVat + vatAmount)
+  const savingExVat = roundMoney(separateTotal - priceExVat)
 
   const rawDuration = normaliseDuration(raw.estimatedDuration)
   const totalPackageDays = includedOptions.reduce(
@@ -494,11 +388,16 @@ function normaliseCombinedOffer(
         ? requestedLabels
         : includedOptions.map((option) => option.label),
     savingReason: cleanText(raw.savingReason),
+    estimatedHardCosts,
     priceExVat,
     vatAmount,
     totalIncVat,
     separateTotalExVat: separateTotal,
     savingExVat,
+    grossMarginPercent:
+      estimatedHardCosts > 0
+        ? grossMarginPercent(priceExVat, estimatedHardCosts)
+        : null,
     estimatedDuration: {
       ...rawDuration,
       workingDays,
@@ -581,6 +480,53 @@ function combinedOffersForPrompt(
     .join('\n\n')
 }
 
+function normaliseCostBreakdown(value: unknown) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((row) => {
+      if (!row || typeof row !== 'object') return null
+      const record = row as Record<string, unknown>
+      const category = cleanText(record.category)
+      const amount = roundMoney(Math.max(0, cleanNumber(record.amount)))
+      const detail = cleanText(record.detail)
+      if (!category || amount <= 0) return null
+      return { category, amount, detail }
+    })
+    .filter(
+      (
+        row
+      ): row is {
+        category: string
+        amount: number
+        detail: string
+      } => row !== null
+    )
+    .slice(0, 20)
+}
+
+function ensureCostAndMarginOutputs(result: Record<string, any>) {
+  const costBreakdown = normaliseCostBreakdown(result.costBreakdown)
+  const breakdownTotal = roundMoney(
+    costBreakdown.reduce((sum, row) => sum + row.amount, 0)
+  )
+  const estimatedHardCosts = roundMoney(
+    Math.max(cleanNumber(result.estimatedHardCosts), breakdownTotal, 0)
+  )
+
+  const sellingPriceAt30Gp = sellingPriceForMargin(estimatedHardCosts, 0.3)
+  const sellingPriceAt35Gp = sellingPriceForMargin(estimatedHardCosts, 0.35)
+  const sellingPriceAt40Gp = sellingPriceForMargin(estimatedHardCosts, 0.4)
+
+  return {
+    costBreakdown,
+    estimatedHardCosts,
+    sellingPriceAt30Gp,
+    sellingPriceAt35Gp,
+    sellingPriceAt40Gp,
+  }
+}
+
 async function priceJob(body: QuoteRequest) {
   const customerName = cleanText(body.customerName)
   const jobDetails = cleanText(body.jobDetails)
@@ -602,23 +548,23 @@ You are CHAS, the internal landscaping estimator and practical garden ideas assi
 
 Your job is to help Trevor turn a real site visit into a commercially sensible quotation. Customers often want choices before they decide, so do not force a multi-choice enquiry into one blended quote.
 
-MASTER FURLADS PRICE BOOK — THIS OVERRIDES CONFLICTING RATE EXAMPLES ELSEWHERE:
-- Indian sandstone / Raj Green patio: £${MASTER_RATES.indianSandstonePerM2}/m² ex VAT, all-in for the standard patio installation scope only.
-- Porcelain patio: £${MASTER_RATES.porcelainPerM2}/m² ex VAT, all-in for the standard patio installation scope only.
-- Artificial grass: £${MASTER_RATES.artificialGrassPerM2}/m² ex VAT for the standard installation scope.
-- Standard fencing baseline: £${MASTER_RATES.fencingPerM}/m ex VAT unless a clearly different fencing specification requires a genuine extra.
-- Gravel surfacing baseline: £${MASTER_RATES.gravelSurfacingPerM2}/m² ex VAT.
+${FURLADS_QUOTE_PRICING_RULES}
 
-STANDARD-RATE BOUNDARIES — CRITICAL:
-- A standard rate only covers the standard scope for that service. It does NOT automatically swallow extra items mentioned by Trevor.
-- If Trevor asks for a gravel border, decorative stone strip, drainage, steps, retaining work, concrete breakout, walls, unusual edging, gates, trellis or another distinct extra, price that extra separately and add it to the standard-rate base.
-- Never write wording such as "all-in including X" when X has not actually been added to the price.
-- If an extra is requested but an exact measurement is missing, prefer a sensible clearly labelled provisional assumption rather than silently omitting the extra.
-- For a decorative gravel border around a rectangular patio, if Trevor gives the patio dimensions but not the border width, use a provisional 150mm-wide border assumption. Calculate the patio perimeter, the gravel strip area and the additional gravel allowance. State the assumption clearly so Trevor can correct it.
-- The final recommendedPriceExVat must equal the standard-rate base plus all genuine extras included in the written scope.
-- Do not round away valid pence from calculated selling prices.
+FURLADS BENCHMARK SELLING RATES — USE AS SANITY CHECKS, NOT AS THE QUOTE FORMULA:
+- Indian sandstone / Raj Green patio: about £${BENCHMARK_RATES.indianSandstonePerM2}/m² ex VAT for a straightforward standard installation.
+- Porcelain patio: about £${BENCHMARK_RATES.porcelainPerM2}/m² ex VAT for a straightforward standard installation.
+- Artificial grass: about £${BENCHMARK_RATES.artificialGrassPerM2}/m² ex VAT for a straightforward standard installation.
+- Standard fencing: about £${BENCHMARK_RATES.fencingPerM}/m ex VAT as a broad benchmark where specification and ground are ordinary.
+- Gravel surfacing: about £${BENCHMARK_RATES.gravelSurfacingPerM2}/m² ex VAT as a broad benchmark for straightforward work.
 
-You may receive written survey notes and site photographs.
+These figures do NOT override the whole-job cost calculation. If the cost-and-margin calculation produces a different price, use the cost-and-margin calculation and explain internally why.
+
+SITE-INPUT BEHAVIOUR:
+- Use Trevor's written notes, dimensions and photos first.
+- Do not ask for information merely because it would be nice to know.
+- Put genuinely price-sensitive unknowns into missingInformation or pricingQuestions.
+- Prefer a clearly labelled provisional assumption where sensible.
+- Only identify a blockingQuestionRequired when the missing answer could materially change price, programme, buildability or safe specification and a provisional allowance would be misleading.
 
 PHOTO REVIEW RULES:
 - Inspect photographs carefully for visible factors affecting labour, materials, access, waste or machinery.
@@ -632,13 +578,17 @@ PHOTO REVIEW RULES:
 PRICING RULES:
 - Work in pounds sterling.
 - Recommended selling prices are excluding VAT. VAT is calculated separately by the app.
-- Do not invent exact supplier prices.
-- Clearly separate confirmed information from estimates.
-- Follow the master Furlads rates above. Do not add normal labour, materials, waste, machinery, delivery or margin a second time when a standard all-in rate applies.
-- Only add genuine extras outside that standard rate.
+- Build estimatedHardCosts from the expected materials, labour, plant, waste, deliveries/logistics, specialists and contingency actually needed.
+- costBreakdown must be internal job COST, not customer selling prices and not marked-up line items.
+- estimatedHardCosts must equal or sensibly reconcile to the costBreakdown total.
+- Calculate labour in man-days and include the man-day calculation in labourSummary.
+- recommendedPriceExVat must not be below the selling price required for 30% gross margin on estimatedHardCosts.
+- 35% and 40% GP prices are useful references, not automatic targets. Recommend the commercially sensible figure for the real risk and complexity.
+- Standard benchmark rates are only a comparison/sanity check after the whole-job calculation.
+- Never automatically add normal labour/materials/waste/plant twice.
 - Protect Furlads against underpricing and arbitrary discounting.
-- A combined "all done together" price may be lower than buying packages separately only where there are genuine shared efficiencies such as one setup, shared deliveries, shared plant, shared waste handling or one final tidy-up.
-- Do not invent a discount. If there is little or no genuine saving, the combined price may equal the sum of the included package prices.
+- A combined "all done together" price may be lower than buying packages separately only where you can name the genuine duplicated costs saved.
+- Never apply an arbitrary percentage discount.
 - Keep the response practical.
 
 QUOTE MODE — CHOOSE THE RIGHT STRUCTURE:
@@ -646,43 +596,33 @@ QUOTE MODE — CHOOSE THE RIGHT STRUCTURE:
    Use only when the customer has one settled scope and wants one price.
 
 2. alternatives
-   Use when the customer is deciding only between mutually exclusive ideas, materials, layouts or finishes. Give 2–3 genuinely different alternatives. Each alternative gets its own description, price and duration. Do NOT add alternative prices together.
+   Use when the customer is deciding only between mutually exclusive ideas, materials, layouts or finishes. Give 2–3 genuinely different alternatives. Each alternative gets its own description, price, estimated hard costs and duration. Do NOT add alternative prices together.
 
 3. packages
-   Use when the customer wants separate prices for work that can be bought independently, or when a larger enquiry naturally breaks into separate jobs. Examples: front fence, rear fence, artificial grass area, patio, drainage, retaining wall. Give each logical package its own description, price and duration.
+   Use when the customer wants separate prices for work that can be bought independently, or when a larger enquiry naturally breaks into separate jobs. Give each logical package its own description, price, estimated hard costs and duration.
 
-MIXED ALTERNATIVES + PACKAGES — VERY IMPORTANT:
+MIXED ALTERNATIVES + PACKAGES:
 - A single enquiry can contain BOTH alternatives and separate purchasable jobs.
-- Example: "20m fence Option 1 gravel board and panel; Option 2 same with trellis; another quote for 13m fence; artificial grass in three areas."
 - For this mixed case use quoteMode "packages", NOT single.
-- Put each customer-visible priced line into options: e.g. "20m Fence — Option 1", "20m Fence — Option 2", "13m Fence", "Artificial Grass — all three areas".
-- The alternative 20m fence versions are mutually exclusive. Never add both of them into the same combined total.
-- Use combinedOffers to provide one valid "all completed together" price for EACH alternative combination where appropriate. Example: one combined offer using 20m Option 1 + 13m fence + grass, and another using 20m Option 2 + 13m fence + grass.
-- Every combinedOffers item MUST list exactly which option labels it includes.
-- If the user says "another quote", "separate quote", "option 1 / option 2" or clearly asks for separate prices, that is a strong instruction to show those prices separately before asking the customer to choose.
-- Do NOT ask which alternative they want before showing the prices. The purpose of the quote is to help the customer decide.
-- A multi-price quotation is a valid finished quote that can go to Kelly before the customer chooses.
+- Put each customer-visible priced line into options.
+- Mutually exclusive alternatives must never appear in the same combined total.
+- Use combinedOffers to provide each valid all-together combination where appropriate.
+- Every combined offer must list exactly which option labels it includes.
+- Do not ask the customer to choose before showing the prices.
 
-REALISTIC INSTALL-TIME RULES — IMPORTANT:
-- Duration is an operational production estimate, not sales wording. Never compress a large scope into an attractive but physically impossible number of days.
-- Estimate actual working days for the stated team size.
+REALISTIC INSTALL-TIME RULES:
+- Duration is an operational production estimate, not sales wording.
+- Estimate actual working days for the stated team size and calculate total man-days.
 - Break the work into physical operations: removal/excavation, loading/spoil, setting out, foundations/sub-base, compaction, posts, concrete, cutting, laying/fitting, edging, finishing and tidy-up.
-- Distinct trades or work types do not magically happen at the same time just because they are sold together.
-- Multiple separate areas reduce productivity because of repeated setting out, cuts, edges, transitions and moving materials.
-- Natural-stone patio with full preparation: for a normal two-person Furlads crew, use roughly 10m² per working day end-to-end as a planning sanity check, plus setup/finishing time. A 30m² Raj Green patio should therefore not normally be shown as a 2-day full-prep installation.
-- Porcelain with full preparation is normally slower than standard sandstone because of cutting, priming and accuracy requirements.
-- For standard fencing as a planning sanity check, a two-person team in ordinary access/ground should not normally be assumed to install dramatically more than roughly 5–7 standard bays per working day once holes, posts, concrete, panels/boards, levels and tidy-up are considered. Removal, awkward ground, corners, slopes or restricted access slow this further.
-- For artificial grass with full ground preparation as a planning sanity check, a two-person team should normally be thought of in the region of roughly 20–30m² per working day in ordinary conditions once excavation, spoil, sub-base, compaction, laying, cutting, edging and tidy-up are included. Several separate areas usually push the output toward the slower end.
-- These are sanity checks, not rigid production rates. Use the actual site information and explain material deviations.
-- For package quotes, estimate each package separately first. A combined duration should normally be the sum of the INCLUDED package crew-days minus only modest shared setup/logistics efficiencies. Never reduce combined duration by more than about 20% without a very specific physical reason.
+- Distinct trades do not magically happen at once because they are sold together.
+- Multiple separate areas reduce productivity.
+- Natural-stone patio with full preparation: roughly 10m² per two-person working day is a useful sanity check plus setup/finishing.
+- Porcelain with full preparation is normally slower than sandstone.
+- Standard fencing: roughly 5–7 normal bays per two-person working day is a useful sanity check before access/ground/removal adjustments.
+- Artificial grass with full preparation: roughly 20–30m² per two-person working day in ordinary conditions is a useful sanity check.
+- These are sanity checks, not rigid rates.
+- Combined duration should normally be the sum of included package crew-days minus only modest genuine shared efficiencies; do not reduce by more than about 20% without a specific physical reason.
 - Round uncertain durations UP to the nearest half day rather than down.
-- If a duration looks aggressive, choose the safer realistic figure and say what could change it.
-
-IDEAS RULES:
-- If the customer wants inspiration, give buildable ideas rather than vague design language.
-- Explain briefly why each route may suit them: lower spend, lower maintenance, more usable space, softer feel, premium finish, easier phasing, etc.
-- If information is missing, still provide useful provisional options using clearly stated assumptions.
-- Do not treat an earlier idea as confirmed scope unless Trevor or the customer selects it.
 
 Return only valid JSON using this exact structure:
 {
@@ -691,31 +631,33 @@ Return only valid JSON using this exact structure:
   "recommendedOptionLabel": "",
   "options": [
     {
-      "label": "20m Fence — Option 1",
-      "title": "Concrete gravel board + panel",
+      "label": "Option A",
+      "title": "Customer-visible option title",
       "summary": "Exactly what this price includes",
-      "keyDifferences": ["What makes this different or what is included"],
+      "keyDifferences": ["What makes this different"],
       "whyChoose": "Why this may suit the customer",
       "estimatedDuration": {
         "workingDays": 1,
         "teamSize": 2,
         "description": "How the duration was arrived at"
       },
+      "estimatedHardCosts": 0,
       "priceExVat": 0
     }
   ],
   "combinedOffers": [
     {
       "available": true,
-      "label": "If all completed together — using 20m Option 1",
-      "summary": "All compatible packages completed in one mobilisation",
-      "includedOptionLabels": ["20m Fence — Option 1", "13m Fence", "Artificial Grass"],
-      "savingReason": "Only genuine shared setup/logistics efficiencies",
+      "label": "If all completed together",
+      "summary": "Compatible packages completed in one mobilisation",
+      "includedOptionLabels": ["Option A", "Option B"],
+      "savingReason": "The actual duplicated mobilisation/delivery/waste/setup costs saved",
       "estimatedDuration": {
         "workingDays": 1,
         "teamSize": 2,
-        "description": "Realistic combined duration for only the listed items"
+        "description": "Realistic combined duration"
       },
+      "estimatedHardCosts": 0,
       "priceExVat": 0
     }
   ],
@@ -730,9 +672,11 @@ Return only valid JSON using this exact structure:
       "teamSize": 2,
       "description": ""
     },
+    "estimatedHardCosts": 0,
     "priceExVat": 0
   },
-  "summary": "Short description of the current proposal including any provisional extra assumptions that affect price",
+  "summary": "Short description of the proposal",
+  "measurements": ["Relevant area, linear metres and excavation volume where known"],
   "confirmedInformation": ["Confirmed fact"],
   "photoObservations": [
     {
@@ -748,14 +692,33 @@ Return only valid JSON using this exact structure:
       "pricingImpact": "Possible effect on price or duration"
     }
   ],
-  "assumptions": ["Assumption used, including dimensions assumed for provisional extras"],
+  "assumptions": ["Provisional assumption used"],
   "missingInformation": ["Important check still needed"],
+  "pricingQuestions": ["Only questions whose answer could materially change the quote"],
+  "blockingQuestionRequired": false,
+  "blockingQuestion": "",
+  "accessRating": "standard | moderate | difficult | very_difficult",
+  "complexityRating": "low | medium | high | very_high",
+  "warningFlags": ["Automatic/internal warnings"],
   "estimatedDuration": {
     "workingDays": 1,
     "teamSize": 2,
-    "description": "Realistic duration for the headline/reference combination"
+    "description": "Realistic duration"
   },
-  "costBreakdown": [],
+  "labourSummary": {
+    "workers": 2,
+    "workingDays": 1,
+    "manDays": 2,
+    "estimatedCost": 0,
+    "notes": "Worker cost assumptions and productivity adjustments"
+  },
+  "costBreakdown": [
+    {
+      "category": "Materials",
+      "amount": 0,
+      "detail": "What is included in this internal cost"
+    }
+  ],
   "estimatedHardCosts": 0,
   "recommendedPriceExVat": 0,
   "vatRate": 20,
@@ -763,16 +726,16 @@ Return only valid JSON using this exact structure:
   "recommendedTotalIncVat": 0,
   "depositPercent": 25,
   "depositAmount": 0,
-  "pricingNotes": ["Show the standard-rate calculation and every genuine extra calculation separately"]
+  "pricingNotes": ["Internal explanation of calculations and benchmark sanity checks"]
 }
 
-STRUCTURE RULES FOR THE JSON:
+STRUCTURE RULES:
 - single: optionMode false, options [], combinedOffers [], combinedOffer.available false.
 - alternatives: optionMode true, quoteMode alternatives, normally 2–3 options, combinedOffers [].
 - packages: optionMode true, quoteMode packages, 2–8 customer-visible priced items.
 - In a straightforward packages quote, combinedOffers may contain one all-together price.
 - In a mixed packages + alternatives quote, combinedOffers should contain each valid all-together combination without combining mutually exclusive alternatives.
-- For packages, recommendedPriceExVat is only an internal/reference headline price. The customer-facing source of truth is the individual options plus combinedOffers.
+- For packages, recommendedPriceExVat is an internal/reference headline price. The customer-facing source of truth is the individual options plus combinedOffers.
 - For alternatives, recommendedPriceExVat may be the internally preferred alternative, but each option price remains separate.
 - All monetary values must be JSON numbers without pound signs or commas.
 `.trim()
@@ -790,7 +753,9 @@ ${additionalInstructions || 'None supplied'}
 Number of site photographs:
 ${photos.length}
 
-Work out the correct quote structure first. If there are options and separate jobs in the same enquiry, use the mixed packages structure described above. Then price every customer-visible choice separately and give realistic install durations based on what a human crew can actually complete.
+First work out what the job will physically require and what could make it take longer or cost more than the measurements suggest. Calculate realistic internal job costs and man-days. Then calculate the 30%, 35% and 40% GP references and recommend the sensible customer price. Use benchmark rates only as a sanity comparison afterwards.
+
+If an important detail is missing, do not automatically stop. Use a sensible provisional assumption where appropriate and put the issue in pricingQuestions. Set blockingQuestionRequired true only if pricing now would be materially misleading or unsafe without the answer.
 `.trim()
 
   let result = await runOpenAI({
@@ -813,38 +778,10 @@ Work out the correct quote structure first. If there are options and separate jo
     result = await runOpenAI({
       systemPrompt:
         systemPrompt +
-        '\n\nCORRECTION PASS: The user has explicitly described multiple options and/or separate quotes. You MUST NOT return quoteMode single. Return every customer-visible price separately using alternatives or packages, and use combinedOffers for valid all-together combinations.',
+        '\n\nCORRECTION PASS: The user explicitly described multiple options and/or separate quotes. Do not return quoteMode single. Return every customer-visible price separately using alternatives or packages, preserving whole-job cost and margin calculations for each option.',
       userPrompt:
         userPrompt +
-        '\n\nThis wording explicitly contains multiple customer choices or separate jobs. Re-structure it so the customer can see the prices before deciding.',
-      photos,
-    })
-
-    preliminaryVatRate = cleanNumber(result.vatRate, 20)
-    preliminaryMode = normaliseQuoteMode(result.quoteMode)
-    preliminaryOptions = normaliseOptions(
-      result.options,
-      preliminaryVatRate
-    )
-  }
-
-  const standardRateGuard = detectStandardRateGuard(jobDetails)
-
-  if (
-    standardRateGuard &&
-    preliminaryMode === 'single' &&
-    (cleanNumber(result.recommendedPriceExVat) <
-      standardRateGuard.expectedMinimumPriceExVat ||
-      cleanNumber(result.estimatedDuration?.workingDays) <
-        standardRateGuard.minimumDaysForTwo)
-  ) {
-    result = await runOpenAI({
-      systemPrompt:
-        systemPrompt +
-        `\n\nFURLADS PRICE/PRODUCTION CORRECTION PASS:\n${standardRateGuard.pricingNotes.join('\n')}\nThe recommended selling price must be at least £${standardRateGuard.expectedMinimumPriceExVat.toFixed(2)} ex VAT when the listed standard scope and provisional extra allowance are included. For a normal two-person crew, do not return fewer than ${standardRateGuard.minimumDaysForTwo} working days for this scope. State any provisional extra assumption clearly in summary and assumptions.`,
-      userPrompt:
-        userPrompt +
-        '\n\nRecalculate the quote using the deterministic Furlads rate check above. Do not omit an extra that Trevor explicitly requested.',
+        '\n\nRe-structure the enquiry so the customer can see the separate prices before deciding.',
       photos,
     })
 
@@ -873,14 +810,17 @@ Work out the correct quote structure first. If there are options and separate jo
   )
   const combinedOffer = combinedOffers[0] || null
 
-  let priceExVat = cleanNumber(result.recommendedPriceExVat)
+  const costOutputs = ensureCostAndMarginOutputs(result)
+  let priceExVat = protectPriceAgainstCost(
+    cleanNumber(result.recommendedPriceExVat),
+    costOutputs.estimatedHardCosts
+  )
   let estimatedDuration = normaliseDuration(result.estimatedDuration)
-  let summary = cleanText(result.summary)
-  let pricingNotes = Array.isArray(result.pricingNotes)
+  const pricingNotes = Array.isArray(result.pricingNotes)
     ? result.pricingNotes.map(cleanText).filter(Boolean)
     : []
-  let assumptions = Array.isArray(result.assumptions)
-    ? result.assumptions.map(cleanText).filter(Boolean)
+  const warningFlags = Array.isArray(result.warningFlags)
+    ? result.warningFlags.map(cleanText).filter(Boolean)
     : []
 
   if (quoteMode === 'packages' && options.length >= 2) {
@@ -888,10 +828,8 @@ Work out the correct quote structure first. If there are options and separate jo
       priceExVat = combinedOffer.priceExVat
       estimatedDuration = combinedOffer.estimatedDuration
     } else {
-      const packageTotal = Number(
-        options
-          .reduce((sum, option) => sum + option.priceExVat, 0)
-          .toFixed(2)
+      const packageTotal = roundMoney(
+        options.reduce((sum, option) => sum + option.priceExVat, 0)
       )
       if (packageTotal > 0) priceExVat = packageTotal
 
@@ -927,55 +865,19 @@ Work out the correct quote structure first. If there are options and separate jo
     }
   }
 
-  if (standardRateGuard && quoteMode === 'single') {
-    priceExVat = Math.max(
-      priceExVat,
-      standardRateGuard.expectedMinimumPriceExVat
-    )
-
-    if (estimatedDuration.teamSize <= 2) {
-      estimatedDuration = {
-        ...estimatedDuration,
-        workingDays: Math.max(
-          estimatedDuration.workingDays,
-          standardRateGuard.minimumDaysForTwo
-        ),
-        description:
-          estimatedDuration.description ||
-          `Protected by Furlads production check for ${standardRateGuard.areaM2.toFixed(2)}m² of ${standardRateGuard.service.toLowerCase()}.`,
-      }
-    }
-
-    pricingNotes = Array.from(
-      new Set([...standardRateGuard.pricingNotes, ...pricingNotes])
-    )
-
-    if (
-      standardRateGuard.extraDescription &&
-      !assumptions.some((item: string) =>
-        item.toLowerCase().includes('150mm')
-      )
-    ) {
-      assumptions = [
-        ...assumptions,
-        standardRateGuard.extraDescription,
-      ]
-    }
-
-    if (
-      standardRateGuard.extraPriceExVat > 0 &&
-      !summary.toLowerCase().includes('150mm')
-    ) {
-      summary = `${summary}${summary ? ' ' : ''}Price includes a provisional 150mm-wide decorative gravel border allowance; Trevor can adjust the border width and CHAS will recalculate it.`
-    }
-  }
-
-  const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
-  const totalIncVat = Number((priceExVat + vatAmount).toFixed(2))
+  const vatAmount = roundMoney((priceExVat * vatRate) / 100)
+  const totalIncVat = roundMoney(priceExVat + vatAmount)
   const depositPercent = cleanNumber(result.depositPercent, 25)
-  const depositAmount = Number(
-    ((totalIncVat * depositPercent) / 100).toFixed(2)
-  )
+  const depositAmount = roundMoney((totalIncVat * depositPercent) / 100)
+  const achievedGrossMargin =
+    costOutputs.estimatedHardCosts > 0
+      ? grossMarginPercent(priceExVat, costOutputs.estimatedHardCosts)
+      : null
+
+  const belowMinimumWarning =
+    achievedGrossMargin !== null && achievedGrossMargin < 30
+      ? ['Selling price is below the 30% minimum gross-margin target.']
+      : []
 
   return NextResponse.json({
     ...result,
@@ -985,8 +887,13 @@ Work out the correct quote structure first. If there are options and separate jo
     options,
     combinedOffers,
     combinedOffer,
-    summary,
-    assumptions,
+    costBreakdown: costOutputs.costBreakdown,
+    estimatedHardCosts: costOutputs.estimatedHardCosts,
+    sellingPriceAt30Gp: costOutputs.sellingPriceAt30Gp,
+    sellingPriceAt35Gp: costOutputs.sellingPriceAt35Gp,
+    sellingPriceAt40Gp: costOutputs.sellingPriceAt40Gp,
+    achievedGrossMargin,
+    warningFlags: Array.from(new Set([...warningFlags, ...belowMinimumWarning])),
     pricingNotes,
     estimatedDuration,
     recommendedPriceExVat: roundMoney(priceExVat),
@@ -1024,10 +931,8 @@ async function writeQuote(body: QuoteRequest) {
     options.length >= 2 &&
     priceExVat <= 0
   ) {
-    priceExVat = Number(
-      options
-        .reduce((sum, option) => sum + option.priceExVat, 0)
-        .toFixed(2)
+    priceExVat = roundMoney(
+      options.reduce((sum, option) => sum + option.priceExVat, 0)
     )
   } else if (
     quoteMode === 'alternatives' &&
@@ -1056,11 +961,9 @@ async function writeQuote(body: QuoteRequest) {
     )
   }
 
-  const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
-  const totalIncVat = Number((priceExVat + vatAmount).toFixed(2))
-  const depositAmount = Number(
-    ((totalIncVat * depositPercent) / 100).toFixed(2)
-  )
+  const vatAmount = roundMoney((priceExVat * vatRate) / 100)
+  const totalIncVat = roundMoney(priceExVat + vatAmount)
+  const depositAmount = roundMoney((totalIncVat * depositPercent) / 100)
 
   const isMultiQuote = quoteMode !== 'single' && options.length >= 2
 
@@ -1075,74 +978,43 @@ VOICE AND FEEL:
 - Lead with the transformation and what the customer will get to enjoy, not with calculations.
 - Make the customer feel that Furlads has understood what they want and has a clear plan to deliver it.
 - Sound human and conversational, like a great local business on WhatsApp — never corporate, robotic or over-salesy.
-- Use 2–4 well-placed emojis to add warmth and energy, not decoration on every line.
+- Use 2–4 well-placed emojis.
 - Keep paragraphs short and easy to scan on a phone.
-- Use friendly section headings where useful, for example “✨ What we’re creating”, “💷 Your project price” and “🌿 What happens next”.
-- Prefer natural language such as “we’d love to bring this together for you” or “this should make a brilliant difference to the space” when it genuinely fits the scope.
-- Do not overpromise, exaggerate, use cheesy sales language or claim guaranteed outcomes.
+- Do not overpromise or expose internal estimating logic.
 
-KELLY / CUSTOMER RELATIONSHIP — REQUIRED:
+KELLY / CUSTOMER RELATIONSHIP:
 - The quote MUST come from Kelly, not Trevor.
-- Do not sign off “Trevor at Furlads”.
 - Near the end, tell the customer clearly that Kelly will be their main point of contact from here and they can reply directly with questions, tweaks or to go ahead.
-- Finish with a warm sign-off from Kelly and Furlads, for example:
-  “Thanks,
-  Kelly
-  Furlads 🌿
-  Your main point of contact from here”
-- Do not describe Kelly as “admin” or make the customer feel passed between people.
-
-CUSTOMER NAME:
-- Use the customer's friendly first name when it is clearly available. If the supplied name is something formal such as “Mr Trevor A Fudger”, prefer “Trevor” rather than “Mr Fudger”.
-- If only a title/surname is safely available, use that politely rather than inventing a first name.
+- Finish with a warm sign-off from Kelly and Furlads.
 
 PRESENTING THE WORK:
-- Start with a short exciting paragraph that helps the customer picture the finished result.
-- Then explain what is included with clear tick-point bullets.
-- Focus customer-facing wording on the result and scope, not internal construction jargon unless it matters to understanding what they are buying.
-- If there is a provisional assumption, explain it in a calm “quick note” section. Make it clear what the price currently assumes and that Kelly can update it if they want a change.
-- Do not dump internal pricing workings, standard-rate terminology, “reference price” language or estimator notes into the customer message.
-- Only show a detailed line-by-line cost breakdown where there are genuinely separate customer-visible items, extras, packages or options. For a straightforward single project, keep the commercial section clean: Price ex VAT, VAT and Total.
+- Start with a short paragraph that helps the customer picture the finished result.
+- Explain what is included with clear tick-point bullets.
+- Focus on the result and scope, not internal construction jargon unless it matters.
+- If there is a provisional assumption, explain it calmly in a short quick-note section.
+- Never expose hard costs, margins, GP calculations, estimator notes or benchmark-rate calculations.
+- Only show a detailed line-by-line commercial breakdown where there are genuinely separate customer-visible items, extras, packages or options.
 - Never change any supplied prices, VAT, deposit figures or durations.
 
 PROJECT PRICE / DEPOSIT:
-- Make the total easy to find without letting the message feel dominated by money.
-- For a single quote show:
-  Price: £X + VAT
-  VAT: £X
-  Total: £X
-- If a deposit applies, explain it positively and simply as the step that secures the project/material commitment. Never pressure the customer.
-- Do not say payment details are confirmed unless they were supplied.
+- For a single quote show Price + VAT, VAT and Total.
+- If a deposit applies, explain it simply as the step that secures the project/material commitment.
+- Do not invent payment details.
 
 MULTI-OPTION QUOTES:
-- A customer may receive several prices before making any decision. That is intentional.
-- Introduce the choices positively, for example “We’ve put a couple of routes together so you can see what works best for the garden and budget.”
-- Present every supplied priced option/package separately with its own description, Price + VAT and Total.
-- Briefly explain the benefit or feel of each option where supplied so the choice is meaningful, not just a list of prices.
+- Show every supplied priced option/package separately.
 - Do not ask the customer to choose before showing the prices.
-- For mutually exclusive alternatives, make it clear they would choose one.
-- For separate packages, make it clear they can choose one, several or all.
-- Show EVERY supplied all-together offer after the individual prices. If there are two all-together offers because one package has two mutually exclusive versions, show both and make the difference clear.
-- Make any genuine all-together saving feel like a practical benefit of doing the work in one mobilisation, not a fake sales discount.
-- Never combine mutually exclusive alternatives in one total.
-- Never invent or alter a discount.
-- For a multi-option quote, do not present the internal headline/reference price as though it is the only quote price.
-- State that the deposit is calculated against whichever works/package the customer chooses, unless a different supplied deposit arrangement applies.
-
-SINGLE QUOTES — PREFERRED FLOW:
-1. Friendly greeting from Kelly.
-2. One short, enthusiastic transformation paragraph.
-3. “✨ What we’re creating” with the included scope.
-4. A short “Quick note” only if assumptions genuinely need explaining.
-5. “💷 Your project price” with Price, VAT and Total.
-6. Deposit wording where applicable.
-7. “🌿 What happens next” — reassure them that Kelly is their main point of contact and invite questions, tweaks or approval.
-8. Warm Kelly / Furlads sign-off.
+- For alternatives, make clear they choose one.
+- For separate packages, make clear they can choose one, several or all.
+- Show every supplied all-together offer after the individual prices.
+- Make any saving sound like a practical benefit of shared mobilisation/logistics, not a fake discount.
+- Never combine mutually exclusive alternatives.
+- State that the deposit is calculated against whichever works/package the customer chooses unless supplied otherwise.
 
 DO NOT:
-- Do not sound like an invoice, tender document or AI-generated sales script.
-- Do not lead with “Cost breakdown”.
-- Do not expose internal hard costs, margins, pricing formulas or “reference” figures.
+- Do not sound like an invoice, tender document or AI script.
+- Do not lead with cost breakdown.
+- Do not expose internal hard costs, margins or pricing formulas.
 - Do not say the quote is attached.
 - Do not say the customer has already accepted.
 - Do not claim a diary space is reserved unless explicitly supplied.
@@ -1180,7 +1052,7 @@ ${combinedOffersForPrompt(combinedOffers)}
 Additional wording instructions:
 ${additionalInstructions || 'None supplied'}
 
-Internal headline/reference pricing used by the app:
+Approved customer-facing figures:
 Price excluding VAT: £${priceExVat.toFixed(2)}
 VAT rate: ${vatRate}%
 VAT amount: £${vatAmount.toFixed(2)}
@@ -1190,7 +1062,7 @@ Deposit amount on the headline/reference total: £${depositAmount.toFixed(2)}
 
 ${
   isMultiQuote
-    ? 'Write a customer-ready options/package quotation from Kelly showing every supplied price and every valid all-together offer separately. Make the choices feel exciting and easy to understand. The customer has NOT decided yet.'
+    ? 'Write a customer-ready options/package quotation from Kelly showing every supplied price and every valid all-together offer separately. The customer has NOT decided yet.'
     : 'Write the finished customer-ready Furlads WhatsApp quotation from Kelly. Lead with the transformation and make the customer feel excited and reassured about the project.'
 }
 `.trim()
