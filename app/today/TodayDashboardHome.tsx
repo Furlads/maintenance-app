@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import WorkerAvatar from '@/components/WorkerAvatar'
 
 type Job = {
   id: number
@@ -96,8 +97,6 @@ export default function TodayDashboardHome() {
   const [weatherLocation, setWeatherLocation] = useState('')
   const [loading, setLoading] = useState(true)
 
-  // /api/schedule/day is the same ordered diary feed used by the admin schedule.
-  // Preserve that order here rather than re-sorting the worker's jobs locally.
   const activeJobs = useMemo(() => jobs.filter((job) => !isFinished(job)), [jobs])
   const nextJob = activeJobs[0] || null
 
@@ -196,6 +195,7 @@ export default function TodayDashboardHome() {
         .worker-home-action { border:0; border-radius:15px; min-height:72px; padding:12px; background:#fff; color:#111; font-weight:850; cursor:pointer; text-decoration:none; display:flex; flex-direction:column; justify-content:center; gap:3px; text-align:left; }
         .worker-home-action small { font-weight:600; color:#666; line-height:1.25; }
         .worker-home-next-link { color:#fff; text-decoration:none; display:inline-flex; margin-top:12px; font-weight:800; border-bottom:1px solid rgba(255,255,255,.45); }
+        .worker-home-person { display:flex; align-items:center; gap:12px; }
         @media(max-width:760px) {
           .worker-home-grid { grid-template-columns:1fr; }
           .worker-home-actions { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -206,11 +206,14 @@ export default function TodayDashboardHome() {
       <div className="worker-home-shell">
         <section className="worker-home-hero">
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: 13, opacity: 0.72, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                {workerName ? `Morning, ${workerName.split(/\s+/)[0]}` : 'Today'}
+            <div className="worker-home-person">
+              {workerName ? <WorkerAvatar name={workerName} size={64} /> : null}
+              <div>
+                <div style={{ fontSize: 13, opacity: 0.72, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {workerName ? `Morning, ${workerName.split(/\s+/)[0]}` : 'Today'}
+                </div>
+                <h1 style={{ margin: '4px 0 0', fontSize: 32, lineHeight: 1, fontWeight: 950 }}>Your day</h1>
               </div>
-              <h1 style={{ margin: '4px 0 0', fontSize: 32, lineHeight: 1, fontWeight: 950 }}>Your day</h1>
             </div>
             <div style={{ padding: '8px 12px', borderRadius: 999, background: '#facc15', color: '#111', fontWeight: 900 }}>
               {loading ? 'Loading…' : `${activeJobs.length} job${activeJobs.length === 1 ? '' : 's'} today`}
