@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import ServiceWorkerRegister from "@/app/components/ServiceWorkerRegister";
+import GlobalAppPolish from "@/app/components/GlobalAppPolish";
 
 export const metadata: Metadata = {
   title: "Furlads Maintenance App",
@@ -28,6 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <ServiceWorkerRegister />
+        <GlobalAppPolish />
         {children}
         <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
         <script
