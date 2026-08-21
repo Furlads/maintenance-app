@@ -8,12 +8,32 @@ type Job = {
   address?: string | null
   status?: string | null
   startTime?: string | null
-  visitDate?: string | null
   customer?: {
     name?: string | null
     postcode?: string | null
     address?: string | null
   } | null
+}
+
+type ScheduleJob = {
+  id: number
+  title: string
+  customerName: string
+  postcode: string | null
+  address: string
+  startTime: string | null
+  status: string
+}
+
+type ScheduleWorker = {
+  id: number
+  name: string
+  jobs: ScheduleJob[]
+}
+
+type ScheduleResponse = {
+  date?: string
+  workers?: ScheduleWorker[]
 }
 
 type AuthResponse = {
@@ -44,18 +64,29 @@ function isFinished(job: Job) {
   return ['done', 'complete', 'completed', 'cancelled', 'archived'].includes(status)
 }
 
-function jobTime(job: Job) {
-  return String(job.startTime || '99:99')
-}
-
 function displayTime(value?: string | null) {
-  if (!value) return 'Time not set'
+  if (!value) return 'Running order'
   return value.slice(0, 5)
 }
 
 function getDestination(job: Job | null) {
   if (!job) return ''
   return job.customer?.postcode || job.address || job.customer?.address || ''
+}
+
+function toDashboardJob(job: ScheduleJob): Job {
+  return {
+    id: job.id,
+    title: job.title,
+    address: job.address,
+    status: job.status,
+    startTime: job.startTime,
+    customer: {
+      name: job.customerName,
+      postcode: job.postcode,
+      address: job.address
+    }
+  }
 }
 
 export default function TodayDashboardHome() {
@@ -65,11 +96,9 @@ export default function TodayDashboardHome() {
   const [weatherLocation, setWeatherLocation] = useState('')
   const [loading, setLoading] = useState(true)
 
-  const activeJobs = useMemo(
-    () => jobs.filter((job) => !isFinished(job)).sort((a, b) => jobTime(a).localeCompare(jobTime(b))),
-    [jobs]
-  )
-
+  // /api/schedule/day is the same ordered diary feed used by the admin schedule.
+  // Preserve that order here rather than re-sorting the worker's jobs locally.
+  const activeJobs = useMemo(() => jobs.filter((job) => !isFinished(job)), [jobs])
   const nextJob = activeJobs[0] || null
 
   useEffect(() => {
@@ -98,25 +127,17 @@ export default function TodayDashboardHome() {
 
         setWorkerName(String(auth.name || '').trim())
 
-        const params = new URLSearchParams({
-          workerId: String(auth.workerId),
-          date: todayKey(),
-          pageSize: '50'
-        })
-
-        const jobsRes = await fetch(`/api/jobs?${params.toString()}`, {
+        const scheduleRes = await fetch(`/api/schedule/day?date=${encodeURIComponent(todayKey())}`, {
           cache: 'no-store',
           credentials: 'include'
         })
-        const jobsData = await jobsRes.json().catch(() => null)
-        const nextJobs: Job[] = Array.isArray(jobsData?.items) ? jobsData.items : []
+        const scheduleData: ScheduleResponse | null = await scheduleRes.json().catch(() => null)
+        const workerSchedule = scheduleData?.workers?.find((worker) => worker.id === auth.workerId)
+        const nextJobs = (workerSchedule?.jobs || []).map(toDashboardJob)
 
         if (!cancelled) setJobs(nextJobs)
 
-        const nextActive = nextJobs
-          .filter((job) => !isFinished(job))
-          .sort((a, b) => jobTime(a).localeCompare(jobTime(b)))[0] || null
-
+        const nextActive = nextJobs.find((job) => !isFinished(job)) || null
         const postcode = nextActive?.customer?.postcode || DEFAULT_POSTCODE
         const weatherRes = await fetch(`/api/weather/postcode?postcode=${encodeURIComponent(postcode)}`, {
           cache: 'no-store',
