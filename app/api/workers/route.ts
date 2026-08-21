@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
+const CODIE_AVATAR_URL = "/branding/workers/codie-furlads-avatar.jpg";
+
 function norm(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
 }
@@ -36,6 +38,10 @@ function splitName(name: string) {
     firstName: parts.shift() || "",
     lastName: parts.join(" "),
   };
+}
+
+function workerPhotoUrl(firstName: string | null | undefined) {
+  return norm(firstName) === "codie" ? CODIE_AVATAR_URL : "";
 }
 
 export async function GET(req: Request) {
@@ -105,7 +111,7 @@ export async function GET(req: Request) {
           name: `${worker.firstName || ""} ${worker.lastName || ""}`.trim(),
           role: worker.accessLevel || "Worker",
           jobTitle: worker.jobTitle || "",
-          photoUrl: "",
+          photoUrl: workerPhotoUrl(worker.firstName),
           phone: worker.phone || "",
           active: !!worker.active,
           createdAt: worker.createdAt,
@@ -121,6 +127,7 @@ export async function GET(req: Request) {
         firstName: worker.firstName,
         lastName: worker.lastName,
         phone: worker.phone,
+        photoUrl: workerPhotoUrl(worker.firstName),
       }));
 
     return NextResponse.json(minimal);
@@ -210,6 +217,7 @@ export async function POST(req: Request) {
         role: created.accessLevel || "Worker",
         jobTitle: created.jobTitle || "",
         phone: created.phone || "",
+        photoUrl: workerPhotoUrl(created.firstName),
         active: !!created.active,
         createdAt: created.createdAt,
       },
