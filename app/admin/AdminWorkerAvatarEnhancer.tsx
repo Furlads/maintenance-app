@@ -36,6 +36,14 @@ const WORKER_AVATARS: WorkerAvatarConfig[] = [
     title: 'Steve · Furlads Garden Services',
     border: '#facc15',
   },
+  {
+    key: 'oli',
+    namePattern: /^(?:oli|oliver)(?:\s|$)/i,
+    assignedPattern: /\b(?:Oli|Oliver)\b/i,
+    src: '/branding/workers/oli-furlads-avatar.webp',
+    title: 'Oli · Furlads Garden Services',
+    border: '#facc15',
+  },
 ]
 
 function makeAvatar(worker: WorkerAvatarConfig, size: number) {
