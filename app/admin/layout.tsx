@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,12 +10,32 @@ type AdminLayoutProps = {
   children: React.ReactNode
 }
 
+type IconName = 'calendar' | 'inbox' | 'quotes' | 'jobs' | 'more'
+
 const adminNavItems = [
   { href: '/admin/schedule', label: 'Schedule' },
   { href: '/admin/inbox', label: 'Inbox' },
   { href: '/admin/quotes', label: 'Quotes' },
   { href: '/admin/maintenance-opportunities', label: 'Opportunities' },
   { href: '/jobs', label: 'Jobs' },
+  { href: '/customers', label: 'Customers' },
+  { href: '/workers', label: 'Workers' },
+  { href: '/kelly/notes-summary', label: 'Notes Summary' },
+]
+
+const mobilePrimaryNavItems: Array<{
+  href: string
+  label: string
+  icon: IconName
+}> = [
+  { href: '/admin/schedule', label: 'Schedule', icon: 'calendar' },
+  { href: '/admin/inbox', label: 'Inbox', icon: 'inbox' },
+  { href: '/admin/quotes', label: 'Quotes', icon: 'quotes' },
+  { href: '/jobs', label: 'Jobs', icon: 'jobs' },
+]
+
+const mobileMoreNavItems = [
+  { href: '/admin/maintenance-opportunities', label: 'Opportunities' },
   { href: '/customers', label: 'Customers' },
   { href: '/workers', label: 'Workers' },
   { href: '/kelly/notes-summary', label: 'Notes Summary' },
@@ -28,8 +49,72 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
+function NavIcon({ name }: { name: IconName }) {
+  const commonProps = {
+    width: 21,
+    height: 21,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  }
+
+  if (name === 'calendar') {
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="5" width="18" height="16" rx="2" />
+        <path d="M16 3v4M8 3v4M3 10h18" />
+      </svg>
+    )
+  }
+
+  if (name === 'inbox') {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 4h16v13a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V4Z" />
+        <path d="M4 14h4l2 3h4l2-3h4" />
+      </svg>
+    )
+  }
+
+  if (name === 'quotes') {
+    return (
+      <svg {...commonProps}>
+        <path d="M6 3h9l3 3v15H6z" />
+        <path d="M14 3v4h4M9 12h6M9 16h4" />
+      </svg>
+    )
+  }
+
+  if (name === 'jobs') {
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="7" width="18" height="13" rx="2" />
+        <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18M10 12v2h4v-2" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg {...commonProps}>
+      <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname()
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreActive = mobileMoreNavItems.some((item) => isActivePath(pathname, item.href))
+
+  useEffect(() => {
+    setMoreOpen(false)
+  }, [pathname])
 
   return (
     <div
@@ -197,7 +282,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           className="admin-main"
           style={{
             minWidth: 0,
-            padding: '16px 16px 104px',
+            padding: '16px 16px 108px',
           }}
         >
           <div
@@ -213,32 +298,117 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         </main>
       </div>
 
+      {moreOpen ? (
+        <button
+          type="button"
+          aria-label="Close more navigation"
+          className="admin-mobile-nav-backdrop"
+          onClick={() => setMoreOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 48,
+            border: 0,
+            padding: 0,
+            background: 'rgba(17,24,39,0.18)',
+          }}
+        />
+      ) : null}
+
       <nav
         aria-label="Admin mobile navigation"
         className="admin-mobile-nav"
         style={{
           position: 'fixed',
-          left: 0,
-          right: 0,
-          bottom: 0,
+          left: 10,
+          right: 10,
+          bottom: 'calc(8px + env(safe-area-inset-bottom))',
           zIndex: 50,
-          background: 'rgba(255,255,255,0.96)',
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          borderTop: '1px solid #e5e7eb',
-          padding: '8px 6px calc(8px + env(safe-area-inset-bottom))',
+          maxWidth: 620,
+          margin: '0 auto',
+          background: 'rgba(255,255,255,0.97)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+          border: '1px solid #e5e7eb',
+          borderRadius: 20,
+          boxShadow: '0 12px 34px rgba(17,24,39,0.14)',
+          padding: 6,
         }}
       >
+        {moreOpen ? (
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 'calc(100% + 10px)',
+              background: '#ffffff',
+              border: '1px solid #e5e7eb',
+              borderRadius: 18,
+              padding: 8,
+              boxShadow: '0 18px 40px rgba(17,24,39,0.18)',
+            }}
+          >
+            <div
+              style={{
+                padding: '8px 10px 6px',
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: '#6b7280',
+              }}
+            >
+              More
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 6,
+              }}
+            >
+              {mobileMoreNavItems.map((item) => {
+                const active = isActivePath(pathname, item.href)
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    style={{
+                      minWidth: 0,
+                      minHeight: 48,
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '0 13px',
+                      borderRadius: 13,
+                      textDecoration: 'none',
+                      background: active ? '#111827' : '#f8fafc',
+                      color: active ? '#ffffff' : '#111827',
+                      border: active ? '1px solid #111827' : '1px solid #e5e7eb',
+                      fontSize: 14,
+                      fontWeight: 750,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
+
         <div
           style={{
-            maxWidth: 900,
-            margin: '0 auto',
             display: 'grid',
-            gridTemplateColumns: 'repeat(8, minmax(0, 1fr))',
-            gap: 5,
+            gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+            gap: 3,
           }}
         >
-          {adminNavItems.map((item) => {
+          {mobilePrimaryNavItems.map((item) => {
             const active = isActivePath(pathname, item.href)
 
             return (
@@ -247,29 +417,60 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 href={item.href}
                 style={{
                   minWidth: 0,
-                  minHeight: 50,
-                  borderRadius: 12,
+                  minHeight: 58,
+                  borderRadius: 15,
                   textDecoration: 'none',
-                  color: active ? '#ffffff' : '#111827',
-                  background: active ? '#111827' : '#f9fafb',
-                  border: active ? '1px solid #111827' : '1px solid #e5e7eb',
+                  color: active ? '#ffffff' : '#4b5563',
+                  background: active ? '#111827' : 'transparent',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  textAlign: 'center',
-                  padding: '7px 3px',
-                  fontSize: 10,
-                  fontWeight: 800,
-                  lineHeight: 1.1,
-                  overflowWrap: 'break-word',
-                  wordBreak: 'break-word',
+                  gap: 3,
+                  padding: '5px 2px',
+                  fontSize: 11,
+                  fontWeight: 750,
+                  lineHeight: 1,
+                  whiteSpace: 'nowrap',
                   boxShadow: active ? '0 8px 18px rgba(17,24,39,0.16)' : 'none',
                 }}
               >
-                {item.label}
+                <NavIcon name={item.icon} />
+                <span>{item.label}</span>
               </Link>
             )
           })}
+
+          <button
+            type="button"
+            aria-expanded={moreOpen}
+            aria-label="More admin navigation"
+            onClick={() => setMoreOpen((open) => !open)}
+            style={{
+              minWidth: 0,
+              minHeight: 58,
+              borderRadius: 15,
+              border: 0,
+              cursor: 'pointer',
+              color: moreOpen || moreActive ? '#ffffff' : '#4b5563',
+              background: moreOpen || moreActive ? '#111827' : 'transparent',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 3,
+              padding: '5px 2px',
+              font: 'inherit',
+              fontSize: 11,
+              fontWeight: 750,
+              lineHeight: 1,
+              whiteSpace: 'nowrap',
+              boxShadow: moreOpen || moreActive ? '0 8px 18px rgba(17,24,39,0.16)' : 'none',
+            }}
+          >
+            <NavIcon name="more" />
+            <span>More</span>
+          </button>
         </div>
       </nav>
 
@@ -283,7 +484,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             display: block !important;
           }
 
-          .admin-mobile-nav {
+          .admin-mobile-nav,
+          .admin-mobile-nav-backdrop {
             display: none !important;
           }
 
