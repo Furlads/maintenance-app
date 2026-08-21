@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import QuoteEditor from './QuoteEditor'
+import QuoteDraftGuard from './QuoteDraftGuard'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,27 +60,30 @@ export default async function QuoteDetailPage({ params }: PageProps) {
         </div>
       </section>
 
-      <QuoteEditor
-        quote={{
-          id: quote.id,
-          customerName: quote.customerName,
-          customerPhone: quote.customerPhone,
-          customerEmail: quote.customerEmail,
-          customerAddress: quote.customerAddress,
-          customerPostcode: quote.customerPostcode,
-          scope: quote.scope,
-          customerMessage: quote.customerMessage,
-          internalNotes: quote.internalNotes,
-          quoteWorking: quote.quoteWorking,
-          priceExVat: quote.priceExVat,
-          vatRate: 20,
-          depositPercent: quote.depositPercent,
-          estimatedDays: quote.estimatedDays,
-          estimatedTeamSize: quote.estimatedTeamSize,
-          status: quote.status,
-          jobId: quote.jobId,
-        }}
-      />
+      <div id="quote-editor-autosave">
+        <QuoteDraftGuard quoteId={quote.id} />
+        <QuoteEditor
+          quote={{
+            id: quote.id,
+            customerName: quote.customerName,
+            customerPhone: quote.customerPhone,
+            customerEmail: quote.customerEmail,
+            customerAddress: quote.customerAddress,
+            customerPostcode: quote.customerPostcode,
+            scope: quote.scope,
+            customerMessage: quote.customerMessage,
+            internalNotes: quote.internalNotes,
+            quoteWorking: quote.quoteWorking,
+            priceExVat: quote.priceExVat,
+            vatRate: 20,
+            depositPercent: quote.depositPercent,
+            estimatedDays: quote.estimatedDays,
+            estimatedTeamSize: quote.estimatedTeamSize,
+            status: quote.status,
+            jobId: quote.jobId,
+          }}
+        />
+      </div>
     </div>
   )
 }
