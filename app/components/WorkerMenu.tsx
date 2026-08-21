@@ -14,6 +14,7 @@ const WORKER_AVATARS: Record<string, string> = {
   stephen: "/branding/workers/steve-furlads-avatar.webp",
   oli: "/branding/workers/oli-furlads-avatar.webp",
   oliver: "/branding/workers/oli-furlads-avatar.webp",
+  kelly: "/branding/workers/kelly-both-brands-avatar.webp",
 };
 
 function clearClientAuthStorage() {
