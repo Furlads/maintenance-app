@@ -10,6 +10,7 @@ const CODIE_AVATAR = '/branding/workers/codie-furlads-avatar.jpg'
 const STEVE_AVATAR = '/branding/workers/steve-furlads-avatar.webp'
 const OLI_AVATAR = '/branding/workers/oli-furlads-avatar.webp'
 const KELLY_AVATAR = '/branding/workers/kelly-both-brands-avatar.webp'
+const TREVOR_AVATAR = '/branding/workers/trevor-both-brands-avatar.webp'
 
 function initials(name?: string | null) {
   const parts = String(name || '')
@@ -46,6 +47,14 @@ function avatarFor(name?: string | null) {
     return OLI_AVATAR
   }
   if (normalised === 'kelly' || normalised.startsWith('kelly ')) return KELLY_AVATAR
+  if (
+    normalised === 'trev' ||
+    normalised.startsWith('trev ') ||
+    normalised === 'trevor' ||
+    normalised.startsWith('trevor ')
+  ) {
+    return TREVOR_AVATAR
+  }
   return null
 }
 
