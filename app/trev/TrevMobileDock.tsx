@@ -7,16 +7,16 @@ import { usePathname } from 'next/navigation'
 const items = [
   { href: '/trev', label: 'Overview', icon: '⌂' },
   { href: '/today', label: 'Today', icon: '☀' },
+  { href: '/trev/calendar', label: 'Calendar', icon: '◫' },
   { href: '/trev/quotes', label: 'Quotes', icon: '£' },
   { href: '/admin/inbox', label: 'Inbox', icon: '✉' },
   { href: '/jobs', label: 'Jobs', icon: '▣' },
-  { href: '/admin/todos', label: 'To-dos', icon: '✓' },
 ] as const
 
 export default function TrevMobileDock() {
   const pathname = usePathname()
   const isTrevOverview = pathname === '/trev'
-  const isTrevQuotes = pathname === '/trev/quotes'
+  const isTrevArea = pathname.startsWith('/trev/')
 
   useEffect(() => {
     if (!isTrevOverview) return
@@ -30,7 +30,7 @@ export default function TrevMobileDock() {
     }
   }, [isTrevOverview])
 
-  if (!isTrevOverview && !isTrevQuotes) return null
+  if (!isTrevOverview && !isTrevArea) return null
 
   return (
     <nav
@@ -41,7 +41,8 @@ export default function TrevMobileDock() {
         {items.map((item) => {
           const active =
             pathname === item.href ||
-            (item.href === '/trev/quotes' && pathname.startsWith('/trev/quotes'))
+            (item.href === '/trev/quotes' && pathname.startsWith('/trev/quotes')) ||
+            (item.href === '/trev/calendar' && pathname.startsWith('/trev/calendar'))
 
           return (
             <Link
