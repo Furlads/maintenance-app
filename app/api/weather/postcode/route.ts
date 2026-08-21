@@ -41,7 +41,17 @@ type AccuWeatherForecast = {
 };
 
 function cleanPostcode(value: string | null) {
-  return String(value || "").trim().toUpperCase();
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+function postcodeCandidates(postcode: string) {
+  const compact = postcode.replace(/\s+/g, "");
+  const spaced = compact.length > 3
+    ? `${compact.slice(0, -3)} ${compact.slice(-3)}`
+    : postcode;
+  const outward = compact.length > 3 ? compact.slice(0, -3) : compact;
+
+  return Array.from(new Set([spaced, compact, outward].filter(Boolean)));
 }
 
 function buildWeatherSummary(forecast: AccuWeatherForecast) {
@@ -81,6 +91,28 @@ function buildWeatherSummary(forecast: AccuWeatherForecast) {
   return `🌦️ ${dayPhrase}.${tempText}`;
 }
 
+async function findAccuWeatherLocation(apiKey: string, postcode: string) {
+  for (const candidate of postcodeCandidates(postcode)) {
+    const locationUrl = `https://dataservice.accuweather.com/locations/v1/postalcodes/GB/search?apikey=${encodeURIComponent(
+      apiKey
+    )}&q=${encodeURIComponent(candidate)}`;
+
+    const locationRes = await fetch(locationUrl, { cache: "no-store" });
+    const locations: AccuWeatherLocation[] = await locationRes
+      .json()
+      .catch(() => []);
+
+    if (locationRes.ok && locations?.[0]?.Key) {
+      return {
+        location: locations[0],
+        matchedQuery: candidate,
+      };
+    }
+  }
+
+  return null;
+}
+
 export async function GET(req: Request) {
   try {
     const apiKey = process.env.ACCUWEATHER_API_KEY;
@@ -109,21 +141,10 @@ export async function GET(req: Request) {
       );
     }
 
-    const locationUrl = `https://dataservice.accuweather.com/locations/v1/postalcodes/GB/search?apikey=${encodeURIComponent(
-      apiKey
-    )}&q=${encodeURIComponent(postcode)}`;
+    const match = await findAccuWeatherLocation(apiKey, postcode);
+    const locationKey = match?.location?.Key;
 
-    const locationRes = await fetch(locationUrl, {
-      cache: "no-store",
-    });
-
-    const locations: AccuWeatherLocation[] = await locationRes
-      .json()
-      .catch(() => []);
-
-    const locationKey = locations?.[0]?.Key;
-
-    if (!locationRes.ok || !locationKey) {
+    if (!locationKey) {
       return NextResponse.json(
         {
           ok: false,
@@ -162,9 +183,10 @@ export async function GET(req: Request) {
       {
         ok: true,
         postcode,
+        matchedQuery: match?.matchedQuery || postcode,
         locationKey,
         locationName:
-          locations?.[0]?.EnglishName || locations?.[0]?.LocalizedName || null,
+          match?.location?.EnglishName || match?.location?.LocalizedName || null,
         summary: buildWeatherSummary(forecast),
         forecast,
       },
