@@ -8,7 +8,10 @@ type AuthMeResponse = {
   role?: string | null;
 };
 
-const CODIE_AVATAR_URL = "/branding/workers/codie-furlads-avatar.jpg";
+const WORKER_AVATARS: Record<string, string> = {
+  codie: "/branding/workers/codie-furlads-avatar.jpg",
+  steve: "/branding/workers/steve-furlads-avatar.webp",
+};
 
 function clearClientAuthStorage() {
   localStorage.removeItem("worker");
@@ -24,8 +27,9 @@ function clearClientAuthStorage() {
   localStorage.removeItem("selectedLoginWorkerPhotoUrl");
 }
 
-function isCodie(name: string) {
-  return name.trim().toLowerCase().split(/\s+/)[0] === "codie";
+function workerAvatar(name: string) {
+  const firstName = name.trim().toLowerCase().split(/\s+/)[0] || "";
+  return WORKER_AVATARS[firstName] || "";
 }
 
 export default function WorkerMenu() {
@@ -33,6 +37,7 @@ export default function WorkerMenu() {
   const [workerName, setWorkerName] = useState("");
   const [updatingApp, setUpdatingApp] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const avatarUrl = workerAvatar(workerName);
 
   useEffect(() => {
     async function loadWorker() {
@@ -187,13 +192,13 @@ export default function WorkerMenu() {
           cursor: "pointer",
           boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
           overflow: "hidden",
-          padding: isCodie(workerName) ? 0 : undefined,
+          padding: avatarUrl ? 0 : undefined,
         }}
       >
-        {isCodie(workerName) ? (
+        {avatarUrl ? (
           <img
-            src={CODIE_AVATAR_URL}
-            alt="Codie"
+            src={avatarUrl}
+            alt={workerName || "Worker"}
             style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
           />
         ) : (
@@ -227,10 +232,10 @@ export default function WorkerMenu() {
               gap: 10,
             }}
           >
-            {isCodie(workerName) ? (
+            {avatarUrl ? (
               <img
-                src={CODIE_AVATAR_URL}
-                alt="Codie"
+                src={avatarUrl}
+                alt={workerName || "Worker"}
                 style={{
                   width: 48,
                   height: 48,
