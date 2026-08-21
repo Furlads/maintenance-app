@@ -8,6 +8,7 @@ type WorkerAvatarProps = {
 const JACOB_AVATAR = '/avatars/jacob-three-counties.webp'
 const CODIE_AVATAR = '/branding/workers/codie-furlads-avatar.jpg'
 const STEVE_AVATAR = '/branding/workers/steve-furlads-avatar.webp'
+const OLI_AVATAR = '/branding/workers/oli-furlads-avatar.webp'
 
 function initials(name?: string | null) {
   const parts = String(name || '')
@@ -34,6 +35,14 @@ function avatarFor(name?: string | null) {
     normalised.startsWith('stephen ')
   ) {
     return STEVE_AVATAR
+  }
+  if (
+    normalised === 'oli' ||
+    normalised.startsWith('oli ') ||
+    normalised === 'oliver' ||
+    normalised.startsWith('oliver ')
+  ) {
+    return OLI_AVATAR
   }
   return null
 }
