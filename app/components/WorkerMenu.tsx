@@ -11,6 +11,9 @@ type AuthMeResponse = {
 const WORKER_AVATARS: Record<string, string> = {
   codie: "/branding/workers/codie-furlads-avatar.jpg",
   steve: "/branding/workers/steve-furlads-avatar.webp",
+  stephen: "/branding/workers/steve-furlads-avatar.webp",
+  oli: "/branding/workers/oli-furlads-avatar.webp",
+  oliver: "/branding/workers/oli-furlads-avatar.webp",
 };
 
 function clearClientAuthStorage() {
