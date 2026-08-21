@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import WorkerConnectionStatus from './WorkerConnectionStatus'
 
 export const dynamic = 'force-dynamic'
 
@@ -157,6 +158,8 @@ export default function WorkerLayout({ children }: WorkerLayoutProps) {
           </Link>
         </div>
       </header>
+
+      <WorkerConnectionStatus />
 
       <main
         style={{
