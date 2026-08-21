@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import prisma from '@/lib/prisma'
 import MaintenanceTodayBridge from './MaintenanceTodayBridge'
+import TodayDashboardHome from './TodayDashboardHome'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,7 @@ export default async function TodayLayout({ children }: Props) {
   return (
     <>
       <MaintenanceTodayBridge maintenanceJobIds={maintenanceJobs.map((job) => job.id)} />
+      <TodayDashboardHome />
       {children}
     </>
   )
