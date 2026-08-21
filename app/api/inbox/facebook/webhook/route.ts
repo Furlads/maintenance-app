@@ -112,6 +112,21 @@ function isGenericFacebookName(value: string | null | undefined) {
   )
 }
 
+async function getExistingConversationName(pageId: string, customerPsid: string) {
+  const conversationRef = makeConversationRef(pageId, customerPsid)
+  const conversation = await prisma.conversation.findFirst({
+    where: {
+      source: "facebook",
+      contactRef: conversationRef,
+    },
+    select: {
+      contactName: true,
+    },
+  })
+
+  return String(conversation?.contactName || "").trim()
+}
+
 async function fetchMessengerProfile(
   senderPsid: string,
   pageConfig: FacebookPageConfig
@@ -133,17 +148,6 @@ async function fetchMessengerProfile(
     url.searchParams.set("fields", "first_name,last_name,profile_pic")
     url.searchParams.set("access_token", pageConfig.token)
 
-    console.log("[FB PROFILE LOOKUP START]", {
-      senderPsid,
-      pageId: pageConfig.pageId,
-      pageLabel: pageConfig.label,
-      pageKey: pageConfig.key,
-      tokenPreview: maskToken(pageConfig.token),
-      urlPreview: `https://graph.facebook.com/v23.0/${senderPsid}?fields=first_name,last_name,profile_pic&access_token=${maskToken(
-        pageConfig.token
-      )}`,
-    })
-
     const response = await fetch(url.toString(), {
       method: "GET",
       cache: "no-store",
@@ -158,26 +162,28 @@ async function fetchMessengerProfile(
       parsed = { raw: text }
     }
 
-    console.log("[FB PROFILE LOOKUP RESPONSE]", {
-      senderPsid,
-      pageId: pageConfig.pageId,
-      pageLabel: pageConfig.label,
-      pageKey: pageConfig.key,
-      status: response.status,
-      ok: response.ok,
-      details: parsed,
-    })
-
     if (!response.ok) {
-      console.error("[FB PROFILE LOOKUP ERROR]", {
+      const graphError = parsed?.error || null
+      const unavailableProfile =
+        Number(graphError?.code) === 100 && Number(graphError?.error_subcode) === 33
+
+      const details = {
         senderPsid,
         pageId: pageConfig.pageId,
         pageLabel: pageConfig.label,
         pageKey: pageConfig.key,
-        tokenPreview: maskToken(pageConfig.token),
         status: response.status,
-        details: parsed,
-      })
+        graphCode: graphError?.code ?? null,
+        graphSubcode: graphError?.error_subcode ?? null,
+        graphType: graphError?.type ?? null,
+      }
+
+      if (unavailableProfile) {
+        console.warn("[FB PROFILE UNAVAILABLE - USING FALLBACK]", details)
+      } else {
+        console.error("[FB PROFILE LOOKUP ERROR]", details)
+      }
+
       return null
     }
 
@@ -198,7 +204,6 @@ async function fetchMessengerProfile(
       pageId: pageConfig.pageId,
       pageLabel: pageConfig.label,
       pageKey: pageConfig.key,
-      tokenPreview: maskToken(pageConfig.token),
       error,
     })
     return null
@@ -255,7 +260,8 @@ async function findOrCreateConversation(params: {
   const shouldUpdateName =
     !!customerName &&
     (isGenericFacebookName(currentName) || currentName === pageLabel) &&
-    currentName !== customerName
+    currentName !== customerName &&
+    !isGenericFacebookName(customerName)
 
   console.log("[FB NAME SAVE DECISION]", {
     conversationId: conversation.id,
@@ -460,13 +466,26 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        const profile = await fetchMessengerProfile(customerPsid, pageConfig)
-        const customerName = buildDisplayName(profile, customerPsid)
+        const existingConversationName = await getExistingConversationName(
+          pageId,
+          customerPsid
+        )
+        const hasUsefulSavedName =
+          existingConversationName && !isGenericFacebookName(existingConversationName)
+
+        const profile = hasUsefulSavedName
+          ? null
+          : await fetchMessengerProfile(customerPsid, pageConfig)
+
+        const customerName = hasUsefulSavedName
+          ? existingConversationName
+          : buildDisplayName(profile, customerPsid)
 
         console.log("[FB CUSTOMER NAME RESOLVED]", {
           pageId,
           customerPsid,
           customerName,
+          usedSavedName: Boolean(hasUsefulSavedName),
           usedGenericFallback: isGenericFacebookName(customerName),
           hasProfile: !!profile,
         })
