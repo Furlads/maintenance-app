@@ -44,7 +44,7 @@ function splitName(name: string) {
 function workerPhotoUrl(firstName: string | null | undefined) {
   const first = norm(firstName);
   if (first === "codie") return CODIE_AVATAR_URL;
-  if (first === "steve") return STEVE_AVATAR_URL;
+  if (first === "steve" || first === "stephen") return STEVE_AVATAR_URL;
   return "";
 }
 
