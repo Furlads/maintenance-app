@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 
 const CODIE_AVATAR_URL = "/branding/workers/codie-furlads-avatar.jpg";
 const STEVE_AVATAR_URL = "/branding/workers/steve-furlads-avatar.webp";
+const OLI_AVATAR_URL = "/branding/workers/oli-furlads-avatar.webp";
 
 function norm(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
@@ -45,6 +46,7 @@ function workerPhotoUrl(firstName: string | null | undefined) {
   const first = norm(firstName);
   if (first === "codie") return CODIE_AVATAR_URL;
   if (first === "steve" || first === "stephen") return STEVE_AVATAR_URL;
+  if (first === "oli" || first === "oliver") return OLI_AVATAR_URL;
   return "";
 }
 
