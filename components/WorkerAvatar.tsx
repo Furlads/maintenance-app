@@ -27,7 +27,14 @@ function avatarFor(name?: string | null) {
   const normalised = String(name || '').trim().toLowerCase()
   if (normalised === 'jacob' || normalised.startsWith('jacob ')) return JACOB_AVATAR
   if (normalised === 'codie' || normalised.startsWith('codie ')) return CODIE_AVATAR
-  if (normalised === 'steve' || normalised.startsWith('steve ')) return STEVE_AVATAR
+  if (
+    normalised === 'steve' ||
+    normalised.startsWith('steve ') ||
+    normalised === 'stephen' ||
+    normalised.startsWith('stephen ')
+  ) {
+    return STEVE_AVATAR
+  }
   return null
 }
 
