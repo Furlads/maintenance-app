@@ -44,6 +44,14 @@ const WORKER_AVATARS: WorkerAvatarConfig[] = [
     title: 'Oli · Furlads Garden Services',
     border: '#facc15',
   },
+  {
+    key: 'kelly',
+    namePattern: /^kelly(?:\s|$)/i,
+    assignedPattern: /\bKelly\b/i,
+    src: '/branding/workers/kelly-both-brands-avatar.webp',
+    title: 'Kelly · Furlads & Three Counties',
+    border: '#b59a45',
+  },
 ]
 
 function makeAvatar(worker: WorkerAvatarConfig, size: number) {
