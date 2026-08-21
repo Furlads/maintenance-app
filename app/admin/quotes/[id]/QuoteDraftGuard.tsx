@@ -30,7 +30,13 @@ function controlKey(control: HTMLInputElement | HTMLTextAreaElement | HTMLSelect
 function getControls(root: HTMLElement) {
   return Array.from(
     root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select')
-  ).filter((control) => !control.readOnly && !control.disabled)
+  ).filter((control) => {
+    if (control.disabled) return false
+    if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+      return !control.readOnly
+    }
+    return true
+  })
 }
 
 function capture(root: HTMLElement): SavedDraft {
