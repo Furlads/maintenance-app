@@ -39,8 +39,8 @@ function findJobContainer(link: HTMLAnchorElement) {
   return null
 }
 
-function ensureMaintenanceButton(container: HTMLElement, jobId: string) {
-  if (container.querySelector(`[data-maintenance-open="${jobId}"]`)) return
+function ensureOpenJobButton(container: HTMLElement, jobId: string, maintenance: boolean) {
+  if (container.querySelector(`[data-worker-open-job="${jobId}"]`)) return
 
   const host =
     container.querySelector<HTMLElement>('.today-quick-actions') ||
@@ -53,17 +53,17 @@ function ensureMaintenanceButton(container: HTMLElement, jobId: string) {
   host.style.gridTemplateColumns = '1fr'
 
   const link = document.createElement('a')
-  link.href = `/maintenance/jobs/${jobId}`
-  link.dataset.maintenanceOpen = jobId
-  link.textContent = 'Open Maintenance Visit'
+  link.href = maintenance ? `/maintenance/jobs/${jobId}` : `/jobs/${jobId}`
+  link.dataset.workerOpenJob = jobId
+  link.textContent = 'Open Job'
   link.style.display = 'inline-flex'
   link.style.alignItems = 'center'
   link.style.justifyContent = 'center'
   link.style.minHeight = '48px'
   link.style.padding = '12px 16px'
   link.style.borderRadius = '12px'
-  link.style.border = '1px solid #111'
-  link.style.background = '#111'
+  link.style.border = '1px solid #111827'
+  link.style.background = '#111827'
   link.style.color = '#fff'
   link.style.textDecoration = 'none'
   link.style.fontWeight = '800'
@@ -75,22 +75,21 @@ function ensureMaintenanceButton(container: HTMLElement, jobId: string) {
 
 export default function MaintenanceTodayBridge({ maintenanceJobIds }: Props) {
   useEffect(() => {
-    if (!maintenanceJobIds.length) return
-
     const maintenanceIds = new Set(maintenanceJobIds.map(String))
 
-    function applyMaintenanceCards() {
+    function simplifyWorkerCards() {
       const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href^="/jobs/"]'))
 
       for (const link of links) {
         const match = link.getAttribute('href')?.match(/^\/jobs\/(\d+)/)
-        if (!match || !maintenanceIds.has(match[1])) continue
+        if (!match) continue
 
         const container = findJobContainer(link)
         if (!container) continue
 
         const jobId = match[1]
-        container.dataset.maintenanceTodayCard = jobId
+        const maintenance = maintenanceIds.has(jobId)
+        container.dataset.simpleWorkerJobCard = jobId
 
         const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
         for (const button of buttons) {
@@ -106,19 +105,19 @@ export default function MaintenanceTodayBridge({ maintenanceJobIds }: Props) {
         for (const group of actionGroups) {
           const usefulControls = Array.from(group.querySelectorAll<HTMLElement>('a,button')).filter((control) => {
             const text = cleanText(control.textContent)
-            return text && !LEGACY_ACTIONS.has(text)
+            return text && !LEGACY_ACTIONS.has(text) && !control.dataset.workerOpenJob
           })
 
           if (!usefulControls.length) group.style.display = 'none'
         }
 
-        ensureMaintenanceButton(container, jobId)
+        ensureOpenJobButton(container, jobId, maintenance)
       }
     }
 
-    applyMaintenanceCards()
+    simplifyWorkerCards()
 
-    const observer = new MutationObserver(applyMaintenanceCards)
+    const observer = new MutationObserver(simplifyWorkerCards)
     observer.observe(document.body, { childList: true, subtree: true })
 
     return () => observer.disconnect()
