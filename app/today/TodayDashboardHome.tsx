@@ -297,7 +297,7 @@ export default function TodayDashboardHome() {
   return (
     <div data-today-dashboard-home className={`today-v2 ${isJacob ? 'today-v2-three-counties' : 'today-v2-furlads'}`}>
       <style>{`
-        .today-v2 { --accent:#facc15; --accentText:#18130a; --hero:#111111; --hero2:#1c1c1c; --soft:#fff9d9; --muted:#666; --page:#f4f4f0; background:var(--page); padding:10px 10px 102px; min-height:100dvh; }
+        .today-v2 { --accent:#facc15; --accentText:#18130a; --hero:#111111; --hero2:#1c1c1c; --soft:#fff9d9; --page:#f4f4f0; background:var(--page); padding:10px 10px 118px; min-height:100dvh; }
         .today-v2-three-counties { --accent:#93b83d; --accentText:#14200d; --hero:#10240f; --hero2:#29401c; --soft:#eef5e2; --page:#eef1e8; }
         .today-v2-shell { width:100%; max-width:980px; margin:0 auto; }
         .today-v2-hero { position:relative; overflow:hidden; background:linear-gradient(145deg,var(--hero),var(--hero2)); color:white; border-radius:28px; padding:22px; box-shadow:0 20px 48px rgba(0,0,0,.16); }
@@ -310,93 +310,98 @@ export default function TodayDashboardHome() {
         .today-v2-brand { width:105px; height:105px; display:flex; align-items:center; justify-content:center; border-radius:20px; overflow:hidden; background:var(--accent); padding:7px; box-shadow:0 10px 28px rgba(0,0,0,.22); position:relative; z-index:1; }
         .today-v2-brand img { width:100%; height:100%; object-fit:contain; border-radius:13px; }
         .today-v2-three-counties .today-v2-brand { background:white; }
-        .today-v2-status { position:relative; z-index:1; min-width:110px; text-align:right; font-size:15px; line-height:1.45; font-weight:800; color:#e3e3e3; }
-        .today-v2-status strong { color:var(--accent); font-size:17px; }
-        .today-v2-next { position:relative; z-index:1; margin-top:22px; background:white; color:#111; border-radius:24px; padding:22px; display:flex; align-items:center; justify-content:space-between; gap:16px; box-shadow:0 10px 26px rgba(0,0,0,.08); }
+        .today-v2-status { position:relative; z-index:1; min-width:120px; text-align:left; font-size:13px; line-height:1.2; font-weight:800; color:#e3e3e3; padding:10px 12px; border-radius:15px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); }
+        .today-v2-status strong { display:block; color:var(--accent); font-size:15px; margin-bottom:3px; }
+        .today-v2-next { position:relative; z-index:1; margin-top:18px; background:white; color:#111; border-radius:22px; padding:19px; display:flex; align-items:center; justify-content:space-between; gap:16px; box-shadow:0 10px 26px rgba(0,0,0,.08); }
         .today-v2-three-counties .today-v2-next { border:1px solid #9abb55; }
-        .today-v2-label { font-size:11px; font-weight:950; text-transform:uppercase; letter-spacing:.9px; color:#7a7a7a; }
+        .today-v2-label { font-size:10px; font-weight:950; text-transform:uppercase; letter-spacing:.9px; color:#7a7a7a; }
         .today-v2-three-counties .today-v2-label { color:#64812c; }
-        .today-v2-next-name { margin-top:7px; font-size:29px; line-height:1.05; font-weight:950; letter-spacing:-.8px; }
-        .today-v2-next-meta { margin-top:8px; color:#696969; font-size:15px; line-height:1.45; font-weight:650; }
-        .today-v2-next-link { flex:0 0 auto; min-width:54px; min-height:54px; border-radius:18px; display:flex; align-items:center; justify-content:center; text-decoration:none; background:var(--soft); color:var(--accentText); font-size:25px; font-weight:900; }
-        .today-v2-mid { position:relative; z-index:1; display:grid; grid-template-columns:.9fr 1.1fr; gap:14px; margin-top:14px; }
-        .today-v2-weather,.today-v2-tools { border-radius:22px; padding:20px; min-height:205px; }
+        .today-v2-next-name { margin-top:6px; font-size:27px; line-height:1.05; font-weight:950; letter-spacing:-.7px; }
+        .today-v2-next-meta { margin-top:7px; color:#696969; font-size:14px; line-height:1.4; font-weight:650; }
+        .today-v2-next-link { flex:0 0 auto; width:50px; height:50px; border-radius:16px; display:flex; align-items:center; justify-content:center; text-decoration:none; background:var(--soft); color:var(--accentText); font-size:22px; font-weight:900; }
+        .today-v2-mid { position:relative; z-index:1; display:grid; grid-template-columns:.92fr 1.08fr; gap:12px; margin-top:12px; align-items:stretch; }
+        .today-v2-weather,.today-v2-tools { border-radius:20px; padding:17px; min-height:180px; }
         .today-v2-weather { background:linear-gradient(145deg,var(--hero),var(--hero2)); border:1px solid rgba(255,255,255,.1); color:white; }
         .today-v2-weather .today-v2-label { color:var(--accent); }
-        .today-v2-weather-main { margin-top:15px; font-size:24px; line-height:1.22; font-weight:950; }
-        .today-v2-weather-place { margin-top:14px; color:#c7c7c7; font-size:13px; font-weight:700; }
+        .today-v2-weather-main { margin-top:12px; font-size:21px; line-height:1.22; font-weight:950; }
+        .today-v2-weather-place { margin-top:11px; color:#c7c7c7; font-size:12px; font-weight:700; }
         .today-v2-tools { background:white; color:#111; border:1px solid #e5e5e5; box-shadow:0 10px 28px rgba(0,0,0,.05); }
+        .today-v2-tools-empty { min-height:180px; display:flex; flex-direction:column; justify-content:center; }
         .today-v2-three-counties .today-v2-tools { border-color:#d7e4bf; }
-        .today-v2-tools-title { font-size:17px; font-weight:950; }
-        .today-v2-tools-sub { margin-top:3px; color:#777; font-size:12px; font-weight:650; }
-        .today-v2-tool-list { display:grid; gap:7px; margin-top:13px; }
-        .today-v2-tool { display:flex; align-items:center; justify-content:space-between; gap:10px; border-radius:11px; padding:7px 10px; background:#f4f4f4; font-size:12px; font-weight:850; }
+        .today-v2-tools-title { font-size:16px; font-weight:950; line-height:1.1; }
+        .today-v2-tools-sub { margin-top:3px; color:#777; font-size:11px; font-weight:650; }
+        .today-v2-tool-list { display:grid; gap:6px; margin-top:10px; }
+        .today-v2-tool { display:flex; align-items:center; justify-content:space-between; gap:10px; border-radius:10px; padding:6px 9px; background:#f4f4f4; font-size:11px; font-weight:850; }
         .today-v2-furlads .today-v2-tool { background:#fff9d9; }
         .today-v2-three-counties .today-v2-tool { background:#eef5e3; }
         .today-v2-tool-extra { outline:1px solid color-mix(in srgb, var(--accent) 70%, #b98d00); }
-        .today-v2-tool-mark { color:var(--accentText); font-size:10px; font-weight:950; }
-        .today-v2-no-tools { margin-top:18px; border-radius:15px; padding:16px; background:var(--soft); color:#555; font-size:13px; line-height:1.45; font-weight:750; }
-        .today-v2-actions { position:relative; z-index:1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:14px; }
-        .today-v2-action { min-height:112px; border:1px solid #e4e4e4; border-radius:22px; background:#fff; color:#111; padding:18px; text-decoration:none; display:flex; align-items:center; justify-content:space-between; gap:14px; text-align:left; cursor:pointer; box-shadow:0 8px 22px rgba(0,0,0,.045); }
+        .today-v2-tool-mark { color:var(--accentText); font-size:9px; font-weight:950; }
+        .today-v2-no-tools { margin-top:10px; border-radius:13px; padding:11px 12px; background:var(--soft); color:#555; font-size:11px; line-height:1.35; font-weight:750; }
+        .today-v2-actions { position:relative; z-index:1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; }
+        .today-v2-action { min-width:0; min-height:98px; border:1px solid #e4e4e4; border-radius:20px; background:#fff; color:#111; padding:14px; text-decoration:none; display:flex; align-items:center; gap:11px; text-align:left; cursor:pointer; box-shadow:0 8px 22px rgba(0,0,0,.045); overflow:hidden; }
         .today-v2-action-primary { background:linear-gradient(145deg,var(--hero),var(--hero2)); border-color:transparent; color:white; }
-        .today-v2-action-icon { width:52px; height:52px; flex:0 0 52px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:var(--soft); font-size:24px; }
+        .today-v2-action-icon { width:44px; height:44px; flex:0 0 44px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:var(--soft); font-size:20px; }
         .today-v2-action-primary .today-v2-action-icon { background:var(--accent); }
-        .today-v2-action-copy { min-width:0; flex:1; }
-        .today-v2-action-title { font-size:18px; font-weight:950; }
-        .today-v2-action-sub { margin-top:4px; color:#777; font-size:12px; font-weight:650; }
+        .today-v2-action-copy { min-width:0; flex:1; overflow:hidden; }
+        .today-v2-action-title { display:block; font-size:16px; line-height:1.12; font-weight:950; overflow-wrap:anywhere; }
+        .today-v2-action-sub { display:block; margin-top:4px; color:#777; font-size:11px; line-height:1.25; font-weight:650; overflow-wrap:anywhere; }
         .today-v2-action-primary .today-v2-action-sub { color:#d6d6d6; }
-        .today-v2-action-arrow { font-size:25px; font-weight:800; color:#777; }
+        .today-v2-action-arrow { flex:0 0 auto; font-size:22px; font-weight:800; color:#777; }
         .today-v2-action-primary .today-v2-action-arrow { color:var(--accent); }
-        .today-v2-lookahead { position:relative; z-index:1; margin-top:14px; border-radius:22px; padding:17px 20px; display:flex; align-items:center; justify-content:space-between; gap:14px; background:var(--soft); color:#111; }
-        .today-v2-lookahead strong { font-size:16px; }
-        .today-v2-lookahead a { text-decoration:none; color:var(--accentText); border:1px solid color-mix(in srgb,var(--accent) 72%, #777); padding:9px 13px; border-radius:12px; font-size:13px; font-weight:950; white-space:nowrap; }
+        .today-v2-lookahead { position:relative; z-index:1; margin-top:12px; border-radius:19px; padding:13px 15px; display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--soft); color:#111; }
+        .today-v2-lookahead strong { font-size:14px; }
+        .today-v2-lookahead a { text-decoration:none; color:var(--accentText); border:1px solid color-mix(in srgb,var(--accent) 72%, #777); padding:8px 11px; border-radius:11px; font-size:12px; font-weight:950; white-space:nowrap; }
         .today-v2-three-counties .today-v2-lookahead a { color:#395017; }
-        .today-v2-nav { position:fixed; left:10px; right:10px; bottom:calc(8px + env(safe-area-inset-bottom)); z-index:70; max-width:760px; margin:0 auto; display:grid; grid-template-columns:repeat(5,1fr); gap:3px; padding:8px; border-radius:23px; background:linear-gradient(145deg,var(--hero),var(--hero2)); box-shadow:0 16px 38px rgba(0,0,0,.24); }
-        .today-v2-nav a,.today-v2-nav button { min-width:0; border:0; background:transparent; color:#d4d4d4; text-decoration:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:56px; border-radius:15px; padding:4px 2px; font-size:10px; font-weight:850; cursor:pointer; }
+        .today-v2-nav { position:fixed; left:10px; right:10px; bottom:calc(8px + env(safe-area-inset-bottom)); z-index:70; max-width:760px; margin:0 auto; display:grid; grid-template-columns:repeat(5,1fr); gap:3px; padding:7px; border-radius:22px; background:linear-gradient(145deg,var(--hero),var(--hero2)); box-shadow:0 16px 38px rgba(0,0,0,.24); }
+        .today-v2-nav a,.today-v2-nav button { min-width:0; border:0; background:transparent; color:#d4d4d4; text-decoration:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:53px; border-radius:14px; padding:4px 2px; font-size:10px; font-weight:850; cursor:pointer; }
         .today-v2-nav .active { color:var(--accent); background:rgba(255,255,255,.06); }
-        .today-v2-nav-icon { font-size:20px; line-height:1; }
+        .today-v2-nav-icon { font-size:18px; line-height:1; }
 
         @media(max-width:680px) {
-          .today-v2 { padding:0 0 96px; background:#f2f3f1; }
+          .today-v2 { padding:0 0 122px; background:#f2f3f1; }
           .today-v2-three-counties { background:#eef1e8; }
           .today-v2-shell { max-width:none; }
-          .today-v2-hero { border-radius:0 0 28px 28px; padding:18px 14px 20px; min-height:calc(100dvh - 96px); box-shadow:none; }
-          .today-v2-header { grid-template-columns:minmax(0,1fr) 76px; gap:10px; }
-          .today-v2-person { gap:10px; }
-          .today-v2-greeting { font-size:11px; }
-          .today-v2-title { font-size:40px; }
-          .today-v2-brand { width:76px; height:76px; border-radius:18px; padding:5px; }
-          .today-v2-status { grid-column:1 / -1; text-align:left; display:flex; gap:7px; align-items:baseline; min-width:0; margin-top:-2px; font-size:12px; }
+          .today-v2-hero { border-radius:0 0 26px 26px; padding:14px 10px 26px; box-shadow:none; }
+          .today-v2-header { grid-template-columns:minmax(0,1fr) 72px; gap:9px; }
+          .today-v2-person { gap:9px; }
+          .today-v2-greeting { font-size:10px; }
+          .today-v2-title { font-size:38px; }
+          .today-v2-brand { width:72px; height:72px; border-radius:17px; padding:5px; }
+          .today-v2-status { grid-column:1 / -1; min-width:0; width:max-content; max-width:100%; margin-top:-1px; padding:7px 10px; border-radius:12px; display:flex; align-items:center; gap:7px; font-size:11px; }
+          .today-v2-status strong { display:inline; margin:0; font-size:12px; }
           .today-v2-status br { display:none; }
-          .today-v2-status strong { font-size:13px; }
-          .today-v2-next { margin-top:15px; border-radius:22px; padding:18px; }
-          .today-v2-next-name { font-size:25px; }
-          .today-v2-next-meta { font-size:13px; }
-          .today-v2-mid { grid-template-columns:1fr 1.12fr; gap:10px; }
-          .today-v2-weather,.today-v2-tools { min-height:190px; border-radius:20px; padding:16px; }
-          .today-v2-weather-main { font-size:18px; }
-          .today-v2-tools-title { font-size:15px; }
-          .today-v2-tools-sub { font-size:10px; }
-          .today-v2-tool-list { gap:5px; margin-top:10px; }
-          .today-v2-tool { padding:6px 7px; font-size:10px; }
-          .today-v2-actions { gap:10px; }
-          .today-v2-action { min-height:96px; border-radius:19px; padding:13px; gap:9px; }
-          .today-v2-action-icon { width:42px; height:42px; flex-basis:42px; font-size:20px; }
-          .today-v2-action-title { font-size:15px; }
-          .today-v2-action-sub { font-size:10px; }
+          .today-v2-next { margin-top:11px; border-radius:19px; padding:15px; }
+          .today-v2-next-name { font-size:22px; }
+          .today-v2-next-meta { font-size:12px; line-height:1.35; }
+          .today-v2-next-link { width:44px; height:44px; border-radius:14px; font-size:19px; }
+          .today-v2-mid { grid-template-columns:.9fr 1.1fr; gap:8px; margin-top:9px; }
+          .today-v2-weather,.today-v2-tools { min-height:150px; border-radius:17px; padding:13px; }
+          .today-v2-tools-empty { min-height:150px; }
+          .today-v2-weather-main { margin-top:9px; font-size:15px; line-height:1.2; }
+          .today-v2-weather-place { margin-top:9px; font-size:10px; }
+          .today-v2-tools-title { font-size:13px; }
+          .today-v2-tools-sub { font-size:9px; }
+          .today-v2-tool-list { gap:4px; margin-top:7px; }
+          .today-v2-tool { padding:5px 6px; font-size:9px; }
+          .today-v2-no-tools { margin-top:7px; padding:8px 9px; font-size:9px; line-height:1.3; }
+          .today-v2-actions { gap:8px; margin-top:9px; }
+          .today-v2-action { min-height:82px; border-radius:17px; padding:10px; gap:8px; }
+          .today-v2-action-icon { width:36px; height:36px; flex-basis:36px; font-size:17px; }
+          .today-v2-action-title { font-size:13px; line-height:1.1; }
+          .today-v2-action-sub { font-size:9px; line-height:1.2; margin-top:3px; }
           .today-v2-action-arrow { display:none; }
-          .today-v2-lookahead { border-radius:19px; padding:14px 15px; }
-          .today-v2-lookahead strong { font-size:14px; }
-          .today-v2-nav { left:6px; right:6px; bottom:calc(5px + env(safe-area-inset-bottom)); border-radius:20px; padding:6px; }
-          .today-v2-nav a,.today-v2-nav button { min-height:52px; font-size:9px; }
-          .today-v2-nav-icon { font-size:18px; }
+          .today-v2-lookahead { margin-top:9px; border-radius:16px; padding:10px 11px; }
+          .today-v2-lookahead strong { font-size:12px; }
+          .today-v2-lookahead a { padding:7px 9px; font-size:10px; }
+          .today-v2-nav { left:6px; right:6px; bottom:calc(5px + env(safe-area-inset-bottom)); border-radius:19px; padding:5px; }
+          .today-v2-nav a,.today-v2-nav button { min-height:50px; font-size:9px; }
+          .today-v2-nav-icon { font-size:17px; }
         }
 
-        @media(max-width:390px) {
+        @media(max-width:345px) {
           .today-v2-mid { grid-template-columns:1fr; }
-          .today-v2-weather,.today-v2-tools { min-height:0; }
-          .today-v2-header { grid-template-columns:minmax(0,1fr) 66px; }
-          .today-v2-brand { width:66px; height:66px; }
+          .today-v2-weather,.today-v2-tools,.today-v2-tools-empty { min-height:0; }
+          .today-v2-actions { grid-template-columns:1fr; }
         }
       `}</style>
 
@@ -404,7 +409,7 @@ export default function TodayDashboardHome() {
         <section className="today-v2-hero">
           <div className="today-v2-header">
             <div className="today-v2-person">
-              {workerName ? <WorkerAvatar name={workerName} size={70} /> : null}
+              {workerName ? <WorkerAvatar name={workerName} size={66} /> : null}
               <div>
                 <div className="today-v2-greeting">{workerName ? `${greeting()}, ${firstName}` : greeting()}</div>
                 <h1 className="today-v2-title">Today</h1>
@@ -455,7 +460,7 @@ export default function TodayDashboardHome() {
               {weatherLocation && <div className="today-v2-weather-place">📍 {weatherLocation}</div>}
             </div>
 
-            <div className="today-v2-tools">
+            <div className={`today-v2-tools ${toolSuggestions.length === 0 ? 'today-v2-tools-empty' : ''}`}>
               <div className="today-v2-tools-title">🔧 Quick tool check</div>
               <div className="today-v2-tools-sub">Based on today’s booked work</div>
               {toolSuggestions.length > 0 ? (
@@ -468,9 +473,9 @@ export default function TodayDashboardHome() {
                   ))}
                 </div>
               ) : (
-                <div className="today-v2-no-tools">Nothing special flagged today. Standard PPE, hand tools and tidy-up kit should cover the basics.</div>
+                <div className="today-v2-no-tools">Standard PPE, hand tools and tidy-up kit. Nothing extra flagged.</div>
               )}
-              {extraTools.length > 0 && <div className="today-v2-tools-sub" style={{ marginTop: 8 }}>⚠ {extraTools.length} easy-to-forget extra{extraTools.length === 1 ? '' : 's'}</div>}
+              {extraTools.length > 0 && <div className="today-v2-tools-sub" style={{ marginTop: 7 }}>⚠ {extraTools.length} easy-to-forget extra{extraTools.length === 1 ? '' : 's'}</div>}
             </div>
           </div>
 
