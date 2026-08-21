@@ -36,6 +36,21 @@ function redirectToLogin(req: NextRequest) {
   return NextResponse.redirect(loginUrl);
 }
 
+function redirectForSession(
+  req: NextRequest,
+  session: { workerName?: string | null; role?: string | null }
+) {
+  if (isTrevSession(session)) {
+    return NextResponse.redirect(new URL("/trev", req.url));
+  }
+
+  if (isAdminLikeRole(session.role)) {
+    return NextResponse.redirect(new URL("/admin", req.url));
+  }
+
+  return NextResponse.redirect(new URL("/worker/home", req.url));
+}
+
 function forbidden(req: NextRequest) {
   const url = new URL("/", req.url);
   return NextResponse.redirect(url);
@@ -43,6 +58,13 @@ function forbidden(req: NextRequest) {
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  const token = req.cookies.get(COOKIE_NAME)?.value;
+  const session = token ? verifySessionToken(token) : null;
+
+  if ((pathname === "/" || pathname === "/login") && session) {
+    return redirectForSession(req, session);
+  }
 
   const isPublicPath =
     pathname === "/" ||
@@ -76,9 +98,6 @@ export function proxy(req: NextRequest) {
   if (isPublicPath || isPublicApiPath) {
     return NextResponse.next();
   }
-
-  const token = req.cookies.get(COOKIE_NAME)?.value;
-  const session = token ? verifySessionToken(token) : null;
 
   const needsSession =
     pathname.startsWith("/today") ||
