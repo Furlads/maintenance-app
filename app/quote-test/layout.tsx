@@ -6,10 +6,12 @@ import QuoteDraftAutosave from './QuoteDraftAutosave'
 import QuoteResultPolish from './QuoteResultPolish'
 import QuoteResultReadability from './QuoteResultReadability'
 import QuoteWorkingStatus from './QuoteWorkingStatus'
+import SafeLibraryPhotoPreparation from './SafeLibraryPhotoPreparation'
 
 export default function QuoteTestLayout({ children }: { children: ReactNode }) {
   return (
     <>
+      <SafeLibraryPhotoPreparation />
       <PhotoUploadQueue />
       <QuoteDraftAutosave />
       <QuoteResultPolish />
