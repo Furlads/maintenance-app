@@ -15,7 +15,15 @@ export default function TrevDashboardAvatarEnhancer() {
   useEffect(() => {
     function enhance() {
       const hero = document.querySelector('.trev-mobile-shell > main > div > section:first-child') as HTMLElement | null
-      if (!hero || hero.querySelector('[data-dashboard-login-avatar]')) return
+      if (!hero) return
+
+      const heroTitle = hero.querySelector('h1') as HTMLElement | null
+      if (heroTitle) {
+        heroTitle.style.color = '#ffffff'
+        heroTitle.style.textShadow = '0 1px 1px rgba(0,0,0,.2)'
+      }
+
+      if (hero.querySelector('[data-dashboard-login-avatar]')) return
 
       const loggedIn = Array.from(hero.querySelectorAll('div')).find((element) =>
         (element.textContent || '').trim().startsWith('Logged in as:')
