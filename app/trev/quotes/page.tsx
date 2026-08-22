@@ -81,7 +81,10 @@ export default async function TrevQuotesPage() {
               <h1 className="mt-1 text-3xl font-black tracking-tight">Quotes</h1>
               <p className="mt-2 text-sm leading-6 text-zinc-300">See every active quote and where it currently sits.</p>
             </div>
-            <Link href="/trev" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950">Back to overview</Link>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+              <Link href="/jobs/add" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-yellow-400 px-4 text-sm font-black text-zinc-950 shadow-sm transition hover:bg-yellow-300">+ New quote</Link>
+              <Link href="/trev" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950">Back to overview</Link>
+            </div>
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
