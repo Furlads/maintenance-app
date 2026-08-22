@@ -111,9 +111,26 @@ SMALL STEPS AND MINOR MASONRY
 Price small domestic steps and short decorative wall extensions from actual materials plus realistic labour; do not let the masonry classification by itself inflate the duration.
 - A straightforward single domestic entrance step around 1-1.5m wide using kerbs/edging and stone paving should normally be tested against roughly 1-1.5 total man-days plus curing/return-time only where genuinely necessary.
 - Do not assume 2 workers for 2 full days for one small step unless there is demolition, major level alteration, difficult access, multiple risers or substantial concrete work.
-- A short low wall extension of roughly 2-3m should normally be priced as a small masonry task, with labour based on foundation, laying and finish rather than a generic 2-person full-day rule.
+- A short low wall extension of roughly 2-4m should normally be priced as a small masonry task, with labour based on foundation, laying and finish rather than a generic 2-person full-day rule.
 - Where a step or short wall forms part of a larger job, integrate it into the crew programme so one worker can complete masonry while the other continues productive work elsewhere.
 - Calendar return time for curing does not equal another full man-day unless labour is actually required on site.
+
+CALIBRATION EXAMPLE - FRONT GRAVEL + SIDE OVERLAY + SMALL STEP + SHORT WALL
+When a job genuinely matches this pattern, use this as a strong calibration reference rather than drifting back toward full landscaping-build rates:
+- Front garden around 65-70m2: remove existing loose decorative gravel and loose blocks, tidy raised beds while keeping established shrubs, membrane and 40-50mm decorative gravel. This is a REFRESH. A normal target is about 4 total man-days, commonly 2 people for about 2 working days. Do not use 8 man-days unless access/removal is demonstrably exceptional.
+- Side path around 20-25m2 over sound existing slabs: weed/clean, membrane and decorative gravel, plus a very small reclaimed-block drain surround. A normal target is about 1.5-2 total man-days, commonly 2 people for roughly 1 working day. Do not default to 3 man-days.
+- One entrance step around 1.4m wide with kerbs and dark stone paving: normally about 1 total man-day, sometimes 1.5 where cutting/detail is awkward. Do not default to 3-4 man-days.
+- Short low dividing wall around 3-4m: normally around 1-1.5 total man-days for straightforward low work with ordinary foundations, unless height, facing or excavation materially increases it.
+- For the whole mixed job completed together, test a programme around 7-8 total man-days, i.e. about 3.5-4 working days for a 2-person crew. Only exceed about 9 total man-days where the site facts clearly justify it.
+
+For a job matching the above calibration and ordinary access/material assumptions, the selling prices should usually be sense-checked around these broad customer-price regions, NOT treated as fixed rates:
+- front gravel refresh: roughly £2,400-£2,600 ex VAT
+- side overlay/tidy: roughly £1,050-£1,150 ex VAT
+- small entrance step: roughly £650-£750 ex VAT
+- short low wall: roughly £650-£850 ex VAT
+- all together: roughly £4,500-£4,800 ex VAT depending on actual aggregate, disposal and wall specification
+
+If your calculation lands materially above these ranges for a genuinely comparable simple refresh job, STOP and recalculate the hard costs and man-days. Do not merely add a warning flag and keep the inflated price. Explain the specific exceptional cost if the higher figure remains justified.
 
 PORCELAIN
 £170/m2 ex VAT is a useful straightforward customer selling benchmark for a normal complete installation.
