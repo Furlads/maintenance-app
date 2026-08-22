@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
+import ChasAvatar from './ChasAvatar'
 
 function routeMode(pathname: string) {
   if (pathname.startsWith('/admin')) return 'admin'
@@ -66,6 +67,58 @@ export default function GlobalAppPolish() {
   }, [pathname])
 
   useEffect(() => {
+    const selector = 'button,a,summary,h1,h2,h3,h4,h5,h6,label,p,span,div'
+
+    function decorateChasReferences() {
+      const template = document.querySelector('#chas-global-avatar-template > span') as HTMLElement | null
+      if (!template) return
+
+      document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
+        if (element.closest('#chas-global-avatar-template')) return
+        if (element.dataset.chasIdentityDecorated === 'true') return
+        if (element.querySelector('[data-global-chas-avatar="true"]')) return
+
+        const ownText = Array.from(element.childNodes)
+          .filter((node) => node.nodeType === Node.TEXT_NODE)
+          .map((node) => node.textContent || '')
+          .join(' ')
+          .trim()
+
+        if (!/\bchas\b/i.test(ownText)) return
+
+        const nearbyAvatar = element.parentElement?.querySelector('[aria-label="Chas AI assistant for Furlads and Three Counties"]')
+        if (nearbyAvatar) {
+          element.dataset.chasIdentityDecorated = 'true'
+          return
+        }
+
+        const avatar = template.cloneNode(true) as HTMLElement
+        avatar.dataset.globalChasAvatar = 'true'
+        avatar.setAttribute('aria-hidden', 'true')
+        avatar.style.display = 'inline-block'
+        avatar.style.verticalAlign = 'middle'
+        avatar.style.marginRight = '8px'
+        avatar.style.flex = '0 0 auto'
+        avatar.style.width = '28px'
+        avatar.style.height = '28px'
+        avatar.style.minWidth = '28px'
+
+        element.insertBefore(avatar, element.firstChild)
+        element.dataset.chasIdentityDecorated = 'true'
+      })
+    }
+
+    const timer = window.setTimeout(decorateChasReferences, 0)
+    const observer = new MutationObserver(() => decorateChasReferences())
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+
+    return () => {
+      window.clearTimeout(timer)
+      observer.disconnect()
+    }
+  }, [pathname])
+
+  useEffect(() => {
     if (pathname !== '/quote-test') return
 
     function makePhotoPickerLibraryFriendly() {
@@ -107,5 +160,9 @@ export default function GlobalAppPolish() {
     }
   }, [pathname])
 
-  return null
+  return (
+    <div id="chas-global-avatar-template" style={{ display: 'none' }} aria-hidden="true">
+      <ChasAvatar size={28} />
+    </div>
+  )
 }
