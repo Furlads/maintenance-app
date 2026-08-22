@@ -60,7 +60,7 @@ export default function TrevLayout({ children }: Props) {
           }
 
           .trev-mobile-shell > main > div > section:first-child > div:first-child {
-            gap: 8px !important;
+            gap: 10px !important;
           }
 
           .trev-mobile-shell > main > div > section:first-child > div:first-child > div:first-child > div:first-child {
@@ -72,12 +72,17 @@ export default function TrevLayout({ children }: Props) {
           }
 
           .trev-mobile-shell > main > div > section:first-child > div:first-child > div:first-child > p {
-            display: none !important;
+            display: block !important;
+            margin-top: 8px !important;
+            max-width: none !important;
+            font-size: 13px !important;
+            line-height: 1.45 !important;
+            color: rgba(255,255,255,0.72) !important;
           }
 
           .trev-mobile-shell > main > div > section:first-child > div:first-child > div:first-child > h1 {
             margin-top: 6px !important;
-            font-size: 28px !important;
+            font-size: 30px !important;
             line-height: 1 !important;
             font-weight: 900 !important;
             letter-spacing: -0.03em !important;
@@ -93,7 +98,28 @@ export default function TrevLayout({ children }: Props) {
           }
 
           .trev-mobile-shell > main > div > section:first-child > div:first-child > div:last-child {
-            display: none !important;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+            width: 100% !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div:first-child > div:last-child > a {
+            display: flex !important;
+            min-height: 46px !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border-radius: 14px !important;
+            padding: 10px 12px !important;
+            text-align: center !important;
+            font-size: 12px !important;
+            font-weight: 800 !important;
+          }
+
+          .trev-mobile-shell > main > div > section:first-child > div:first-child > div:last-child > a:nth-child(3) {
+            background: #facc15 !important;
+            color: #18181b !important;
+            border-color: #facc15 !important;
           }
 
           .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid {
@@ -129,7 +155,7 @@ export default function TrevLayout({ children }: Props) {
             color: rgba(255,255,255,0.72) !important;
           }
 
-          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(1) {
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(2) {
             order: 1;
           }
 
@@ -137,11 +163,11 @@ export default function TrevLayout({ children }: Props) {
             order: 2;
           }
 
-          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(4) {
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(1) {
             order: 3;
           }
 
-          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(2) {
+          .trev-mobile-shell > main > div > section:first-child > div.mt-5.grid > div:nth-child(4) {
             order: 4;
           }
 
@@ -158,11 +184,17 @@ export default function TrevLayout({ children }: Props) {
           }
 
           .trev-mobile-shell > main > div > div.mt-6.grid > div:first-child {
-            order: 2;
+            display: contents !important;
           }
 
-          .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child {
+          .trev-mobile-shell > main > div > div.mt-6.grid > div:first-child > section:first-child {
             order: 1;
+            border-color: #f6d85a !important;
+          }
+
+          .trev-mobile-shell > main > div > div.mt-6.grid > div:first-child > section:nth-child(2) {
+            order: 2;
+            border-color: #dbeafe !important;
           }
 
           .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child {
@@ -170,46 +202,42 @@ export default function TrevLayout({ children }: Props) {
           }
 
           .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child > section:first-child {
-            order: 1;
+            order: 3;
             border-color: #f6d85a !important;
             box-shadow: 0 10px 28px rgba(0, 0, 0, 0.07) !important;
           }
 
-          .trev-mobile-shell > main > div > div.mt-6.grid > div:first-child {
-            order: 2;
-          }
-
           .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child > section:nth-child(2) {
-            order: 3;
+            order: 4;
             border-color: #dbeafe !important;
           }
 
           .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child > section:nth-child(3) {
-            order: 4;
+            order: 5;
             opacity: 0.96;
           }
 
-          .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child > section:first-child > div:first-child {
+          .trev-mobile-shell > main > div > div.mt-6.grid section > div:first-child {
             padding: 16px !important;
           }
 
-          .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child > section:first-child > div:first-child h2 {
+          .trev-mobile-shell > main > div > div.mt-6.grid section > div:first-child h2 {
             font-size: 20px !important;
             line-height: 1.1 !important;
           }
 
-          .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child > section:first-child > div:first-child p {
+          .trev-mobile-shell > main > div > div.mt-6.grid section > div:first-child p {
             margin-top: 6px !important;
             font-size: 13px !important;
             line-height: 1.45 !important;
           }
 
-          .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child > section:first-child > div.space-y-3 {
+          .trev-mobile-shell > main > div > div.mt-6.grid section > div.space-y-3 {
             padding: 12px !important;
             gap: 10px !important;
           }
 
-          .trev-mobile-shell > main > div > div.mt-6.grid > div:last-child > section:first-child > div.space-y-3 > div {
+          .trev-mobile-shell > main > div > div.mt-6.grid section > div.space-y-3 > div {
             border-radius: 16px !important;
             padding: 12px !important;
           }
