@@ -304,9 +304,206 @@ export default function RootLayout({
                   }
                 }
 
-                tidyQuotePhotoUi();
+                function setReactInputValue(element, value) {
+                  var prototype = element instanceof HTMLTextAreaElement
+                    ? window.HTMLTextAreaElement.prototype
+                    : window.HTMLInputElement.prototype;
+                  var descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+                  if (descriptor && descriptor.set) descriptor.set.call(element, value);
+                  else element.value = value;
+                  element.dispatchEvent(new Event('input', { bubbles: true }));
+                  element.dispatchEvent(new Event('change', { bubbles: true }));
+                }
 
-                var observer = new MutationObserver(tidyQuotePhotoUi);
+                function getQuoteCustomerFromHeader() {
+                  var header = document.querySelector('header');
+                  if (!header) return null;
+                  var buttons = Array.from(header.querySelectorAll('button'));
+                  var customerButton = buttons.find(function (button) {
+                    return (button.textContent || '').indexOf(' · ') !== -1;
+                  });
+                  if (!customerButton) return null;
+                  var parts = (customerButton.textContent || '').trim().split(' · ');
+                  return {
+                    name: parts[0] || '',
+                    postcode: parts.slice(1).join(' · ') || ''
+                  };
+                }
+
+                function getQuoteTranscript() {
+                  return Array.from(document.querySelectorAll('div.whitespace-pre-wrap'))
+                    .map(function (element) { return (element.textContent || '').trim(); })
+                    .filter(Boolean)
+                    .join('\n\n');
+                }
+
+                function getReadyPhotoNames() {
+                  return Array.from(document.querySelectorAll('img[alt]'))
+                    .filter(function (image) {
+                      var wrapper = image.parentElement;
+                      return wrapper && (wrapper.textContent || '').indexOf('Ready') !== -1;
+                    })
+                    .map(function (image) { return image.getAttribute('alt') || ''; })
+                    .filter(Boolean);
+                }
+
+                var draftSaveTimer = null;
+                var creatingDraft = false;
+
+                async function saveChasDraft() {
+                  if (window.location.pathname !== '/quote-test') return;
+                  var customer = getQuoteCustomerFromHeader();
+                  if (!customer || !customer.name) return;
+
+                  var transcript = getQuoteTranscript();
+                  var photoNames = getReadyPhotoNames();
+                  if (!transcript && !photoNames.length) return;
+
+                  var storedId = Number(localStorage.getItem('chasActiveDraftId') || '0');
+                  var payload = {
+                    customerName: customer.name,
+                    customerPostcode: customer.postcode,
+                    scope: transcript.split('\n\n').filter(Boolean).slice(-2, -1)[0] || ('Quote in progress for ' + customer.name),
+                    quoteWorking: JSON.stringify({
+                      version: 1,
+                      transcript: transcript,
+                      photoNames: photoNames,
+                      savedAt: new Date().toISOString()
+                    }),
+                    status: 'in_progress'
+                  };
+
+                  try {
+                    if (storedId > 0) {
+                      var patch = await fetch('/api/quotes/' + storedId, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                      });
+                      if (patch.ok) return;
+                      localStorage.removeItem('chasActiveDraftId');
+                    }
+
+                    if (creatingDraft) return;
+                    creatingDraft = true;
+                    var created = await fetch('/api/quotes', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload)
+                    });
+                    var data = await created.json().catch(function () { return null; });
+                    if (created.ok && data && data.quote && data.quote.id) {
+                      localStorage.setItem('chasActiveDraftId', String(data.quote.id));
+                    }
+                  } catch (error) {
+                    console.warn('Could not autosave quote draft:', error);
+                  } finally {
+                    creatingDraft = false;
+                  }
+                }
+
+                function queueChasDraftSave() {
+                  if (window.location.pathname !== '/quote-test') return;
+                  if (draftSaveTimer) clearTimeout(draftSaveTimer);
+                  draftSaveTimer = setTimeout(saveChasDraft, 1200);
+                }
+
+                async function closeSavedDraftIfSent() {
+                  if (window.location.pathname !== '/quote-test') return;
+                  var sent = Array.from(document.querySelectorAll('div')).some(function (element) {
+                    return (element.textContent || '').trim() === 'Sent to Kelly for review ✓';
+                  });
+                  if (!sent) return;
+                  var id = Number(localStorage.getItem('chasActiveDraftId') || '0');
+                  if (!id) return;
+                  try {
+                    await fetch('/api/quotes/' + id, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ status: 'archived' })
+                    });
+                  } catch (error) {}
+                  localStorage.removeItem('chasActiveDraftId');
+                }
+
+                async function resumeDraftIfRequested() {
+                  if (window.location.pathname !== '/quote-test') return;
+                  var params = new URLSearchParams(window.location.search);
+                  var draftId = Number(params.get('draft') || '0');
+                  if (!draftId) return;
+                  if (document.documentElement.dataset.draftResumeStarted === '1') return;
+                  document.documentElement.dataset.draftResumeStarted = '1';
+
+                  try {
+                    var response = await fetch('/api/quotes/' + draftId, { cache: 'no-store' });
+                    var data = await response.json().catch(function () { return null; });
+                    if (!response.ok || !data || !data.quote) return;
+                    var quote = data.quote;
+                    localStorage.setItem('chasActiveDraftId', String(draftId));
+
+                    var waitForForm = setInterval(function () {
+                      var nameInput = document.querySelector('input[placeholder="Customer name"]');
+                      var phoneInput = document.querySelector('input[placeholder="07…"]');
+                      var postcodeInput = document.querySelector('input[placeholder="TF9 4BQ"]');
+                      var addressInput = document.querySelector('input[placeholder="Optional address"]');
+                      var emailInput = document.querySelector('input[placeholder="Optional email"]');
+                      if (!nameInput || !phoneInput || !postcodeInput) return;
+                      clearInterval(waitForForm);
+                      setReactInputValue(nameInput, quote.customerName || (quote.customer && quote.customer.name) || '');
+                      setReactInputValue(phoneInput, quote.customerPhone || (quote.customer && quote.customer.phone) || '');
+                      setReactInputValue(postcodeInput, quote.customerPostcode || (quote.customer && quote.customer.postcode) || '');
+                      if (addressInput) setReactInputValue(addressInput, quote.customerAddress || (quote.customer && quote.customer.address) || '');
+                      if (emailInput) setReactInputValue(emailInput, quote.customerEmail || (quote.customer && quote.customer.email) || '');
+
+                      var startButton = Array.from(document.querySelectorAll('button')).find(function (button) {
+                        return (button.textContent || '').indexOf('start quote with CHAS') !== -1;
+                      });
+                      if (startButton) startButton.click();
+
+                      var waitForComposer = setInterval(function () {
+                        var textarea = document.querySelector('textarea[placeholder="Tell Chas about the job…"]');
+                        if (!textarea) return;
+                        clearInterval(waitForComposer);
+                        var working = '';
+                        try {
+                          var parsed = JSON.parse(quote.quoteWorking || '{}');
+                          working = parsed.transcript || '';
+                        } catch (error) {
+                          working = quote.quoteWorking || '';
+                        }
+                        if (!working) return;
+                        setReactInputValue(textarea, 'Continue this in-progress quote from the saved work below. Keep everything already agreed unless I change it.\n\n' + working);
+
+                        var banner = document.createElement('div');
+                        banner.textContent = 'Draft restored ✓  Your previous quote working has been loaded into the message box. Add anything new, then press the arrow to continue with Chas.';
+                        banner.style.margin = '0 auto 10px';
+                        banner.style.maxWidth = '720px';
+                        banner.style.border = '1px solid #86efac';
+                        banner.style.background = '#f0fdf4';
+                        banner.style.color = '#166534';
+                        banner.style.borderRadius = '14px';
+                        banner.style.padding = '10px 12px';
+                        banner.style.fontSize = '13px';
+                        banner.style.fontWeight = '800';
+                        var footer = textarea.closest('footer');
+                        var container = footer && footer.firstElementChild;
+                        if (container) container.insertBefore(banner, container.firstChild);
+                      }, 250);
+                    }, 250);
+                  } catch (error) {
+                    console.warn('Could not resume quote draft:', error);
+                  }
+                }
+
+                tidyQuotePhotoUi();
+                resumeDraftIfRequested();
+
+                var observer = new MutationObserver(function () {
+                  tidyQuotePhotoUi();
+                  queueChasDraftSave();
+                  closeSavedDraftIfSent();
+                  resumeDraftIfRequested();
+                });
                 observer.observe(document.documentElement, {
                   childList: true,
                   subtree: true,
@@ -316,6 +513,7 @@ export default function RootLayout({
 
                 document.addEventListener('change', prepareQuotePhotos, true);
                 window.addEventListener('online', retrySavedQuotePhotos);
+                window.addEventListener('pagehide', function () { void saveChasDraft(); });
               })();
             `,
           }}
