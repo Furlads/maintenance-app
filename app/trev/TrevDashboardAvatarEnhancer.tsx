@@ -31,25 +31,26 @@ export default function TrevDashboardAvatarEnhancer() {
       if (!textBlock) return
 
       textBlock.style.position = 'relative'
-      textBlock.style.paddingLeft = '70px'
+      textBlock.style.paddingLeft = '88px'
+      textBlock.style.minHeight = '76px'
 
       const img = document.createElement('img')
       img.src = config.src
       img.alt = `${name} avatar`
       img.title = name
       img.dataset.dashboardLoginAvatar = 'true'
-      img.width = 56
-      img.height = 56
+      img.width = 74
+      img.height = 74
       img.style.position = 'absolute'
       img.style.left = '0'
-      img.style.top = '0'
-      img.style.width = '56px'
-      img.style.height = '56px'
+      img.style.top = '-2px'
+      img.style.width = '74px'
+      img.style.height = '74px'
       img.style.borderRadius = '999px'
       img.style.objectFit = 'cover'
       img.style.display = 'block'
       img.style.border = `3px solid ${config.border}`
-      img.style.boxShadow = '0 8px 20px rgba(0,0,0,.25)'
+      img.style.boxShadow = '0 10px 24px rgba(0,0,0,.28)'
 
       textBlock.insertBefore(img, textBlock.firstChild)
     }
