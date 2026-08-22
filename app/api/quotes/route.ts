@@ -44,6 +44,31 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    let customer = null
+    const requestedCustomerId = Number(body.customerId)
+
+    if (Number.isInteger(requestedCustomerId) && requestedCustomerId > 0) {
+      customer = await prisma.customer.findUnique({
+        where: { id: requestedCustomerId },
+      })
+    }
+
+    if (!customer) {
+      const requestedName = cleanString(body.customerName)
+      const requestedPostcode = cleanString(body.customerPostcode)
+
+      if (requestedName && requestedPostcode) {
+        customer = await prisma.customer.findFirst({
+          where: {
+            archived: false,
+            name: requestedName,
+            postcode: requestedPostcode,
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      }
+    }
+
     const priceExVat = cleanNumber(body.priceExVat)
     const vatRate = cleanNumber(body.vatRate, 20)
     const vatAmount = cleanNumber(
@@ -62,15 +87,14 @@ export async function POST(req: NextRequest) {
 
     const quote = await prisma.quote.create({
       data: {
-        customerId:
-          typeof body.customerId === 'number' ? body.customerId : null,
+        customerId: customer?.id ?? null,
         jobId: typeof body.jobId === 'number' ? body.jobId : null,
         conversationId: cleanString(body.conversationId) || null,
-        customerName: cleanString(body.customerName) || null,
-        customerPhone: cleanString(body.customerPhone) || null,
-        customerEmail: cleanString(body.customerEmail) || null,
-        customerAddress: cleanString(body.customerAddress) || null,
-        customerPostcode: cleanString(body.customerPostcode) || null,
+        customerName: cleanString(body.customerName) || customer?.name || null,
+        customerPhone: cleanString(body.customerPhone) || customer?.phone || null,
+        customerEmail: cleanString(body.customerEmail) || customer?.email || null,
+        customerAddress: cleanString(body.customerAddress) || customer?.address || null,
+        customerPostcode: cleanString(body.customerPostcode) || customer?.postcode || null,
         scope,
         customerMessage: cleanString(body.customerMessage) || null,
         internalNotes: cleanString(body.internalNotes) || null,
