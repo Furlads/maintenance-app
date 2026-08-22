@@ -67,7 +67,7 @@ export default function GlobalAppPolish() {
   }, [pathname])
 
   useEffect(() => {
-    const selector = 'button,a,summary,h1,h2,h3,h4,h5,h6,label,p,span,div'
+    const selector = 'h1,h2,h3,summary,button,a'
 
     function decorateChasReferences() {
       const template = document.querySelector('#chas-global-avatar-template > span') as HTMLElement | null
@@ -76,18 +76,12 @@ export default function GlobalAppPolish() {
       document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
         if (element.closest('#chas-global-avatar-template')) return
         if (element.dataset.chasIdentityDecorated === 'true') return
-        if (element.querySelector('[data-global-chas-avatar="true"]')) return
-
-        const ownText = Array.from(element.childNodes)
-          .filter((node) => node.nodeType === Node.TEXT_NODE)
-          .map((node) => node.textContent || '')
-          .join(' ')
-          .trim()
-
-        if (!/\bchas\b/i.test(ownText)) return
-
-        const nearbyAvatar = element.parentElement?.querySelector('[aria-label="Chas AI assistant for Furlads and Three Counties"]')
-        if (nearbyAvatar) {
+        if (!/\bchas\b/i.test(element.textContent || '')) return
+        if (element.querySelector('[aria-label="Chas AI assistant for Furlads and Three Counties"]')) {
+          element.dataset.chasIdentityDecorated = 'true'
+          return
+        }
+        if (element.parentElement?.querySelector(':scope > [aria-label="Chas AI assistant for Furlads and Three Counties"]')) {
           element.dataset.chasIdentityDecorated = 'true'
           return
         }
@@ -98,10 +92,10 @@ export default function GlobalAppPolish() {
         avatar.style.display = 'inline-block'
         avatar.style.verticalAlign = 'middle'
         avatar.style.marginRight = '8px'
-        avatar.style.flex = '0 0 auto'
-        avatar.style.width = '28px'
-        avatar.style.height = '28px'
-        avatar.style.minWidth = '28px'
+        avatar.style.flex = '0 0 24px'
+        avatar.style.width = '24px'
+        avatar.style.height = '24px'
+        avatar.style.minWidth = '24px'
 
         element.insertBefore(avatar, element.firstChild)
         element.dataset.chasIdentityDecorated = 'true'
@@ -109,8 +103,8 @@ export default function GlobalAppPolish() {
     }
 
     const timer = window.setTimeout(decorateChasReferences, 0)
-    const observer = new MutationObserver(() => decorateChasReferences())
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+    const observer = new MutationObserver(decorateChasReferences)
+    observer.observe(document.body, { childList: true, subtree: true })
 
     return () => {
       window.clearTimeout(timer)
@@ -130,19 +124,13 @@ export default function GlobalAppPolish() {
     function handlePhotoButtonClick(event: MouseEvent) {
       const target = event.target
       if (!(target instanceof Element)) return
-
       const button = target.closest('button[aria-label="Add site photos"]')
       if (!button) return
-
       makePhotoPickerLibraryFriendly()
     }
 
     makePhotoPickerLibraryFriendly()
-
-    const observer = new MutationObserver(() => {
-      makePhotoPickerLibraryFriendly()
-    })
-
+    const observer = new MutationObserver(makePhotoPickerLibraryFriendly)
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -162,7 +150,7 @@ export default function GlobalAppPolish() {
 
   return (
     <div id="chas-global-avatar-template" style={{ display: 'none' }} aria-hidden="true">
-      <ChasAvatar size={28} />
+      <ChasAvatar size={24} />
     </div>
   )
 }
