@@ -8,7 +8,7 @@ const items = [
   { href: '/trev', label: 'Overview', icon: '⌂' },
   { href: '/today', label: 'Today', icon: '☀' },
   { href: '/trev/calendar', label: 'Calendar', icon: '◫' },
-  { href: '/trev/quotes', label: 'Quotes', icon: '£' },
+  { href: '/admin/quotes', label: 'Quotes', icon: '£' },
   { href: '/admin/inbox', label: 'Inbox', icon: '✉' },
   { href: '/jobs', label: 'Jobs', icon: '▣' },
 ] as const
@@ -27,7 +27,7 @@ export default function TrevMobileDock() {
     )
 
     for (const link of workerQuoteLinks) {
-      link.href = '/trev/quotes'
+      link.href = '/admin/quotes'
     }
   }, [isTrevOverview])
 
@@ -65,8 +65,7 @@ export default function TrevMobileDock() {
           {items.map((item) => {
             const active =
               pathname === item.href ||
-              (item.href === '/trev/quotes' &&
-                (pathname.startsWith('/trev/quotes') || pathname.startsWith('/trev/quote/'))) ||
+              (item.href === '/admin/quotes' && pathname.startsWith('/admin/quotes')) ||
               (item.href === '/trev/calendar' && pathname.startsWith('/trev/calendar'))
 
             return (
