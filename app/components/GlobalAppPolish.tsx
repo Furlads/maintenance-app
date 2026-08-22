@@ -20,6 +20,14 @@ function routeMode(pathname: string) {
   return 'public'
 }
 
+function directText(element: Element) {
+  return Array.from(element.childNodes)
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent || '')
+    .join(' ')
+    .trim()
+}
+
 export default function GlobalAppPolish() {
   const pathname = usePathname()
 
@@ -67,11 +75,84 @@ export default function GlobalAppPolish() {
   }, [pathname])
 
   useEffect(() => {
-    const selector = 'h1,h2,h3,summary,button,a'
+    const template = () => document.querySelector('#chas-global-avatar-template > span') as HTMLElement | null
+
+    function makeAvatar(size: number) {
+      const source = template()
+      if (!source) return null
+      const avatar = source.cloneNode(true) as HTMLElement
+      avatar.dataset.globalChasAvatar = 'true'
+      avatar.setAttribute('aria-hidden', 'true')
+      avatar.style.display = 'inline-block'
+      avatar.style.width = `${size}px`
+      avatar.style.height = `${size}px`
+      avatar.style.minWidth = `${size}px`
+      avatar.style.flex = `0 0 ${size}px`
+      avatar.style.margin = '0'
+      avatar.style.verticalAlign = 'middle'
+      return avatar
+    }
+
+    function replaceLegacyChasIdentity() {
+      // Trev quote header: replace the old black/yellow "C" badge with the real Chas portrait.
+      const quoteTitle = Array.from(document.querySelectorAll<HTMLElement>('h1,h2,h3,div,span')).find((element) =>
+        /CHAS\s*[·•-]\s*New Quote/i.test(element.textContent || '')
+      )
+      if (quoteTitle) {
+        const textBlock = quoteTitle.closest('div') || quoteTitle
+        const headerRow = textBlock.parentElement
+        const possibleBadge = headerRow?.firstElementChild as HTMLElement | null
+        if (possibleBadge && !possibleBadge.querySelector('[data-global-chas-avatar="true"]')) {
+          const badgeText = (possibleBadge.textContent || '').trim()
+          if (badgeText === 'C') {
+            const avatar = makeAvatar(58)
+            if (avatar) {
+              possibleBadge.replaceChildren(avatar)
+              possibleBadge.style.background = 'transparent'
+              possibleBadge.style.border = '0'
+              possibleBadge.style.width = '58px'
+              possibleBadge.style.height = '58px'
+              possibleBadge.style.minWidth = '58px'
+              possibleBadge.style.padding = '0'
+              possibleBadge.style.overflow = 'visible'
+              possibleBadge.style.display = 'grid'
+              possibleBadge.style.placeItems = 'center'
+            }
+          }
+        }
+      }
+
+      // Today-page Chas modal: replace the old smiley/hard-hat mascot in the header.
+      const helpText = Array.from(document.querySelectorAll<HTMLElement>('div,p,span')).find(
+        (element) => directText(element) === 'Friendly on-site help'
+      )
+      if (helpText) {
+        const textBlock = helpText.parentElement
+        const oldMascot = textBlock?.previousElementSibling as HTMLElement | null
+        if (oldMascot && !oldMascot.querySelector('[data-global-chas-avatar="true"]')) {
+          const avatar = makeAvatar(54)
+          if (avatar) {
+            oldMascot.replaceChildren(avatar)
+            oldMascot.style.width = '54px'
+            oldMascot.style.height = '54px'
+            oldMascot.style.minWidth = '54px'
+            oldMascot.style.background = 'transparent'
+            oldMascot.style.border = '0'
+            oldMascot.style.padding = '0'
+            oldMascot.style.overflow = 'visible'
+            oldMascot.style.display = 'grid'
+            oldMascot.style.placeItems = 'center'
+          }
+        }
+      }
+    }
 
     function decorateChasReferences() {
-      const template = document.querySelector('#chas-global-avatar-template > span') as HTMLElement | null
-      if (!template) return
+      replaceLegacyChasIdentity()
+
+      const source = template()
+      if (!source) return
+      const selector = 'h1,h2,h3,summary,button,a'
 
       document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
         if (element.closest('#chas-global-avatar-template')) return
@@ -86,16 +167,9 @@ export default function GlobalAppPolish() {
           return
         }
 
-        const avatar = template.cloneNode(true) as HTMLElement
-        avatar.dataset.globalChasAvatar = 'true'
-        avatar.setAttribute('aria-hidden', 'true')
-        avatar.style.display = 'inline-block'
-        avatar.style.verticalAlign = 'middle'
+        const avatar = makeAvatar(24)
+        if (!avatar) return
         avatar.style.marginRight = '8px'
-        avatar.style.flex = '0 0 24px'
-        avatar.style.width = '24px'
-        avatar.style.height = '24px'
-        avatar.style.minWidth = '24px'
 
         element.insertBefore(avatar, element.firstChild)
         element.dataset.chasIdentityDecorated = 'true'
