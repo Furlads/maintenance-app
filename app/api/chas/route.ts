@@ -6,17 +6,6 @@ function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : ""
 }
 
-function between(text: string, start: string, end?: string) {
-  const startIndex = text.indexOf(start)
-  if (startIndex === -1) return ""
-
-  const from = startIndex + start.length
-  if (!end) return text.slice(from).trim()
-
-  const endIndex = text.indexOf(end, from)
-  return endIndex === -1 ? text.slice(from).trim() : text.slice(from, endIndex).trim()
-}
-
 function firstExistingMarker(text: string, markers: string[], afterIndex = 0) {
   return markers
     .map((marker) => ({ marker, index: text.indexOf(marker, afterIndex) }))
@@ -24,11 +13,7 @@ function firstExistingMarker(text: string, markers: string[], afterIndex = 0) {
     .sort((a, b) => a.index - b.index)[0]?.marker
 }
 
-function valueAfterAny(
-  text: string,
-  starts: string[],
-  ends: string[] = []
-) {
+function valueAfterAny(text: string, starts: string[], ends: string[] = []) {
   const startMarker = firstExistingMarker(text, starts)
   if (!startMarker) return ""
 
@@ -36,107 +21,99 @@ function valueAfterAny(
   const endMarker = firstExistingMarker(text, ends, contentStart)
 
   if (!endMarker) return text.slice(contentStart).trim()
-
   return text.slice(contentStart, text.indexOf(endMarker, contentStart)).trim()
 }
 
 function parseMoney(value: string) {
   const match = value.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/)
   if (!match) return 0
-
   const parsed = Number(match[0])
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function readSurveyPhotos(quoteWorking: string | null | undefined) {
+  const value = clean(quoteWorking)
+  if (!value) return [] as Array<{ url: string; fileName: string }>
+
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed?.surveyPhotos)) return []
+    return parsed.surveyPhotos
+      .map((item: unknown) => {
+        if (!item || typeof item !== "object") return null
+        const row = item as Record<string, unknown>
+        const url = clean(row.url)
+        const fileName = clean(row.fileName) || "Site photo"
+        return url.startsWith("https://") ? { url, fileName } : null
+      })
+      .filter(
+        (photo: { url: string; fileName: string } | null): photo is { url: string; fileName: string } =>
+          photo !== null
+      )
+      .slice(0, 12)
+  } catch {
+    return []
+  }
+}
+
+function appendSurveyPhotos(quoteWorking: string, photos: Array<{ url: string; fileName: string }>) {
+  if (!photos.length) return quoteWorking
+  return [
+    quoteWorking,
+    `SURVEY PHOTOS JSON\n${JSON.stringify(photos)}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
 }
 
 function parseChasQuoteDraft(workSummary: string) {
   if (!workSummary.includes("CHAS QUOTE DRAFT FOR KELLY")) return null
 
-  const scope = valueAfterAny(
-    workSummary,
-    ["Scope:"],
-    [
-      "Options / packages:",
-      "All-together combinations:",
-      "Reference price ex VAT:",
-      "Price ex VAT:",
-      "Customer-ready draft:",
-    ]
-  )
+  const scope = valueAfterAny(workSummary, ["Scope:"], [
+    "Options / packages:",
+    "All-together combinations:",
+    "Reference price ex VAT:",
+    "Price ex VAT:",
+    "Customer-ready draft:",
+  ])
 
-  const optionsAndPackages = valueAfterAny(
-    workSummary,
-    ["Options / packages:"],
-    [
-      "All-together combinations:",
-      "Reference price ex VAT:",
-      "Price ex VAT:",
-      "Customer-ready draft:",
-    ]
-  )
+  const optionsAndPackages = valueAfterAny(workSummary, ["Options / packages:"], [
+    "All-together combinations:",
+    "Reference price ex VAT:",
+    "Price ex VAT:",
+    "Customer-ready draft:",
+  ])
 
-  const allTogetherCombinations = valueAfterAny(
-    workSummary,
-    ["All-together combinations:"],
-    [
-      "Reference price ex VAT:",
-      "Price ex VAT:",
-      "Customer-ready draft:",
-    ]
-  )
+  const allTogetherCombinations = valueAfterAny(workSummary, ["All-together combinations:"], [
+    "Reference price ex VAT:",
+    "Price ex VAT:",
+    "Customer-ready draft:",
+  ])
 
   const priceExVat = parseMoney(
-    valueAfterAny(
-      workSummary,
-      ["Reference price ex VAT:", "Price ex VAT:"],
-      ["Reference VAT:", "VAT:"]
-    )
+    valueAfterAny(workSummary, ["Reference price ex VAT:", "Price ex VAT:"], ["Reference VAT:", "VAT:"])
   )
 
   const vatAmount = parseMoney(
-    valueAfterAny(
-      workSummary,
-      ["Reference VAT:", "VAT:"],
-      ["Reference total inc VAT:", "Total inc VAT:"]
-    )
+    valueAfterAny(workSummary, ["Reference VAT:", "VAT:"], ["Reference total inc VAT:", "Total inc VAT:"])
   )
 
   const totalIncVat = parseMoney(
-    valueAfterAny(
-      workSummary,
-      ["Reference total inc VAT:", "Total inc VAT:"],
-      [
-        "Reference estimated install:",
-        "Estimated install:",
-        "Customer-ready draft:",
-      ]
-    )
+    valueAfterAny(workSummary, ["Reference total inc VAT:", "Total inc VAT:"], [
+      "Reference estimated install:",
+      "Estimated install:",
+      "Customer-ready draft:",
+    ])
   )
 
-  const install = valueAfterAny(
-    workSummary,
-    ["Reference estimated install:", "Estimated install:"],
-    ["Customer-ready draft:"]
-  )
-
-  const customerMessage = valueAfterAny(
-    workSummary,
-    ["Customer-ready draft:"],
-    ["Trevor / CHAS quote conversation:"]
-  )
-
-  const conversationWorking = valueAfterAny(
-    workSummary,
-    ["Trevor / CHAS quote conversation:"]
-  )
+  const install = valueAfterAny(workSummary, ["Reference estimated install:", "Estimated install:"], ["Customer-ready draft:"])
+  const customerMessage = valueAfterAny(workSummary, ["Customer-ready draft:"], ["Trevor / CHAS quote conversation:"])
+  const conversationWorking = valueAfterAny(workSummary, ["Trevor / CHAS quote conversation:"])
 
   const quoteWorking = [
     optionsAndPackages ? `OPTIONS / PACKAGES\n${optionsAndPackages}` : "",
-    allTogetherCombinations
-      ? `ALL-TOGETHER COMBINATIONS\n${allTogetherCombinations}`
-      : "",
-    conversationWorking
-      ? `TREVOR / CHAS CONVERSATION\n${conversationWorking}`
-      : "",
+    allTogetherCombinations ? `ALL-TOGETHER COMBINATIONS\n${allTogetherCombinations}` : "",
+    conversationWorking ? `TREVOR / CHAS CONVERSATION\n${conversationWorking}` : "",
   ]
     .filter(Boolean)
     .join("\n\n")
@@ -145,14 +122,9 @@ function parseChasQuoteDraft(workSummary: string) {
   const peopleMatch = install.match(/([0-9]+)\s+(?:person|people)/i)
   const estimatedDays = daysMatch ? Number(daysMatch[1]) : null
   const estimatedTeamSize = peopleMatch ? Number(peopleMatch[1]) : null
-  const vatRate =
-    priceExVat > 0
-      ? Number(((vatAmount / priceExVat) * 100).toFixed(2))
-      : 20
+  const vatRate = priceExVat > 0 ? Number(((vatAmount / priceExVat) * 100).toFixed(2)) : 20
   const depositPercent = 25
-  const depositAmount = Number(
-    ((totalIncVat * depositPercent) / 100).toFixed(2)
-  )
+  const depositAmount = Number(((totalIncVat * depositPercent) / 100).toFixed(2))
 
   if (!scope || priceExVat <= 0 || totalIncVat <= 0) return null
 
@@ -165,13 +137,9 @@ function parseChasQuoteDraft(workSummary: string) {
     depositPercent,
     depositAmount,
     estimatedDays:
-      estimatedDays != null && Number.isFinite(estimatedDays)
-        ? estimatedDays
-        : null,
+      estimatedDays != null && Number.isFinite(estimatedDays) ? estimatedDays : null,
     estimatedTeamSize:
-      estimatedTeamSize != null && Number.isFinite(estimatedTeamSize)
-        ? estimatedTeamSize
-        : null,
+      estimatedTeamSize != null && Number.isFinite(estimatedTeamSize) ? estimatedTeamSize : null,
     customerMessage,
     quoteWorking,
   }
@@ -181,10 +149,7 @@ export async function POST(req: Request) {
   try {
     const data = await req.json()
     const requestedCustomerId = Number(data.customerId)
-    const customerId =
-      Number.isInteger(requestedCustomerId) && requestedCustomerId > 0
-        ? requestedCustomerId
-        : null
+    const customerId = Number.isInteger(requestedCustomerId) && requestedCustomerId > 0 ? requestedCustomerId : null
 
     const message = await prisma.chasMessage.create({
       data: {
@@ -201,13 +166,11 @@ export async function POST(req: Request) {
         confidence: data.confidence,
         escalateTo: data.escalateTo,
         safetyFlag: data.safetyFlag ?? false,
-
         customerName: data.customerName,
         customerPhone: data.customerPhone,
         customerEmail: data.customerEmail,
         customerAddress: data.customerAddress,
         customerPostcode: data.customerPostcode,
-
         workSummary: data.workSummary,
         estimatedHours: data.estimatedHours,
         roughPriceText: data.roughPriceText,
@@ -230,13 +193,8 @@ export async function POST(req: Request) {
 
       if (contactKey) {
         conversation = await prisma.conversation.findFirst({
-          where: {
-            source: "worker-quote",
-            contactRef: contactKey,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
+          where: { source: "worker-quote", contactRef: contactKey },
+          orderBy: { createdAt: "desc" },
         })
       }
 
@@ -244,8 +202,7 @@ export async function POST(req: Request) {
         conversation = await prisma.conversation.create({
           data: {
             source: "worker-quote",
-            contactName:
-              message.customerName ?? message.worker ?? "Unknown customer",
+            contactName: message.customerName ?? message.worker ?? "Unknown customer",
             contactRef:
               contactKey ??
               message.customerEmail ??
@@ -276,6 +233,21 @@ export async function POST(req: Request) {
       const parsedDraft = parseChasQuoteDraft(clean(message.workSummary))
 
       if (parsedDraft) {
+        const draftQuote = await prisma.quote.findFirst({
+          where: {
+            status: "in_progress",
+            archivedAt: null,
+            ...(customerId
+              ? { customerId }
+              : {
+                  customerName: clean(message.customerName) || undefined,
+                  customerPostcode: clean(message.customerPostcode) || undefined,
+                }),
+          },
+          orderBy: { updatedAt: "desc" },
+        })
+        const surveyPhotos = readSurveyPhotos(draftQuote?.quoteWorking)
+
         createdQuote = await prisma.quote.create({
           data: {
             customerId,
@@ -287,10 +259,9 @@ export async function POST(req: Request) {
             customerAddress: clean(message.customerAddress) || null,
             customerPostcode: clean(message.customerPostcode) || null,
             scope: parsedDraft.scope,
-            customerMessage:
-              parsedDraft.customerMessage || clean(message.answer) || null,
+            customerMessage: parsedDraft.customerMessage || clean(message.answer) || null,
             internalNotes: clean(message.enquirySummary) || null,
-            quoteWorking: parsedDraft.quoteWorking || null,
+            quoteWorking: appendSurveyPhotos(parsedDraft.quoteWorking || "", surveyPhotos) || null,
             priceExVat: parsedDraft.priceExVat,
             vatRate: parsedDraft.vatRate,
             vatAmount: parsedDraft.vatAmount,
@@ -303,29 +274,16 @@ export async function POST(req: Request) {
           },
         })
       } else {
-        console.error(
-          "CHAS QUOTE PARSE ERROR: inbox handoff created but Quote record could not be parsed",
-          {
-            chasMessageId: message.id,
-            conversationId: conversation.id,
-          }
-        )
+        console.error("CHAS QUOTE PARSE ERROR: inbox handoff created but Quote record could not be parsed", {
+          chasMessageId: message.id,
+          conversationId: conversation.id,
+        })
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      message,
-      quote: createdQuote,
-    })
+    return NextResponse.json({ success: true, message, quote: createdQuote })
   } catch (error) {
     console.error("CHAS API ERROR:", error)
-
-    return NextResponse.json(
-      {
-        success: false,
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false }, { status: 500 })
   }
 }
