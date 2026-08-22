@@ -25,6 +25,7 @@ function formatDate(value: Date | null | undefined) {
 
 function statusLabel(status: string | null | undefined) {
   const value = String(status || '').trim().toLowerCase()
+  if (value === 'in_progress') return 'In progress'
   if (value === 'needs_review') return 'Needs review'
   if (value === 'sent') return 'Sent'
   if (value === 'accepted') return 'Accepted'
@@ -35,6 +36,7 @@ function statusLabel(status: string | null | undefined) {
 
 function statusClasses(status: string | null | undefined) {
   const value = String(status || '').trim().toLowerCase()
+  if (value === 'in_progress') return 'bg-yellow-100 text-yellow-900 ring-yellow-300'
   if (value === 'accepted') return 'bg-green-100 text-green-800 ring-green-200'
   if (value === 'sent') return 'bg-blue-100 text-blue-800 ring-blue-200'
   if (value === 'declined') return 'bg-red-100 text-red-800 ring-red-200'
@@ -62,13 +64,14 @@ export default async function TrevQuotesPage() {
   const counts = quotes.reduce(
     (acc, quote) => {
       const key = String(quote.status || '').toLowerCase()
+      if (key === 'in_progress') acc.inProgress += 1
       if (key === 'needs_review') acc.needsReview += 1
       if (key === 'sent') acc.sent += 1
       if (key === 'accepted') acc.accepted += 1
       if (key === 'declined') acc.declined += 1
       return acc
     },
-    { needsReview: 0, sent: 0, accepted: 0, declined: 0 }
+    { inProgress: 0, needsReview: 0, sent: 0, accepted: 0, declined: 0 }
   )
 
   return (
@@ -88,14 +91,14 @@ export default async function TrevQuotesPage() {
             <Link href="/trev" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950">Back to overview</Link>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
+            <div className="rounded-2xl bg-yellow-300 p-3 text-zinc-950">
+              <div className="text-[10px] font-black uppercase tracking-wide">In progress</div>
+              <div className="mt-1 text-2xl font-black">{counts.inProgress}</div>
+            </div>
             <div className="rounded-2xl bg-white/10 p-3">
               <div className="text-[10px] font-black uppercase tracking-wide text-zinc-300">Needs review</div>
               <div className="mt-1 text-2xl font-black">{counts.needsReview}</div>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-3">
-              <div className="text-[10px] font-black uppercase tracking-wide text-zinc-300">Sent</div>
-              <div className="mt-1 text-2xl font-black">{counts.sent}</div>
             </div>
             <div className="rounded-2xl bg-white/10 p-3">
               <div className="text-[10px] font-black uppercase tracking-wide text-zinc-300">Accepted</div>
@@ -104,6 +107,10 @@ export default async function TrevQuotesPage() {
             <div className="rounded-2xl bg-white/10 p-3">
               <div className="text-[10px] font-black uppercase tracking-wide text-zinc-300">Declined</div>
               <div className="mt-1 text-2xl font-black">{counts.declined}</div>
+            </div>
+            <div className="rounded-2xl bg-white/10 p-3">
+              <div className="text-[10px] font-black uppercase tracking-wide text-zinc-300">Sent</div>
+              <div className="mt-1 text-2xl font-black">{counts.sent}</div>
             </div>
           </div>
         </section>
@@ -116,11 +123,12 @@ export default async function TrevQuotesPage() {
               {quotes.map((quote) => {
                 const customerName = quote.customerName || quote.customer?.name || `Quote #${quote.id}`
                 const status = statusLabel(quote.status)
-                const href = `/trev/quotes/${quote.id}`
+                const inProgress = String(quote.status || '').toLowerCase() === 'in_progress'
+                const href = inProgress ? `/quote-test?draft=${quote.id}` : `/trev/quotes/${quote.id}`
 
                 return (
                   <Link key={quote.id} href={href} className="block">
-                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-zinc-300 hover:bg-zinc-100">
+                    <div className={`rounded-2xl border p-4 transition hover:border-zinc-300 ${inProgress ? 'border-yellow-300 bg-yellow-50' : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100'}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
@@ -128,9 +136,10 @@ export default async function TrevQuotesPage() {
                             <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClasses(quote.status)}`}>{status}</span>
                           </div>
                           <p className="mt-1 line-clamp-2 text-sm leading-5 text-zinc-600">{quote.scope}</p>
+                          {inProgress ? <div className="mt-2 text-xs font-black text-yellow-800">Tap to carry on with Chas →</div> : null}
                         </div>
                         <div className="shrink-0 text-right">
-                          <div className="text-lg font-black text-zinc-950">{formatMoney(quote.totalIncVat)}</div>
+                          <div className="text-lg font-black text-zinc-950">{inProgress ? 'Draft' : formatMoney(quote.totalIncVat)}</div>
                           <div className="mt-1 text-[11px] font-semibold text-zinc-500">Quote #{quote.id}</div>
                         </div>
                       </div>
