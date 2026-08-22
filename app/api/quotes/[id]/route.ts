@@ -20,6 +20,29 @@ function cleanNumber(value: unknown, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+export async function GET(_req: NextRequest, { params }: RouteContext) {
+  try {
+    const id = Number(params.id)
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ ok: false, error: 'Invalid quote id.' }, { status: 400 })
+    }
+
+    const quote = await prisma.quote.findUnique({
+      where: { id },
+      include: { customer: true, job: true },
+    })
+
+    if (!quote) {
+      return NextResponse.json({ ok: false, error: 'Quote not found.' }, { status: 404 })
+    }
+
+    return NextResponse.json({ ok: true, quote })
+  } catch (error) {
+    console.error('GET QUOTE ERROR', error)
+    return NextResponse.json({ ok: false, error: 'Failed to load quote.' }, { status: 500 })
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
   try {
     const id = Number(params.id)
@@ -127,6 +150,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     if ('status' in body) {
       const status = cleanString(body.status)
       const allowed = [
+        'in_progress',
         'needs_review',
         'ready_to_send',
         'sent',
