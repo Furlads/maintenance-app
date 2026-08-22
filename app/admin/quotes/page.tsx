@@ -221,3 +221,5 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
     </div>
   )
 }
+
+// Deployment marker: retrigger Vercel Git integration after the archive controls update.
