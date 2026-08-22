@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import TrevLegacyPauseCleaner from './TrevLegacyPauseCleaner'
 import TrevMobileDock from './TrevMobileDock'
+import TrevDashboardAvatarEnhancer from './TrevDashboardAvatarEnhancer'
 
 type Props = {
   children: ReactNode
@@ -244,6 +245,7 @@ export default function TrevLayout({ children }: Props) {
         }
       `}</style>
       {children}
+      <TrevDashboardAvatarEnhancer />
       <TrevLegacyPauseCleaner />
       <TrevMobileDock />
     </div>
