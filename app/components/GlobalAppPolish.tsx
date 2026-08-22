@@ -65,5 +65,47 @@ export default function GlobalAppPolish() {
     }
   }, [pathname])
 
+  useEffect(() => {
+    if (pathname !== '/quote-test') return
+
+    function makePhotoPickerLibraryFriendly() {
+      document
+        .querySelectorAll<HTMLInputElement>('input[type="file"][accept*="image"]')
+        .forEach((input) => input.removeAttribute('capture'))
+    }
+
+    function handlePhotoButtonClick(event: MouseEvent) {
+      const target = event.target
+      if (!(target instanceof Element)) return
+
+      const button = target.closest('button[aria-label="Add site photos"]')
+      if (!button) return
+
+      makePhotoPickerLibraryFriendly()
+    }
+
+    makePhotoPickerLibraryFriendly()
+
+    const observer = new MutationObserver(() => {
+      makePhotoPickerLibraryFriendly()
+    })
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['capture'],
+    })
+
+    document.addEventListener('click', handlePhotoButtonClick, true)
+    document.addEventListener('touchstart', makePhotoPickerLibraryFriendly, true)
+
+    return () => {
+      observer.disconnect()
+      document.removeEventListener('click', handlePhotoButtonClick, true)
+      document.removeEventListener('touchstart', makePhotoPickerLibraryFriendly, true)
+    }
+  }, [pathname])
+
   return null
 }
