@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import ClearArchiveButton from './ClearArchiveButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,6 +86,8 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
     .filter((quote) => !['declined', 'archived'].includes(quote.status))
     .reduce((total, quote) => total + quote.totalIncVat, 0)
 
+  const archivedCount = countMap.archived || 0
+
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -150,6 +153,18 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
           )
         })}
       </div>
+
+      {selected === 'archived' ? (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <div>
+            <div className="text-sm font-black text-zinc-950">Archived quotes</div>
+            <div className="mt-1 text-xs font-medium text-zinc-500">
+              Clear the archive when you no longer need these old quote records.
+            </div>
+          </div>
+          <ClearArchiveButton count={archivedCount} />
+        </div>
+      ) : null}
 
       <section className="space-y-3">
         {quotes.length === 0 ? (
