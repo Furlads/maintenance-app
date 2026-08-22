@@ -1,6 +1,5 @@
 'use client'
 
-import { upload } from '@vercel/blob/client'
 import { useEffect } from 'react'
 
 type PendingUpload = {
@@ -26,48 +25,6 @@ export default function PhotoUploadQueue() {
       return String(url).includes('/api/ai/quote/photos')
     }
 
-    async function uploadDirect(job: PendingUpload) {
-      const body = job.init?.body
-      if (!(body instanceof FormData)) {
-        return originalFetch(job.input, job.init)
-      }
-
-      const entry = body.get('file')
-      if (!(entry instanceof File)) {
-        return originalFetch(job.input, job.init)
-      }
-
-      const safeName = (entry.name || 'site-photo.jpg')
-        .replace(/[^a-zA-Z0-9.-]/g, '-')
-        .replace(/-+/g, '-')
-        .slice(0, 120)
-
-      const blob = await upload(
-        `quote-surveys/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${safeName}`,
-        entry,
-        {
-          access: 'public',
-          handleUploadUrl: '/api/blob/quote-upload',
-          // Files are compressed before they reach here. Keeping this as one
-          // normal request avoids the CPU/network overhead of multipart uploads
-          // and is much more stable in installed Chrome/Safari PWAs.
-          multipart: false,
-        }
-      )
-
-      return new Response(
-        JSON.stringify({
-          url: blob.url,
-          pathname: blob.pathname,
-          fileName: safeName,
-        }),
-        {
-          status: 201,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
-    }
-
     async function runNext() {
       if (active) return
       const job = queue.shift()
@@ -75,13 +32,17 @@ export default function PhotoUploadQueue() {
 
       active = true
       try {
-        const response = await uploadDirect(job)
+        // Use the normal Next.js upload endpoint. The selected photo has already
+        // been reduced before it reaches this queue, so the request stays small.
+        // Keeping one request active at a time avoids the browser-side Vercel
+        // Blob uploader that was hanging on the final image in Chrome/PWA.
+        const response = await originalFetch(job.input, job.init)
         job.resolve(response)
       } catch (error) {
         job.reject(error)
       } finally {
         active = false
-        window.setTimeout(() => void runNext(), 20)
+        window.setTimeout(() => void runNext(), 30)
       }
     }
 
@@ -99,7 +60,9 @@ export default function PhotoUploadQueue() {
     return () => {
       window.fetch = originalFetch as typeof window.fetch
       while (queue.length) {
-        queue.shift()?.reject(new Error('Photo upload cancelled because the page changed.'))
+        queue.shift()?.reject(
+          new Error('Photo upload cancelled because the page changed.')
+        )
       }
     }
   }, [])
