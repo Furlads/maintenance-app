@@ -34,28 +34,45 @@ export default function QuoteWorkingStatus() {
 
     function start(target: HTMLElement) {
       if (activeTarget === target && timer) return
+
       stop()
       activeTarget = target
       target.textContent = MESSAGES[0]
       index = 1
+
       timer = window.setInterval(() => {
-        if (!document.body.contains(target)) {
+        if (!activeTarget || !document.body.contains(activeTarget)) {
           stop()
           return
         }
-        target.textContent = MESSAGES[index % MESSAGES.length]
+
+        activeTarget.textContent = MESSAGES[index % MESSAGES.length]
         index += 1
-      }, 2600)
+      }, 2200)
     }
 
     function scan() {
+      // Once we have taken over the busy bubble, our own changing text means it
+      // no longer matches the original React copy. Keep the timer alive until
+      // React actually removes that bubble when the quote result arrives.
+      if (activeTarget && document.body.contains(activeTarget)) {
+        return
+      }
+
+      if (activeTarget && !document.body.contains(activeTarget)) {
+        stop()
+      }
+
       const target = findWorkingBubble()
       if (target) start(target)
-      else stop()
     }
 
     const observer = new MutationObserver(scan)
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    })
+
     scan()
 
     return () => {
