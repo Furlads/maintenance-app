@@ -307,13 +307,10 @@ function findIncludedOptions(
     const label = option.label.trim().toLowerCase()
     const title = option.title.trim().toLowerCase()
 
-    return wanted.some(
-      (item) =>
-        item === label ||
-        item === title ||
-        label.includes(item) ||
-        item.includes(label)
-    )
+    // Package maths must only use the exact options named by CHAS. Previously
+    // "Option 1" also matched "Option 1A", which silently inflated the
+    // separate total, the claimed saving and the combined duration.
+    return wanted.some((item) => item === label || item === title)
   })
 }
 
@@ -383,10 +380,7 @@ function normaliseCombinedOffer(
     available: true,
     label: cleanText(raw.label) || 'If all completed together',
     summary: cleanText(raw.summary),
-    includedOptionLabels:
-      requestedLabels.length > 0
-        ? requestedLabels
-        : includedOptions.map((option) => option.label),
+    includedOptionLabels: includedOptions.map((option) => option.label),
     savingReason: cleanText(raw.savingReason),
     estimatedHardCosts,
     priceExVat,
@@ -585,6 +579,8 @@ PRICING RULES:
 - recommendedPriceExVat must not be below the selling price required for 30% gross margin on estimatedHardCosts.
 - 35% and 40% GP prices are useful references, not automatic targets. Recommend the commercially sensible figure for the real risk and complexity.
 - Standard benchmark rates are only a comparison/sanity check after the whole-job calculation.
+- For measurable standard work, explicitly compare the proposed selling price with the relevant benchmark. If materially below the benchmark, only do so when the reduced scope genuinely justifies it and explain why in pricingNotes.
+- Gravel prices must include a realistic quantity of decorative stone at the stated depth, membrane where required, delivery, handling/spreading, labour, waste and normal site setup. Do not underprice a large gravel area merely because heavy excavation has already been done.
 - Never automatically add normal labour/materials/waste/plant twice.
 - Protect Furlads against underpricing and arbitrary discounting.
 - A combined "all done together" price may be lower than buying packages separately only where you can name the genuine duplicated costs saved.
@@ -605,9 +601,13 @@ MIXED ALTERNATIVES + PACKAGES:
 - A single enquiry can contain BOTH alternatives and separate purchasable jobs.
 - For this mixed case use quoteMode "packages", NOT single.
 - Put each customer-visible priced line into options.
+- Each option summary must describe ONLY that option. Never put an all-together/package-combination description, package price, saving, or call-to-action inside an individual option summary.
+- Optional extras such as an Option 1A must stay separate unless its exact label is explicitly listed in includedOptionLabels.
 - Mutually exclusive alternatives must never appear in the same combined total.
 - Use combinedOffers to provide each valid all-together combination where appropriate.
 - Every combined offer must list exactly which option labels it includes.
+- Before returning a combined offer, add the included option prices yourself and ensure separateTotal - combined price equals the stated saving. Never invent or estimate the saving independently.
+- Combined duration must be based only on the exact included options. If you claim a labour saving, the combined man-days/duration must actually reflect that saving.
 - Do not ask the customer to choose before showing the prices.
 
 REALISTIC INSTALL-TIME RULES:
@@ -754,6 +754,8 @@ Number of site photographs:
 ${photos.length}
 
 First work out what the job will physically require and what could make it take longer or cost more than the measurements suggest. Calculate realistic internal job costs and man-days. Then calculate the 30%, 35% and 40% GP references and recommend the sensible customer price. Use benchmark rates only as a sanity comparison afterwards.
+
+For package quotes, keep each option self-contained. Put any all-together wording only in combinedOffers. Recalculate combined savings from the exact included option labels before returning the JSON.
 
 If an important detail is missing, do not automatically stop. Use a sensible provisional assumption where appropriate and put the issue in pricingQuestions. Set blockingQuestionRequired true only if pricing now would be materially misleading or unsafe without the answer.
 `.trim()
@@ -1003,10 +1005,11 @@ PROJECT PRICE / DEPOSIT:
 
 MULTI-OPTION QUOTES:
 - Show every supplied priced option/package separately.
+- Keep optional extras visually and commercially separate from the main options unless they are explicitly included in an all-together offer.
 - Do not ask the customer to choose before showing the prices.
 - For alternatives, make clear they choose one.
 - For separate packages, make clear they can choose one, several or all.
-- Show every supplied all-together offer after the individual prices.
+- Show every supplied all-together offer as its own clearly headed section AFTER all individual prices. Never merge an all-together description or second set of prices into the preceding option.
 - Make any saving sound like a practical benefit of shared mobilisation/logistics, not a fake discount.
 - Never combine mutually exclusive alternatives.
 - State that the deposit is calculated against whichever works/package the customer chooses unless supplied otherwise.
@@ -1062,7 +1065,7 @@ Deposit amount on the headline/reference total: £${depositAmount.toFixed(2)}
 
 ${
   isMultiQuote
-    ? 'Write a customer-ready options/package quotation from Kelly showing every supplied price and every valid all-together offer separately. The customer has NOT decided yet.'
+    ? 'Write a customer-ready options/package quotation from Kelly showing every supplied price and every valid all-together offer separately. The customer has NOT decided yet. Keep the all-together section completely separate from the last individual option.'
     : 'Write the finished customer-ready Furlads WhatsApp quotation from Kelly. Lead with the transformation and make the customer feel excited and reassured about the project.'
 }
 `.trim()
