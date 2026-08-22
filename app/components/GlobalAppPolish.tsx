@@ -93,36 +93,54 @@ export default function GlobalAppPolish() {
       return avatar
     }
 
-    function replaceLegacyChasIdentity() {
-      // Trev quote header: replace the old black/yellow "C" badge with the real Chas portrait.
-      const quoteTitle = Array.from(document.querySelectorAll<HTMLElement>('h1,h2,h3,div,span')).find((element) =>
-        /CHAS\s*[·•-]\s*New Quote/i.test(element.textContent || '')
-      )
-      if (quoteTitle) {
-        const textBlock = quoteTitle.closest('div') || quoteTitle
-        const headerRow = textBlock.parentElement
-        const possibleBadge = headerRow?.firstElementChild as HTMLElement | null
-        if (possibleBadge && !possibleBadge.querySelector('[data-global-chas-avatar="true"]')) {
-          const badgeText = (possibleBadge.textContent || '').trim()
+    function replaceQuoteHeaderIdentity() {
+      if (pathname !== '/quote-test') return
+
+      const title = Array.from(document.querySelectorAll<HTMLElement>('div,h1,h2,h3,span')).find((element) => {
+        const text = directText(element)
+        return text === 'CHAS · New Quote' || text === 'CHAS · Quote'
+      })
+
+      if (title) {
+        const textBlock = title.parentElement
+        const headerIdentity = textBlock?.parentElement
+        const badge = headerIdentity?.firstElementChild as HTMLElement | null
+
+        if (badge && !badge.querySelector('[data-global-chas-avatar="true"]')) {
+          const badgeText = directText(badge)
           if (badgeText === 'C') {
             const avatar = makeAvatar(58)
             if (avatar) {
-              possibleBadge.replaceChildren(avatar)
-              possibleBadge.style.background = 'transparent'
-              possibleBadge.style.border = '0'
-              possibleBadge.style.width = '58px'
-              possibleBadge.style.height = '58px'
-              possibleBadge.style.minWidth = '58px'
-              possibleBadge.style.padding = '0'
-              possibleBadge.style.overflow = 'visible'
-              possibleBadge.style.display = 'grid'
-              possibleBadge.style.placeItems = 'center'
+              badge.replaceChildren(avatar)
+              badge.style.background = 'transparent'
+              badge.style.border = '0'
+              badge.style.width = '58px'
+              badge.style.height = '58px'
+              badge.style.minWidth = '58px'
+              badge.style.padding = '0'
+              badge.style.overflow = 'visible'
+              badge.style.display = 'grid'
+              badge.style.placeItems = 'center'
             }
           }
         }
       }
 
-      // Today-page Chas modal: replace the old smiley/hard-hat mascot in the header.
+      document.querySelectorAll<HTMLAnchorElement>('a[href="/admin/quotes"]').forEach((link) => {
+        if (directText(link) !== 'Back') return
+        link.style.whiteSpace = 'nowrap'
+        link.style.minWidth = '72px'
+        link.style.paddingLeft = '16px'
+        link.style.paddingRight = '16px'
+        link.style.justifyContent = 'center'
+        link.style.lineHeight = '1'
+        link.style.flexShrink = '0'
+      })
+    }
+
+    function replaceLegacyChasIdentity() {
+      replaceQuoteHeaderIdentity()
+
       const helpText = Array.from(document.querySelectorAll<HTMLElement>('div,p,span')).find(
         (element) => directText(element) === 'Friendly on-site help'
       )
