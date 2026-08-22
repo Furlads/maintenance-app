@@ -360,21 +360,21 @@ function normaliseCombinedOffer(
   const savingExVat = roundMoney(separateTotal - priceExVat)
 
   const rawDuration = normaliseDuration(raw.estimatedDuration)
-  const totalPackageDays = includedOptions.reduce(
-    (sum, option) => sum + Math.max(0, option.estimatedDuration.workingDays),
-    0
-  )
   const longestPackageDays = includedOptions.reduce(
     (longest, option) =>
       Math.max(longest, option.estimatedDuration.workingDays),
     0
   )
 
-  const minimumCombinedDays = roundUpToHalfDay(
-    Math.max(longestPackageDays, totalPackageDays * 0.8)
-  )
-
-  const workingDays = Math.max(rawDuration.workingDays, minimumCombinedDays)
+  // Trust CHAS's freshly calculated combined programme instead of forcing it
+  // back up to a percentage of standalone durations. Standalone options each
+  // contain their own setup/tidy time, so an 80% floor was systematically
+  // overstating genuine all-together programmes. The longest standalone item
+  // is only a fallback when CHAS supplies no combined duration at all.
+  const workingDays =
+    rawDuration.workingDays > 0
+      ? rawDuration.workingDays
+      : roundUpToHalfDay(longestPackageDays)
 
   return {
     available: true,
@@ -397,7 +397,7 @@ function normaliseCombinedOffer(
       workingDays,
       description:
         rawDuration.description ||
-        `${workingDays} working days allowing only for genuine shared setup and logistics efficiencies`,
+        `${workingDays} working days from a fresh combined-task programme`,
     },
   }
 }
@@ -621,7 +621,7 @@ REALISTIC INSTALL-TIME RULES:
 - Standard fencing: roughly 5–7 normal bays per two-person working day is a useful sanity check before access/ground/removal adjustments.
 - Artificial grass with full preparation: roughly 20–30m² per two-person working day in ordinary conditions is a useful sanity check.
 - These are sanity checks, not rigid rates.
-- Combined duration should normally be the sum of included package crew-days minus only modest genuine shared efficiencies; do not reduce by more than about 20% without a specific physical reason.
+- For combined jobs, rebuild the programme from the physical task sequence and actual crew use. Do NOT derive combined duration from a fixed percentage of the standalone durations. Shared setup, deliveries, material handling and overlapping small masonry/finishing tasks can materially reduce the combined calendar programme. If the combined duration is materially lower than the standalone sum, explain the specific physical overlap or duplicated setup removed.
 - Round uncertain durations UP to the nearest half day rather than down.
 
 Return only valid JSON using this exact structure:
