@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import ServiceWorkerRegister from "@/app/components/ServiceWorkerRegister";
 import GlobalAppPolish from "@/app/components/GlobalAppPolish";
+import ThreeCountiesWorkerTheme from "@/app/components/ThreeCountiesWorkerTheme";
 
 export const metadata: Metadata = {
   title: "Furlads Maintenance App",
@@ -30,6 +31,7 @@ export default function RootLayout({
       <body>
         <ServiceWorkerRegister />
         <GlobalAppPolish />
+        <ThreeCountiesWorkerTheme />
         {children}
       </body>
     </html>
