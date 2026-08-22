@@ -42,7 +42,8 @@ export default function RootLayout({
             __html: `
               (function () {
                 function isQuoteVisit() {
-                  return window.location.pathname.startsWith('/trev/quote/');
+                  return window.location.pathname.startsWith('/trev/quote/') ||
+                    window.location.pathname === '/quote-test';
                 }
 
                 function tidyQuotePhotoUi() {
