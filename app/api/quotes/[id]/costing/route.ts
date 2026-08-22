@@ -25,6 +25,20 @@ function extractJson(value: string) {
   }
 }
 
+function allTogetherPriceFromWorking(value: string | null) {
+  if (!value) return null
+  const marker = 'ALL-TOGETHER COMBINATIONS'
+  const index = value.indexOf(marker)
+  if (index < 0) return null
+
+  const section = value.slice(index + marker.length)
+  const match = section.match(/£\s*([0-9,]+(?:\.\d{1,2})?)\s*\+\s*VAT/i)
+  if (!match) return null
+
+  const price = Number(match[1].replace(/,/g, ''))
+  return Number.isFinite(price) && price > 0 ? price : null
+}
+
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
     const id = Number(params.id)
@@ -49,6 +63,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       return NextResponse.json({ ok: false, error: 'Quote not found.' }, { status: 404 })
     }
 
+    const sellingPriceExVat = allTogetherPriceFromWorking(quote.quoteWorking) || quote.priceExVat
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.')
 
@@ -88,7 +103,7 @@ Use exactly this shape:
 }`,
       input: [
         `Quote #${quote.id}`,
-        `Selling price ex VAT: £${quote.priceExVat.toFixed(2)}`,
+        `Selling price ex VAT: £${sellingPriceExVat.toFixed(2)}`,
         `Estimated duration: ${quote.estimatedDays ?? 'not set'} days`,
         `Estimated team size: ${quote.estimatedTeamSize ?? 'not set'}`,
         `Scope: ${quote.scope}`,
@@ -103,9 +118,9 @@ Use exactly this shape:
     const plantWasteLogistics = cleanNumber(result.plantWasteLogistics)
     const other = cleanNumber(result.other)
     const totalDirectCost = Number((materials + labour + plantWasteLogistics + other).toFixed(2))
-    const grossProfitEstimate = Number((quote.priceExVat - totalDirectCost).toFixed(2))
-    const grossMarginPercent = quote.priceExVat > 0
-      ? Number(((grossProfitEstimate / quote.priceExVat) * 100).toFixed(1))
+    const grossProfitEstimate = Number((sellingPriceExVat - totalDirectCost).toFixed(2))
+    const grossMarginPercent = sellingPriceExVat > 0
+      ? Number(((grossProfitEstimate / sellingPriceExVat) * 100).toFixed(1))
       : 0
 
     return NextResponse.json({
