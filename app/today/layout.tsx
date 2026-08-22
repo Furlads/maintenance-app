@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import prisma from '@/lib/prisma'
 import MaintenanceTodayBridge from './MaintenanceTodayBridge'
 import TodayDashboardHome from './TodayDashboardHome'
+import TodayAvatarSizePolish from './TodayAvatarSizePolish'
 import JacobBrandPolish from './JacobBrandPolish'
 import FurladsBrandPolish from './FurladsBrandPolish'
 
@@ -24,6 +25,7 @@ export default async function TodayLayout({ children }: Props) {
     <>
       <MaintenanceTodayBridge maintenanceJobIds={maintenanceJobs.map((job) => job.id)} />
       <TodayDashboardHome />
+      <TodayAvatarSizePolish />
       <JacobBrandPolish />
       <FurladsBrandPolish />
       {children}
