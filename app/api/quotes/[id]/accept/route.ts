@@ -15,6 +15,37 @@ function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function extractSurveyPhotos(quoteWorking: string | null | undefined) {
+  const working = clean(quoteWorking)
+  if (!working) return [] as Array<{ url: string; fileName: string }>
+
+  const marker = 'SURVEY PHOTOS JSON\n'
+  const markerIndex = working.lastIndexOf(marker)
+  if (markerIndex < 0) return []
+
+  const jsonText = working.slice(markerIndex + marker.length).trim()
+
+  try {
+    const parsed = JSON.parse(jsonText)
+    if (!Array.isArray(parsed)) return []
+
+    return parsed
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const row = item as Record<string, unknown>
+        const url = clean(row.url)
+        const fileName = clean(row.fileName) || 'Site photo'
+        return url.startsWith('https://') ? { url, fileName } : null
+      })
+      .filter(
+        (photo): photo is { url: string; fileName: string } => photo !== null
+      )
+      .slice(0, 12)
+  } catch {
+    return []
+  }
+}
+
 export async function POST(_req: Request, { params }: RouteContext) {
   try {
     const id = Number(params.id)
@@ -44,6 +75,7 @@ export async function POST(_req: Request, { params }: RouteContext) {
 
     const customerName = clean(quote.customerName) || clean(quote.customer?.name)
     const customerPostcode = clean(quote.customerPostcode) || clean(quote.customer?.postcode)
+    const surveyPhotos = extractSurveyPhotos(quote.quoteWorking)
 
     if (!customerName || !customerPostcode) {
       return NextResponse.json(
@@ -100,6 +132,9 @@ export async function POST(_req: Request, { params }: RouteContext) {
             quote.estimatedDays
               ? `Estimated install: ${quote.estimatedDays} day(s) with ${quote.estimatedTeamSize || 1} person/people`
               : null,
+            surveyPhotos.length
+              ? `${surveyPhotos.length} quote survey photo(s) attached to this job.`
+              : null,
             quote.internalNotes || null,
           ]
             .filter(Boolean)
@@ -110,6 +145,17 @@ export async function POST(_req: Request, { params }: RouteContext) {
           fixedSchedule: false,
         },
       })
+
+      if (surveyPhotos.length) {
+        await tx.jobPhoto.createMany({
+          data: surveyPhotos.map((photo, index) => ({
+            jobId: job.id,
+            uploadedByWorkerId: null,
+            label: `Survey ${index + 1}`,
+            imageUrl: photo.url,
+          })),
+        })
+      }
 
       const updatedQuote = await tx.quote.update({
         where: { id: quote.id },
@@ -142,6 +188,7 @@ export async function POST(_req: Request, { params }: RouteContext) {
       ...result,
       landscapingPlan,
       planningWarning,
+      surveyPhotoCount: surveyPhotos.length,
     })
   } catch (error) {
     console.error('ACCEPT QUOTE ERROR', error)
