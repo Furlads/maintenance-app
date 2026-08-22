@@ -64,6 +64,39 @@ Use these as gentle guidance only:
 Use more only when the route is long, stepped, fragile or genuinely severe.
 Do not automatically apply the maximum because a doorway is narrow.
 
+WORK INTENSITY - CLASSIFY BEFORE PRICING
+Before estimating labour or applying any square-metre benchmark, classify each work area by what is physically being done:
+1. REFRESH / OVERLAY / TIDY-UP - the existing formation or hard surface is fundamentally sound; work is mainly removal of loose finishes, cleaning/weeding, membrane, topping or cosmetic renewal.
+2. LIGHT LANDSCAPING / CONVERSION - some strip-out, soil/turf removal, local level correction, edging or modest base preparation is required, but not a full new construction build-up.
+3. FULL DIG-OUT / REBUILD - excavation to formation, spoil disposal, new sub-base/build-up, compaction, drainage/levels and a new finished surface are required.
+4. STRUCTURAL / MASONRY - walls, steps, retaining work, concrete or other built elements; price these from their own quantities and man-days.
+
+Do not let the overall area make a refresh job look like a full construction job. A large simple overlay can take fewer man-days than a much smaller excavation/rebuild.
+For mixed jobs, classify and price each area separately, then build one realistic combined programme.
+
+GRAVEL AND DECORATIVE AGGREGATE
+Always identify whether the gravel work is a REFRESH, CONVERSION or NEW BUILD before using a per-m2 sense-check.
+
+GRAVEL REFRESH / OVERLAY
+Typical scope: remove or redistribute existing loose decorative gravel, remove unwanted loose edging, weed/clean, retain a sound underlying surface/formation, install heavy-duty membrane where suitable, then place new decorative gravel.
+- Do NOT automatically allow excavation, new hardcore/sub-base, full level reconstruction or drainage unless the scope/site evidence requires it.
+- Do NOT price this as a new gravel driveway merely because the measured area is large.
+- Price the actual aggregate quantity, membrane, disposal of the material genuinely leaving site and realistic handling labour.
+- Existing slabs that are staying in place and simply receive membrane plus decorative gravel are an overlay, not groundworks.
+- Raised beds being weeded/tidied around retained established shrubs are maintenance/refresh work, not full bed excavation.
+- As a duration sanity check, an ordinary accessible front area around 60-70m2 that is mainly strip loose gravel/edging, tidy, membrane and re-gravel should commonly start around 3-5 total man-days before adding genuine access, disposal or difficult handwork. Do not jump to 7+ man-days without a task-by-task reason.
+- A straightforward 20-25m2 side overlay on existing slabs, including weeding/cleaning and gravel placement, should normally be tested against roughly 1-2 total man-days before adding any separate masonry detail.
+
+GRAVEL CONVERSION
+Typical scope: remove turf/soil or an unsuitable finish, local excavation/level correction, edging and some base preparation before membrane and gravel.
+Allow the extra excavation, spoil, base material and compaction explicitly.
+
+NEW GRAVEL DRIVEWAY / FULL BUILD
+Typical scope: excavation to suitable formation, waste removal, sub-base, compaction, levels/drainage, grids or edging where specified, then decorative gravel.
+This is the high-labour/high-hard-cost category and may reasonably sit near or above broad gravel surfacing benchmarks.
+
+The broad gravel £/m2 benchmark is a sanity check only. It must not force a refresh/overlay up to a full-build selling rate when the underlying work is already done.
+
 PORCELAIN
 £170/m2 ex VAT is a useful straightforward customer selling benchmark for a normal complete installation.
 For standard domestic porcelain, a sensible effective selling range is commonly about £160-£220/m2 before separately priced structural walls, major concrete breakout or specialist drainage.
@@ -130,6 +163,7 @@ Do not add all standalone durations and then only shave a little off.
 Standalone durations contain duplicated setup and tidy time.
 Build the combined programme fresh from the actual sequence and crew usage.
 Shared excavation, material handling, wall/patio interfaces, deliveries and cleanup can materially reduce total days.
+For a combined refresh job with small masonry elements, actively test whether the masonry can be completed while other crew members strip, tidy, move materials or spread aggregate instead of allocating the full crew to every task for every day.
 
 SANITY CHECKS
 Before accepting the quote ask:
@@ -140,6 +174,8 @@ Before accepting the quote ask:
 5. Does the effective £/m2 or £/m still look commercially sensible?
 6. Is a margin floor inflating the quote only because the hard-cost estimate itself is wrong?
 7. Have normal waste/material/plant costs accidentally been exposed as customer options instead of being absorbed into the work packages?
+8. Have I classified each area as refresh, conversion, full rebuild or structural before pricing it?
+9. Am I charging for excavation/base construction that the stated scope does not actually require?
 
 If a final price differs by more than about 15% from the first benchmark sense-check, explain the specific real costs causing the difference. If the explanation is only 'complexity' or 'restricted access', recalculate with explicit man-days and handling costs.
 
@@ -153,6 +189,8 @@ AUTOMATIC REVIEW FLAGS
 - combined duration close to the sum of every standalone duration
 - labour duration cannot be explained by task sequence
 - estimated hard costs appear to contain selling-rate assumptions
+- gravel refresh/overlay priced as though full excavation and new sub-base are required when they are not in scope
+- ordinary 60-70m2 gravel refresh exceeding about 7 man-days without a clear task-by-task explanation
 
 OUTPUT INTERNALLY
 Show measurements, materials cost, labour man-days and labour cost, plant, waste, logistics, contingency, total hard cost, 30/35/40% margin prices, effective unit-rate sanity checks, recommended price and any review flags.
