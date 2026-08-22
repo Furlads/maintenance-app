@@ -8,12 +8,12 @@ export default function QuoteTestLayout({ children }: { children: ReactNode }) {
   return (
     <>
       <style>{`
-        /* Keep uploaded site photos available without letting them dominate the
-           mobile quote screen. This is CSS-only so it cannot interfere with
-           React's upload state. */
+        /* Keep photo feedback visible only while it is useful. Ready photos stay
+           attached in React state and are still sent to CHAS, but their cards
+           disappear from the composer so they do not take over the screen. */
         footer > div > div.mb-3.flex.gap-2.overflow-x-auto {
           gap: 6px !important;
-          margin-bottom: 8px !important;
+          margin-bottom: 6px !important;
           padding-bottom: 0 !important;
           max-height: 48px;
         }
@@ -22,6 +22,10 @@ export default function QuoteTestLayout({ children }: { children: ReactNode }) {
           width: 44px !important;
           height: 44px !important;
           border-radius: 10px !important;
+        }
+
+        footer > div > div.mb-3.flex.gap-2.overflow-x-auto > div:has(> div[class*="bg-green-700"]) {
+          display: none !important;
         }
 
         footer > div > div.mb-3.flex.gap-2.overflow-x-auto > div > button {
