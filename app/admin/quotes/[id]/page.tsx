@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import QuoteEditor from './QuoteEditor'
 import QuoteDraftGuard from './QuoteDraftGuard'
+import KellyQuoteOverview from './KellyQuoteOverview'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +11,11 @@ type PageProps = {
   params: {
     id: string
   }
+}
+
+type SurveyPhoto = {
+  url: string
+  fileName: string
 }
 
 function statusLabel(status: string) {
@@ -28,12 +34,60 @@ function statusClass(status: string) {
   return 'bg-orange-100 text-orange-800 ring-orange-200'
 }
 
+function surveyPhotosFromWorking(value: string | null): SurveyPhoto[] {
+  if (!value) return []
+  const marker = 'SURVEY PHOTOS JSON\n'
+  const index = value.indexOf(marker)
+  if (index < 0) return []
+
+  const jsonText = value.slice(index + marker.length).trim()
+  try {
+    const parsed = JSON.parse(jsonText)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((row) => {
+        if (!row || typeof row !== 'object') return null
+        const item = row as Record<string, unknown>
+        const url = typeof item.url === 'string' ? item.url.trim() : ''
+        const fileName = typeof item.fileName === 'string' ? item.fileName.trim() : ''
+        return url.startsWith('https://') ? { url, fileName: fileName || 'Survey photo' } : null
+      })
+      .filter((row): row is SurveyPhoto => row !== null)
+      .slice(0, 12)
+  } catch {
+    return []
+  }
+}
+
+function allTogetherPriceFromWorking(value: string | null) {
+  if (!value) return null
+  const marker = 'ALL-TOGETHER COMBINATIONS'
+  const index = value.indexOf(marker)
+  if (index < 0) return null
+
+  const section = value.slice(index + marker.length)
+  const match = section.match(/£\s*([0-9,]+(?:\.\d{1,2})?)\s*\+\s*VAT/i)
+  if (!match) return null
+
+  const price = Number(match[1].replace(/,/g, ''))
+  return Number.isFinite(price) && price > 0 ? price : null
+}
+
 export default async function QuoteDetailPage({ params }: PageProps) {
   const id = Number(params.id)
   if (!Number.isInteger(id) || id <= 0) notFound()
 
   const quote = await prisma.quote.findUnique({ where: { id } })
   if (!quote) notFound()
+
+  const surveyPhotos = surveyPhotosFromWorking(quote.quoteWorking)
+  const combinedPrice = allTogetherPriceFromWorking(quote.quoteWorking)
+  const headlinePriceExVat = combinedPrice || quote.priceExVat
+  const headlineVatRate = quote.vatRate || 20
+  const headlineTotalIncVat = Number(
+    (headlinePriceExVat * (1 + headlineVatRate / 100)).toFixed(2)
+  )
+  const showKellyOverview = ['needs_review', 'ready_to_send'].includes(quote.status)
 
   return (
     <div className="space-y-5">
@@ -60,6 +114,18 @@ export default async function QuoteDetailPage({ params }: PageProps) {
         </div>
       </section>
 
+      {showKellyOverview ? (
+        <KellyQuoteOverview
+          quoteId={quote.id}
+          priceExVat={headlinePriceExVat}
+          vatRate={headlineVatRate}
+          totalIncVat={headlineTotalIncVat}
+          estimatedDays={quote.estimatedDays}
+          estimatedTeamSize={quote.estimatedTeamSize}
+          surveyPhotos={surveyPhotos}
+        />
+      ) : null}
+
       <div id="quote-editor-autosave">
         <QuoteDraftGuard quoteId={quote.id} />
         <QuoteEditor
@@ -74,8 +140,8 @@ export default async function QuoteDetailPage({ params }: PageProps) {
             customerMessage: quote.customerMessage,
             internalNotes: quote.internalNotes,
             quoteWorking: quote.quoteWorking,
-            priceExVat: quote.priceExVat,
-            vatRate: 20,
+            priceExVat: headlinePriceExVat,
+            vatRate: headlineVatRate,
             depositPercent: quote.depositPercent,
             estimatedDays: quote.estimatedDays,
             estimatedTeamSize: quote.estimatedTeamSize,
