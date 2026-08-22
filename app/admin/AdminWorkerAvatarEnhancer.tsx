@@ -52,6 +52,14 @@ const WORKER_AVATARS: WorkerAvatarConfig[] = [
     title: 'Kelly · Furlads & Three Counties',
     border: '#b59a45',
   },
+  {
+    key: 'trevor',
+    namePattern: /^(?:trev|trevor)(?:\s|$)/i,
+    assignedPattern: /\b(?:Trev|Trevor)\b/i,
+    src: '/branding/workers/trevor-both-brands-avatar.webp',
+    title: 'Trevor · Furlads & Three Counties',
+    border: '#b59a45',
+  },
 ]
 
 function makeAvatar(worker: WorkerAvatarConfig, size: number) {
@@ -132,12 +140,45 @@ function enhanceGenericWorkerCards(root: ParentNode) {
   }
 }
 
+async function enhanceLoggedInAdminHeader() {
+  const header = document.querySelector('header')
+  if (!header || header.querySelector('[data-admin-login-avatar]')) return
+
+  try {
+    const response = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'include' })
+    const data = await response.json().catch(() => null)
+    const name = String(data?.name || '').trim()
+    if (!name) return
+
+    const worker = WORKER_AVATARS.find((item) => item.namePattern.test(name))
+    if (!worker) return
+
+    const headerInner = header.firstElementChild as HTMLElement | null
+    const titleBlock = headerInner?.firstElementChild as HTMLElement | null
+    if (!titleBlock) return
+
+    titleBlock.style.display = 'flex'
+    titleBlock.style.alignItems = 'center'
+    titleBlock.style.gap = '12px'
+
+    const avatar = makeAvatar(worker, 52)
+    avatar.dataset.adminLoginAvatar = 'true'
+    avatar.style.borderWidth = '3px'
+    avatar.style.boxShadow = '0 6px 16px rgba(17,24,39,.16)'
+    titleBlock.insertBefore(avatar, titleBlock.firstChild)
+  } catch {
+    // Avatar should never block Admin loading.
+  }
+}
+
 function enhanceAdmin() {
   const root = document.querySelector('.admin-main')
-  if (!root) return
-  enhanceTeamCards(root)
-  enhanceAssignedRows(root)
-  enhanceGenericWorkerCards(root)
+  if (root) {
+    enhanceTeamCards(root)
+    enhanceAssignedRows(root)
+    enhanceGenericWorkerCards(root)
+  }
+  void enhanceLoggedInAdminHeader()
 }
 
 export default function AdminWorkerAvatarEnhancer() {
