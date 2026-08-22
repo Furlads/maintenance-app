@@ -231,17 +231,20 @@ export default function RootLayout({
                 }
 
                 async function compressQuotePhoto(file) {
-                  var MAX_UPLOAD_BYTES = 3.5 * 1024 * 1024;
-                  if (file.size <= MAX_UPLOAD_BYTES && /^image\\/(jpeg|jpg|png|webp)$/i.test(file.type || '')) {
+                  var TARGET_UPLOAD_BYTES = 1.2 * 1024 * 1024;
+                  var SMALL_ENOUGH_BYTES = 700 * 1024;
+                  if (file.size <= SMALL_ENOUGH_BYTES && /^image\\/(jpeg|jpg|webp)$/i.test(file.type || '')) {
                     return file;
                   }
 
                   try {
                     var image = await imageFromFile(file);
-                    var maxSide = 2200;
-                    var scale = Math.min(1, maxSide / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
-                    var width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
-                    var height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+                    var maxSide = 1600;
+                    var naturalWidth = image.naturalWidth || image.width;
+                    var naturalHeight = image.naturalHeight || image.height;
+                    var scale = Math.min(1, maxSide / Math.max(naturalWidth, naturalHeight));
+                    var width = Math.max(1, Math.round(naturalWidth * scale));
+                    var height = Math.max(1, Math.round(naturalHeight * scale));
                     var canvas = document.createElement('canvas');
                     canvas.width = width;
                     canvas.height = height;
@@ -249,10 +252,10 @@ export default function RootLayout({
                     if (!ctx) return file;
                     ctx.drawImage(image, 0, 0, width, height);
 
-                    var quality = 0.82;
+                    var quality = 0.72;
                     var blob = await canvasToBlob(canvas, quality);
-                    while (blob.size > MAX_UPLOAD_BYTES && quality > 0.5) {
-                      quality -= 0.1;
+                    while (blob.size > TARGET_UPLOAD_BYTES && quality > 0.46) {
+                      quality -= 0.08;
                       blob = await canvasToBlob(canvas, quality);
                     }
 
@@ -285,10 +288,9 @@ export default function RootLayout({
                   event.stopImmediatePropagation();
 
                   try {
-                    var prepared = [];
-                    for (var i = 0; i < files.length; i += 1) {
-                      prepared.push(await compressQuotePhoto(files[i]));
-                    }
+                    var prepared = await Promise.all(files.map(function (file) {
+                      return compressQuotePhoto(file);
+                    }));
 
                     var transfer = new DataTransfer();
                     prepared.forEach(function (file) {
