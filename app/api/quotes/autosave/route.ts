@@ -13,14 +13,20 @@ export async function POST(req: NextRequest) {
     const conversationId = text(body.conversationId)
     const customerName = text(body.customerName)
     const customerPostcode = text(body.customerPostcode)
-    const scope = text(body.scope) || (customerName ? `Quote in progress for ${customerName}` : 'Quote in progress')
+    const scope =
+      text(body.scope) ||
+      (customerName ? `Quote in progress for ${customerName}` : 'Quote in progress')
 
     if (!conversationId || !customerName) {
-      return NextResponse.json({ ok: false, error: 'Draft key and customer are required.' }, { status: 400 })
+      return NextResponse.json(
+        { ok: false, error: 'Draft key and customer are required.' },
+        { status: 400 }
+      )
     }
 
     let customer = null
     const customerId = Number(body.customerId)
+
     if (Number.isInteger(customerId) && customerId > 0) {
       customer = await prisma.customer.findUnique({ where: { id: customerId } })
     }
@@ -35,6 +41,25 @@ export async function POST(req: NextRequest) {
         orderBy: { createdAt: 'desc' },
       })
     }
+
+    // Quote.conversationId is a real foreign key to Conversation.id.
+    // CHAS draft IDs are generated in the browser, so make sure the parent
+    // Conversation exists before creating/updating the draft quote.
+    await prisma.conversation.upsert({
+      where: { id: conversationId },
+      update: {
+        contactName: customerName,
+        contactRef: customerPostcode || customer?.postcode || null,
+        archived: false,
+      },
+      create: {
+        id: conversationId,
+        source: 'chas_quote_draft',
+        contactName: customerName,
+        contactRef: customerPostcode || customer?.postcode || null,
+        archived: false,
+      },
+    })
 
     const existing = await prisma.quote.findFirst({
       where: {
@@ -60,7 +85,10 @@ export async function POST(req: NextRequest) {
     }
 
     const quote = existing
-      ? await prisma.quote.update({ where: { id: existing.id }, data })
+      ? await prisma.quote.update({
+          where: { id: existing.id },
+          data,
+        })
       : await prisma.quote.create({
           data: {
             ...data,
@@ -76,6 +104,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, quote })
   } catch (error) {
     console.error('QUOTE AUTOSAVE ERROR', error)
-    return NextResponse.json({ ok: false, error: 'Could not autosave quote.' }, { status: 500 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Could not autosave quote.',
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    )
   }
 }
