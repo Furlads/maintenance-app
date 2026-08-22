@@ -1,5 +1,6 @@
 'use client'
 
+import { upload } from '@vercel/blob/client'
 import { useEffect } from 'react'
 
 type PendingUpload = {
@@ -26,13 +27,52 @@ export default function PhotoUploadQueue() {
       return String(url).includes('/api/ai/quote/photos')
     }
 
+    async function uploadDirect(job: PendingUpload) {
+      const body = job.init?.body
+      if (!(body instanceof FormData)) {
+        return originalFetch(job.input, job.init)
+      }
+
+      const entry = body.get('file')
+      if (!(entry instanceof File)) {
+        return originalFetch(job.input, job.init)
+      }
+
+      const safeName = (entry.name || 'site-photo.jpg')
+        .replace(/[^a-zA-Z0-9.-]/g, '-')
+        .replace(/-+/g, '-')
+        .slice(0, 120)
+
+      const blob = await upload(
+        `quote-surveys/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${safeName}`,
+        entry,
+        {
+          access: 'public',
+          handleUploadUrl: '/api/blob/quote-upload',
+          multipart: entry.size > 1024 * 1024,
+        }
+      )
+
+      return new Response(
+        JSON.stringify({
+          url: blob.url,
+          pathname: blob.pathname,
+          fileName: safeName,
+        }),
+        {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    }
+
     function runNext() {
       while (active < MAX_CONCURRENT_UPLOADS && queue.length) {
         const job = queue.shift()
         if (!job) return
 
         active += 1
-        originalFetch(job.input, job.init)
+        uploadDirect(job)
           .then(job.resolve, job.reject)
           .finally(() => {
             active -= 1
