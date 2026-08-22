@@ -84,7 +84,7 @@ export default async function TrevQuotesPage() {
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <Link href="/jobs/add" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-yellow-400 px-4 text-sm font-black text-zinc-950 shadow-sm transition hover:bg-yellow-300">+ New quote</Link>
+            <Link href="/trev/quotes/new" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-yellow-400 px-4 text-sm font-black text-zinc-950 shadow-sm transition hover:bg-yellow-300">+ New quote</Link>
             <Link href="/trev" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950">Back to overview</Link>
           </div>
 
