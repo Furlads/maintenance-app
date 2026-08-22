@@ -14,8 +14,7 @@ export default function PhotoUploadQueue() {
   useEffect(() => {
     const originalFetch = window.fetch.bind(window)
     const queue: PendingUpload[] = []
-    let active = 0
-    const MAX_CONCURRENT_UPLOADS = 2
+    let active = false
 
     function isPhotoUpload(input: RequestInfo | URL) {
       const url = typeof input === 'string'
@@ -49,7 +48,10 @@ export default function PhotoUploadQueue() {
         {
           access: 'public',
           handleUploadUrl: '/api/blob/quote-upload',
-          multipart: entry.size > 1024 * 1024,
+          // Files are compressed before they reach here. Keeping this as one
+          // normal request avoids the CPU/network overhead of multipart uploads
+          // and is much more stable in installed Chrome/Safari PWAs.
+          multipart: false,
         }
       )
 
@@ -66,18 +68,20 @@ export default function PhotoUploadQueue() {
       )
     }
 
-    function runNext() {
-      while (active < MAX_CONCURRENT_UPLOADS && queue.length) {
-        const job = queue.shift()
-        if (!job) return
+    async function runNext() {
+      if (active) return
+      const job = queue.shift()
+      if (!job) return
 
-        active += 1
-        uploadDirect(job)
-          .then(job.resolve, job.reject)
-          .finally(() => {
-            active -= 1
-            runNext()
-          })
+      active = true
+      try {
+        const response = await uploadDirect(job)
+        job.resolve(response)
+      } catch (error) {
+        job.reject(error)
+      } finally {
+        active = false
+        window.setTimeout(() => void runNext(), 20)
       }
     }
 
@@ -88,7 +92,7 @@ export default function PhotoUploadQueue() {
 
       return new Promise<Response>((resolve, reject) => {
         queue.push({ input, init, resolve, reject })
-        runNext()
+        void runNext()
       })
     }) as typeof window.fetch
 
