@@ -54,6 +54,15 @@ Typical sequence: strip-out, excavation/base prep, walling, paving, decking, fin
 Do not assume every stage needs the same crew size.
 A third person may help demolition and material movement but is often unnecessary for all finishing days.
 
+CREW RIGHT-SIZING
+Do not default every task to 2 people for a full day.
+Ask how many people are genuinely productive on each task.
+- If one worker can complete a small masonry/finishing task while another continues preparation or gravel work, count 1 man-day for that task, not 2.
+- If a task needs 2 people only for lifting, moving or setup, do not charge 2 people for the whole day unless both are genuinely occupied.
+- For small standalone jobs, allow a sensible minimum visit/setup effect, but do not turn a half-day or one-person task into 2 full man-days without a reason.
+- When estimating duration, calculate total man-days first, then convert to calendar days using the intended crew.
+- If a quoted duration implies more than about 25% idle/overlap time, rebuild the programme.
+
 ACCESS
 Access changes productivity, not material purchase prices.
 Use these as gentle guidance only:
@@ -86,6 +95,7 @@ Typical scope: remove or redistribute existing loose decorative gravel, remove u
 - Raised beds being weeded/tidied around retained established shrubs are maintenance/refresh work, not full bed excavation.
 - As a duration sanity check, an ordinary accessible front area around 60-70m2 that is mainly strip loose gravel/edging, tidy, membrane and re-gravel should commonly start around 3-5 total man-days before adding genuine access, disposal or difficult handwork. Do not jump to 7+ man-days without a task-by-task reason.
 - A straightforward 20-25m2 side overlay on existing slabs, including weeding/cleaning and gravel placement, should normally be tested against roughly 1-2 total man-days before adding any separate masonry detail.
+- For a normal accessible refresh, if the labour estimate exceeds roughly 0.08 man-days per m2, pause and justify the extra handling, disposal, access or detailing explicitly.
 
 GRAVEL CONVERSION
 Typical scope: remove turf/soil or an unsuitable finish, local excavation/level correction, edging and some base preparation before membrane and gravel.
@@ -96,6 +106,14 @@ Typical scope: excavation to suitable formation, waste removal, sub-base, compac
 This is the high-labour/high-hard-cost category and may reasonably sit near or above broad gravel surfacing benchmarks.
 
 The broad gravel £/m2 benchmark is a sanity check only. It must not force a refresh/overlay up to a full-build selling rate when the underlying work is already done.
+
+SMALL STEPS AND MINOR MASONRY
+Price small domestic steps and short decorative wall extensions from actual materials plus realistic labour; do not let the masonry classification by itself inflate the duration.
+- A straightforward single domestic entrance step around 1-1.5m wide using kerbs/edging and stone paving should normally be tested against roughly 1-1.5 total man-days plus curing/return-time only where genuinely necessary.
+- Do not assume 2 workers for 2 full days for one small step unless there is demolition, major level alteration, difficult access, multiple risers or substantial concrete work.
+- A short low wall extension of roughly 2-3m should normally be priced as a small masonry task, with labour based on foundation, laying and finish rather than a generic 2-person full-day rule.
+- Where a step or short wall forms part of a larger job, integrate it into the crew programme so one worker can complete masonry while the other continues productive work elsewhere.
+- Calendar return time for curing does not equal another full man-day unless labour is actually required on site.
 
 PORCELAIN
 £170/m2 ex VAT is a useful straightforward customer selling benchmark for a normal complete installation.
@@ -165,6 +183,9 @@ Build the combined programme fresh from the actual sequence and crew usage.
 Shared excavation, material handling, wall/patio interfaces, deliveries and cleanup can materially reduce total days.
 For a combined refresh job with small masonry elements, actively test whether the masonry can be completed while other crew members strip, tidy, move materials or spread aggregate instead of allocating the full crew to every task for every day.
 
+For a mixed domestic job dominated by gravel refresh/overlay plus one small step and one short wall, start by testing a combined programme around 7-9 total man-days before adding genuine site-specific difficulty. Do not drift to 12+ man-days unless the task sequence clearly explains why.
+If the combined programme is 80% or more of the sum of the standalone man-days, recalculate from scratch and identify where the supposed efficiencies actually occur.
+
 SANITY CHECKS
 Before accepting the quote ask:
 1. What are the actual hard costs?
@@ -176,6 +197,8 @@ Before accepting the quote ask:
 7. Have normal waste/material/plant costs accidentally been exposed as customer options instead of being absorbed into the work packages?
 8. Have I classified each area as refresh, conversion, full rebuild or structural before pricing it?
 9. Am I charging for excavation/base construction that the stated scope does not actually require?
+10. Am I using the right number of workers for each task, or just defaulting to 2 people all day?
+11. Does calendar duration reflect productive labour rather than curing/waiting time?
 
 If a final price differs by more than about 15% from the first benchmark sense-check, explain the specific real costs causing the difference. If the explanation is only 'complexity' or 'restricted access', recalculate with explicit man-days and handling costs.
 
@@ -191,6 +214,9 @@ AUTOMATIC REVIEW FLAGS
 - estimated hard costs appear to contain selling-rate assumptions
 - gravel refresh/overlay priced as though full excavation and new sub-base are required when they are not in scope
 - ordinary 60-70m2 gravel refresh exceeding about 7 man-days without a clear task-by-task explanation
+- single 1-1.5m domestic step exceeding about 2 man-days without demolition, multiple risers or significant level changes
+- small masonry/finishing task automatically assigned 2 workers for multiple full days
+- mixed gravel-refresh job with small masonry exceeding about 10 total man-days without a clear productivity explanation
 
 OUTPUT INTERNALLY
 Show measurements, materials cost, labour man-days and labour cost, plant, waste, logistics, contingency, total hard cost, 30/35/40% margin prices, effective unit-rate sanity checks, recommended price and any review flags.
@@ -199,6 +225,7 @@ CUSTOMER OUTPUT
 Keep internal costing hidden unless requested.
 Show clear scope, measurements, finish, important assumptions, ex-VAT price, VAT and total.
 Normal materials, waste removal, grab/skip, deliveries and standard plant should be included within the relevant work price and not separately itemised.
+Do not explain package savings by naming specific internal disposal methods such as grab or skip unless the user asks for that detail. Use simple wording such as shared labour, deliveries, setup and mobilisation.
 
 FINAL INTERNAL QUESTION
 What will genuinely cost Furlads more on this site, have I priced that actual cost once - not twice - and have I kept normal internal costs hidden inside the work package?
