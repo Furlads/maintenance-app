@@ -128,43 +128,42 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
         </div>
       </section>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {FILTERS.map((filter) => {
-          const active = selected === filter.key
-          const count =
-            filter.key === 'active'
-              ? activeCount
-              : filter.key === 'all'
-                ? counts.reduce((total, item) => total + item._count._all, 0)
-                : countMap[filter.key] || 0
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {FILTERS.map((filter) => {
+            const active = selected === filter.key
+            const count =
+              filter.key === 'active'
+                ? activeCount
+                : filter.key === 'all'
+                  ? counts.reduce((total, item) => total + item._count._all, 0)
+                  : countMap[filter.key] || 0
 
-          return (
-            <Link
-              key={filter.key}
-              href={`/admin/quotes?status=${filter.key}`}
-              className={`flex-none rounded-full px-3 py-2 text-sm font-bold ring-1 ring-inset ${
-                active
-                  ? 'bg-zinc-950 text-white ring-zinc-950'
-                  : 'bg-white text-zinc-700 ring-zinc-200'
-              }`}
-            >
-              {filter.label} · {count}
-            </Link>
-          )
-        })}
-      </div>
-
-      {selected === 'archived' ? (
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <div>
-            <div className="text-sm font-black text-zinc-950">Archived quotes</div>
-            <div className="mt-1 text-xs font-medium text-zinc-500">
-              Clear the archive when you no longer need these old quote records.
-            </div>
-          </div>
-          <ClearArchiveButton count={archivedCount} />
+            return (
+              <Link
+                key={filter.key}
+                href={`/admin/quotes?status=${filter.key}`}
+                className={`flex-none rounded-full px-3 py-2 text-sm font-bold ring-1 ring-inset ${
+                  active
+                    ? 'bg-zinc-950 text-white ring-zinc-950'
+                    : 'bg-white text-zinc-700 ring-zinc-200'
+                }`}
+              >
+                {filter.label} · {count}
+              </Link>
+            )
+          })}
         </div>
-      ) : null}
+
+        {selected === 'archived' ? (
+          <div className="flex flex-none items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 shadow-sm">
+            <div className="hidden text-xs font-bold text-red-800 sm:block">
+              Remove all {archivedCount} archived quotes
+            </div>
+            <ClearArchiveButton count={archivedCount} />
+          </div>
+        ) : null}
+      </div>
 
       <section className="space-y-3">
         {quotes.length === 0 ? (
