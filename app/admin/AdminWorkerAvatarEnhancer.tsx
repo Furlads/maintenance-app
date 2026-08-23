@@ -140,35 +140,43 @@ function enhanceGenericWorkerCards(root: ParentNode) {
   }
 }
 
-async function enhanceLoggedInAdminHeader() {
-  const header = document.querySelector('header')
-  if (!header || header.querySelector('[data-admin-login-avatar]')) return
+function fixAdminDashboardHero(root: ParentNode) {
+  const hero = Array.from(root.querySelectorAll<HTMLElement>('section')).find((section) =>
+    (section.textContent || '').includes('Office control for today')
+  )
 
-  try {
-    const response = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'include' })
-    const data = await response.json().catch(() => null)
-    const name = String(data?.name || '').trim()
-    if (!name) return
+  if (!hero) return
 
-    const worker = WORKER_AVATARS.find((item) => item.namePattern.test(name))
-    if (!worker) return
+  hero.style.setProperty('background', 'linear-gradient(145deg, #111111, #1c1c1c)', 'important')
+  hero.style.setProperty('border-color', '#27272a', 'important')
+  hero.style.setProperty('color', '#ffffff', 'important')
 
-    const headerInner = header.firstElementChild as HTMLElement | null
-    const titleBlock = headerInner?.firstElementChild as HTMLElement | null
-    if (!titleBlock) return
+  hero.querySelectorAll<HTMLElement>('h2').forEach((element) => {
+    element.style.setProperty('color', '#ffffff', 'important')
+  })
 
-    titleBlock.style.display = 'flex'
-    titleBlock.style.alignItems = 'center'
-    titleBlock.style.gap = '12px'
+  hero.querySelectorAll<HTMLElement>('p').forEach((element) => {
+    element.style.setProperty('color', '#d4d4d8', 'important')
+  })
 
-    const avatar = makeAvatar(worker, 52)
-    avatar.dataset.adminLoginAvatar = 'true'
-    avatar.style.borderWidth = '3px'
-    avatar.style.boxShadow = '0 6px 16px rgba(17,24,39,.16)'
-    titleBlock.insertBefore(avatar, titleBlock.firstChild)
-  } catch {
-    // Avatar should never block Admin loading.
-  }
+  const eyebrow = Array.from(hero.querySelectorAll<HTMLElement>('div')).find(
+    (element) => element.textContent?.trim() === 'Daily overview'
+  )
+  eyebrow?.style.setProperty('color', '#d4d4d8', 'important')
+
+  const inbox = hero.querySelector<HTMLAnchorElement>('a[href="/admin/inbox"]')
+  inbox?.style.setProperty('background', '#ffffff', 'important')
+  inbox?.style.setProperty('color', '#111827', 'important')
+  inbox?.style.setProperty('border-color', '#ffffff', 'important')
+
+  const schedule = hero.querySelector<HTMLAnchorElement>('a[href="/admin/schedule"]')
+  schedule?.style.setProperty('background', 'rgba(255,255,255,0.12)', 'important')
+  schedule?.style.setProperty('color', '#ffffff', 'important')
+  schedule?.style.setProperty('border-color', 'rgba(255,255,255,0.22)', 'important')
+
+  const timeOff = hero.querySelector<HTMLAnchorElement>('a[href="/kelly/time-off"]')
+  timeOff?.style.setProperty('background', '#facc15', 'important')
+  timeOff?.style.setProperty('color', '#18130a', 'important')
 }
 
 function enhanceAdmin() {
@@ -177,8 +185,8 @@ function enhanceAdmin() {
     enhanceTeamCards(root)
     enhanceAssignedRows(root)
     enhanceGenericWorkerCards(root)
+    fixAdminDashboardHero(root)
   }
-  void enhanceLoggedInAdminHeader()
 }
 
 export default function AdminWorkerAvatarEnhancer() {
