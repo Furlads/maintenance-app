@@ -31,6 +31,47 @@ function parseMoney(value: string) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+  }).format(Number.isFinite(value) ? value : 0)
+}
+
+function firstName(value: string | null | undefined) {
+  return clean(value).split(/\s+/)[0] || "there"
+}
+
+function conciseExistingCustomerMessage(params: {
+  customerName: string | null
+  workerName: string | null
+  scope: string
+  priceExVat: number
+  totalIncVat: number
+}) {
+  const customer = firstName(params.customerName)
+  const worker = firstName(params.workerName)
+  const intro = worker.toLowerCase() === "trevor" || worker.toLowerCase() === "trev"
+    ? "I've got the details from the visit."
+    : `${worker} has sent me the details from the visit.`
+
+  return [
+    `Hi ${customer},`,
+    "",
+    intro,
+    "",
+    params.scope,
+    "",
+    `The cost for this would be ${formatMoney(params.priceExVat)} + VAT (${formatMoney(params.totalIncVat)} including VAT).`,
+    "",
+    "If you're happy with that, just let me know and I'll get it sorted for you 👍",
+    "",
+    "Thanks,",
+    "Kelly",
+    "Furlads",
+  ].join("\n")
+}
+
 function readSurveyPhotos(quoteWorking: string | null | undefined) {
   const value = clean(quoteWorking)
   if (!value) return [] as Array<{ url: string; fileName: string }>
@@ -142,6 +183,7 @@ function parseChasQuoteDraft(workSummary: string) {
       estimatedTeamSize != null && Number.isFinite(estimatedTeamSize) ? estimatedTeamSize : null,
     customerMessage,
     quoteWorking,
+    isMultiOption: Boolean(optionsAndPackages || allTogetherCombinations),
   }
 }
 
@@ -218,8 +260,9 @@ export async function POST(req: Request) {
         data: {
           conversationId: conversation.id,
           customerId,
+          jobId: message.jobId ?? null,
           source: "worker-quote",
-          senderName: message.customerName ?? message.worker,
+          senderName: message.worker ?? "Worker",
           senderEmail: message.customerEmail ?? undefined,
           senderPhone: message.customerPhone ?? undefined,
           subject: message.customerName ?? "Worker Quote Request",
@@ -247,6 +290,16 @@ export async function POST(req: Request) {
           orderBy: { updatedAt: "desc" },
         })
         const surveyPhotos = readSurveyPhotos(draftQuote?.quoteWorking)
+        const customerMessage =
+          customerId && !parsedDraft.isMultiOption
+            ? conciseExistingCustomerMessage({
+                customerName: message.customerName,
+                workerName: message.worker,
+                scope: parsedDraft.scope,
+                priceExVat: parsedDraft.priceExVat,
+                totalIncVat: parsedDraft.totalIncVat,
+              })
+            : parsedDraft.customerMessage || clean(message.answer) || null
 
         createdQuote = await prisma.quote.create({
           data: {
@@ -259,7 +312,7 @@ export async function POST(req: Request) {
             customerAddress: clean(message.customerAddress) || null,
             customerPostcode: clean(message.customerPostcode) || null,
             scope: parsedDraft.scope,
-            customerMessage: parsedDraft.customerMessage || clean(message.answer) || null,
+            customerMessage,
             internalNotes: clean(message.enquirySummary) || null,
             quoteWorking: appendSurveyPhotos(parsedDraft.quoteWorking || "", surveyPhotos) || null,
             priceExVat: parsedDraft.priceExVat,
