@@ -81,11 +81,14 @@ export default async function QuoteDetailPage({ params }: PageProps) {
   if (!quote) notFound()
 
   const storedSurveyPhotos = surveyPhotosFromWorking(quote.quoteWorking)
-  const workerPhotoRows = quote.conversationId
+  const workerPhotoRows = quote.conversationId || quote.jobId
     ? await prisma.chasMessage.findMany({
         where: {
-          conversationId: quote.conversationId,
           imageDataUrl: { not: null },
+          OR: [
+            ...(quote.conversationId ? [{ conversationId: quote.conversationId }] : []),
+            ...(quote.jobId ? [{ jobId: quote.jobId }] : []),
+          ],
         },
         orderBy: { createdAt: 'asc' },
         take: 12,
