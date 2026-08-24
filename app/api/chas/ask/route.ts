@@ -263,7 +263,6 @@ async function callOpenAI(params: {
           content,
         },
       ],
-      temperature: 0.3,
     }),
   })
 
