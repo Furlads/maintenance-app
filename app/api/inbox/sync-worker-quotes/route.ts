@@ -1,6 +1,28 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+async function ensureConversationForMessage(message: any) {
+  if (message.conversationId) return false
+
+  const conversation = await prisma.conversation.create({
+    data: {
+      source: 'worker-quote',
+      contactName:
+        message.subject?.trim() ||
+        message.senderName?.trim() ||
+        'Worker quote',
+      contactRef: `worker-quote-message-${message.id}`,
+    },
+  })
+
+  await prisma.inboxMessage.update({
+    where: { id: message.id },
+    data: { conversationId: conversation.id },
+  })
+
+  return true
+}
+
 async function runSync() {
   const enquiries = await prisma.chasMessage.findMany({
     where: {
@@ -13,6 +35,7 @@ async function runSync() {
   })
 
   let created = 0
+  let linked = 0
 
   for (const enquiry of enquiries) {
     const previewText =
@@ -48,29 +71,63 @@ async function runSync() {
       },
     })
 
-    if (!existing) {
-      await prisma.inboxMessage.create({
-        data: {
-          source: 'worker-quote',
-          senderName: enquiry.worker || 'Worker',
-          senderEmail: null,
-          subject: enquiry.customerName || 'Worker Quote Request',
-          preview: previewText,
-          body: bodyText,
-          status: 'unread',
-          assignedTo: 'Kelly',
-          createdAt: enquiry.createdAt,
-        },
-      })
-
-      created++
+    if (existing) {
+      if (await ensureConversationForMessage(existing)) linked++
+      continue
     }
+
+    const conversation = await prisma.conversation.create({
+      data: {
+        source: 'worker-quote',
+        contactName:
+          enquiry.customerName?.trim() ||
+          enquiry.worker?.trim() ||
+          'Worker quote',
+        contactRef: `worker-quote-enquiry-${enquiry.id}`,
+      },
+    })
+
+    await prisma.inboxMessage.create({
+      data: {
+        conversationId: conversation.id,
+        customerId: enquiry.customerId ?? null,
+        jobId: enquiry.jobId ?? null,
+        source: 'worker-quote',
+        senderName: enquiry.worker || 'Worker',
+        senderEmail: enquiry.customerEmail ?? null,
+        senderPhone: enquiry.customerPhone ?? null,
+        subject: enquiry.customerName || 'Worker Quote Request',
+        preview: previewText,
+        body: bodyText,
+        status: 'unread',
+        assignedTo: 'Kelly',
+        createdAt: enquiry.createdAt,
+      },
+    })
+
+    created++
+  }
+
+  const orphanMessages = await prisma.inboxMessage.findMany({
+    where: {
+      source: 'worker-quote',
+      conversationId: null,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+    take: 200,
+  })
+
+  for (const message of orphanMessages) {
+    if (await ensureConversationForMessage(message)) linked++
   }
 
   return {
     success: true,
     enquiriesFound: enquiries.length,
     created,
+    linked,
   }
 }
 
