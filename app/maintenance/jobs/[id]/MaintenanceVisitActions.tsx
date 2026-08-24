@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { upload } from '@vercel/blob/client'
 
 type OpportunitySource = 'worker_spotted' | 'customer_requested'
 type OpportunityStatus = 'open' | 'quote_created' | 'dismissed'
@@ -162,21 +163,24 @@ export default function MaintenanceVisitActions({ jobId, initialControls, initia
       setUploading(true)
       setError('')
       setMessage('')
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('label', 'Maintenance')
-      const workerId = typeof window !== 'undefined' ? localStorage.getItem('workerId') : ''
-      if (workerId) formData.append('workerId', workerId)
 
-      const response = await fetch(`/api/jobs/${jobId}/photos`, {
-        method: 'POST',
-        body: formData,
+      const workerIdValue = typeof window !== 'undefined' ? localStorage.getItem('workerId') : ''
+      const workerId = workerIdValue ? Number(workerIdValue) : null
+
+      await upload(file.name || `maintenance-${Date.now()}.jpg`, file, {
+        access: 'public',
+        handleUploadUrl: '/api/blob/upload',
+        clientPayload: JSON.stringify({
+          jobId,
+          workerId: Number.isInteger(workerId) && workerId && workerId > 0 ? workerId : null,
+          label: 'Maintenance',
+        }),
       })
-      const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(data?.error || 'Could not upload photo.')
+
       await loadPhotos()
       setMessage('Photo added. If you log an opportunity next, the latest photo will go with it.')
     } catch (err) {
+      console.error('Maintenance photo upload failed:', err)
       setError(err instanceof Error ? err.message : 'Could not upload photo.')
     } finally {
       setUploading(false)
