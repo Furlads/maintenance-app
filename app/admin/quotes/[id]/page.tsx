@@ -80,7 +80,38 @@ export default async function QuoteDetailPage({ params }: PageProps) {
   const quote = await prisma.quote.findUnique({ where: { id } })
   if (!quote) notFound()
 
-  const surveyPhotos = surveyPhotosFromWorking(quote.quoteWorking)
+  const storedSurveyPhotos = surveyPhotosFromWorking(quote.quoteWorking)
+  const workerPhotoRows = quote.conversationId
+    ? await prisma.chasMessage.findMany({
+        where: {
+          conversationId: quote.conversationId,
+          imageDataUrl: { not: null },
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 12,
+        select: {
+          imageDataUrl: true,
+          worker: true,
+          createdAt: true,
+        },
+      })
+    : []
+
+  const workerPhotos: SurveyPhoto[] = workerPhotoRows
+    .map((row, index) => {
+      const url = String(row.imageDataUrl || '').trim()
+      if (!url.startsWith('data:image/')) return null
+      return {
+        url,
+        fileName: `${row.worker || 'Worker'} site photo ${index + 1}`,
+      }
+    })
+    .filter((row): row is SurveyPhoto => row !== null)
+
+  const surveyPhotos = [...storedSurveyPhotos, ...workerPhotos]
+    .filter((photo, index, all) => all.findIndex((item) => item.url === photo.url) === index)
+    .slice(0, 12)
+
   const combinedPrice = allTogetherPriceFromWorking(quote.quoteWorking)
   const headlinePriceExVat = combinedPrice || quote.priceExVat
   const headlineVatRate = quote.vatRate || 20
