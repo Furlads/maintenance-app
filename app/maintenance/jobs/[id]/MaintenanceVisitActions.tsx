@@ -274,7 +274,7 @@ export default function MaintenanceVisitActions({ jobId, initialControls, initia
         <p className="mt-1 text-sm leading-6 text-blue-900">Use one for damage, an opportunity, an access issue, a useful before/after, or anything the office should see. If you upload one before logging an opportunity, the latest photo is attached to that lead.</p>
         <label className="mt-4 inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl bg-blue-900 px-4 text-sm font-black text-white">
           {uploading ? 'Uploading...' : 'Add photo'}
-          <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploading} onChange={(event) => { void uploadPhoto(event.target.files?.[0] || null); event.currentTarget.value = '' }} />
+          <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(event) => { void uploadPhoto(event.target.files?.[0] || null); event.currentTarget.value = '' }} />
         </label>
         {photos.length ? <div className="mt-3 text-sm font-bold text-blue-900">{photos.length} photo{photos.length === 1 ? '' : 's'} saved on this job.</div> : null}
       </section>
