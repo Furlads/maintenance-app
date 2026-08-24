@@ -48,22 +48,35 @@ function londonDateKey(date: Date) {
   }).format(date)
 }
 
+function dateFromKey(key: string) {
+  const [year, month, day] = key.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
+}
+
+function addDaysToKey(key: string, amount: number) {
+  const date = dateFromKey(key)
+  date.setUTCDate(date.getUTCDate() + amount)
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
 function makeDays(count = 14) {
   const days: Array<{ key: string; label: string; shortLabel: string }> = []
-  const now = new Date()
+  const todayKey = londonDateKey(new Date())
 
   for (let i = 0; i < count; i += 1) {
-    const date = new Date(now)
-    date.setDate(now.getDate() + i)
+    const key = addDaysToKey(todayKey, i)
+    const date = dateFromKey(key)
 
     days.push({
-      key: londonDateKey(date),
+      key,
       label: new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
         weekday: 'long',
         day: 'numeric',
         month: 'long',
       }).format(date),
       shortLabel: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
         weekday: 'short',
         day: 'numeric',
       }).format(date),
