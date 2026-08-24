@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { upload } from '@vercel/blob/client'
 import {
   ChangeEvent,
   KeyboardEvent,
@@ -562,19 +563,14 @@ export default function QuoteTestPage() {
   }
 
   async function uploadPhoto(file: File, id: string) {
-    const formData = new FormData()
-    formData.append('file', file)
-
     try {
-      const response = await fetch('/api/ai/quote/photos', {
-        method: 'POST',
-        body: formData,
+      const blob = await upload(file.name || `quote-${Date.now()}.jpg`, file, {
+        access: 'public',
+        handleUploadUrl: '/api/blob/quote-upload',
       })
 
-      const data = await response.json().catch(() => null)
-
-      if (!response.ok || !data?.url) {
-        throw new Error(data?.error || 'Photo upload failed.')
+      if (!blob?.url) {
+        throw new Error('Photo upload failed.')
       }
 
       setPhotos((current) =>
@@ -582,7 +578,7 @@ export default function QuoteTestPage() {
           photo.id === id
             ? {
                 ...photo,
-                uploadedUrl: data.url,
+                uploadedUrl: blob.url,
                 status: 'uploaded',
                 error: undefined,
               }
@@ -1291,7 +1287,6 @@ export default function QuoteTestPage() {
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               multiple
               onChange={handlePhotoSelection}
               className="hidden"
