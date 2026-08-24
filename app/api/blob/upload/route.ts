@@ -66,7 +66,13 @@ export async function POST(request: Request) {
         }
 
         return {
-          allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp'],
+          allowedContentTypes: [
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'image/heic',
+            'image/heif',
+          ],
           addRandomSuffix: true,
           tokenPayload: JSON.stringify(payload)
         }
