@@ -90,7 +90,6 @@ async function runSync() {
     await prisma.inboxMessage.create({
       data: {
         conversationId: conversation.id,
-        customerId: enquiry.customerId ?? null,
         jobId: enquiry.jobId ?? null,
         source: 'worker-quote',
         senderName: enquiry.worker || 'Worker',
