@@ -28,6 +28,14 @@ function isAdminLikeRole(value: string | null | undefined) {
   return ['admin', 'office', 'manager', 'owner'].includes(role)
 }
 
+function isJacobName(firstName: string | null | undefined, lastName: string | null | undefined) {
+  const fullName = `${String(firstName || '').trim()} ${String(lastName || '').trim()}`
+    .trim()
+    .toLowerCase()
+
+  return fullName === 'jacob walters' || fullName === 'jacob'
+}
+
 export default async function JobDetailLayout({ children, params }: LayoutProps) {
   const session = await getSession()
   const workerId = Number(session?.workerId)
@@ -45,7 +53,15 @@ export default async function JobDetailLayout({ children, params }: LayoutProps)
       jobType: true,
       status: true,
       assignments: {
-        select: { workerId: true },
+        select: {
+          workerId: true,
+          worker: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
       },
     },
   })
@@ -80,7 +96,13 @@ export default async function JobDetailLayout({ children, params }: LayoutProps)
     redirect(`/landscaping/jobs/${job.id}`)
   }
 
-  if (String(job.jobType || '').trim().toLowerCase() === 'maintenance') {
+  const isMaintenanceJob =
+    String(job.jobType || '').trim().toLowerCase() === 'maintenance' ||
+    job.assignments.some((assignment) =>
+      isJacobName(assignment.worker?.firstName, assignment.worker?.lastName)
+    )
+
+  if (isMaintenanceJob) {
     redirect(`/maintenance/jobs/${job.id}`)
   }
 
