@@ -142,59 +142,27 @@ function parseQuoteDraft(value: unknown): QuoteDraftDetails | null {
 
   return {
     scope,
-    quoteMode: valueAfterAny(
-      text,
-      ["Quote mode:"],
-      ["Scope:"]
-    ),
-    options: valueAfterAny(
-      text,
-      ["Options / packages:"],
-      [
-        "All-together combinations:",
-        "Reference price ex VAT:",
-        "Price ex VAT:",
-        "Customer-ready draft:",
-      ]
-    ),
-    combinedOffers: valueAfterAny(
-      text,
-      ["All-together combinations:"],
-      [
-        "Reference price ex VAT:",
-        "Price ex VAT:",
-        "Customer-ready draft:",
-      ]
-    ),
-    priceExVat: valueAfterAny(
-      text,
-      ["Reference price ex VAT:", "Price ex VAT:"],
-      ["Reference VAT:", "VAT:"]
-    ),
-    vat: valueAfterAny(
-      text,
-      ["Reference VAT:", "VAT:"],
-      ["Reference total inc VAT:", "Total inc VAT:"]
-    ),
-    totalIncVat: valueAfterAny(
-      text,
-      ["Reference total inc VAT:", "Total inc VAT:"],
-      [
-        "Reference estimated install:",
-        "Estimated install:",
-        "Customer-ready draft:",
-      ]
-    ),
-    estimatedInstall: valueAfterAny(
-      text,
-      ["Reference estimated install:", "Estimated install:"],
-      ["Customer-ready draft:"]
-    ),
-    customerDraft: valueAfterAny(
-      text,
-      ["Customer-ready draft:"],
-      ["Trevor / CHAS quote conversation:"]
-    ),
+    quoteMode: valueAfterAny(text, ["Quote mode:"], ["Scope:"]),
+    options: valueAfterAny(text, ["Options / packages:"], [
+      "All-together combinations:",
+      "Reference price ex VAT:",
+      "Price ex VAT:",
+      "Customer-ready draft:",
+    ]),
+    combinedOffers: valueAfterAny(text, ["All-together combinations:"], [
+      "Reference price ex VAT:",
+      "Price ex VAT:",
+      "Customer-ready draft:",
+    ]),
+    priceExVat: valueAfterAny(text, ["Reference price ex VAT:", "Price ex VAT:"], ["Reference VAT:", "VAT:"]),
+    vat: valueAfterAny(text, ["Reference VAT:", "VAT:"], ["Reference total inc VAT:", "Total inc VAT:"]),
+    totalIncVat: valueAfterAny(text, ["Reference total inc VAT:", "Total inc VAT:"], [
+      "Reference estimated install:",
+      "Estimated install:",
+      "Customer-ready draft:",
+    ]),
+    estimatedInstall: valueAfterAny(text, ["Reference estimated install:", "Estimated install:"], ["Customer-ready draft:"]),
+    customerDraft: valueAfterAny(text, ["Customer-ready draft:"], ["Trevor / CHAS quote conversation:"]),
     working: valueAfterAny(text, ["Trevor / CHAS quote conversation:"]),
   }
 }
@@ -225,16 +193,39 @@ function getCustomerDisplayName(conversation: any) {
   return "Customer details needed"
 }
 
+function parseWorkerQuoteMessage(value: unknown) {
+  const original = String(value || "").trim()
+  const urls = Array.from(original.matchAll(/https?:\/\/[^\s]+/g)).map((match) =>
+    match[0].replace(/[),.;]+$/, "")
+  )
+  const photoUrls = Array.from(
+    new Set(
+      urls.filter((url) =>
+        /vercel-storage\.com|\/jobs\/|\.(?:jpe?g|png|webp|heic|heif)(?:\?|$)/i.test(url)
+      )
+    )
+  )
+
+  let text = original
+  for (const url of photoUrls) {
+    text = text.replace(url, "")
+  }
+
+  text = text
+    .replace(/^\s*Photo:\s*$/gim, "")
+    .replace(/^\s*Photo:\s+/gim, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+
+  return { text, photoUrls }
+}
+
 export default async function AdminInboxThreadPage({ params }: PageProps) {
   const conversation = await prisma.conversation.findUnique({
-    where: {
-      id: params.conversationId,
-    },
+    where: { id: params.conversationId },
     include: {
       messages: {
-        orderBy: {
-          createdAt: "asc",
-        },
+        orderBy: { createdAt: "asc" },
       },
     },
   })
@@ -243,18 +234,10 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
     return (
       <div className="space-y-4">
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
-            Thread not found
-          </h1>
-          <p className="mt-2 text-sm text-zinc-600">
-            This inbox thread could not be found.
-          </p>
-
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Thread not found</h1>
+          <p className="mt-2 text-sm text-zinc-600">This inbox thread could not be found.</p>
           <div className="mt-4">
-            <Link
-              href="/admin/inbox"
-              className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white"
-            >
+            <Link href="/admin/inbox" className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white">
               Back to inbox
             </Link>
           </div>
@@ -316,18 +299,12 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
           <div>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <SourceBadge source={normalisedConversationSource} compact />
-              <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
-                {businessLabel}
-              </span>
+              <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">{businessLabel}</span>
               {isInternalQuoteDraft ? (
-                <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-[11px] font-bold text-yellow-900 ring-1 ring-inset ring-yellow-200">
-                  Quote ready for review
-                </span>
+                <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-[11px] font-bold text-yellow-900 ring-1 ring-inset ring-yellow-200">Quote ready for review</span>
               ) : null}
               {conversation.archived ? (
-                <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">
-                  Archived
-                </span>
+                <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200">Archived</span>
               ) : null}
             </div>
 
@@ -340,10 +317,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Link
-              href="/admin/inbox"
-              className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800"
-            >
+            <Link href="/admin/inbox" className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800">
               Back to inbox
             </Link>
           </div>
@@ -354,38 +328,24 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
         <>
           <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="max-w-4xl">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">
-                CHAS quote
-              </p>
-              <h2 className="mt-2 text-xl font-black text-zinc-950">
-                {quoteDraft.scope || "Quote scope"}
-              </h2>
-              <p className="mt-2 text-sm text-zinc-500">
-                Prepared by Trevor with CHAS · {formatDateTime(latestQuoteDraftMessage?.createdAt)}
-              </p>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">CHAS quote</p>
+              <h2 className="mt-2 text-xl font-black text-zinc-950">{quoteDraft.scope || "Quote scope"}</h2>
+              <p className="mt-2 text-sm text-zinc-500">Prepared by Trevor with CHAS · {formatDateTime(latestQuoteDraftMessage?.createdAt)}</p>
             </div>
 
             {isOptionsQuote ? (
               <div className="mt-5 space-y-4">
                 {quoteDraft.options ? (
                   <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
-                    <div className="text-xs font-black uppercase tracking-wide text-zinc-500">
-                      Separate prices / options
-                    </div>
-                    <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-900">
-                      {quoteDraft.options}
-                    </div>
+                    <div className="text-xs font-black uppercase tracking-wide text-zinc-500">Separate prices / options</div>
+                    <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-900">{quoteDraft.options}</div>
                   </div>
                 ) : null}
 
                 {quoteDraft.combinedOffers ? (
                   <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-inset ring-yellow-200">
-                    <div className="text-xs font-black uppercase tracking-wide text-yellow-800">
-                      If completed together
-                    </div>
-                    <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-900">
-                      {quoteDraft.combinedOffers}
-                    </div>
+                    <div className="text-xs font-black uppercase tracking-wide text-yellow-800">If completed together</div>
+                    <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-900">{quoteDraft.combinedOffers}</div>
                   </div>
                 ) : null}
 
@@ -436,9 +396,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
           <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <div className="border-b border-zinc-200 px-5 py-4">
               <h2 className="text-lg font-black text-zinc-950">Customer-ready quote</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                This is the clean message for Kelly to review before sending.
-              </p>
+              <p className="mt-1 text-sm text-zinc-500">This is the clean message for Kelly to review before sending.</p>
             </div>
 
             <div className="p-5">
@@ -455,9 +413,7 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
           </section>
 
           <details className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
-            <summary className="cursor-pointer px-5 py-4 text-sm font-bold text-zinc-900">
-              View quote working
-            </summary>
+            <summary className="cursor-pointer px-5 py-4 text-sm font-bold text-zinc-900">View quote working</summary>
             <div className="border-t border-zinc-200 p-5">
               <div className="whitespace-pre-wrap rounded-2xl bg-zinc-50 p-4 text-sm leading-6 text-zinc-700">
                 {quoteDraft.working || "No quote working saved."}
@@ -486,25 +442,59 @@ export default async function AdminInboxThreadPage({ params }: PageProps) {
               ) : (
                 conversation.messages.map((message: any) => {
                   const incoming = isIncomingMessage(conversation, message)
+                  const messageSource = normaliseSource(message?.source || conversation?.source || "")
+                  const isWorkerQuote = messageSource === "worker-quote"
+                  const rawText = String(message.body || "").trim() || String(message.preview || "").trim() || "No message content."
+                  const workerQuoteContent = isWorkerQuote
+                    ? parseWorkerQuoteMessage(rawText)
+                    : { text: rawText, photoUrls: [] as string[] }
 
                   return (
-                    <div key={message.id} className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
+                    <div
+                      key={message.id}
+                      className={isWorkerQuote ? "block w-full" : `flex ${incoming ? "justify-start" : "justify-end"}`}
+                    >
                       <div
-                        className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                        className={`${
+                          isWorkerQuote ? "w-full max-w-none" : "max-w-[85%]"
+                        } rounded-2xl px-4 py-3 shadow-sm ${
                           incoming
                             ? "border border-zinc-200 bg-white text-zinc-900"
                             : "bg-zinc-900 text-white"
                         }`}
                       >
-                        <div className={`mb-1 text-xs font-semibold ${incoming ? "text-zinc-500" : "text-zinc-300"}`}>
+                        <div className={`mb-2 text-sm font-semibold ${incoming ? "text-zinc-700" : "text-zinc-200"}`}>
                           {incoming
                             ? message.senderName || conversation.contactName || "Customer"
                             : "Furlads"}
                         </div>
-                        <div className="whitespace-pre-wrap text-sm leading-6">
-                          {String(message.body || "").trim() || String(message.preview || "").trim() || "No message content."}
+
+                        <div className="min-w-0 whitespace-pre-wrap break-words text-sm leading-6">
+                          {workerQuoteContent.text}
                         </div>
-                        <div className={`mt-2 text-xs ${incoming ? "text-zinc-400" : "text-zinc-300"}`}>
+
+                        {workerQuoteContent.photoUrls.length ? (
+                          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            {workerQuoteContent.photoUrls.map((url) => (
+                              <a
+                                key={url}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={url}
+                                  alt="Worker site photo"
+                                  className="h-auto max-h-[520px] w-full object-contain"
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className={`mt-3 text-xs ${incoming ? "text-zinc-400" : "text-zinc-300"}`}>
                           {formatDateTime(message.createdAt)}
                         </div>
                       </div>
