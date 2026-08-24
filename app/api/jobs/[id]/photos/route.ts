@@ -1,4 +1,6 @@
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 import { NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
@@ -30,6 +32,14 @@ function cleanFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9.-]/g, '-')
 }
 
+function jsonNoStore(body: unknown, init?: ResponseInit) {
+  const response = NextResponse.json(body, init)
+  response.headers.set('Cache-Control', 'no-store, max-age=0')
+  response.headers.set('CDN-Cache-Control', 'no-store')
+  response.headers.set('Vercel-CDN-Cache-Control', 'no-store')
+  return response
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
@@ -38,7 +48,7 @@ export async function GET(
     const jobId = parseJobId(params.id)
 
     if (!jobId) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: 'Invalid job id' },
         { status: 400 }
       )
@@ -46,14 +56,22 @@ export async function GET(
 
     const photos = await prisma.jobPhoto.findMany({
       where: { jobId },
-      orderBy: { createdAt: 'desc' }
+      select: {
+        id: true,
+        label: true,
+        imageUrl: true,
+        uploadedByWorkerId: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
     })
 
-    return NextResponse.json(photos)
+    return jsonNoStore(photos)
   } catch (error) {
     console.error('GET /api/jobs/[id]/photos failed:', error)
 
-    return NextResponse.json(
+    return jsonNoStore(
       { error: 'Failed to load photos' },
       { status: 500 }
     )
