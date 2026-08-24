@@ -378,3 +378,46 @@ body.app-polished.app-admin-view :where(aside, nav) a[class*="active"] {
   font-size: 15px;
   font-weight: 700;
 }
+
+/* ===== WORKER QUOTE THREADS =====
+   Worker-spotted opportunities are information cards, not chat bubbles.
+   Force their contents into a simple vertical stack on phones and show site photos full width.
+*/
+body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) > div {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) a[href*="vercel-storage.com"] {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-top: 14px !important;
+  min-height: 0 !important;
+}
+
+body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) a[href*="vercel-storage.com"] img {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: 560px !important;
+  object-fit: contain !important;
+}
+
+@media (max-width: 760px) {
+  body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) {
+    padding: 16px !important;
+  }
+}
