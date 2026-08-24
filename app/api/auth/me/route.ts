@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, workerKeyFromName } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 function normalise(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
@@ -31,6 +32,7 @@ export async function GET(_req: NextRequest) {
         workerKey: null,
         access: null,
         isAdmin: false,
+        workerId: null,
       },
       {
         status: 200,
@@ -43,6 +45,29 @@ export async function GET(_req: NextRequest) {
   const name = session.workerName || "";
   const isAdmin = isAdminLikeRole(role);
 
+  let workerId = Number(session.workerId);
+
+  if (!Number.isInteger(workerId) || workerId <= 0) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    const firstName = parts[0] || "";
+    const lastName = parts.slice(1).join(" ");
+
+    if (firstName) {
+      const worker = await prisma.worker.findFirst({
+        where: {
+          active: true,
+          firstName: { equals: firstName, mode: "insensitive" },
+          ...(lastName
+            ? { lastName: { equals: lastName, mode: "insensitive" } }
+            : {}),
+        },
+        select: { id: true },
+      });
+
+      workerId = worker?.id || 0;
+    }
+  }
+
   return NextResponse.json(
     {
       authenticated: true,
@@ -51,7 +76,7 @@ export async function GET(_req: NextRequest) {
       workerKey: workerKeyFromName(name),
       access: isAdmin ? "ADMIN" : "WORKER",
       isAdmin,
-      workerId: session.workerId || null,
+      workerId: workerId > 0 ? workerId : null,
     },
     {
       status: 200,
