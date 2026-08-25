@@ -22,6 +22,15 @@ function cleanText(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function fullName(firstName?: string | null, lastName?: string | null) {
+  return `${firstName || ''} ${lastName || ''}`.trim()
+}
+
+function isJacob(firstName?: string | null, lastName?: string | null) {
+  const name = fullName(firstName, lastName).toLowerCase()
+  return name === 'jacob walters' || name === 'jacob'
+}
+
 function extractResponseText(data: any) {
   if (typeof data?.output_text === 'string' && data.output_text.trim()) return data.output_text.trim()
   if (!Array.isArray(data?.output)) return ''
@@ -52,8 +61,15 @@ export async function POST(request: Request, { params }: RouteContext) {
       },
     })
 
-    if (!job || String(job.jobType || '').trim().toLowerCase() !== 'maintenance') {
-      return NextResponse.json({ ok: false, error: 'Maintenance job not found.' }, { status: 404 })
+    const isMaintenanceType = String(job?.jobType || '').trim().toLowerCase().includes('maintenance')
+    const assignedToJacob = Boolean(
+      job?.assignments.some((assignment) =>
+        isJacob(assignment.worker.firstName, assignment.worker.lastName)
+      )
+    )
+
+    if (!job || (!isMaintenanceType && !assignedToJacob)) {
+      return NextResponse.json({ ok: false, error: 'Three Counties job not found.' }, { status: 404 })
     }
 
     const [controls, previousMemory, previousNextVisit, session, recent] = await Promise.all([
@@ -72,7 +88,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const propertyMemory = controls.propertyMemory || previousMemory
     const nextVisitNote = controls.nextVisitNote || previousNextVisit
     const team = job.assignments
-      .map((assignment) => `${assignment.worker.firstName} ${assignment.worker.lastName}`.trim())
+      .map((assignment) => fullName(assignment.worker.firstName, assignment.worker.lastName))
       .filter(Boolean)
     const opportunities = controls.extraWork.length
       ? controls.extraWork.map((item) => `- ${item.source === 'customer_requested' ? 'Customer requested' : 'Worker spotted'}: ${item.description} (${item.status})`).join('\n')
@@ -87,8 +103,8 @@ export async function POST(request: Request, { params }: RouteContext) {
     const openai = new OpenAI({ apiKey })
     const response = await openai.responses.create({
       model: process.env.CHAS_MODEL || process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-      instructions: `You are CHAS, Furlads' practical in-app assistant helping field workers on a UK/Shropshire maintenance visit. Keep replies short, useful and phone-friendly. Use the exact customer/property/job context supplied. Be safety-first. Be conservative with plant identification or anything that could damage a plant/property: say when you are unsure and ask for a clearer photo through the main Ask Chas tool if needed. Do not give workers final customer prices. If the customer asks for extra work, tell the worker to log it as a CUSTOMER REQUESTED quote opportunity so Trev/Kelly can price it. If the worker merely notices possible work, tell them to log it as WORK SPOTTED. Consider seasonality and good horticultural practice, but do not invent facts about the property.`,
-      input: `Maintenance job #${job.id}\nCustomer: ${job.customer.name}\nAddress: ${job.address || job.customer.address || job.customer.postcode || 'Not saved'}\nVisit date: ${job.visitDate ? job.visitDate.toISOString().slice(0, 10) : 'Not booked'}\nAssigned team: ${team.length ? team.join(', ') : 'Not assigned'}\n\nToday's maintenance brief:\n${job.notes || job.title}\n\nPersistent property memory:\n${propertyMemory || 'None saved'}\n\nNote from/for the next visit:\n${nextVisitNote || 'None saved'}\n\nCurrent quote opportunities / extras:\n${opportunities}\n\nRecent CHAS conversation for this property visit:\n${history || 'None'}\n\nQuestion from ${workerName}: ${question}`,
+      instructions: `You are CHAS, the practical in-app assistant for Three Counties Property Care and Furlads. You are helping a field worker with a Three Counties job. Three Counties jobs are not limited to recurring garden maintenance: they can include general property care, repairs, garden work, clearance, handyman tasks and other agreed work. Treat the job shown in the supplied context as a valid assigned job and never tell the worker it is not their job merely because it is not labelled maintenance. Keep replies short, useful and phone-friendly. Use the exact customer/property/job context supplied. Be safety-first. Be conservative with plant identification or anything that could damage a plant/property: say when you are unsure and ask for a clearer photo through the main Ask CHAS tool if needed. Do not give workers final customer prices. If the customer asks for extra work, tell the worker to log it as a CUSTOMER REQUESTED quote opportunity so Trev/Kelly can price it. If the worker merely notices possible work, tell them to log it as WORK SPOTTED. Consider seasonality and good horticultural/property-care practice where relevant, but do not invent facts about the property.`,
+      input: `Three Counties job #${job.id}\nJob type: ${job.jobType || 'Property care'}\nCustomer: ${job.customer.name}\nAddress: ${job.address || job.customer.address || job.customer.postcode || 'Not saved'}\nVisit date: ${job.visitDate ? job.visitDate.toISOString().slice(0, 10) : 'Not booked'}\nAssigned team: ${team.length ? team.join(', ') : 'Not assigned'}\n\nToday's job brief:\n${job.notes || job.title}\n\nPersistent property memory:\n${propertyMemory || 'None saved'}\n\nNote from/for the next visit:\n${nextVisitNote || 'None saved'}\n\nCurrent quote opportunities / extras:\n${opportunities}\n\nRecent CHAS conversation for this property/job:\n${history || 'None'}\n\nQuestion from ${workerName}: ${question}`,
     })
 
     const answer = extractResponseText(response)
@@ -96,7 +112,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     await prisma.chasMessage.create({
       data: {
-        company: 'furlads',
+        company: 'three-counties',
         worker: workerName,
         workerId: Number.isInteger(workerId) ? workerId : null,
         jobId,
@@ -106,7 +122,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         confidence: 0.88,
         escalateTo: 'none',
         safetyFlag: false,
-        sessionId: `maintenance-job-${jobId}`,
+        sessionId: `three-counties-job-${jobId}`,
         customerName: job.customer.name,
         customerPhone: job.customer.phone,
         customerEmail: job.customer.email,
@@ -117,7 +133,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     return NextResponse.json({ ok: true, answer })
   } catch (error) {
-    console.error('MAINTENANCE CHAS ERROR', error)
+    console.error('THREE COUNTIES CHAS ERROR', error)
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : 'CHAS could not answer that right now.' },
       { status: 500 }
