@@ -26,9 +26,9 @@ function fullName(firstName?: string | null, lastName?: string | null) {
   return `${firstName || ''} ${lastName || ''}`.trim()
 }
 
-function isJacob(firstName?: string | null, lastName?: string | null) {
-  const name = fullName(firstName, lastName).toLowerCase()
-  return name === 'jacob walters' || name === 'jacob'
+function normaliseImage(value: unknown) {
+  const image = cleanText(value)
+  return image.startsWith('data:image/') ? image : ''
 }
 
 function extractResponseText(data: any) {
@@ -51,7 +51,10 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const body = await request.json().catch(() => ({}))
     const question = cleanText(body.question)
-    if (!question) return NextResponse.json({ ok: false, error: 'Ask CHAS a question first.' }, { status: 400 })
+    const imageDataUrl = normaliseImage(body.imageDataUrl)
+    if (!question && !imageDataUrl) {
+      return NextResponse.json({ ok: false, error: 'Ask CHAS a question or add a photo first.' }, { status: 400 })
+    }
 
     const job = await prisma.job.findUnique({
       where: { id: jobId },
@@ -61,15 +64,8 @@ export async function POST(request: Request, { params }: RouteContext) {
       },
     })
 
-    const isMaintenanceType = String(job?.jobType || '').trim().toLowerCase().includes('maintenance')
-    const assignedToJacob = Boolean(
-      job?.assignments.some((assignment) =>
-        isJacob(assignment.worker.firstName, assignment.worker.lastName)
-      )
-    )
-
-    if (!job || (!isMaintenanceType && !assignedToJacob)) {
-      return NextResponse.json({ ok: false, error: 'Three Counties job not found.' }, { status: 404 })
+    if (!job) {
+      return NextResponse.json({ ok: false, error: 'Job not found.' }, { status: 404 })
     }
 
     const [controls, previousMemory, previousNextVisit, session, recent] = await Promise.all([
@@ -101,28 +97,41 @@ export async function POST(request: Request, { params }: RouteContext) {
     const workerName = String(session?.workerName || 'Worker').trim() || 'Worker'
     const workerId = session?.workerId ? Number(session.workerId) : null
     const openai = new OpenAI({ apiKey })
+
+    const contextText = `Job #${job.id}\nJob type: ${job.jobType || 'General'}\nCustomer: ${job.customer.name}\nAddress: ${job.address || job.customer.address || job.customer.postcode || 'Not saved'}\nVisit date: ${job.visitDate ? job.visitDate.toISOString().slice(0, 10) : 'Not booked'}\nAssigned team: ${team.length ? team.join(', ') : 'Not assigned'}\n\nToday's job brief:\n${job.notes || job.title}\n\nPersistent property memory:\n${propertyMemory || 'None saved'}\n\nNote from/for the next visit:\n${nextVisitNote || 'None saved'}\n\nCurrent quote opportunities / extras:\n${opportunities}\n\nRecent CHAS conversation for this property/job:\n${history || 'None'}\n\nQuestion from ${workerName}: ${question || 'Please look at the attached photo and tell me what I should know or do.'}`
+
+    const content: Array<Record<string, unknown>> = [
+      { type: 'input_text', text: contextText },
+    ]
+    if (imageDataUrl) {
+      content.push({ type: 'input_image', image_url: imageDataUrl })
+    }
+
     const response = await openai.responses.create({
       model: process.env.CHAS_MODEL || process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-      instructions: `You are CHAS, the practical in-app assistant for Three Counties Property Care and Furlads. You are helping a field worker with a Three Counties job. Three Counties jobs are not limited to recurring garden maintenance: they can include general property care, repairs, garden work, clearance, handyman tasks and other agreed work. Treat the job shown in the supplied context as a valid assigned job and never tell the worker it is not their job merely because it is not labelled maintenance. Keep replies short, useful and phone-friendly. Use the exact customer/property/job context supplied. Be safety-first. Be conservative with plant identification or anything that could damage a plant/property: say when you are unsure and ask for a clearer photo through the main Ask CHAS tool if needed. Do not give workers final customer prices. If the customer asks for extra work, tell the worker to log it as a CUSTOMER REQUESTED quote opportunity so Trev/Kelly can price it. If the worker merely notices possible work, tell them to log it as WORK SPOTTED. Consider seasonality and good horticultural/property-care practice where relevant, but do not invent facts about the property.`,
-      input: `Three Counties job #${job.id}\nJob type: ${job.jobType || 'Property care'}\nCustomer: ${job.customer.name}\nAddress: ${job.address || job.customer.address || job.customer.postcode || 'Not saved'}\nVisit date: ${job.visitDate ? job.visitDate.toISOString().slice(0, 10) : 'Not booked'}\nAssigned team: ${team.length ? team.join(', ') : 'Not assigned'}\n\nToday's job brief:\n${job.notes || job.title}\n\nPersistent property memory:\n${propertyMemory || 'None saved'}\n\nNote from/for the next visit:\n${nextVisitNote || 'None saved'}\n\nCurrent quote opportunities / extras:\n${opportunities}\n\nRecent CHAS conversation for this property/job:\n${history || 'None'}\n\nQuestion from ${workerName}: ${question}`,
+      instructions: `You are CHAS, the practical in-app assistant for Three Counties Property Care and Furlads. Help field workers on ANY assigned job, regardless of the database job type. Jobs may be maintenance, landscaping, fencing, patios, groundworks, garden work, property care, repairs, clearance, handyman work, quoting or other agreed work. Never reject or undermine an assigned job because its job-type label is unfamiliar. Use the exact job context supplied. If a photo is attached, inspect it and use it to answer the worker's question. Keep replies short, useful and phone-friendly. Be safety-first. For plant identification, pruning, chemicals, structural concerns, electrics, gas or anything potentially damaging or dangerous, be conservative and say when you are unsure. Do not give workers final customer prices; Trev/Kelly confirm pricing. If the customer asks for extra work, tell the worker to log it as CUSTOMER REQUESTED. If the worker spots possible extra work, tell them to log it as WORK SPOTTED. Do not invent facts about the site.`,
+      input: [{ role: 'user', content }],
     })
 
     const answer = extractResponseText(response)
     if (!answer) throw new Error('CHAS returned no answer.')
 
+    const company = String(job.jobType || '').toLowerCase().includes('land') ? 'furlads' : 'three-counties'
+
     await prisma.chasMessage.create({
       data: {
-        company: 'three-counties',
+        company,
         worker: workerName,
         workerId: Number.isInteger(workerId) ? workerId : null,
         jobId,
-        question,
+        question: question || 'Photo question',
         answer,
+        imageDataUrl: imageDataUrl || null,
         intent: 'maintenance_property_help',
         confidence: 0.88,
         escalateTo: 'none',
         safetyFlag: false,
-        sessionId: `three-counties-job-${jobId}`,
+        sessionId: `job-${jobId}`,
         customerName: job.customer.name,
         customerPhone: job.customer.phone,
         customerEmail: job.customer.email,
@@ -133,7 +142,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     return NextResponse.json({ ok: true, answer })
   } catch (error) {
-    console.error('THREE COUNTIES CHAS ERROR', error)
+    console.error('JOB CHAS ERROR', error)
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : 'CHAS could not answer that right now.' },
       { status: 500 }
