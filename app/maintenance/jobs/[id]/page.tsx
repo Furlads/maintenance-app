@@ -41,6 +41,11 @@ function formatShortDate(value?: Date | null) {
   }).format(value)
 }
 
+function isJacob(firstName?: string | null, lastName?: string | null) {
+  const name = fullName(firstName, lastName).toLowerCase()
+  return name === 'jacob walters' || name === 'jacob'
+}
+
 export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
   const jobId = Number(params.id)
   if (!Number.isInteger(jobId) || jobId <= 0) notFound()
@@ -56,7 +61,14 @@ export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
     },
   })
 
-  if (!job || String(job.jobType || '').trim().toLowerCase() !== 'maintenance') notFound()
+  if (!job) notFound()
+
+  const maintenanceType = String(job.jobType || '').trim().toLowerCase().includes('maintenance')
+  const assignedToJacob = job.assignments.some((assignment) =>
+    isJacob(assignment.worker.firstName, assignment.worker.lastName)
+  )
+
+  if (!maintenanceType && !assignedToJacob) notFound()
 
   const [controls, previousNextVisitNote, previousPropertyMemory, photoHistory] = await Promise.all([
     getMaintenanceControls(job.id),
