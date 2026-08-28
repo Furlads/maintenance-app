@@ -3,6 +3,10 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  countLandscapingWorkingDays,
+  LANDSCAPING_WORKDAY_MINUTES,
+} from '@/lib/landscaping-schedule'
 
 type Customer = {
   id: number
@@ -156,6 +160,7 @@ export default function AddJobPage() {
   const [postcode, setPostcode] = useState('')
   const [notes, setNotes] = useState('')
   const [visitDate, setVisitDate] = useState(todayLocalDate())
+  const [finishDate, setFinishDate] = useState(todayLocalDate())
   const [startTime, setStartTime] = useState('')
   const [fixedSchedule, setFixedSchedule] = useState(false)
   const [durationMinutes, setDurationMinutes] = useState('60')
@@ -371,7 +376,16 @@ export default function AddJobPage() {
         return
       }
 
-      const parsedDuration = Number(durationMinutes)
+      let parsedDuration = Number(durationMinutes)
+
+      if (isLandscapingJobType(jobType)) {
+        const workingDays = countLandscapingWorkingDays(visitDate, finishDate)
+        if (!visitDate || !finishDate || workingDays < 1) {
+          setError('Please choose a finish date on or after the landscaping start date.')
+          return
+        }
+        parsedDuration = workingDays * LANDSCAPING_WORKDAY_MINUTES
+      }
 
       if (!Number.isFinite(parsedDuration) || parsedDuration <= 0) {
         setError('Please choose a valid job duration.')
@@ -585,14 +599,9 @@ export default function AddJobPage() {
                   </label>
 
                   {isLandscapingJobType(jobType) ? (
-                    <select
-                      value={durationMinutes}
-                      onChange={(e) => setDurationMinutes(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                    >
-                      <option value="195">Half day</option>
-                      <option value="390">Full day</option>
-                    </select>
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
+                      Calculated from the start and finish dates below.
+                    </div>
                   ) : (
                     <input
                       value={durationMinutes}
@@ -611,10 +620,32 @@ export default function AddJobPage() {
                   <input
                     type="date"
                     value={visitDate}
-                    onChange={(e) => setVisitDate(e.target.value)}
+                    onChange={(e) => {
+                      const nextDate = e.target.value
+                      setVisitDate(nextDate)
+                      if (!finishDate || finishDate < nextDate) setFinishDate(nextDate)
+                    }}
                     className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
                 </div>
+
+                {isLandscapingJobType(jobType) && (
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-zinc-800">
+                      Finish date
+                    </label>
+                    <input
+                      type="date"
+                      min={visitDate || undefined}
+                      value={finishDate}
+                      onChange={(e) => setFinishDate(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Assigned workers will be blocked out on every weekday through this date.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-zinc-800">
