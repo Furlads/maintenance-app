@@ -32,6 +32,17 @@ type WorkerItem = {
   active?: boolean
 }
 
+type EditForm = {
+  workerId: string
+  requestType: string
+  isFullDay: boolean
+  startDate: string
+  endDate: string
+  startTime: string
+  endTime: string
+  reason: string
+}
+
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
@@ -75,6 +86,11 @@ function inputStyle(): React.CSSProperties {
   }
 }
 
+function dateInputValue(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10)
+}
+
 export default function KellyTimeOffPage() {
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [workers, setWorkers] = useState<WorkerItem[]>([])
@@ -84,6 +100,8 @@ export default function KellyTimeOffPage() {
   const [busyId, setBusyId] = useState<number | null>(null)
   const [creatingManual, setCreatingManual] = useState(false)
   const [message, setMessage] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<EditForm | null>(null)
 
   const [selectedWorkerId, setSelectedWorkerId] = useState('')
   const [requestType, setRequestType] = useState('holiday')
@@ -237,6 +255,91 @@ export default function KellyTimeOffPage() {
     } catch (error: any) {
       console.error(error)
       setMessage(String(error?.message || 'Failed to decline request.'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  function startEditing(item: RequestItem) {
+    setMessage('')
+    setEditingId(item.id)
+    setEditForm({
+      workerId: String(item.worker.id),
+      requestType: item.requestType,
+      isFullDay: item.isFullDay,
+      startDate: dateInputValue(item.startDate),
+      endDate: dateInputValue(item.endDate),
+      startTime: item.startTime || '09:00',
+      endTime: item.endTime || '16:30',
+      reason: item.reason || '',
+    })
+  }
+
+  function cancelEditing() {
+    if (busyId !== null) return
+    setEditingId(null)
+    setEditForm(null)
+  }
+
+  function updateEditForm<K extends keyof EditForm>(key: K, value: EditForm[K]) {
+    setEditForm((current) => (current ? { ...current, [key]: value } : current))
+  }
+
+  async function saveApprovedHoliday(id: number) {
+    if (!editForm) return
+
+    if (!editForm.workerId || !editForm.startDate || !editForm.endDate) {
+      setMessage('Please choose a worker and date range.')
+      return
+    }
+
+    if (editForm.endDate < editForm.startDate) {
+      setMessage('End date cannot be before start date.')
+      return
+    }
+
+    if (!editForm.isFullDay && (!editForm.startTime || !editForm.endTime)) {
+      setMessage('Please choose the start and end time.')
+      return
+    }
+
+    try {
+      setBusyId(id)
+      setMessage('')
+
+      const res = await fetch(`/api/kelly/time-off/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workerId: Number(editForm.workerId),
+          requestType: editForm.requestType,
+          isFullDay: editForm.isFullDay,
+          startDate: editForm.startDate,
+          endDate: editForm.endDate,
+          startTime: editForm.isFullDay ? null : editForm.startTime,
+          endTime: editForm.isFullDay ? null : editForm.endTime,
+          reason: editForm.reason,
+          reviewedByName: 'Kelly',
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Failed to update the approved holiday.')
+      }
+
+      const moved = Array.isArray(data?.impactedJobIds) ? data.impactedJobIds.length : 0
+      setMessage(
+        moved > 0
+          ? `Holiday updated. ${moved} impacted job${moved === 1 ? '' : 's'} returned to scheduling.`
+          : 'Holiday updated successfully.'
+      )
+      setEditingId(null)
+      setEditForm(null)
+      await loadRequests(statusFilter)
+    } catch (error: any) {
+      console.error(error)
+      setMessage(String(error?.message || 'Failed to update the approved holiday.'))
     } finally {
       setBusyId(null)
     }
@@ -713,6 +816,121 @@ export default function KellyTimeOffPage() {
                       >
                         {busyId === item.id ? 'Working...' : 'Decline'}
                       </button>
+                    </div>
+                  )}
+
+                  {item.status === 'approved' && editingId !== item.id && (
+                    <div style={{ marginTop: 14 }}>
+                      <button
+                        type="button"
+                        onClick={() => startEditing(item)}
+                        disabled={busyId !== null}
+                        style={{
+                          minHeight: 46,
+                          padding: '12px 16px',
+                          borderRadius: 12,
+                          border: '1px solid #166534',
+                          background: '#fff',
+                          color: '#166534',
+                          fontWeight: 800,
+                          cursor: busyId !== null ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        Edit accepted holiday
+                      </button>
+                    </div>
+                  )}
+
+                  {item.status === 'approved' && editingId === item.id && editForm && (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        padding: 14,
+                        borderRadius: 14,
+                        border: '1px solid #b7dfbb',
+                        background: '#f3fbf4',
+                        display: 'grid',
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, fontSize: 18 }}>Edit accepted holiday</div>
+
+                      <select
+                        aria-label="Worker"
+                        value={editForm.workerId}
+                        onChange={(e) => updateEditForm('workerId', e.target.value)}
+                        style={inputStyle()}
+                        disabled={busyId === item.id}
+                      >
+                        {workers.map((worker) => (
+                          <option key={worker.id} value={worker.id}>{workerLabel(worker)}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        aria-label="Time off type"
+                        value={editForm.requestType}
+                        onChange={(e) => updateEditForm('requestType', e.target.value)}
+                        style={inputStyle()}
+                        disabled={busyId === item.id}
+                      >
+                        <option value="holiday">Holiday</option>
+                        <option value="day_off">Day off</option>
+                        <option value="early_finish">Early finish</option>
+                        <option value="late_start">Late start</option>
+                        <option value="appointment">Appointment / part-day off</option>
+                        <option value="sick">Sick / emergency</option>
+                      </select>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700 }}>
+                        <input
+                          type="checkbox"
+                          checked={editForm.isFullDay}
+                          onChange={(e) => updateEditForm('isFullDay', e.target.checked)}
+                          disabled={busyId === item.id}
+                        />
+                        Full day
+                      </label>
+
+                      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                        <input aria-label="Start date" type="date" value={editForm.startDate} onChange={(e) => updateEditForm('startDate', e.target.value)} style={inputStyle()} disabled={busyId === item.id} />
+                        <input aria-label="End date" type="date" value={editForm.endDate} onChange={(e) => updateEditForm('endDate', e.target.value)} style={inputStyle()} disabled={busyId === item.id} />
+                      </div>
+
+                      {!editForm.isFullDay && (
+                        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                          <input aria-label="Start time" type="time" value={editForm.startTime} onChange={(e) => updateEditForm('startTime', e.target.value)} style={inputStyle()} disabled={busyId === item.id} />
+                          <input aria-label="End time" type="time" value={editForm.endTime} onChange={(e) => updateEditForm('endTime', e.target.value)} style={inputStyle()} disabled={busyId === item.id} />
+                        </div>
+                      )}
+
+                      <textarea
+                        aria-label="Reason or note"
+                        value={editForm.reason}
+                        onChange={(e) => updateEditForm('reason', e.target.value)}
+                        placeholder="Reason / note"
+                        disabled={busyId === item.id}
+                        style={{ ...inputStyle(), minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }}
+                      />
+
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => saveApprovedHoliday(item.id)}
+                          disabled={busyId === item.id}
+                          style={{ minHeight: 46, padding: '12px 16px', borderRadius: 12, border: 0, background: '#166534', color: '#fff', fontWeight: 800, cursor: busyId === item.id ? 'not-allowed' : 'pointer' }}
+                        >
+                          {busyId === item.id ? 'Saving...' : 'Save changes'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditing}
+                          disabled={busyId === item.id}
+                          style={{ minHeight: 46, padding: '12px 16px', borderRadius: 12, border: '1px solid #ccc', background: '#fff', color: '#111', fontWeight: 800, cursor: busyId === item.id ? 'not-allowed' : 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
