@@ -496,6 +496,72 @@ async function ensureFutureRecurringMaintenanceJobs(args: {
   return createdJobs
 }
 
+async function realignFutureRecurringMaintenanceJobs(args: {
+  previousVisitDate: Date
+  anchorJob: {
+    id: number
+    title: string
+    customerId: number
+    jobType: string
+    visitDate: Date | null
+    visitPattern: string | null
+    isRegularMaintenance: boolean | null
+    maintenanceFrequency: string | null
+    maintenanceFrequencyUnit: string | null
+    maintenanceFrequencyWeeks: number | null
+  }
+}) {
+  const job = args.anchorJob
+  if (!job.visitDate || !isRegularMaintenanceJob(job)) return []
+
+  const futureJobs = await prisma.job.findMany({
+    where: {
+      id: { not: job.id },
+      customerId: job.customerId,
+      title: job.title,
+      jobType: job.jobType,
+      visitPattern: job.visitPattern,
+      isRegularMaintenance: true,
+      maintenanceFrequency: job.maintenanceFrequency,
+      maintenanceFrequencyUnit: job.maintenanceFrequencyUnit,
+      maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
+      visitDate: { gt: args.previousVisitDate },
+      status: { notIn: ['done', 'cancelled', 'archived'] },
+    },
+    orderBy: [{ visitDate: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true, visitDate: true },
+  })
+
+  let previousDate = job.visitDate
+  const realigned: Array<{ id: number; previousDate: Date | null; visitDate: Date }> = []
+
+  await prisma.$transaction(async (tx) => {
+    for (const futureJob of futureJobs) {
+      const nextDate = calculateNextMaintenanceVisitDate({
+        baseDate: previousDate,
+        maintenanceFrequency: job.maintenanceFrequency,
+        maintenanceFrequencyUnit: job.maintenanceFrequencyUnit,
+        maintenanceFrequencyWeeks: job.maintenanceFrequencyWeeks,
+      })
+      if (!nextDate) break
+
+      await tx.job.update({
+        where: { id: futureJob.id },
+        data: { visitDate: nextDate },
+      })
+
+      realigned.push({
+        id: futureJob.id,
+        previousDate: futureJob.visitDate,
+        visitDate: nextDate,
+      })
+      previousDate = nextDate
+    }
+  })
+
+  return realigned
+}
+
 async function buildNotesLog(jobId: number) {
   const notes = await prisma.jobNote.findMany({
     where: { jobId },
@@ -1578,6 +1644,31 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return result
     })
 
+    let realignedRecurringJobs: unknown[] = []
+    const visitDateChanged =
+      Boolean(existing.visitDate) &&
+      Boolean(updated.visitDate) &&
+      londonDateOnlyString(existing.visitDate as Date) !==
+        londonDateOnlyString(updated.visitDate as Date)
+
+    if (visitDateChanged && existing.visitDate) {
+      realignedRecurringJobs = await realignFutureRecurringMaintenanceJobs({
+        previousVisitDate: existing.visitDate,
+        anchorJob: {
+          id: updated.id,
+          title: updated.title,
+          customerId: updated.customerId,
+          jobType: updated.jobType,
+          visitDate: updated.visitDate,
+          visitPattern: updated.visitPattern,
+          isRegularMaintenance: updated.isRegularMaintenance,
+          maintenanceFrequency: updated.maintenanceFrequency,
+          maintenanceFrequencyUnit: updated.maintenanceFrequencyUnit,
+          maintenanceFrequencyWeeks: updated.maintenanceFrequencyWeeks,
+        },
+      })
+    }
+
     let nextRecurringJobs: unknown[] = []
 
     if (updated.status === 'done') {
@@ -1656,6 +1747,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
         assignedWorkerIdsForResponse ??
         (refreshed ?? updated).assignments.map((assignment) => assignment.workerId),
       nextRecurringJobs,
+      realignedRecurringJobs,
     })
   } catch (error) {
     console.error('PATCH /api/jobs/[id] failed:', error)
