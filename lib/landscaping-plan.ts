@@ -1,9 +1,10 @@
 import OpenAI from 'openai'
 import prisma from '@/lib/prisma'
+import { LANDSCAPING_WORKDAY_MINUTES } from '@/lib/landscaping-schedule'
 
 export const LANDSCAPING_PLAN_PREFIX = 'LANDSCAPING_PLAN_JSON:'
 const FIELD_LABOUR_COST_PER_PERSON_DAY = 225
-const INSTALL_DAY_MINUTES = 450
+const INSTALL_DAY_MINUTES = LANDSCAPING_WORKDAY_MINUTES
 
 type DayPlan = {
   day: number
