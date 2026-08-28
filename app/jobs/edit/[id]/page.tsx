@@ -3,6 +3,11 @@
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import {
+  countLandscapingWorkingDays,
+  getLandscapingFinishDate,
+  LANDSCAPING_WORKDAY_MINUTES,
+} from '@/lib/landscaping-schedule'
 
 type Customer = {
   id: number
@@ -208,11 +213,6 @@ function isQuoteJobType(jobType: string) {
   )
 }
 
-function normaliseLandscapingDuration(value: number | null | undefined) {
-  if (typeof value !== 'number' || value <= 0) return '390'
-  return value <= 195 ? '195' : '390'
-}
-
 function normaliseMaintenanceFrequency(
   value: string | null | undefined
 ): MaintenanceFrequency {
@@ -295,6 +295,7 @@ export default function EditJobPage() {
   const [jobAddress, setJobAddress] = useState('')
   const [durationMinutes, setDurationMinutes] = useState('60')
   const [visitDate, setVisitDate] = useState('')
+  const [finishDate, setFinishDate] = useState('')
   const [startTime, setStartTime] = useState('')
   const [fixedSchedule, setFixedSchedule] = useState(false)
   const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
@@ -419,13 +420,17 @@ export default function EditJobPage() {
         setStatus(jobData.status || 'todo')
         setJobType(jobData.jobType || 'Quote')
         setDurationMinutes(
-          isLandscapingJobType(jobData.jobType || '')
-            ? normaliseLandscapingDuration(jobData.durationMinutes)
-            : typeof jobData.durationMinutes === 'number' && jobData.durationMinutes > 0
+          typeof jobData.durationMinutes === 'number' && jobData.durationMinutes > 0
               ? String(jobData.durationMinutes)
               : '60'
         )
-        setVisitDate(toDateInputValue(jobData.visitDate))
+        const loadedVisitDate = toDateInputValue(jobData.visitDate)
+        setVisitDate(loadedVisitDate)
+        setFinishDate(
+          isLandscapingJobType(jobData.jobType || '') && loadedVisitDate
+            ? getLandscapingFinishDate(loadedVisitDate, jobData.durationMinutes)
+            : loadedVisitDate
+        )
         setStartTime(jobData.startTime || '')
         setFixedSchedule(Boolean(jobData.fixedSchedule))
         setAssignedWorkerIds(loadedAssignedWorkerIds)
@@ -514,7 +519,17 @@ export default function EditJobPage() {
     setMessage('')
 
     try {
-      const parsedDuration = Number(durationMinutes)
+      let parsedDuration = Number(durationMinutes)
+
+      if (isLandscapingJobType(jobType)) {
+        const workingDays = countLandscapingWorkingDays(visitDate, finishDate)
+        if (!visitDate || !finishDate || workingDays < 1) {
+          throw new Error(
+            'Please choose a finish date on or after the landscaping start date.'
+          )
+        }
+        parsedDuration = workingDays * LANDSCAPING_WORKDAY_MINUTES
+      }
 
       if (!Number.isFinite(jobId) || jobId <= 0) {
         throw new Error('Invalid job id.')
@@ -780,15 +795,9 @@ export default function EditJobPage() {
                   </FieldLabel>
 
                   {isLandscapingJobType(jobType) ? (
-                    <select
-                      value={durationMinutes}
-                      onChange={(e) => setDurationMinutes(e.target.value)}
-                      required
-                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                    >
-                      <option value="195">Half day</option>
-                      <option value="390">Full day</option>
-                    </select>
+                    <div className="min-h-[48px] rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
+                      Calculated from the start and finish dates below.
+                    </div>
                   ) : (
                     <input
                       type="number"
@@ -814,10 +823,30 @@ export default function EditJobPage() {
                   <input
                     type="date"
                     value={visitDate}
-                    onChange={(e) => setVisitDate(e.target.value)}
+                    onChange={(e) => {
+                      const nextDate = e.target.value
+                      setVisitDate(nextDate)
+                      if (!finishDate || finishDate < nextDate) setFinishDate(nextDate)
+                    }}
                     className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                   />
                 </div>
+
+                {isLandscapingJobType(jobType) && (
+                  <div>
+                    <FieldLabel>Finish Date</FieldLabel>
+                    <input
+                      type="date"
+                      min={visitDate || undefined}
+                      value={finishDate}
+                      onChange={(e) => setFinishDate(e.target.value)}
+                      className="min-h-[48px] w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                    />
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Assigned workers will be blocked out on every weekday through this date.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <FieldLabel>Start Time</FieldLabel>
