@@ -42,15 +42,17 @@ function findJobContainer(link: HTMLAnchorElement) {
 function ensureOpenJobButton(container: HTMLElement, jobId: string, maintenance: boolean) {
   if (container.querySelector(`[data-worker-open-job="${jobId}"]`)) return
 
-  const host =
-    container.querySelector<HTMLElement>('.today-quick-actions') ||
-    container.querySelector<HTMLElement>('.today-active-actions') ||
-    container.querySelector<HTMLElement>('.today-job-actions')
+  const actionGroups = Array.from(
+    container.querySelectorAll<HTMLElement>('.today-quick-actions, .today-active-actions, .today-job-actions')
+  )
+  const anchor = actionGroups[actionGroups.length - 1]
+  if (!anchor) return
 
-  if (!host) return
-
+  const host = document.createElement('div')
+  host.dataset.workerOpenJobHost = jobId
   host.style.display = 'grid'
   host.style.gridTemplateColumns = '1fr'
+  host.style.marginTop = '10px'
 
   const link = document.createElement('a')
   link.href = maintenance ? `/maintenance/jobs/${jobId}` : `/jobs/${jobId}`
@@ -70,7 +72,8 @@ function ensureOpenJobButton(container: HTMLElement, jobId: string, maintenance:
   link.style.fontSize = '15px'
   link.style.width = '100%'
 
-  host.prepend(link)
+  host.appendChild(link)
+  anchor.insertAdjacentElement('afterend', host)
 }
 
 export default function MaintenanceTodayBridge({ maintenanceJobIds }: Props) {
@@ -80,36 +83,35 @@ export default function MaintenanceTodayBridge({ maintenanceJobIds }: Props) {
     function simplifyWorkerCards() {
       const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href^="/jobs/"]'))
 
-      for (const link of links) {
-        const match = link.getAttribute('href')?.match(/^\/jobs\/(\d+)/)
+      for (const sourceLink of links) {
+        const match = sourceLink.getAttribute('href')?.match(/^\/jobs\/(\d+)/)
         if (!match) continue
 
-        const container = findJobContainer(link)
+        const container = findJobContainer(sourceLink)
         if (!container) continue
 
         const jobId = match[1]
         const maintenance = maintenanceIds.has(jobId)
         container.dataset.simpleWorkerJobCard = jobId
 
-        const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-        for (const button of buttons) {
+        container.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
           if (LEGACY_ACTIONS.has(cleanText(button.textContent))) {
-            button.style.display = 'none'
+            button.hidden = true
+            button.setAttribute('aria-hidden', 'true')
           }
-        }
+        })
 
-        const actionGroups = Array.from(
-          container.querySelectorAll<HTMLElement>('.today-quick-actions, .today-active-actions, .today-job-actions')
-        )
+        container
+          .querySelectorAll<HTMLElement>('.today-quick-actions, .today-active-actions, .today-job-actions')
+          .forEach((group) => {
+            const usefulControls = Array.from(group.querySelectorAll<HTMLElement>('a,button')).filter((control) => {
+              if (control.hidden) return false
+              const text = cleanText(control.textContent)
+              return text && !LEGACY_ACTIONS.has(text)
+            })
 
-        for (const group of actionGroups) {
-          const usefulControls = Array.from(group.querySelectorAll<HTMLElement>('a,button')).filter((control) => {
-            const text = cleanText(control.textContent)
-            return text && !LEGACY_ACTIONS.has(text) && !control.dataset.workerOpenJob
+            if (!usefulControls.length) group.hidden = true
           })
-
-          if (!usefulControls.length) group.style.display = 'none'
-        }
 
         ensureOpenJobButton(container, jobId, maintenance)
       }
