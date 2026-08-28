@@ -92,8 +92,7 @@ export function proxy(req: NextRequest) {
     pathname.startsWith("/api/inbox/wix/forms") ||
     pathname.startsWith("/api/blob") ||
     pathname.startsWith("/api/business") ||
-    pathname.startsWith("/api/companies") ||
-    pathname.startsWith("/api/menu");
+    pathname.startsWith("/api/companies");
 
   if (isPublicPath || isPublicApiPath) {
     return NextResponse.next();
@@ -106,6 +105,7 @@ export function proxy(req: NextRequest) {
     pathname.startsWith("/customers") ||
     pathname.startsWith("/calendar") ||
     pathname.startsWith("/settings") ||
+    pathname.startsWith("/menu") ||
     pathname.startsWith("/worker/") ||
     pathname.startsWith("/chas") ||
     pathname.startsWith("/book-follow-up") ||
