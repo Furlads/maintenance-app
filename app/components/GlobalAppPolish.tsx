@@ -13,7 +13,8 @@ function routeMode(pathname: string) {
     pathname.startsWith('/my-visits') ||
     pathname.startsWith('/chas') ||
     pathname.startsWith('/jobs') ||
-    pathname.startsWith('/calendar')
+    pathname.startsWith('/calendar') ||
+    pathname.startsWith('/menu')
   ) {
     return 'worker'
   }
