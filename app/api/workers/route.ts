@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { titleCasePersonName } from "@/lib/nameCase";
 
 const CODIE_AVATAR_URL = "/branding/workers/codie-furlads-avatar.jpg";
 const STEVE_AVATAR_URL = "/branding/workers/steve-furlads-avatar.webp";
@@ -17,30 +18,14 @@ function clean(value: unknown) {
 
 function isAdminLikeRole(role: string | null | undefined) {
   const value = norm(role);
-
-  return (
-    value === "admin" ||
-    value === "office" ||
-    value === "manager" ||
-    value === "owner"
-  );
+  return value === "admin" || value === "office" || value === "manager" || value === "owner";
 }
 
 function splitName(name: string) {
-  const parts = clean(name).split(/\s+/).filter(Boolean);
-
-  if (parts.length === 0) {
-    return { firstName: "", lastName: "" };
-  }
-
-  if (parts.length === 1) {
-    return { firstName: parts[0], lastName: "" };
-  }
-
-  return {
-    firstName: parts.shift() || "",
-    lastName: parts.join(" "),
-  };
+  const parts = titleCasePersonName(name).split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts.shift() || "", lastName: parts.join(" ") };
 }
 
 function workerPhotoUrl(firstName: string | null | undefined) {
@@ -55,13 +40,7 @@ function workerPhotoUrl(firstName: string | null | undefined) {
 export async function GET(req: Request) {
   try {
     const session = await getSession();
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Unauthenticated." },
-        { status: 401 }
-      );
-    }
+    if (!session) return NextResponse.json({ error: "Unauthenticated." }, { status: 401 });
 
     const url = new URL(req.url);
     const company = norm(url.searchParams.get("company"));
@@ -69,17 +48,11 @@ export async function GET(req: Request) {
     const isAdmin = isAdminLikeRole(session.role);
 
     if (!isAdmin && (company || includeArchived)) {
-      return NextResponse.json(
-        { error: "Forbidden." },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
     const where: any = {};
-
-    if (!includeArchived) {
-      where.active = true;
-    }
+    if (!includeArchived) where.active = true;
 
     const workers = await prisma.worker.findMany({
       where,
@@ -93,37 +66,26 @@ export async function GET(req: Request) {
         jobTitle: true,
         createdAt: true,
       },
-      orderBy: {
-        firstName: "asc",
-      },
+      orderBy: { firstName: "asc" },
     });
 
     if (isAdmin) {
-      const mapped = workers
-        .filter((worker) => {
-          if (!company) return true;
-
-          if (company === "furlads" || company === "threecounties") {
-            return true;
-          }
-
-          return true;
-        })
-        .map((worker) => ({
+      const mapped = workers.map((worker) => {
+        const firstName = titleCasePersonName(worker.firstName);
+        const lastName = titleCasePersonName(worker.lastName);
+        return {
           id: worker.id,
           company: company || "furlads",
-          key: `${norm(worker.firstName)}${norm(worker.lastName)}`.replace(
-            /[^a-z0-9]+/g,
-            ""
-          ),
-          name: `${worker.firstName || ""} ${worker.lastName || ""}`.trim(),
+          key: `${norm(worker.firstName)}${norm(worker.lastName)}`.replace(/[^a-z0-9]+/g, ""),
+          name: `${firstName} ${lastName}`.trim(),
           role: worker.accessLevel || "Worker",
           jobTitle: worker.jobTitle || "",
           photoUrl: workerPhotoUrl(worker.firstName),
           phone: worker.phone || "",
           active: !!worker.active,
           createdAt: worker.createdAt,
-        }));
+        };
+      });
 
       return NextResponse.json({ workers: mapped });
     }
@@ -132,8 +94,8 @@ export async function GET(req: Request) {
       .filter((worker) => !!worker.active)
       .map((worker) => ({
         id: worker.id,
-        firstName: worker.firstName,
-        lastName: worker.lastName,
+        firstName: titleCasePersonName(worker.firstName),
+        lastName: titleCasePersonName(worker.lastName),
         phone: worker.phone,
         photoUrl: workerPhotoUrl(worker.firstName),
       }));
@@ -141,57 +103,28 @@ export async function GET(req: Request) {
     return NextResponse.json(minimal);
   } catch (error) {
     console.error("WORKERS API ERROR:", error);
-
-    return NextResponse.json(
-      {
-        error: "Failed to load workers",
-        details: String(error),
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to load workers", details: String(error) }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
     const session = await getSession();
-
-    if (!session) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthenticated." },
-        { status: 401 }
-      );
-    }
-
-    if (!isAdminLikeRole(session.role)) {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden." },
-        { status: 403 }
-      );
-    }
+    if (!session) return NextResponse.json({ ok: false, error: "Unauthenticated." }, { status: 401 });
+    if (!isAdminLikeRole(session.role)) return NextResponse.json({ ok: false, error: "Forbidden." }, { status: 403 });
 
     const body = await req.json().catch(() => null);
-
     if (!body || typeof body !== "object") {
-      return NextResponse.json(
-        { ok: false, error: "Invalid request body." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "Invalid request body." }, { status: 400 });
     }
 
-    const name = clean((body as any).name);
+    const name = titleCasePersonName(clean((body as any).name));
     const role = clean((body as any).role) || "Worker";
     const jobTitle = clean((body as any).jobTitle);
     const phone = clean((body as any).phone);
-    const active =
-      typeof (body as any).active === "boolean" ? (body as any).active : true;
+    const active = typeof (body as any).active === "boolean" ? (body as any).active : true;
 
-    if (!name) {
-      return NextResponse.json(
-        { ok: false, error: "Name is required." },
-        { status: 400 }
-      );
-    }
+    if (!name) return NextResponse.json({ ok: false, error: "Name is required." }, { status: 400 });
 
     const { firstName, lastName } = splitName(name);
 
@@ -221,7 +154,7 @@ export async function POST(req: Request) {
       ok: true,
       worker: {
         id: created.id,
-        name: `${created.firstName || ""} ${created.lastName || ""}`.trim(),
+        name: `${titleCasePersonName(created.firstName)} ${titleCasePersonName(created.lastName)}`.trim(),
         role: created.accessLevel || "Worker",
         jobTitle: created.jobTitle || "",
         phone: created.phone || "",
@@ -232,13 +165,6 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("CREATE WORKER ERROR:", error);
-
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Failed to create worker.",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "Failed to create worker." }, { status: 500 });
   }
 }
