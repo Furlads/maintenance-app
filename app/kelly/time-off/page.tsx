@@ -345,6 +345,41 @@ export default function KellyTimeOffPage() {
     }
   }
 
+  async function deleteApprovedHoliday(item: RequestItem) {
+    const workerName = `${item.worker.firstName} ${item.worker.lastName}`.trim()
+    const confirmed = window.confirm(
+      `Permanently delete this accepted holiday for ${workerName}? This cannot be undone.`
+    )
+
+    if (!confirmed) return
+
+    try {
+      setBusyId(item.id)
+      setMessage('')
+
+      const res = await fetch(`/api/kelly/time-off/${item.id}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Failed to delete the accepted holiday.')
+      }
+
+      if (editingId === item.id) {
+        setEditingId(null)
+        setEditForm(null)
+      }
+      setMessage('Holiday deleted from the system.')
+      await loadRequests(statusFilter)
+    } catch (error: any) {
+      console.error(error)
+      setMessage(String(error?.message || 'Failed to delete the accepted holiday.'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function createManualTimeOff() {
     const workerId = Number(selectedWorkerId)
 
@@ -820,7 +855,7 @@ export default function KellyTimeOffPage() {
                   )}
 
                   {item.status === 'approved' && editingId !== item.id && (
-                    <div style={{ marginTop: 14 }}>
+                    <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       <button
                         type="button"
                         onClick={() => startEditing(item)}
@@ -837,6 +872,24 @@ export default function KellyTimeOffPage() {
                         }}
                       >
                         Edit accepted holiday
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteApprovedHoliday(item)}
+                        disabled={busyId !== null}
+                        style={{
+                          minHeight: 46,
+                          padding: '12px 16px',
+                          borderRadius: 12,
+                          border: '1px solid #b91c1c',
+                          background: '#fff',
+                          color: '#b91c1c',
+                          fontWeight: 800,
+                          cursor: busyId !== null ? 'not-allowed' : 'pointer',
+                          opacity: busyId === item.id ? 0.7 : 1,
+                        }}
+                      >
+                        {busyId === item.id ? 'Deleting...' : 'Delete holiday'}
                       </button>
                     </div>
                   )}
