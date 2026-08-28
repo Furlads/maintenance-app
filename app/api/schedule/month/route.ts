@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getLandscapingWorkingDates } from "@/lib/landscaping-schedule";
 
 type MonthEntry = {
   id: string;
@@ -152,6 +153,12 @@ function addDays(dateString: string, amount: number) {
   return toDateString(date);
 }
 
+function addCalendarDays(value: Date, amount: number) {
+  const date = new Date(value);
+  date.setDate(date.getDate() + amount);
+  return date;
+}
+
 function buildJobSpanKey(entry: MonthEntry) {
   return [
     entry.workerId,
@@ -252,10 +259,7 @@ export async function GET(req: NextRequest) {
 
       prisma.job.findMany({
         where: {
-          visitDate: {
-            gte: start,
-            lte: end,
-          },
+          visitDate: { gte: addCalendarDays(start, -120), lte: end },
           assignments: {
             some: {},
           },
@@ -333,26 +337,31 @@ export async function GET(req: NextRequest) {
     for (const job of jobsForMonth) {
       if (!job.visitDate) continue;
 
-      const dayKey = toDateString(new Date(job.visitDate));
-      const entries = daysMap.get(dayKey);
+      const isLandscaping = String(job.jobType || "").toLowerCase() === "landscaping";
+      const dayKeys = isLandscaping
+        ? getLandscapingWorkingDates(job.visitDate, job.durationMinutes)
+        : [toDateString(new Date(job.visitDate))];
 
-      if (!entries) continue;
+      for (const dayKey of dayKeys) {
+        const entries = daysMap.get(dayKey);
+        if (!entries) continue;
 
-      for (const assignment of job.assignments) {
-        const workerName = workerNames.get(assignment.workerId);
-        if (!workerName) continue;
+        for (const assignment of job.assignments) {
+          const workerName = workerNames.get(assignment.workerId);
+          if (!workerName) continue;
 
-        entries.push({
-          id: `job-${job.id}-${assignment.workerId}`,
-          type: "job",
-          workerId: assignment.workerId,
-          workerName,
-          title: buildJobTitle(job),
-          subtitle: buildJobSubtitle(job),
-          startTime: job.startTime,
-          isFullDay: false,
-          status: job.status || "scheduled",
-        });
+          entries.push({
+            id: `job-${job.id}-${assignment.workerId}-${dayKey}`,
+            type: "job",
+            workerId: assignment.workerId,
+            workerName,
+            title: buildJobTitle(job),
+            subtitle: buildJobSubtitle(job),
+            startTime: job.startTime,
+            isFullDay: isLandscaping,
+            status: job.status || "scheduled",
+          });
+        }
       }
     }
 
