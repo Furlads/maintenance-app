@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { titleCasePersonName } from '@/lib/nameCase'
 
 function normaliseText(value: unknown) {
   if (typeof value !== 'string') return ''
@@ -19,26 +20,26 @@ function normalisePhone(value: unknown) {
 export async function GET() {
   try {
     const customers = await prisma.customer.findMany({
-      where: {
-        archived: false
-      },
+      where: { archived: false },
       orderBy: { createdAt: 'desc' }
     })
 
-    return NextResponse.json(customers, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        Pragma: 'no-cache',
-        Expires: '0'
+    return NextResponse.json(
+      customers.map((customer) => ({
+        ...customer,
+        name: titleCasePersonName(customer.name)
+      })),
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0'
+        }
       }
-    })
+    )
   } catch (error) {
     console.error('GET /api/customers error:', error)
-
-    return NextResponse.json(
-      { error: 'Failed to load customers' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to load customers' }, { status: 500 })
   }
 }
 
@@ -46,34 +47,16 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const name = typeof body.name === 'string' ? body.name.trim() : ''
-    const phone =
-      typeof body.phone === 'string' && body.phone.trim()
-        ? body.phone.trim()
-        : null
-    const email =
-      typeof body.email === 'string' && body.email.trim()
-        ? body.email.trim()
-        : null
-    const address =
-      typeof body.address === 'string' && body.address.trim()
-        ? body.address.trim()
-        : null
-    const postcode =
-      typeof body.postcode === 'string' && body.postcode.trim()
-        ? body.postcode.trim().toUpperCase()
-        : null
-    const notes =
-      typeof body.notes === 'string' && body.notes.trim()
-        ? body.notes.trim()
-        : null
+    const name = titleCasePersonName(body.name)
+    const phone = typeof body.phone === 'string' && body.phone.trim() ? body.phone.trim() : null
+    const email = typeof body.email === 'string' && body.email.trim() ? body.email.trim() : null
+    const address = typeof body.address === 'string' && body.address.trim() ? body.address.trim() : null
+    const postcode = typeof body.postcode === 'string' && body.postcode.trim() ? body.postcode.trim().toUpperCase() : null
+    const notes = typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null
     const forceCreate = body.forceCreate === true
 
     if (!name) {
-      return NextResponse.json(
-        { error: 'Customer name is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Customer name is required' }, { status: 400 })
     }
 
     const incomingName = normaliseText(name)
@@ -83,9 +66,7 @@ export async function POST(request: Request) {
     const incomingPostcode = normalisePostcode(postcode)
 
     const existingCustomers = await prisma.customer.findMany({
-      where: {
-        archived: false
-      },
+      where: { archived: false },
       select: {
         id: true,
         name: true,
@@ -95,9 +76,7 @@ export async function POST(request: Request) {
         postcode: true,
         createdAt: true
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { createdAt: 'desc' }
     })
 
     const duplicates = existingCustomers.filter((customer) => {
@@ -107,31 +86,12 @@ export async function POST(request: Request) {
       const existingAddress = normaliseText(customer.address)
       const existingPostcode = normalisePostcode(customer.postcode)
 
-      const sameEmail =
-        incomingEmail && existingEmail && incomingEmail === existingEmail
+      const sameEmail = incomingEmail && existingEmail && incomingEmail === existingEmail
+      const samePhone = incomingPhone && existingPhone && incomingPhone === existingPhone
+      const sameNameAndPostcode = incomingName && existingName && incomingPostcode && existingPostcode && incomingName === existingName && incomingPostcode === existingPostcode
+      const sameAddressAndPostcode = incomingAddress && existingAddress && incomingPostcode && existingPostcode && incomingAddress === existingAddress && incomingPostcode === existingPostcode
 
-      const samePhone =
-        incomingPhone && existingPhone && incomingPhone === existingPhone
-
-      const sameNameAndPostcode =
-        incomingName &&
-        existingName &&
-        incomingPostcode &&
-        existingPostcode &&
-        incomingName === existingName &&
-        incomingPostcode === existingPostcode
-
-      const sameAddressAndPostcode =
-        incomingAddress &&
-        existingAddress &&
-        incomingPostcode &&
-        existingPostcode &&
-        incomingAddress === existingAddress &&
-        incomingPostcode === existingPostcode
-
-      return Boolean(
-        sameEmail || samePhone || sameNameAndPostcode || sameAddressAndPostcode
-      )
+      return Boolean(sameEmail || samePhone || sameNameAndPostcode || sameAddressAndPostcode)
     })
 
     if (duplicates.length > 0 && !forceCreate) {
@@ -139,22 +99,17 @@ export async function POST(request: Request) {
         {
           error: 'Possible duplicate customer found',
           requiresConfirmation: true,
-          duplicates
+          duplicates: duplicates.map((customer) => ({
+            ...customer,
+            name: titleCasePersonName(customer.name)
+          }))
         },
         { status: 409 }
       )
     }
 
     const customer = await prisma.customer.create({
-      data: {
-        name,
-        phone,
-        email,
-        address,
-        postcode,
-        notes,
-        archived: false
-      }
+      data: { name, phone, email, address, postcode, notes, archived: false }
     })
 
     return NextResponse.json(customer, {
@@ -166,10 +121,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error('POST /api/customers error:', error)
-
-    return NextResponse.json(
-      { error: 'Failed to create customer' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 })
   }
 }
