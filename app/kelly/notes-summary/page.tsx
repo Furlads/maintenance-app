@@ -16,6 +16,10 @@ type ParsedNoteSection = {
   value: string
 }
 
+type DisplayNote = JobNoteRow & {
+  parsedSections: ParsedNoteSection[]
+}
+
 type JobNoteRow = {
   id: number
   note: string
@@ -267,12 +271,68 @@ function cleanSectionLabel(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+function parseMaintenanceControlsNote(note: string): ParsedNoteSection[] | null {
+  const prefix = 'MAINTENANCE_CONTROLS_JSON:'
+  if (!note.startsWith(prefix)) return null
+
+  try {
+    const data = JSON.parse(note.slice(prefix.length)) as {
+      propertyMemory?: string
+      nextVisitNote?: string
+      extraWork?: Array<{
+        description?: string
+        source?: string
+        status?: string
+        reportedBy?: string
+      }>
+      outcome?: string
+      completionReason?: string
+      completionNote?: string
+    }
+    const sections: ParsedNoteSection[] = []
+
+    if (String(data.nextVisitNote || '').trim()) {
+      sections.push({ label: 'For the next visit', value: String(data.nextVisitNote).trim() })
+    }
+    if (String(data.propertyMemory || '').trim()) {
+      sections.push({ label: 'Important property information', value: String(data.propertyMemory).trim() })
+    }
+    for (const item of Array.isArray(data.extraWork) ? data.extraWork : []) {
+      const description = String(item?.description || '').trim()
+      if (!description) continue
+      const source = item.source === 'customer_requested' ? 'Customer requested' : 'Worker spotted'
+      const status = String(item.status || '').replaceAll('_', ' ').trim()
+      const reportedBy = String(item.reportedBy || '').trim()
+      sections.push({
+        label: source,
+        value: `${description}${reportedBy ? `\nReported by ${reportedBy}` : ''}${status ? ` • ${status}` : ''}`,
+      })
+    }
+    if (String(data.completionNote || '').trim()) {
+      sections.push({ label: 'Completion note', value: String(data.completionNote).trim() })
+    }
+    if (String(data.completionReason || '').trim()) {
+      sections.push({ label: 'Completion details', value: String(data.completionReason).trim() })
+    }
+    if (String(data.outcome || '').toLowerCase() === 'completed') {
+      sections.push({ label: 'Job outcome', value: 'Completed' })
+    }
+
+    return sections
+  } catch {
+    return [{ label: 'Worker update', value: 'This update could not be displayed clearly. Open the job to review it.' }]
+  }
+}
+
 function parseStructuredNote(note: string): ParsedNoteSection[] {
   const cleaned = String(note || '').trim()
 
   if (!cleaned) {
     return []
   }
+
+  const maintenanceSections = parseMaintenanceControlsNote(cleaned)
+  if (maintenanceSections) return maintenanceSections
 
   const parts = cleaned
     .split('|')
@@ -282,7 +342,7 @@ function parseStructuredNote(note: string): ParsedNoteSection[] {
   if (parts.length <= 1) {
     return [
       {
-        label: 'Note',
+        label: 'Worker update',
         value: cleaned,
       },
     ]
@@ -306,6 +366,40 @@ function parseStructuredNote(note: string): ParsedNoteSection[] {
       value: value || '—',
     }
   })
+}
+
+function prepareNotesForKelly(notes: JobNoteRow[]): DisplayNote[] {
+  const latestMaintenanceUpdateByJob = new Set<number>()
+  const seen = new Set<string>()
+  const prepared: DisplayNote[] = []
+
+  for (const note of notes) {
+    const raw = String(note.note || '').trim()
+
+    // Planning packs and automatic diary messages are system records, not notes Kelly needs to read here.
+    if (raw.startsWith('LANDSCAPING_PLAN_JSON:') || raw.startsWith('System reassigned job')) {
+      continue
+    }
+
+    if (raw.startsWith('MAINTENANCE_CONTROLS_JSON:')) {
+      if (latestMaintenanceUpdateByJob.has(note.job.id)) continue
+    }
+
+    const parsedSections = parseStructuredNote(raw).filter(
+      (section) => section.value.trim() && section.value.trim() !== '—'
+    )
+    if (parsedSections.length === 0) continue
+    if (raw.startsWith('MAINTENANCE_CONTROLS_JSON:')) {
+      latestMaintenanceUpdateByJob.add(note.job.id)
+    }
+
+    const signature = `${note.job.id}:${fullWorkerName(note)}:${JSON.stringify(parsedSections)}`
+    if (seen.has(signature)) continue
+    seen.add(signature)
+    prepared.push({ ...note, parsedSections })
+  }
+
+  return prepared
 }
 
 function rangeHref(range: string) {
@@ -383,8 +477,9 @@ export default async function KellyNotesSummaryPage({
     },
   })) as JobNoteRow[]
 
-  const uniqueJobs = new Set(notes.map((note) => note.job.id)).size
-  const uniqueWorkers = new Set(notes.map((note) => fullWorkerName(note))).size
+  const displayNotes = prepareNotesForKelly(notes)
+  const uniqueJobs = new Set(displayNotes.map((note) => note.job.id)).size
+  const uniqueWorkers = new Set(displayNotes.map((note) => fullWorkerName(note))).size
 
   return (
     <div className="space-y-4">
@@ -444,7 +539,7 @@ export default async function KellyNotesSummaryPage({
           </div>
 
           <div className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
-            {notes.length}
+            {displayNotes.length}
           </div>
         </div>
 
@@ -547,18 +642,18 @@ export default async function KellyNotesSummaryPage({
         </div>
 
         <div className="divide-y divide-zinc-100">
-          {notes.length === 0 ? (
+          {displayNotes.length === 0 ? (
             <div className="p-5 text-sm text-zinc-600">
               No job notes were added during this time period.
             </div>
           ) : (
-            notes.map((note) => {
+            displayNotes.map((note) => {
               const jobType = normaliseJobType(note.job.jobType)
               const customerName = note.job.customer?.name || note.job.title || 'Unknown customer'
               const postcode = note.job.customer?.postcode || null
               const phone = note.job.customer?.phone || null
               const email = note.job.customer?.email || null
-              const parsedSections = parseStructuredNote(note.note)
+              const parsedSections = note.parsedSections
 
               return (
                 <article key={note.id} className="p-4">
@@ -589,6 +684,13 @@ export default async function KellyNotesSummaryPage({
                         {postcode ? ` • ${postcode}` : ''}
                       </div>
 
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-zinc-700">
+                        <span className="rounded-full bg-zinc-100 px-3 py-1.5 ring-1 ring-inset ring-zinc-200">
+                          Update from {fullWorkerName(note)}
+                        </span>
+                        <span className="text-zinc-500">{formatDateTime(note.createdAt)}</span>
+                      </div>
+
                       <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                         <div className="space-y-4">
                           {parsedSections.map((section, index) => (
@@ -605,14 +707,14 @@ export default async function KellyNotesSummaryPage({
                       </div>
 
                       {note.job.notes ? (
-                        <div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-800">
-                            Current job description / notes
-                          </div>
-                          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-800">
+                        <details className="mt-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                          <summary className="cursor-pointer text-sm font-bold text-blue-900">
+                            Show original job instructions
+                          </summary>
+                          <p className="mt-3 whitespace-pre-wrap border-t border-blue-200 pt-3 text-sm leading-6 text-zinc-800">
                             {note.job.notes}
                           </p>
-                        </div>
+                        </details>
                       ) : null}
 
                       <div className="mt-3 grid gap-2 rounded-2xl bg-zinc-50 p-3 text-xs text-zinc-600 sm:grid-cols-2">
