@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import prisma from '@/lib/prisma'
+import { LANDSCAPING_WORKDAY_MINUTES } from '@/lib/landscaping-schedule'
 import {
   findNextAvailableInstallWindow,
   getLatestLandscapingPlan,
@@ -11,6 +12,7 @@ import CostTracker from './CostTracker'
 import LandscapingControlsPanel from './LandscapingControlsPanel'
 import VariationApprovalPanel from './VariationApprovalPanel'
 import SiteIssuesPanel from './SiteIssuesPanel'
+import AddCompletedQuote from './AddCompletedQuote'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,6 +107,13 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
   const headerScope = compactScope(quote?.scope || job.title)
   const bookedStartDate = job.visitDate ? job.visitDate.toISOString().slice(0, 10) : null
   const teamBooked = Boolean(plan && bookedStartDate && assignedWorkers.length >= plan.teamSize)
+  const initialDays = Math.max(
+    1,
+    Math.ceil(
+      (job.durationMinutes || LANDSCAPING_WORKDAY_MINUTES) /
+        LANDSCAPING_WORKDAY_MINUTES
+    )
+  )
 
   return (
     <div className="space-y-5">
@@ -134,13 +143,22 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
         </div>
       </section>
 
-      {!plan ? (
+      {!quote ? (
+        <AddCompletedQuote
+          jobId={job.id}
+          initialScope={[job.title, job.notes].filter(Boolean).join('\n\n')}
+          initialDays={initialDays}
+          initialTeamSize={Math.max(1, assignedWorkers.length)}
+        />
+      ) : null}
+
+      {quote && !plan ? (
         <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
           <h2 className="text-xl font-black text-amber-950">The landscaping pack still needs generating</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-900">The accepted job exists, but CHAS has not yet produced the internal programme, material-order list and projected profitability plan. Generate it here without changing the accepted quote.</p>
           <div className="mt-4"><PlanActions jobId={job.id} scheduleDate={null} /></div>
         </section>
-      ) : (
+      ) : plan ? (
         <>
           <LandscapingControlsPanel jobId={job.id} materials={plan.materials} initialControls={controls || { materials: {} }} packReady={true} teamBooked={teamBooked} bookedStartDate={bookedStartDate} initialMessages={reviewMessages.slice().reverse()} />
           <SiteIssuesPanel jobId={job.id} initialIssues={controls?.siteIssues || []} />
@@ -195,7 +213,7 @@ export default async function LandscapingPlanningPage({ params }: PageProps) {
             </div>
           </section>
         </>
-      )}
+      ) : null}
     </div>
   )
 }
