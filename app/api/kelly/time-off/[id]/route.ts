@@ -140,3 +140,47 @@ export async function PATCH(req: Request, ctx: Ctx) {
     return NextResponse.json({ ok: false, error: 'Failed to update the accepted holiday.' }, { status: 500 })
   }
 }
+
+export async function DELETE(_req: Request, ctx: Ctx) {
+  try {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ ok: false, error: 'Unauthenticated.' }, { status: 401 })
+    }
+    if (!isAdminRole(session.role)) {
+      return NextResponse.json({ ok: false, error: 'Forbidden.' }, { status: 403 })
+    }
+
+    const { id } = await ctx.params
+    const requestId = Number(id)
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      return NextResponse.json({ ok: false, error: 'Invalid request id.' }, { status: 400 })
+    }
+
+    const existing = await prisma.timeOffRequest.findUnique({
+      where: { id: requestId },
+      include: { availabilityBlock: true },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ ok: false, error: 'Holiday request not found.' }, { status: 404 })
+    }
+    if (existing.status !== 'approved') {
+      return NextResponse.json({ ok: false, error: 'Only accepted holidays can be deleted here.' }, { status: 400 })
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (existing.availabilityBlock) {
+        await tx.workerAvailabilityBlock.delete({
+          where: { id: existing.availabilityBlock.id },
+        })
+      }
+      await tx.timeOffRequest.delete({ where: { id: requestId } })
+    })
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('DELETE /api/kelly/time-off/[id] failed:', error)
+    return NextResponse.json({ ok: false, error: 'Failed to delete the accepted holiday.' }, { status: 500 })
+  }
+}
