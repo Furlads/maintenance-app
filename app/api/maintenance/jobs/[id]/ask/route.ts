@@ -100,11 +100,14 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const contextText = `Job #${job.id}\nJob type: ${job.jobType || 'General'}\nCustomer: ${job.customer.name}\nAddress: ${job.address || job.customer.address || job.customer.postcode || 'Not saved'}\nVisit date: ${job.visitDate ? job.visitDate.toISOString().slice(0, 10) : 'Not booked'}\nAssigned team: ${team.length ? team.join(', ') : 'Not assigned'}\n\nToday's job brief:\n${job.notes || job.title}\n\nPersistent property memory:\n${propertyMemory || 'None saved'}\n\nNote from/for the next visit:\n${nextVisitNote || 'None saved'}\n\nCurrent quote opportunities / extras:\n${opportunities}\n\nRecent CHAS conversation for this property/job:\n${history || 'None'}\n\nQuestion from ${workerName}: ${question || 'Please look at the attached photo and tell me what I should know or do.'}`
 
-    const content: Array<Record<string, unknown>> = [
+    const content: Array<
+      | { type: 'input_text'; text: string }
+      | { type: 'input_image'; image_url: string; detail: 'auto' }
+    > = [
       { type: 'input_text', text: contextText },
     ]
     if (imageDataUrl) {
-      content.push({ type: 'input_image', image_url: imageDataUrl })
+      content.push({ type: 'input_image', image_url: imageDataUrl, detail: 'auto' })
     }
 
     const response = await openai.responses.create({
