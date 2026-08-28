@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { titleCasePersonName } from "@/lib/nameCase";
 
 function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -41,6 +42,8 @@ export async function GET(_: Request, ctx: Ctx) {
     return NextResponse.json({
       worker: {
         ...worker,
+        firstName: titleCasePersonName(worker.firstName),
+        lastName: titleCasePersonName(worker.lastName),
         phone: worker.phone ?? "",
         email: worker.email ?? "",
         jobTitle: worker.jobTitle ?? "",
@@ -49,10 +52,7 @@ export async function GET(_: Request, ctx: Ctx) {
     });
   } catch (error) {
     console.error("GET /api/admin/workers/[id] failed:", error);
-    return NextResponse.json(
-      { error: "Failed to load worker" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to load worker" }, { status: 500 });
   }
 }
 
@@ -66,28 +66,17 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
 
     const body = await req.json().catch(() => ({}));
-
     const updates: Record<string, unknown> = {};
 
     if ("firstName" in body) {
-      const value = clean(body.firstName);
-      if (!value) {
-        return NextResponse.json(
-          { error: "First name cannot be blank" },
-          { status: 400 }
-        );
-      }
+      const value = titleCasePersonName(clean(body.firstName));
+      if (!value) return NextResponse.json({ error: "First name cannot be blank" }, { status: 400 });
       updates.firstName = value;
     }
 
     if ("lastName" in body) {
-      const value = clean(body.lastName);
-      if (!value) {
-        return NextResponse.json(
-          { error: "Last name cannot be blank" },
-          { status: 400 }
-        );
-      }
+      const value = titleCasePersonName(clean(body.lastName));
+      if (!value) return NextResponse.json({ error: "Last name cannot be blank" }, { status: 400 });
       updates.lastName = value;
     }
 
@@ -111,9 +100,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       updates.accessLevel = value || "worker";
     }
 
-    if ("active" in body) {
-      updates.active = !!body.active;
-    }
+    if ("active" in body) updates.active = !!body.active;
 
     const worker = await prisma.worker.update({
       where: { id: workerId },
@@ -136,6 +123,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
       success: true,
       worker: {
         ...worker,
+        firstName: titleCasePersonName(worker.firstName),
+        lastName: titleCasePersonName(worker.lastName),
         phone: worker.phone ?? "",
         email: worker.email ?? "",
         jobTitle: worker.jobTitle ?? "",
@@ -144,9 +133,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
     });
   } catch (error) {
     console.error("PATCH /api/admin/workers/[id] failed:", error);
-    return NextResponse.json(
-      { error: "Failed to update worker" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update worker" }, { status: 500 });
   }
 }
