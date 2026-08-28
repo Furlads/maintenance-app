@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { getLandscapingWorkingDates } from "@/lib/landscaping-schedule"
 
 type ScheduleJob = {
   id: number
@@ -78,6 +79,12 @@ function normaliseBlockStatus(
   return "approved"
 }
 
+function addDays(value: Date, amount: number) {
+  const date = new Date(value)
+  date.setDate(date.getDate() + amount)
+  return date
+}
+
 export async function GET(req: NextRequest) {
   try {
     const dateParam = req.nextUrl.searchParams.get("date")
@@ -114,10 +121,7 @@ export async function GET(req: NextRequest) {
 
       prisma.job.findMany({
         where: {
-          visitDate: {
-            gte: start,
-            lte: end,
-          },
+          visitDate: { gte: addDays(start, -120), lte: end },
           assignments: {
             some: {},
           },
@@ -134,6 +138,7 @@ export async function GET(req: NextRequest) {
           startTime: true,
           durationMinutes: true,
           status: true,
+          visitDate: true,
           customer: {
             select: {
               name: true,
@@ -191,6 +196,16 @@ export async function GET(req: NextRequest) {
     }
 
     for (const job of jobsForDay) {
+      if (!job.visitDate) continue
+      const landscapingDates = getLandscapingWorkingDates(
+        job.visitDate,
+        job.durationMinutes
+      )
+      const isLandscaping = String(job.jobType || '').toLowerCase() === 'landscaping'
+      const jobDate = job.visitDate.toISOString().slice(0, 10)
+      if (isLandscaping ? !landscapingDates.includes(dateParam) : jobDate !== dateParam) {
+        continue
+      }
       const scheduleJob: ScheduleJob = {
         id: job.id,
         title: job.title || "General",
