@@ -17,12 +17,33 @@ body {
   overflow-x: hidden;
 }
 
+html {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 body {
   margin: 0;
   background: #f3f4f1;
   color: #18181b;
   -webkit-text-size-adjust: 100%;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: inherit;
+  font-synthesis-weight: none;
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+button,
+input,
+textarea,
+select {
+  font-size: inherit;
+  line-height: inherit;
 }
 
 img,
@@ -120,7 +141,6 @@ body.app-polished :where(.rounded-xl, .rounded-2xl, .rounded-3xl) {
   overflow-wrap: anywhere;
 }
 
-/* Let major app surfaces breathe and use the device width rather than sitting in a narrow column. */
 body.app-polished.app-worker-view main > div,
 body.app-polished.app-office-view main > div,
 body.app-polished.app-admin-view .admin-main > div {
@@ -151,8 +171,6 @@ body.app-polished.app-admin-view .admin-main {
   width: 100%;
 }
 
-/* ===== TODAY-STYLE DESIGN LANGUAGE EVERYWHERE ===== */
-
 body.app-polished.app-admin-view .admin-main,
 body.app-polished.app-office-view main,
 body.app-polished.app-worker-view main {
@@ -163,7 +181,6 @@ body.app-polished :where(main, .admin-main) > :where(div, section):first-child {
   border-radius: var(--brand-radius-lg);
 }
 
-/* Common page headers become compact hero panels. */
 body.app-polished :where(.admin-main, main) :where(header, [class*="header"]):not(.today-top-header) {
   border-radius: 22px;
 }
@@ -174,7 +191,6 @@ body.app-polished.app-worker-view main > div > :where(header, section):first-chi
   position: relative;
 }
 
-/* Cards: white, chunky, soft shadow, like Today. */
 body.app-polished :where(section, article, form, [class*="card"], [class*="panel"])
 :where(.rounded-xl, .rounded-2xl, .rounded-3xl, [class*="rounded"]) {
   border-color: var(--brand-border) !important;
@@ -188,12 +204,10 @@ body.app-polished :where(section, article, form)[class*="rounded"] {
   box-shadow: var(--brand-shadow) !important;
 }
 
-/* Dark hero treatment for prominent dark surfaces and nav/header blocks. */
 body.app-polished :where([class*="bg-black"], [class*="bg-zinc-9"], [class*="bg-neutral-9"], [class*="bg-slate-9"]) {
   background: linear-gradient(145deg, var(--brand-dark), var(--brand-dark-2)) !important;
 }
 
-/* Page titles feel closer to Today’s bold typography. */
 body.app-polished :where(h1) {
   color: var(--brand-ink);
   font-weight: 950;
@@ -217,7 +231,6 @@ body.app-polished :where(p, label, span)[class*="text-slate"] {
   color: var(--brand-muted) !important;
 }
 
-/* Buttons carry the brand accent; destructive/red buttons are left alone. */
 body.app-polished :where(button, a)[class*="bg-yellow"],
 body.app-polished :where(button, a)[class*="bg-amber"],
 body.app-polished :where(button, a)[class*="bg-lime"],
@@ -234,7 +247,6 @@ body.app-brand-three-counties :where(button, a)[class*="bg-green"] {
   color: #14200d !important;
 }
 
-/* Neutral actions look like Today’s soft action tiles. */
 body.app-polished :where(button, a)[class*="bg-gray-100"],
 body.app-polished :where(button, a)[class*="bg-zinc-100"],
 body.app-polished :where(button, a)[class*="bg-slate-100"] {
@@ -242,7 +254,6 @@ body.app-polished :where(button, a)[class*="bg-slate-100"] {
   color: var(--brand-ink) !important;
 }
 
-/* Inputs use the same clean, substantial proportions. */
 body.app-polished :where(input, textarea, select) {
   border-radius: 14px !important;
   border-color: var(--brand-border) !important;
@@ -257,7 +268,6 @@ body.app-polished textarea {
   min-height: 110px;
 }
 
-/* Tables become easier to scan on white cards. */
 body.app-polished table {
   border-collapse: separate;
   border-spacing: 0;
@@ -274,7 +284,6 @@ body.app-polished tbody tr:hover {
   background: color-mix(in srgb, var(--brand-soft) 35%, white);
 }
 
-/* Admin sidebar/header get the same confident dark + accent language. */
 body.app-polished.app-admin-view :where(aside, nav)[class*="bg-white"],
 body.app-polished.app-admin-view :where(aside, nav)[class*="border"] {
   background: rgba(255,255,255,.92) !important;
@@ -287,7 +296,6 @@ body.app-polished.app-admin-view :where(aside, nav) a[class*="active"] {
   color: var(--brand-ink) !important;
 }
 
-/* Desktop layouts stay expansive but feel intentional. */
 @media (min-width: 900px) {
   body.app-polished.app-worker-view main,
   body.app-polished.app-office-view main,
@@ -307,7 +315,6 @@ body.app-polished.app-admin-view :where(aside, nav) a[class*="active"] {
   }
 }
 
-/* Mobile: use almost every available pixel while respecting safe areas. */
 @media (max-width: 760px) {
   body.app-polished {
     background: var(--brand-page);
@@ -351,10 +358,7 @@ body.app-polished.app-admin-view :where(aside, nav) a[class*="active"] {
   }
 }
 
-/* ===== TODAY JOB CARDS: NO WORKER CLOCKING =====
-   Workers no longer start, pause, resume, finish or extend jobs from the cards.
-   Keep the useful job actions only: open the job, call the customer and navigate.
-*/
+/* ===== TODAY JOB CARDS: NO WORKER CLOCKING ===== */
 .today-quick-actions {
   display: none !important;
 }
@@ -363,8 +367,17 @@ body.app-polished.app-admin-view :where(aside, nav) a[class*="active"] {
   display: none !important;
 }
 
-.today-active-actions > button {
+.today-active-actions > button,
+.today-job-actions > button {
   display: none !important;
+}
+
+[data-worker-open-job-host] {
+  display: grid !important;
+}
+
+[data-worker-open-job] {
+  min-height: 48px;
 }
 
 .today-job-actions > a:first-child,
@@ -379,10 +392,7 @@ body.app-polished.app-admin-view :where(aside, nav) a[class*="active"] {
   font-weight: 700;
 }
 
-/* ===== WORKER QUOTE THREADS =====
-   Worker-spotted opportunities are information cards, not chat bubbles.
-   Force their contents into a simple vertical stack on phones and show site photos full width.
-*/
+/* ===== WORKER QUOTE THREADS ===== */
 body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) {
   display: block !important;
   width: 100% !important;
