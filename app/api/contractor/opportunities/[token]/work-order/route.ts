@@ -95,7 +95,22 @@ export async function GET(_: Request, ctx: Ctx) {
     : []
 
   const workOrder = workOrders[0] || null
-  const jobType = clean(workOrder?.jobType).toLowerCase()
+  if (!workOrder) return NextResponse.json({ error: 'Work order not found.' }, { status: 404 })
+
+  const closed = ['signed_off'].includes(clean(workOrder.status).toLowerCase()) || clean(workOrder.paymentStatus).toLowerCase() === 'paid'
+
+  const safeWorkOrder = closed
+    ? {
+        ...workOrder,
+        address: null,
+        customerPhone: null,
+        customerEmail: null,
+        customerAddress: null,
+        customerPostcode: null,
+      }
+    : workOrder
+
+  const jobType = clean(workOrder.jobType).toLowerCase()
   const landscapingPlan = recipient.sourceJobId && jobType.includes('land')
     ? await getLatestLandscapingPlan(recipient.sourceJobId)
     : null
@@ -125,7 +140,7 @@ export async function GET(_: Request, ctx: Ctx) {
       }
     : null
 
-  return NextResponse.json({ workOrder, variations, photos, operationalPlan })
+  return NextResponse.json({ workOrder: safeWorkOrder, variations, photos: closed ? [] : photos, operationalPlan: closed ? null : operationalPlan })
 }
 
 export async function PATCH(req: Request, ctx: Ctx) {
@@ -137,6 +152,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
   const workOrderId = await ensureWorkOrder(recipient)
   const body = await req.json().catch(() => ({} as Record<string, unknown>))
   const action = clean(body.action).toLowerCase()
+
+  const current = await prisma.$queryRaw<Array<{ status: string; paymentStatus: string }>>`
+    SELECT "status", "paymentStatus" FROM "SubcontractorWorkOrder" WHERE "id" = ${workOrderId} LIMIT 1
+  `
+  if (current[0] && (current[0].status === 'signed_off' || current[0].paymentStatus === 'paid')) {
+    return NextResponse.json({ error: 'This work order is closed.' }, { status: 410 })
+  }
 
   if (action === 'request_variation') {
     const description = clean(body.description)
@@ -186,9 +208,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const signerName = clean(body.signerName)
     if (!signerName) return NextResponse.json({ error: 'Enter the name of the person signing off the work.' }, { status: 400 })
 
-    const current = await prisma.$queryRaw<Array<{ status: string }>>`
-      SELECT "status" FROM "SubcontractorWorkOrder" WHERE "id" = ${workOrderId} LIMIT 1
-    `
     if (current[0]?.status !== 'awaiting_signoff') {
       return NextResponse.json({ error: 'Completion must be submitted before sign-off.' }, { status: 400 })
     }
