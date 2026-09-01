@@ -25,9 +25,16 @@ function parsePrice(value: unknown) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
+function parseOptionalPositiveInt(value: unknown) {
+  if (value == null || value === '') return null
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
 type OpportunityRow = {
   id: number
   company: string
+  sourceJobId: number | null
   title: string
   trade: string
   roughArea: string
@@ -47,7 +54,7 @@ export async function GET() {
   if (!isAdminLikeRole(session.role)) return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
 
   const opportunities = await prisma.$queryRaw<OpportunityRow[]>`
-    SELECT o."id", o."company", o."title", o."trade", o."roughArea", o."pricingMode",
+    SELECT o."id", o."company", o."sourceJobId", o."title", o."trade", o."roughArea", o."pricingMode",
       o."fixedPrice", o."status", o."createdAt",
       COUNT(r."id") AS "sentCount",
       COUNT(r."id") FILTER (WHERE r."status" = 'interested') AS "interestedCount",
@@ -78,7 +85,8 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({} as Record<string, unknown>))
   const company = clean(body.company) || 'furlads'
-  const sourceType = clean(body.sourceType) || 'manual'
+  const sourceJobId = parseOptionalPositiveInt(body.sourceJobId)
+  const sourceType = sourceJobId ? 'job' : clean(body.sourceType) || 'manual'
   const title = clean(body.title)
   const trade = clean(body.trade)
   const roughArea = clean(body.roughArea)
@@ -101,6 +109,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Enter a valid subcontractor price.' }, { status: 400 })
   }
 
+  if (sourceJobId) {
+    const sourceJob = await prisma.job.findUnique({
+      where: { id: sourceJobId },
+      select: { id: true, status: true },
+    })
+
+    if (!sourceJob) {
+      return NextResponse.json({ error: 'The linked job could not be found.' }, { status: 404 })
+    }
+
+    if (['cancelled', 'archived', 'done'].includes(clean(sourceJob.status).toLowerCase())) {
+      return NextResponse.json({ error: 'This job is not open for subcontractor assignment.' }, { status: 400 })
+    }
+  }
+
   const workers = await prisma.worker.findMany({
     where: { id: { in: workerIds }, active: true, employmentType: 'subcontractor' },
     select: { id: true, firstName: true, lastName: true, phone: true },
@@ -113,9 +136,9 @@ export async function POST(req: Request) {
   const opportunity = await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<Array<{ id: number }>>`
       INSERT INTO "SubcontractorOpportunity"
-        ("company", "sourceType", "title", "trade", "roughArea", "publicDescription", "durationText", "timingText", "pricingMode", "fixedPrice", "quoteGuidance", "createdByWorkerId")
+        ("company", "sourceType", "sourceJobId", "title", "trade", "roughArea", "publicDescription", "durationText", "timingText", "pricingMode", "fixedPrice", "quoteGuidance", "createdByWorkerId")
       VALUES
-        (${company}, ${sourceType}, ${title}, ${trade}, ${roughArea}, ${publicDescription}, ${durationText}, ${timingText}, ${pricingMode}, ${fixedPrice}, ${quoteGuidance}, ${Number.isInteger(createdByWorkerId) ? createdByWorkerId : null})
+        (${company}, ${sourceType}, ${sourceJobId}, ${title}, ${trade}, ${roughArea}, ${publicDescription}, ${durationText}, ${timingText}, ${pricingMode}, ${fixedPrice}, ${quoteGuidance}, ${Number.isInteger(createdByWorkerId) ? createdByWorkerId : null})
       RETURNING "id"
     `
     const id = rows[0].id
@@ -153,5 +176,5 @@ export async function POST(req: Request) {
     }
   })
 
-  return NextResponse.json({ opportunityId: opportunity.id, links }, { status: 201 })
+  return NextResponse.json({ opportunityId: opportunity.id, sourceJobId, links }, { status: 201 })
 }
