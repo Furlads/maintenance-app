@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import OpportunityActions from './OpportunityActions'
+import WorkOrderPanel from './WorkOrderPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +44,8 @@ export default async function ContractorOpportunityPage({ params }: Props) {
     WHERE "id" = ${item.recipientId}
   `
 
+  const displayStatus = item.status === 'sent' ? 'viewed' : item.status
+  const accepted = displayStatus === 'accepted'
   const brand = item.company === 'three-counties' ? 'Three Counties Property Care' : 'Furlads'
   const priceText = item.pricingMode === 'price' && item.fixedPrice != null
     ? `£${item.fixedPrice.toLocaleString('en-GB')}`
@@ -52,9 +55,9 @@ export default async function ContractorOpportunityPage({ params }: Props) {
     <main className="min-h-dvh bg-[#eef2e9] px-3 py-5 text-[#162111] sm:px-5 sm:py-8">
       <div className="mx-auto max-w-3xl space-y-4">
         <section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#13220f] via-[#223718] to-[#30491c] p-6 text-white shadow-2xl sm:p-8">
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-[#b8d874]">{brand} · Private opportunity</div>
-          <h1 className="mt-3 text-4xl font-black leading-none tracking-tight sm:text-5xl">Hi {item.firstName}, interested in this job?</h1>
-          <p className="mt-4 max-w-2xl text-sm font-semibold leading-6 text-[#dce6d6] sm:text-base">Customer identity and exact address are kept private at this stage. Here’s enough information to decide whether you want the work.</p>
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-[#b8d874]">{brand} · {accepted ? 'Accepted work order' : 'Private opportunity'}</div>
+          <h1 className="mt-3 text-4xl font-black leading-none tracking-tight sm:text-5xl">{accepted ? `Hi ${item.firstName}, here’s the job.` : `Hi ${item.firstName}, interested in this job?`}</h1>
+          <p className="mt-4 max-w-2xl text-sm font-semibold leading-6 text-[#dce6d6] sm:text-base">{accepted ? 'You have accepted this work. The complete job pack, completion evidence and sign-off are available below.' : 'Customer identity and exact address are kept private at this stage. Here’s enough information to decide whether you want the work.'}</p>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             <Stat label="Trade" value={item.trade} />
             <Stat label="Rough area" value={item.roughArea} />
@@ -62,7 +65,7 @@ export default async function ContractorOpportunityPage({ params }: Props) {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-[1.35fr_.65fr]">
+        {!accepted ? <section className="grid gap-4 md:grid-cols-[1.35fr_.65fr]">
           <div className="rounded-3xl border border-[#dfe6d7] bg-white p-5 shadow-sm sm:p-6">
             <div className="text-xs font-black uppercase tracking-[0.15em] text-[#6d852f]">Job outline</div>
             <h2 className="mt-2 text-2xl font-black">{item.title}</h2>
@@ -74,13 +77,15 @@ export default async function ContractorOpportunityPage({ params }: Props) {
             <div className="mt-3 text-4xl font-black text-[#1f3215]">{priceText}</div>
             {item.quoteGuidance ? <p className="mt-3 text-sm font-semibold leading-5 text-zinc-600">{item.quoteGuidance}</p> : null}
           </aside>
-        </section>
+        </section> : null}
 
         <section className="rounded-3xl border border-[#dfe6d7] bg-white p-5 shadow-sm sm:p-6">
-          <OpportunityActions token={token} initialStatus={item.status === 'sent' ? 'viewed' : item.status} />
+          <OpportunityActions token={token} initialStatus={displayStatus} />
         </section>
 
-        <p className="text-center text-xs font-semibold text-zinc-500">No customer contact details are shared until the opportunity moves forward.</p>
+        {accepted ? <WorkOrderPanel token={token} /> : null}
+
+        <p className="text-center text-xs font-semibold text-zinc-500">{accepted ? 'This private link is your work order. Keep it secure.' : 'No customer contact details are shared until you accept the work.'}</p>
       </div>
     </main>
   )
