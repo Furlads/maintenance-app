@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getLatestLandscapingPlan } from '@/lib/landscaping-plan'
+import { contractorSessionMatchesWorker } from '@/lib/contractor-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -58,10 +59,20 @@ async function ensureWorkOrder(recipient: RecipientRow) {
   return rows[0].id
 }
 
+async function authorise(token: string) {
+  const recipient = await getRecipient(clean(token))
+  if (!recipient) return { recipient: null, response: NextResponse.json({ error: 'Opportunity not found.' }, { status: 404 }) }
+  if (!(await contractorSessionMatchesWorker(recipient.workerId))) {
+    return { recipient: null, response: NextResponse.json({ error: 'Please log in to open this work order.' }, { status: 401 }) }
+  }
+  return { recipient, response: null }
+}
+
 export async function GET(_: Request, ctx: Ctx) {
   const { token } = await ctx.params
-  const recipient = await getRecipient(clean(token))
-  if (!recipient) return NextResponse.json({ error: 'Opportunity not found.' }, { status: 404 })
+  const auth = await authorise(token)
+  if (!auth.recipient) return auth.response!
+  const recipient = auth.recipient
   if (recipient.status !== 'accepted') return NextResponse.json({ error: 'Accept the opportunity before opening the work order.' }, { status: 403 })
 
   const workOrderId = await ensureWorkOrder(recipient)
@@ -145,8 +156,9 @@ export async function GET(_: Request, ctx: Ctx) {
 
 export async function PATCH(req: Request, ctx: Ctx) {
   const { token } = await ctx.params
-  const recipient = await getRecipient(clean(token))
-  if (!recipient) return NextResponse.json({ error: 'Opportunity not found.' }, { status: 404 })
+  const auth = await authorise(token)
+  if (!auth.recipient) return auth.response!
+  const recipient = auth.recipient
   if (recipient.status !== 'accepted') return NextResponse.json({ error: 'Opportunity must be accepted first.' }, { status: 403 })
 
   const workOrderId = await ensureWorkOrder(recipient)
