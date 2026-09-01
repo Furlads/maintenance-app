@@ -3412,7 +3412,8 @@ export default function SchedulePage() {
 
         {!loading && !error && (
           <>
-                      <section
+            {false && (
+              <section
               style={{
                 border: "1px solid #e5e7eb",
                 borderRadius: isMobile ? 16 : 18,
@@ -3729,7 +3730,8 @@ onClick={() =>
                   ))}
                 </div>
               )}
-            </section>
+              </section>
+            )}
             <section style={{ marginBottom: 16 }}>
               <div
                 style={{
