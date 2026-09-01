@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { SUBCONTRACTOR_AGREEMENT_VERSION } from '@/lib/subcontractor-agreement'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,6 +42,13 @@ export default async function ContractorDashboard() {
   })
   if (!worker || !worker.active || worker.employmentType !== 'subcontractor') redirect('/worker/home')
 
+  const agreement = await prisma.$queryRaw<Array<{ id: number }>>`
+    SELECT "id" FROM "SubcontractorAgreementAcceptance"
+    WHERE "workerId" = ${workerId} AND "version" = ${SUBCONTRACTOR_AGREEMENT_VERSION}
+    LIMIT 1
+  `
+  if (!agreement[0]) redirect('/contractor/agreement?next=/contractor')
+
   const rows = await prisma.$queryRaw<DashboardRow[]>`
     SELECT r."token", r."status", o."title", o."trade", o."roughArea", o."durationText", o."timingText",
       o."fixedPrice", o."pricingMode", j."visitDate", j."startTime", j."status" AS "jobStatus",
@@ -72,29 +80,16 @@ export default async function ContractorDashboard() {
       </section>
 
       {accepted.length ? <section className="space-y-3">
-        <div>
-          <div className="text-xs font-black uppercase tracking-[0.14em] text-[#6d852f]">Your diary</div>
-          <h2 className="mt-1 text-2xl font-black">Accepted work</h2>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {accepted.map((row) => <JobCard key={row.token} row={row} />)}
-        </div>
+        <div><div className="text-xs font-black uppercase tracking-[0.14em] text-[#6d852f]">Your diary</div><h2 className="mt-1 text-2xl font-black">Accepted work</h2></div>
+        <div className="grid gap-3 md:grid-cols-2">{accepted.map((row) => <JobCard key={row.token} row={row} />)}</div>
       </section> : null}
 
       {awaiting.length ? <section className="space-y-3">
-        <div>
-          <div className="text-xs font-black uppercase tracking-[0.14em] text-amber-700">Waiting for you</div>
-          <h2 className="mt-1 text-2xl font-black">Open opportunities</h2>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {awaiting.map((row) => <JobCard key={row.token} row={row} />)}
-        </div>
+        <div><div className="text-xs font-black uppercase tracking-[0.14em] text-amber-700">Waiting for you</div><h2 className="mt-1 text-2xl font-black">Open opportunities</h2></div>
+        <div className="grid gap-3 md:grid-cols-2">{awaiting.map((row) => <JobCard key={row.token} row={row} />)}</div>
       </section> : null}
 
-      {!open.length ? <section className="rounded-3xl border border-dashed border-zinc-300 bg-white p-8 text-center">
-        <h2 className="text-xl font-black">No current work</h2>
-        <p className="mt-2 text-sm font-semibold text-zinc-500">New opportunities sent to you will appear here automatically.</p>
-      </section> : null}
+      {!open.length ? <section className="rounded-3xl border border-dashed border-zinc-300 bg-white p-8 text-center"><h2 className="text-xl font-black">No current work</h2><p className="mt-2 text-sm font-semibold text-zinc-500">New opportunities sent to you will appear here automatically.</p></section> : null}
     </div>
   </main>
 }
@@ -102,19 +97,8 @@ export default async function ContractorDashboard() {
 function JobCard({ row }: { row: DashboardRow }) {
   const status = row.workOrderStatus || row.status
   return <Link href={`/contractor/opportunity/${row.token}`} className="block rounded-3xl border border-[#dfe6d7] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <div className="text-xs font-black uppercase tracking-[0.12em] text-[#6d852f]">{row.trade}</div>
-        <h3 className="mt-1 text-xl font-black">{row.title}</h3>
-      </div>
-      <span className="rounded-full bg-[#eef5dd] px-3 py-1 text-[11px] font-black uppercase text-[#4c6824]">{status.replaceAll('_', ' ')}</span>
-    </div>
-    <div className="mt-4 grid gap-2 text-sm font-semibold text-zinc-600">
-      <div>📍 {row.roughArea}</div>
-      <div>📅 {formatDate(row.visitDate)}{row.startTime ? ` · ${row.startTime}` : ''}</div>
-      <div>⏱ {row.durationText || 'Duration to be confirmed'}</div>
-      <div className="font-black text-[#233918]">💷 {row.pricingMode === 'price' ? money(row.fixedPrice) : 'Quote requested'}</div>
-    </div>
+    <div className="flex items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-[0.12em] text-[#6d852f]">{row.trade}</div><h3 className="mt-1 text-xl font-black">{row.title}</h3></div><span className="rounded-full bg-[#eef5dd] px-3 py-1 text-[11px] font-black uppercase text-[#4c6824]">{status.replaceAll('_', ' ')}</span></div>
+    <div className="mt-4 grid gap-2 text-sm font-semibold text-zinc-600"><div>📍 {row.roughArea}</div><div>📅 {formatDate(row.visitDate)}{row.startTime ? ` · ${row.startTime}` : ''}</div><div>⏱ {row.durationText || 'Duration to be confirmed'}</div><div className="font-black text-[#233918]">💷 {row.pricingMode === 'price' ? money(row.fixedPrice) : 'Quote requested'}</div></div>
     <div className="mt-4 text-sm font-black text-[#506b28]">Open job →</div>
   </Link>
 }
