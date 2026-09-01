@@ -1,10 +1,12 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 type AssignmentStatus = 'not_linked' | 'confirmed' | 'transport_required' | null
 
 export default function OpportunityActions({ token, initialStatus }: { token: string; initialStatus: string }) {
+  const router = useRouter()
   const [status, setStatus] = useState(initialStatus)
   const [assignmentStatus, setAssignmentStatus] = useState<AssignmentStatus>(null)
   const [busy, setBusy] = useState(false)
@@ -23,6 +25,7 @@ export default function OpportunityActions({ token, initialStatus }: { token: st
       if (!response.ok) throw new Error(data?.error || 'Could not save your response.')
       setStatus(data.status)
       setAssignmentStatus(data.assignmentStatus ?? null)
+      if (action === 'accept') router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your response.')
     } finally {
@@ -36,14 +39,14 @@ export default function OpportunityActions({ token, initialStatus }: { token: st
 
   if (status === 'accepted') {
     if (assignmentStatus === 'transport_required') {
-      return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">Accepted ✓ Your place is recorded, but the booking will only become confirmed once transport is arranged.</div>
+      return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">Accepted ✓ Your work order is unlocked, but the diary booking will only become confirmed once transport is arranged.</div>
     }
 
     if (assignmentStatus === 'not_linked') {
-      return <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">Accepted ✓ We’ve recorded your acceptance against this opportunity.</div>
+      return <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">Accepted ✓ Your work order is now open below.</div>
     }
 
-    return <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">Accepted and confirmed ✓ This job has now been added to your confirmed work.</div>
+    return <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">Accepted and confirmed ✓ Your full work order is open below.</div>
   }
 
   if (status === 'interested') {
