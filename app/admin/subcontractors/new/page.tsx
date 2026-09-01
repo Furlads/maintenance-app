@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 type Worker = {
   id: number
@@ -33,10 +34,12 @@ type CreatedLink = {
 }
 
 export default function NewSubcontractorOpportunityPage() {
+  const searchParams = useSearchParams()
+  const requestedJobId = searchParams.get('jobId') || ''
   const [workers, setWorkers] = useState<Worker[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [selected, setSelected] = useState<number[]>([])
-  const [sourceJobId, setSourceJobId] = useState('')
+  const [sourceJobId, setSourceJobId] = useState(requestedJobId)
   const [mode, setMode] = useState<'price' | 'quote'>('price')
   const [company, setCompany] = useState('furlads')
   const [trade, setTrade] = useState('Landscaping')
@@ -65,10 +68,16 @@ export default function NewSubcontractorOpportunityPage() {
         if (jobResult.response.ok) {
           const openJobs = (jobResult.data.items || []).filter((job: Job) => !['done', 'cancelled', 'archived'].includes(String(job.status || '').toLowerCase()))
           setJobs(openJobs)
+          const requested = openJobs.find((job: Job) => String(job.id) === requestedJobId)
+          if (requested) {
+            setSourceJobId(String(requested.id))
+            setTitle(requested.title || '')
+            setTrade(requested.jobType || 'Landscaping')
+          }
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load subcontractors.'))
-  }, [])
+  }, [requestedJobId])
 
   const selectedNames = useMemo(() => workers.filter((worker) => selected.includes(worker.id)).map((worker) => worker.fullName || `${worker.firstName} ${worker.lastName}`.trim()), [workers, selected])
   const linkedJob = useMemo(() => jobs.find((job) => String(job.id) === sourceJobId) ?? null, [jobs, sourceJobId])
@@ -81,8 +90,8 @@ export default function NewSubcontractorOpportunityPage() {
     setSourceJobId(value)
     const job = jobs.find((item) => String(item.id) === value)
     if (!job) return
-    setTitle((current) => current || job.title || '')
-    setTrade((current) => current || job.jobType || 'Landscaping')
+    setTitle(job.title || '')
+    setTrade(job.jobType || 'Landscaping')
   }
 
   async function submit(event: FormEvent) {
