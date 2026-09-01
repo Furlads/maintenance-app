@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import ServiceWorkerRegister from "@/app/components/ServiceWorkerRegister";
 import GlobalAppPolish from "@/app/components/GlobalAppPolish";
 import ThreeCountiesWorkerTheme from "@/app/components/ThreeCountiesWorkerTheme";
+import JobSubcontractorControl from "@/app/components/JobSubcontractorControl";
 
 export const metadata: Metadata = {
   title: "Furlads Maintenance App",
@@ -33,6 +34,7 @@ export default function RootLayout({
         <GlobalAppPolish />
         <ThreeCountiesWorkerTheme />
         {children}
+        <JobSubcontractorControl />
       </body>
     </html>
   );
