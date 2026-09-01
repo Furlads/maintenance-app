@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+const OPPORTUNITY_LINK_DAYS = 14
+
 type Ctx = { params: Promise<{ token: string }> }
 
 function clean(value: unknown) {
@@ -30,6 +32,7 @@ type OpportunityView = {
   pricingMode: string
   fixedPrice: number | null
   quoteGuidance: string | null
+  createdAt: Date
 }
 
 type AcceptedRecipient = {
@@ -38,12 +41,18 @@ type AcceptedRecipient = {
   canDrive: boolean
 }
 
+function linkExpired(opportunity: OpportunityView) {
+  if (opportunity.status === 'accepted') return false
+  const expiresAt = new Date(opportunity.createdAt).getTime() + OPPORTUNITY_LINK_DAYS * 24 * 60 * 60 * 1000
+  return Date.now() > expiresAt
+}
+
 async function loadOpportunity(token: string) {
   const rows = await prisma.$queryRaw<OpportunityView[]>`
     SELECT r."id" AS "recipientId", r."opportunityId", r."status", r."workerId",
       o."sourceJobId", w."firstName", w."lastName", w."transportRequired", w."canDrive",
       o."company", o."title", o."trade", o."roughArea", o."publicDescription",
-      o."durationText", o."timingText", o."pricingMode", o."fixedPrice", o."quoteGuidance"
+      o."durationText", o."timingText", o."pricingMode", o."fixedPrice", o."quoteGuidance", o."createdAt"
     FROM "SubcontractorOpportunityRecipient" r
     JOIN "SubcontractorOpportunity" o ON o."id" = r."opportunityId"
     JOIN "Worker" w ON w."id" = r."workerId"
@@ -82,11 +91,7 @@ async function syncAcceptedJobAssignments(jobId: number) {
 
   const existingAssignments = await prisma.jobAssignment.findMany({
     where: { jobId },
-    include: {
-      worker: {
-        select: { id: true, canDrive: true },
-      },
-    },
+    include: { worker: { select: { id: true, canDrive: true } } },
   })
 
   const assignedIds = new Set(existingAssignments.map((item) => item.workerId))
@@ -97,34 +102,26 @@ async function syncAcceptedJobAssignments(jobId: number) {
 
   for (const recipient of noTransportNeeded) {
     if (!assignedIds.has(recipient.workerId)) {
-      await prisma.jobAssignment.create({
-        data: { jobId, workerId: recipient.workerId },
-      })
+      await prisma.jobAssignment.create({ data: { jobId, workerId: recipient.workerId } })
       assignedIds.add(recipient.workerId)
     }
     if (recipient.canDrive) hasDriver = true
   }
 
   for (const recipient of transportNeeded) {
-    if (assignedIds.has(recipient.workerId)) continue
-    if (!hasDriver) continue
-
-    await prisma.jobAssignment.create({
-      data: { jobId, workerId: recipient.workerId },
-    })
+    if (assignedIds.has(recipient.workerId) || !hasDriver) continue
+    await prisma.jobAssignment.create({ data: { jobId, workerId: recipient.workerId } })
     assignedIds.add(recipient.workerId)
   }
 
-  return {
-    assignedWorkerIds: [...assignedIds],
-    hasDriver,
-  }
+  return { assignedWorkerIds: [...assignedIds], hasDriver }
 }
 
 export async function GET(_: Request, ctx: Ctx) {
   const { token } = await ctx.params
   const opportunity = await loadOpportunity(clean(token))
   if (!opportunity) return NextResponse.json({ error: 'Opportunity not found.' }, { status: 404 })
+  if (linkExpired(opportunity)) return NextResponse.json({ error: 'This opportunity link has expired. Contact the office if the work is still available.' }, { status: 410 })
 
   await prisma.$executeRaw`
     UPDATE "SubcontractorOpportunityRecipient"
@@ -139,11 +136,7 @@ export async function GET(_: Request, ctx: Ctx) {
       where: { jobId: opportunity.sourceJobId, workerId: opportunity.workerId },
       select: { id: true },
     })
-    assignmentStatus = assignment
-      ? 'confirmed'
-      : opportunity.transportRequired
-        ? 'transport_required'
-        : 'confirmed'
+    assignmentStatus = assignment ? 'confirmed' : opportunity.transportRequired ? 'transport_required' : 'confirmed'
   } else if (opportunity.status === 'accepted') {
     assignmentStatus = 'not_linked'
   }
@@ -155,6 +148,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
   const { token } = await ctx.params
   const opportunity = await loadOpportunity(clean(token))
   if (!opportunity) return NextResponse.json({ error: 'Opportunity not found.' }, { status: 404 })
+  if (linkExpired(opportunity)) return NextResponse.json({ error: 'This opportunity link has expired. Contact the office if the work is still available.' }, { status: 410 })
 
   const body = await req.json().catch(() => ({} as Record<string, unknown>))
   const action = clean(body.action).toLowerCase()
@@ -171,19 +165,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
   let assignmentStatus: 'not_linked' | 'confirmed' | 'transport_required' | null = null
 
   if (opportunity.sourceJobId && ['accepted', 'declined'].includes(nextStatus)) {
-    const job = await prisma.job.findUnique({
-      where: { id: opportunity.sourceJobId },
-      select: { id: true, status: true },
-    })
-
+    const job = await prisma.job.findUnique({ where: { id: opportunity.sourceJobId }, select: { id: true, status: true } })
     if (job && !['cancelled', 'archived', 'done'].includes(clean(job.status).toLowerCase())) {
       const result = await syncAcceptedJobAssignments(job.id)
       if (nextStatus === 'accepted') {
         assignmentStatus = result.assignedWorkerIds.includes(opportunity.workerId)
           ? 'confirmed'
-          : opportunity.transportRequired
-            ? 'transport_required'
-            : 'confirmed'
+          : opportunity.transportRequired ? 'transport_required' : 'confirmed'
       }
     }
   } else if (nextStatus === 'accepted') {
