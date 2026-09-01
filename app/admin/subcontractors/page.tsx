@@ -36,26 +36,46 @@ export default async function SubcontractorsPage() {
   const contractors = await prisma.worker.findMany({
     where: { active: true, employmentType: 'subcontractor' },
     orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
-    select: { id: true, firstName: true, lastName: true, dayRate: true, skills: true, phone: true, transportRequired: true },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      dayRate: true,
+      skills: true,
+      phone: true,
+      transportRequired: true,
+      cisVerified: true,
+      publicLiabilityExpiresAt: true,
+      tradingName: true,
+    },
   })
+
+  const workOrderStats = await prisma.$queryRaw<Array<{ awaiting: bigint; snags: bigint; payment: bigint }>>`
+    SELECT
+      COUNT(*) FILTER (WHERE "status" = 'awaiting_signoff') AS "awaiting",
+      COUNT(*) FILTER (WHERE "status" = 'snag') AS "snags",
+      COUNT(*) FILTER (WHERE "status" = 'approved' AND "paymentStatus" = 'pending') AS "payment"
+    FROM "SubcontractorWorkOrder"
+  `
 
   const awaiting = opportunities.reduce((sum, item) => sum + Number(item.sentCount) - Number(item.acceptedCount) - Number(item.declinedCount), 0)
   const accepted = opportunities.reduce((sum, item) => sum + Number(item.acceptedCount), 0)
+  const workStats = workOrderStats[0] ?? { awaiting: BigInt(0), snags: BigInt(0), payment: BigInt(0) }
 
   return (
     <div className="space-y-5 pb-8">
       <section className="rounded-[28px] bg-gradient-to-br from-[#152315] via-[#273c1d] to-[#3b5625] p-6 text-white shadow-xl sm:p-8">
         <div className="text-xs font-black uppercase tracking-[0.18em] text-[#b8d874]">Trade network</div>
         <h1 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">Subcontractors</h1>
-        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#dce6d6]">Send a private opportunity, track who has viewed it, and record interest, acceptance or decline against the job.</p>
-        <div className="mt-5"><Link href="/admin/subcontractors/new" className="inline-flex rounded-2xl bg-[#a9cc4b] px-5 py-3 text-sm font-black text-[#17220f]">+ Send an opportunity</Link></div>
+        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#dce6d6]">Offer work, capture acceptance, completion evidence, sign-off, CIS and payment without treating subcontractors like hourly staff.</p>
+        <div className="mt-5 flex flex-wrap gap-2"><Link href="/admin/subcontractors/new" className="inline-flex rounded-2xl bg-[#a9cc4b] px-5 py-3 text-sm font-black text-[#17220f]">+ Send an opportunity</Link><Link href="/admin/subcontractors/work-orders" className="inline-flex rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white">Work orders & sign-off →</Link></div>
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Open opportunities" value={String(opportunities.filter((item) => item.status === 'open').length)} />
         <Stat label="Awaiting reply" value={String(awaiting)} />
-        <Stat label="Active subcontractors" value={String(contractors.length)} />
         <Stat label="Accepted" value={String(accepted)} />
+        <Stat label="Awaiting sign-off" value={String(Number(workStats.awaiting))} />
+        <Stat label="Snags / payment" value={`${Number(workStats.snags)} / ${Number(workStats.payment)}`} />
       </section>
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -75,7 +95,10 @@ export default async function SubcontractorsPage() {
       <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
         <div className="text-xs font-black uppercase tracking-[0.15em] text-[#789333]">Network</div><h2 className="mt-1 text-2xl font-black">Active subcontractors</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {contractors.map((worker) => <div key={worker.id} className="rounded-2xl border border-zinc-200 p-4"><div className="font-black">{worker.firstName} {worker.lastName}</div><div className="mt-1 text-xs font-semibold text-zinc-500">{worker.skills.length ? worker.skills.join(' · ') : 'General subcontractor'}</div><div className="mt-3 flex flex-wrap gap-2 text-xs font-bold"><span className="rounded-full bg-[#edf3e4] px-2.5 py-1 text-[#59712c]">{worker.dayRate != null ? `£${worker.dayRate}/day` : 'Rate not set'}</span>{worker.transportRequired ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">Transport required</span> : null}</div></div>)}
+          {contractors.map((worker) => {
+            const expired = worker.publicLiabilityExpiresAt ? worker.publicLiabilityExpiresAt.getTime() < Date.now() : false
+            return <Link href={`/admin/subcontractors/${worker.id}`} key={worker.id} className="rounded-2xl border border-zinc-200 p-4 transition hover:border-[#a7c662] hover:bg-[#fbfdf7]"><div className="font-black">{worker.firstName} {worker.lastName}</div>{worker.tradingName ? <div className="mt-1 text-xs font-bold text-zinc-500">{worker.tradingName}</div> : null}<div className="mt-1 text-xs font-semibold text-zinc-500">{worker.skills.length ? worker.skills.join(' · ') : 'General subcontractor'}</div><div className="mt-3 flex flex-wrap gap-2 text-xs font-bold"><span className="rounded-full bg-[#edf3e4] px-2.5 py-1 text-[#59712c]">{worker.dayRate != null ? `£${worker.dayRate}/day` : 'Rate not set'}</span>{worker.transportRequired ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">Transport required</span> : null}<span className={`rounded-full px-2.5 py-1 ${worker.cisVerified ? 'bg-green-100 text-green-800' : 'bg-zinc-100 text-zinc-600'}`}>{worker.cisVerified ? 'CIS verified' : 'CIS check needed'}</span><span className={`rounded-full px-2.5 py-1 ${expired ? 'bg-red-100 text-red-800' : 'bg-zinc-100 text-zinc-600'}`}>{expired ? 'Insurance expired' : worker.publicLiabilityExpiresAt ? 'Insurance recorded' : 'Insurance not recorded'}</span></div></Link>
+          })}
         </div>
       </section>
     </div>
