@@ -54,11 +54,10 @@ export default async function SubcontractorsPage() {
     },
   })
 
-  const agreementRows = contractors.length ? await prisma.$queryRaw<Array<{ workerId: number }>>`
+  const agreementRows = await prisma.$queryRaw<Array<{ workerId: number }>>`
     SELECT DISTINCT "workerId" FROM "SubcontractorAgreementAcceptance"
     WHERE "version"=${SUBCONTRACTOR_AGREEMENT_VERSION}
-      AND "workerId" IN (${prisma.join(contractors.map((worker) => worker.id))})
-  ` : []
+  `
   const agreementAccepted = new Set(agreementRows.map((row) => row.workerId))
 
   const workOrderStats = await prisma.$queryRaw<Array<{ awaiting: bigint; snags: bigint; payment: bigint }>>`
