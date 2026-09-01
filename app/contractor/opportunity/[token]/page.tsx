@@ -1,7 +1,8 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
+import { SUBCONTRACTOR_AGREEMENT_VERSION } from '@/lib/subcontractor-agreement'
 import OpportunityActions from './OpportunityActions'
 import WorkOrderPanel from './WorkOrderPanel'
 import ContractorAuthGate from '../../ContractorAuthGate'
@@ -47,6 +48,16 @@ export default async function ContractorOpportunityPage({ params }: Props) {
   const authenticated = !!session?.workerId && Number(session.workerId) === item.workerId
   if (!authenticated) {
     return <ContractorAuthGate token={token} firstName={item.firstName} registered={!!item.passwordHash} />
+  }
+
+  const agreement = await prisma.$queryRaw<Array<{ id: number }>>`
+    SELECT "id" FROM "SubcontractorAgreementAcceptance"
+    WHERE "workerId" = ${item.workerId} AND "version" = ${SUBCONTRACTOR_AGREEMENT_VERSION}
+    LIMIT 1
+  `
+  if (!agreement[0]) {
+    const nextPath = `/contractor/opportunity/${token}`
+    redirect(`/contractor/agreement?next=${encodeURIComponent(nextPath)}`)
   }
 
   await prisma.$executeRaw`
