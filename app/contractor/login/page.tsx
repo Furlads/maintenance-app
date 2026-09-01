@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { FormEvent, useState } from 'react'
 
 export default function ContractorLoginPage() {
@@ -40,7 +41,8 @@ export default function ContractorLoginPage() {
         <label className="block"><span className="mb-2 block text-xs font-black uppercase tracking-wide text-zinc-500">Password</span><input required value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="current-password" className="w-full rounded-2xl border border-zinc-200 px-4 py-3 font-semibold outline-none focus:border-[#8caf3a]" /></label>
         {error ? <div className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div> : null}
         <button disabled={busy} className="w-full rounded-2xl bg-[#a8ca4a] px-5 py-4 font-black text-[#18220f] disabled:opacity-50">{busy ? 'Logging in…' : 'Open my dashboard'}</button>
-        <p className="text-xs font-semibold leading-5 text-zinc-500">First time here? Open one of your WhatsApp job invitations and choose “First-time signup” to create your password.</p>
+        <Link href="/contractor/forgot" className="block text-center text-sm font-black text-[#56752c]">Forgotten your password?</Link>
+        <p className="text-xs font-semibold leading-5 text-zinc-500">First time here? Use the secure account setup link sent by the office, or open a WhatsApp job invitation and choose “First-time signup”.</p>
       </form>
     </div>
   </main>
