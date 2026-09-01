@@ -83,7 +83,13 @@ export default async function ContractorOpportunityPage({ params }: Props) {
           <OpportunityActions token={token} initialStatus={displayStatus} />
         </section>
 
-        {accepted ? <WorkOrderPanel token={token} /> : null}
+        {accepted ? <>
+          <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm sm:p-6">
+            <div className="text-xs font-black uppercase tracking-[0.15em] text-blue-800">Customer data & privacy</div>
+            <p className="mt-2 text-sm font-semibold leading-6 text-blue-950">Customer names, contact details, addresses, photos and job information are provided only so you can carry out this work. Keep this private link secure, do not forward or share customer information, and do not retain customer details for your own use once the work is complete.</p>
+          </section>
+          <WorkOrderPanel token={token} />
+        </> : null}
 
         <p className="text-center text-xs font-semibold text-zinc-500">{accepted ? 'This private link is your work order. Keep it secure.' : 'No customer contact details are shared until you accept the work.'}</p>
       </div>
