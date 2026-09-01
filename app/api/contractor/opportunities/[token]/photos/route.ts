@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
 import { prisma } from '@/lib/prisma'
+import { contractorSessionMatchesWorker } from '@/lib/contractor-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,6 +37,7 @@ export async function POST(req: Request, ctx: Ctx) {
   const { token } = await ctx.params
   const recipient = await loadRecipient(clean(token))
   if (!recipient) return NextResponse.json({ error: 'Opportunity not found.' }, { status: 404 })
+  if (!(await contractorSessionMatchesWorker(recipient.workerId))) return NextResponse.json({ error: 'Please log in to upload job evidence.' }, { status: 401 })
   if (recipient.status !== 'accepted') return NextResponse.json({ error: 'Accept the opportunity before uploading completion evidence.' }, { status: 403 })
   if (!recipient.sourceJobId) return NextResponse.json({ error: 'This opportunity is not linked to a live job.' }, { status: 400 })
 
