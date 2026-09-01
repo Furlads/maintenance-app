@@ -64,6 +64,22 @@ async function syncAcceptedJobAssignments(jobId: number) {
       AND w."active" = TRUE
   `
 
+  const acceptedWorkerIds = new Set(acceptedRecipients.map((item) => item.workerId))
+  const acceptanceRequiredWorkers = await prisma.worker.findMany({
+    where: { workAcceptanceRequired: true },
+    select: { id: true },
+  })
+  const acceptanceRequiredIds = new Set(acceptanceRequiredWorkers.map((item) => item.id))
+
+  await prisma.jobAssignment.deleteMany({
+    where: {
+      jobId,
+      workerId: {
+        in: [...acceptanceRequiredIds].filter((workerId) => !acceptedWorkerIds.has(workerId)),
+      },
+    },
+  })
+
   const existingAssignments = await prisma.jobAssignment.findMany({
     where: { jobId },
     include: {
@@ -117,7 +133,22 @@ export async function GET(_: Request, ctx: Ctx) {
     WHERE "id" = ${opportunity.recipientId}
   `
 
-  return NextResponse.json({ opportunity })
+  let assignmentStatus: 'not_linked' | 'confirmed' | 'transport_required' | null = null
+  if (opportunity.status === 'accepted' && opportunity.sourceJobId) {
+    const assignment = await prisma.jobAssignment.findFirst({
+      where: { jobId: opportunity.sourceJobId, workerId: opportunity.workerId },
+      select: { id: true },
+    })
+    assignmentStatus = assignment
+      ? 'confirmed'
+      : opportunity.transportRequired
+        ? 'transport_required'
+        : 'confirmed'
+  } else if (opportunity.status === 'accepted') {
+    assignmentStatus = 'not_linked'
+  }
+
+  return NextResponse.json({ opportunity, assignmentStatus })
 }
 
 export async function PATCH(req: Request, ctx: Ctx) {
@@ -139,7 +170,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
   let assignmentStatus: 'not_linked' | 'confirmed' | 'transport_required' | null = null
 
-  if (nextStatus === 'accepted' && opportunity.sourceJobId) {
+  if (opportunity.sourceJobId && ['accepted', 'declined'].includes(nextStatus)) {
     const job = await prisma.job.findUnique({
       where: { id: opportunity.sourceJobId },
       select: { id: true, status: true },
@@ -147,11 +178,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
     if (job && !['cancelled', 'archived', 'done'].includes(clean(job.status).toLowerCase())) {
       const result = await syncAcceptedJobAssignments(job.id)
-      assignmentStatus = result.assignedWorkerIds.includes(opportunity.workerId)
-        ? 'confirmed'
-        : opportunity.transportRequired
-          ? 'transport_required'
-          : 'confirmed'
+      if (nextStatus === 'accepted') {
+        assignmentStatus = result.assignedWorkerIds.includes(opportunity.workerId)
+          ? 'confirmed'
+          : opportunity.transportRequired
+            ? 'transport_required'
+            : 'confirmed'
+      }
     }
   } else if (nextStatus === 'accepted') {
     assignmentStatus = 'not_linked'
