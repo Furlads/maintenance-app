@@ -5,6 +5,7 @@ import TodayDashboardHome from './TodayDashboardHome'
 import TodayAvatarSizePolish from './TodayAvatarSizePolish'
 import JacobBrandPolish from './JacobBrandPolish'
 import FurladsBrandPolish from './FurladsBrandPolish'
+import TodayAdminShortcut from './TodayAdminShortcut'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +26,7 @@ export default async function TodayLayout({ children }: Props) {
     <>
       <MaintenanceTodayBridge maintenanceJobIds={maintenanceJobs.map((job) => job.id)} />
       <TodayDashboardHome />
+      <TodayAdminShortcut />
       <TodayAvatarSizePolish />
       <JacobBrandPolish />
       <FurladsBrandPolish />
