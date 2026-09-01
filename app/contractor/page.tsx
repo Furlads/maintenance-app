@@ -32,7 +32,7 @@ function formatDate(value: Date | null) {
 
 export default async function ContractorDashboard() {
   const session = await getSession()
-  if (!session?.workerId) redirect('/login?next=/contractor')
+  if (!session?.workerId) redirect('/contractor/login')
 
   const workerId = Number(session.workerId)
   const worker = await prisma.worker.findUnique({
