@@ -16,6 +16,14 @@ type Worker = {
   transportRequired: boolean
 }
 
+type Job = {
+  id: number
+  title: string
+  jobType: string
+  status: string
+  visitDate: string | null
+}
+
 type CreatedLink = {
   workerId: number
   workerName: string
@@ -26,7 +34,9 @@ type CreatedLink = {
 
 export default function NewSubcontractorOpportunityPage() {
   const [workers, setWorkers] = useState<Worker[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
   const [selected, setSelected] = useState<number[]>([])
+  const [sourceJobId, setSourceJobId] = useState('')
   const [mode, setMode] = useState<'price' | 'quote'>('price')
   const [company, setCompany] = useState('furlads')
   const [trade, setTrade] = useState('Landscaping')
@@ -42,21 +52,37 @@ export default function NewSubcontractorOpportunityPage() {
   const [createdLinks, setCreatedLinks] = useState<CreatedLink[]>([])
 
   useEffect(() => {
-    fetch('/api/admin/workers', { cache: 'no-store' })
-      .then((response) => response.json().then((data) => ({ response, data })))
-      .then(({ response, data }) => {
-        if (!response.ok) throw new Error(data?.error || 'Could not load subcontractors.')
-        const subcontractors = (data.workers || []).filter((worker: Worker) => worker.active && worker.employmentType === 'subcontractor')
+    Promise.all([
+      fetch('/api/admin/workers', { cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))),
+      fetch('/api/jobs', { cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))),
+    ])
+      .then(([workerResult, jobResult]) => {
+        if (!workerResult.response.ok) throw new Error(workerResult.data?.error || 'Could not load subcontractors.')
+        const subcontractors = (workerResult.data.workers || []).filter((worker: Worker) => worker.active && worker.employmentType === 'subcontractor')
         setWorkers(subcontractors)
         setSelected(subcontractors.map((worker: Worker) => worker.id))
+
+        if (jobResult.response.ok) {
+          const openJobs = (jobResult.data.items || []).filter((job: Job) => !['done', 'cancelled', 'archived'].includes(String(job.status || '').toLowerCase()))
+          setJobs(openJobs)
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load subcontractors.'))
   }, [])
 
   const selectedNames = useMemo(() => workers.filter((worker) => selected.includes(worker.id)).map((worker) => worker.fullName || `${worker.firstName} ${worker.lastName}`.trim()), [workers, selected])
+  const linkedJob = useMemo(() => jobs.find((job) => String(job.id) === sourceJobId) ?? null, [jobs, sourceJobId])
 
   function toggleWorker(id: number) {
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+  }
+
+  function chooseJob(value: string) {
+    setSourceJobId(value)
+    const job = jobs.find((item) => String(item.id) === value)
+    if (!job) return
+    setTitle((current) => current || job.title || '')
+    setTrade((current) => current || job.jobType || 'Landscaping')
   }
 
   async function submit(event: FormEvent) {
@@ -70,7 +96,8 @@ export default function NewSubcontractorOpportunityPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           company,
-          sourceType: 'manual',
+          sourceType: sourceJobId ? 'job' : 'manual',
+          sourceJobId: sourceJobId ? Number(sourceJobId) : null,
           trade,
           roughArea,
           title,
@@ -100,9 +127,10 @@ export default function NewSubcontractorOpportunityPage() {
         <form onSubmit={submit} className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="text-xs font-black uppercase tracking-[0.16em] text-[#789333]">New opportunity</div>
           <h1 className="mt-2 text-3xl font-black tracking-tight">Send work to subcontractors</h1>
-          <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">The first link only shows the rough area and job outline. Customer details stay private.</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">Link it to a real job if you want acceptance to control the diary. The private link still only shows the rough area and job outline.</p>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2"><Field label="Link to existing job (recommended)"><select value={sourceJobId} onChange={(e) => chooseJob(e.target.value)} className="input"><option value="">Manual opportunity — not tied to diary</option>{jobs.map((job) => <option key={job.id} value={job.id}>{job.title} · {job.jobType || 'Job'}{job.visitDate ? ` · ${new Date(job.visitDate).toLocaleDateString('en-GB')}` : ''}</option>)}</select></Field></div>
             <Field label="Company"><select value={company} onChange={(e) => setCompany(e.target.value)} className="input"><option value="furlads">Furlads</option><option value="three-counties">Three Counties Property Care</option></select></Field>
             <Field label="Trade"><select value={trade} onChange={(e) => setTrade(e.target.value)} className="input"><option>Landscaping</option><option>Groundworks</option><option>Fencing</option><option>Plastering</option><option>Electrical</option><option>Plumbing</option><option>Carpentry</option><option>Roofing</option><option>Other</option></select></Field>
             <Field label="Rough area only"><input required value={roughArea} onChange={(e) => setRoughArea(e.target.value)} className="input" placeholder="e.g. Market Drayton area" /></Field>
@@ -111,6 +139,8 @@ export default function NewSubcontractorOpportunityPage() {
             <Field label="Likely duration"><input value={duration} onChange={(e) => setDuration(e.target.value)} className="input" placeholder="e.g. 2 days" /></Field>
             <Field label="Target timing"><input value={timing} onChange={(e) => setTiming(e.target.value)} className="input" placeholder="e.g. Next week" /></Field>
           </div>
+
+          {linkedJob ? <div className="mt-4 rounded-2xl border border-[#dce8bd] bg-[#f4f8e9] p-4 text-sm font-bold text-[#405820]">Linked to job #{linkedJob.id}. Acceptance will control the confirmed assignment for this job.</div> : null}
 
           <div className="mt-5">
             <div className="mb-2 text-xs font-black uppercase tracking-wider text-zinc-500">Pricing</div>
