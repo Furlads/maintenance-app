@@ -29,11 +29,30 @@ type WorkOrder = {
   customerPostcode: string | null
 }
 
+type OperationalPlan = {
+  totalDays: number
+  teamSize: number
+  workerSummary: string
+  dayPlan: Array<{
+    day: number
+    heading: string
+    target: string
+    tasks: string[]
+    ifAhead: string[]
+    checkpoint: string
+  }>
+  materials: Array<{ item: string; quantity: string; orderFor: string; note: string }>
+  plantTools: string[]
+  siteChecks: string[]
+  risks: string[]
+}
+
 type Photo = { id: number; label: string | null; imageUrl: string; uploadedByWorkerId: number | null }
 type Variation = { id: number; description: string; amount: number | null; status: string }
 
 export default function WorkOrderPanel({ token }: { token: string }) {
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null)
+  const [operationalPlan, setOperationalPlan] = useState<OperationalPlan | null>(null)
   const [photos, setPhotos] = useState<Photo[]>([])
   const [variations, setVariations] = useState<Variation[]>([])
   const [busy, setBusy] = useState(false)
@@ -50,6 +69,7 @@ export default function WorkOrderPanel({ token }: { token: string }) {
     const data = await response.json()
     if (!response.ok) throw new Error(data?.error || 'Could not load work order.')
     setWorkOrder(data.workOrder || null)
+    setOperationalPlan(data.operationalPlan || null)
     setPhotos(data.photos || [])
     setVariations(data.variations || [])
     setCompletionNotes(data.workOrder?.completionNotes || '')
@@ -105,22 +125,105 @@ export default function WorkOrderPanel({ token }: { token: string }) {
   const signedOff = workOrder.status === 'signed_off' || workOrder.signoffStatus === 'signed'
   const awaitingSignoff = workOrder.status === 'awaiting_signoff'
   const snag = workOrder.status === 'snag'
+  const expectedTime = operationalPlan
+    ? `${operationalPlan.totalDays} working day${operationalPlan.totalDays === 1 ? '' : 's'}`
+    : workOrder.durationText || 'To be confirmed'
 
   return (
     <div className="space-y-4">
+      <section className="rounded-3xl bg-zinc-950 p-5 text-white shadow-sm sm:p-6">
+        <div className="text-xs font-black uppercase tracking-[0.16em] text-yellow-300">Work order summary</div>
+        <h2 className="mt-2 text-2xl font-black">{workOrder.title}</h2>
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <TopStat label="Summary of works" value={operationalPlan?.workerSummary || workOrder.publicDescription} small />
+          <TopStat label="Expected time to complete" value={expectedTime} />
+          <TopStat label="Agreed subcontract price" value={workOrder.agreedPrice != null ? `£${workOrder.agreedPrice.toLocaleString('en-GB')}` : 'As agreed separately'} />
+        </div>
+      </section>
+
       <section className="rounded-3xl border border-[#dfe6d7] bg-white p-5 shadow-sm sm:p-6">
-        <div className="text-xs font-black uppercase tracking-[0.15em] text-[#6d852f]">Accepted work order</div>
+        <div className="text-xs font-black uppercase tracking-[0.15em] text-[#6d852f]">Job details</div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Info label="Customer" value={workOrder.customerName || 'See office'} />
           <Info label="Address" value={[workOrder.address || workOrder.customerAddress, workOrder.customerPostcode].filter(Boolean).join(', ') || 'See office'} />
           <Info label="Phone" value={workOrder.customerPhone || 'Not supplied'} link={workOrder.customerPhone ? `tel:${workOrder.customerPhone}` : undefined} />
-          <Info label="Agreed subcontract price" value={workOrder.agreedPrice != null ? `£${workOrder.agreedPrice.toLocaleString('en-GB')}` : 'As agreed separately'} />
+          <Info label="Start / timing" value={[formatDate(workOrder.visitDate), workOrder.startTime, workOrder.timingText].filter(Boolean).join(' · ') || 'See office'} />
         </div>
         <div className="mt-4 rounded-2xl bg-zinc-50 p-4">
           <div className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Full scope / job notes</div>
           <div className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-zinc-700">{workOrder.jobNotes || workOrder.publicDescription}</div>
         </div>
       </section>
+
+      {operationalPlan ? (
+        <>
+          <section className="rounded-3xl border border-yellow-300 bg-yellow-50 p-5 shadow-sm sm:p-6">
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-yellow-800">Day-by-day programme</div>
+            <h2 className="mt-1 text-2xl font-black text-zinc-950">How this job should run</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-zinc-700">This is the same operational plan used on the Furlads staff job sheet. If site conditions mean it cannot be followed safely or correctly, contact the office before changing the method or scope.</p>
+            <div className="mt-5 space-y-4">
+              {operationalPlan.dayPlan.map((day) => (
+                <div key={day.day} className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-yellow-200">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-yellow-300 font-black text-zinc-950">{day.day}</div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Day {day.day}</div>
+                      <div className="mt-1 text-lg font-black text-zinc-950">{day.heading}</div>
+                      {day.target ? <div className="mt-1 text-sm font-semibold leading-6 text-zinc-700">Target: {day.target}</div> : null}
+                    </div>
+                  </div>
+                  {day.tasks.length ? <div className="mt-4 space-y-2 text-sm font-semibold leading-6 text-zinc-800">{day.tasks.map((task, index) => <div key={index}>• {task}</div>)}</div> : null}
+                  {day.ifAhead.length ? <div className="mt-4 rounded-xl bg-zinc-50 p-3 text-sm leading-6 text-zinc-700"><strong>If ahead:</strong> {day.ifAhead.join(' · ')}</div> : null}
+                  {day.checkpoint ? <div className="mt-3 rounded-xl bg-green-50 p-3 text-sm font-bold leading-6 text-green-900"><strong>Checkpoint:</strong> {day.checkpoint}</div> : null}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+              <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Load before leaving</div>
+              <h2 className="mt-1 text-xl font-black text-blue-950">Plant & tools</h2>
+              <div className="mt-4 space-y-2 rounded-2xl bg-white p-4 text-sm font-semibold leading-6 text-zinc-800 ring-1 ring-inset ring-blue-200">
+                {operationalPlan.plantTools.length ? operationalPlan.plantTools.map((item, index) => <div key={index}>• {item}</div>) : <div>• Normal tools required for the agreed scope.</div>}
+              </div>
+            </div>
+            <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+              <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Materials</div>
+              <h2 className="mt-1 text-xl font-black text-emerald-950">What the plan expects</h2>
+              <div className="mt-4 space-y-3">
+                {operationalPlan.materials.length ? operationalPlan.materials.map((item, index) => (
+                  <div key={index} className="rounded-2xl bg-white p-4 ring-1 ring-inset ring-emerald-200">
+                    <div className="font-black text-zinc-950">{item.item}</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-700">{item.quantity}</div>
+                    {item.orderFor ? <div className="mt-1 text-xs font-bold text-emerald-800">Needed: {item.orderFor}</div> : null}
+                    {item.note ? <div className="mt-2 text-xs leading-5 text-zinc-600">{item.note}</div> : null}
+                  </div>
+                )) : <div className="rounded-2xl bg-white p-4 text-sm font-semibold text-zinc-700">See scope and office notes for supplied materials.</div>}
+              </div>
+            </div>
+          </section>
+
+          {(operationalPlan.siteChecks.length || operationalPlan.risks.length) ? (
+            <section className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">Site checks</div>
+                <div className="mt-3 space-y-2 text-sm font-semibold leading-6 text-zinc-800">{operationalPlan.siteChecks.map((item, index) => <div key={index}>• {item}</div>)}</div>
+              </div>
+              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-amber-800">Known risks / watch-outs</div>
+                <div className="mt-3 space-y-2 text-sm font-semibold leading-6 text-amber-950">{operationalPlan.risks.map((item, index) => <div key={index}>• {item}</div>)}</div>
+              </div>
+            </section>
+          ) : null}
+        </>
+      ) : (
+        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-amber-800">Operational plan</div>
+          <h2 className="mt-1 text-xl font-black text-amber-950">Day-by-day plan not generated yet</h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-amber-900">The work order is valid, but this linked job does not yet have a staff-style day plan available. Use the scope above and contact the office if anything is unclear before starting.</p>
+        </section>
+      )}
 
       {photos.length ? <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm"><div className="text-xs font-black uppercase tracking-wider text-zinc-500">Job photos</div><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{photos.slice(0, 12).map((photo) => <a key={photo.id} href={photo.imageUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-2xl border border-zinc-200"><img src={photo.imageUrl} alt={photo.label || 'Job photo'} className="h-36 w-full object-cover" /></a>)}</div></section> : null}
 
@@ -176,7 +279,18 @@ export default function WorkOrderPanel({ token }: { token: string }) {
   )
 }
 
+function TopStat({ label, value, small = false }: { label: string; value: string; small?: boolean }) {
+  return <div className="rounded-2xl bg-white/10 p-4"><div className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{label}</div><div className={`mt-2 font-black ${small ? 'text-sm leading-6' : 'text-2xl'}`}>{value}</div></div>
+}
+
 function Info({ label, value, link }: { label: string; value: string; link?: string }) {
   const content = link ? <a href={link} className="font-black text-[#476421] underline">{value}</a> : <div className="font-black">{value}</div>
   return <div className="rounded-2xl bg-[#f4f7f0] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-zinc-500">{label}</div><div className="mt-1 text-sm">{content}</div></div>
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(date)
 }
