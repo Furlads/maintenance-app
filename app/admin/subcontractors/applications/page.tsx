@@ -15,6 +15,11 @@ type Application = {
   submittedAt: string; reviewedAt?: string | null; reviewNotes?: string | null; approvedWorkerId?: number | null; documents: DocumentRow[]
 }
 
+function whatsappNumber(value: string) {
+  const digits = value.replace(/\D/g, '')
+  return digits.startsWith('0') ? `44${digits.slice(1)}` : digits
+}
+
 export default function ApplicationsPage() {
   const [items, setItems] = useState<Application[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,14 +38,18 @@ export default function ApplicationsPage() {
   }
   useEffect(() => { void load() }, [])
 
-  async function review(id: number, action: 'approve' | 'reject') {
+  async function review(item: Application, action: 'approve' | 'reject') {
     const reviewNotes = window.prompt(action === 'approve' ? 'Optional approval notes:' : 'Reason / review notes:') || ''
     if (action === 'reject' && !window.confirm('Reject this subcontractor application?')) return
-    setBusy(id); setError('')
+    setBusy(item.id); setError('')
     try {
-      const response = await fetch('/api/admin/subcontractor-applications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ applicationId: id, action, reviewNotes }) })
+      const response = await fetch('/api/admin/subcontractor-applications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ applicationId: item.id, action, reviewNotes }) })
       const data = await response.json()
       if (!response.ok) throw new Error(data?.error || 'Could not update application.')
+      if (action === 'approve' && data?.onboardingMessage) {
+        const phone = whatsappNumber(item.phone)
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(data.onboardingMessage)}`, '_blank', 'noopener,noreferrer')
+      }
       await load()
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not update application.') }
     finally { setBusy(null) }
@@ -54,7 +63,7 @@ export default function ApplicationsPage() {
     {error ? <div className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div> : null}
     {loading ? <div className="rounded-3xl bg-white p-8 font-bold">Loading applications…</div> : null}
     {!loading ? <>
-      <section className="space-y-3"><div className="flex items-end justify-between"><div><div className="text-xs font-black uppercase tracking-wider text-amber-700">Needs review</div><h2 className="text-2xl font-black">Pending applications</h2></div><div className="rounded-full bg-amber-100 px-3 py-1 text-sm font-black text-amber-800">{pending.length}</div></div>{pending.length ? pending.map((item) => <ApplicationCard key={item.id} item={item} busy={busy === item.id} onApprove={() => review(item.id, 'approve')} onReject={() => review(item.id, 'reject')} />) : <div className="rounded-3xl border border-dashed border-zinc-300 bg-white p-8 text-center text-sm font-semibold text-zinc-500">Nothing waiting for review.</div>}</section>
+      <section className="space-y-3"><div className="flex items-end justify-between"><div><div className="text-xs font-black uppercase tracking-wider text-amber-700">Needs review</div><h2 className="text-2xl font-black">Pending applications</h2></div><div className="rounded-full bg-amber-100 px-3 py-1 text-sm font-black text-amber-800">{pending.length}</div></div>{pending.length ? pending.map((item) => <ApplicationCard key={item.id} item={item} busy={busy === item.id} onApprove={() => review(item, 'approve')} onReject={() => review(item, 'reject')} />) : <div className="rounded-3xl border border-dashed border-zinc-300 bg-white p-8 text-center text-sm font-semibold text-zinc-500">Nothing waiting for review.</div>}</section>
       {reviewed.length ? <section className="space-y-3"><div><div className="text-xs font-black uppercase tracking-wider text-zinc-500">History</div><h2 className="text-2xl font-black">Reviewed</h2></div>{reviewed.map((item) => <ApplicationCard key={item.id} item={item} busy={false} />)}</section> : null}
     </> : null}
   </div>
@@ -72,7 +81,7 @@ function ApplicationCard({ item, busy, onApprove, onReject }: { item: Applicatio
       {item.qualifications ? <Text title="Qualifications" value={item.qualifications} /> : null}{item.preferredWork ? <Text title="Preferred work" value={item.preferredWork} /> : null}{item.referenceOne ? <Text title="Reference 1" value={item.referenceOne} /> : null}{item.referenceTwo ? <Text title="Reference 2" value={item.referenceTwo} /> : null}{item.additionalNotes ? <Text title="Additional notes" value={item.additionalNotes} /> : null}
     </div>
     <div className="mt-5"><div className="text-xs font-black uppercase tracking-wider text-zinc-500">Documents</div><div className="mt-2 flex flex-wrap gap-2">{item.documents?.length ? item.documents.map((doc) => <a key={doc.id} href={`/api/admin/subcontractor-applications/documents/${doc.id}`} target="_blank" className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-black">{doc.documentName} ↗</a>) : <span className="text-sm font-semibold text-zinc-500">No documents uploaded.</span>}</div></div>
-    {item.status === 'pending' ? <div className="mt-5 flex flex-wrap gap-2"><button disabled={busy} onClick={onApprove} className="rounded-xl bg-[#a8ca4a] px-4 py-3 text-sm font-black text-[#18220f] disabled:opacity-50">Approve & create profile</button><button disabled={busy} onClick={onReject} className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-700 disabled:opacity-50">Reject application</button></div> : item.approvedWorkerId ? <Link href={`/admin/subcontractors/${item.approvedWorkerId}`} className="mt-5 inline-flex text-sm font-black text-[#56752c]">Open subcontractor profile →</Link> : null}
+    {item.status === 'pending' ? <div className="mt-5 flex flex-wrap gap-2"><button disabled={busy} onClick={onApprove} className="rounded-xl bg-[#a8ca4a] px-4 py-3 text-sm font-black text-[#18220f] disabled:opacity-50">Approve & send setup invite</button><button disabled={busy} onClick={onReject} className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-700 disabled:opacity-50">Reject application</button></div> : item.approvedWorkerId ? <Link href={`/admin/subcontractors/${item.approvedWorkerId}`} className="mt-5 inline-flex text-sm font-black text-[#56752c]">Open subcontractor profile →</Link> : null}
   </details>
 }
 function Info({ title, rows }: { title: string; rows: Array<[string, string | null | undefined]> }) { return <div className="rounded-2xl bg-zinc-50 p-4"><h3 className="font-black">{title}</h3><div className="mt-3 space-y-2">{rows.filter(([,v]) => v != null && v !== '').map(([k,v]) => <div key={k} className="grid grid-cols-[120px_1fr] gap-3 text-sm"><span className="font-bold text-zinc-500">{k}</span><span className="font-semibold">{v}</span></div>)}</div></div> }
