@@ -53,6 +53,14 @@ model Worker {
   cisVerificationNumber  String?
   cisDeductionRate       Float?
   workAcceptanceRequired Boolean                   @default(false)
+  tradingName            String?
+  utrNumber              String?
+  publicLiabilityInsurer String?
+  publicLiabilityPolicyNumber String?
+  publicLiabilityExpiresAt DateTime?
+  coverageArea           String?
+  suppliesTools          Boolean                   @default(false)
+  suppliesMaterials      Boolean                   @default(false)
   crewMemberships        CrewMember[]
 
   @@index([active, accessLevel])
@@ -240,242 +248,154 @@ model ChasMessage {
   customerEmail        String?
   customerName         String?
   customerPhone        String?
-  customerPostcode     String?
-  enquiryReadyForKelly Boolean  @default(false)
-  enquirySummary       String?
-  escalateTo           String?
-  estimatedHours       Float?
-  intent               String?
-  responseId           String?
-  roughPriceText       String?
-  safetyFlag           Boolean  @default(false)
-  workSummary          String?
-  sessionId            String?
-  job                  Job?     @relation(fields: [jobId], references: [id])
-  workerRecord         Worker?  @relation(fields: [workerId], references: [id])
+  conversation         ChasConversation? @relation(fields: [conversationId], references: [id])
+  job                  Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  workerRecord         Worker?  @relation(fields: [workerId], references: [id], onDelete: SetNull)
 
-  @@index([company, worker, createdAt])
-  @@index([company, worker, sessionId, createdAt])
-  @@index([jobId])
+  @@index([conversationId, createdAt])
+  @@index([jobId, createdAt])
   @@index([workerId, createdAt])
-  @@index([enquiryReadyForKelly, createdAt])
-  @@index([conversationId])
 }
 
-model Conversation {
-  id          String         @id @default(cuid())
-  source      String
-  contactName String?
-  contactRef  String?
-  archived    Boolean        @default(false)
-  createdAt   DateTime       @default(now())
-  messages    InboxMessage[]
-  quotes      Quote[]
+model ChasConversation {
+  id           String        @id @default(cuid())
+  company      String
+  workerId     Int?
+  jobId        Int?
+  customerName String?
+  title        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  messages     ChasMessage[]
 
-  @@index([archived])
-  @@index([source, createdAt])
-}
-
-model InboxMessage {
-  id                Int           @id @default(autoincrement())
-  source            String
-  senderName        String?
-  senderEmail       String?
-  subject           String?
-  preview           String?
-  body              String?
-  assignedTo        String?
-  status            String        @default("unread")
-  createdAt         DateTime      @default(now())
-  conversationId    String?
-  customerId        Int?
-  jobId             Int?
-  senderPhone       String?
-  externalMessageId String?
-  conversation      Conversation? @relation(fields: [conversationId], references: [id])
-  customer          Customer?     @relation(fields: [customerId], references: [id])
-  job               Job?          @relation(fields: [jobId], references: [id])
-
-  @@unique([source, externalMessageId])
-  @@index([conversationId])
-  @@index([source, createdAt])
-  @@index([status, createdAt])
-  @@index([customerId])
-  @@index([jobId])
-}
-
-model Quote {
-  id                Int           @id @default(autoincrement())
-  customerId        Int?
-  jobId             Int?
-  conversationId    String?
-  customerName      String?
-  customerPhone     String?
-  customerEmail     String?
-  customerAddress   String?
-  customerPostcode  String?
-  scope             String
-  customerMessage   String?
-  internalNotes     String?
-  quoteWorking      String?
-  priceExVat        Float         @default(0)
-  vatRate           Float         @default(20)
-  vatAmount         Float         @default(0)
-  totalIncVat       Float         @default(0)
-  depositPercent    Float         @default(25)
-  depositAmount     Float         @default(0)
-  estimatedDays     Float?
-  estimatedTeamSize Int?
-  status            String        @default("needs_review")
-  sentAt            DateTime?
-  acceptedAt        DateTime?
-  declinedAt        DateTime?
-  archivedAt        DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  customer          Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  job               Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  conversation      Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-
-  @@index([status, createdAt])
-  @@index([customerId, createdAt])
-  @@index([jobId])
-  @@index([conversationId])
-  @@index([archivedAt])
-}
-
-model InboxConnection {
-  id                String    @id @default(cuid())
-  service           String    @unique
-  account           String?
-  lastSync          DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  accessToken       String?
-  externalAccountId String?
-  refreshToken      String?
-  syncError         String?
-  tokenExpiresAt    DateTime?
+  @@index([company, updatedAt])
+  @@index([workerId, updatedAt])
+  @@index([jobId, updatedAt])
 }
 
 model TimeOffRequest {
-  id                Int                      @id @default(autoincrement())
-  workerId          Int
-  requestType       String
-  status            String                   @default("pending")
-  startDate         DateTime
-  endDate           DateTime
-  startTime         String?
-  endTime           String?
-  isFullDay         Boolean                  @default(true)
-  reason            String?
-  requestedByName   String?
-  reviewedByName    String?
-  reviewNotes       String?
-  reviewedAt        DateTime?
-  cancelledAt       DateTime?
-  cancellationNote  String?
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
-  worker            Worker                   @relation(fields: [workerId], references: [id], onDelete: Cascade)
-  availabilityBlock WorkerAvailabilityBlock?
+  id           Int      @id @default(autoincrement())
+  workerId     Int
+  startDate    DateTime
+  endDate      DateTime
+  type         String
+  status       String   @default("requested")
+  notes        String?
+  createdAt    DateTime @default(now())
+  worker       Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
-  @@index([workerId, status, startDate])
-  @@index([status, createdAt])
-  @@index([startDate, endDate])
+  @@index([workerId, startDate])
+  @@index([status, startDate])
 }
 
 model WorkerAvailabilityBlock {
-  id        Int             @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   workerId  Int
-  requestId Int?            @unique
-  source    String          @default("time_off_request")
-  title     String
-  startDate DateTime
-  endDate   DateTime
-  startTime String?
-  endTime   String?
-  isFullDay Boolean         @default(true)
-  notes     String?
-  active    Boolean         @default(true)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  request   TimeOffRequest? @relation(fields: [requestId], references: [id])
-  worker    Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  startAt   DateTime
+  endAt     DateTime
+  reason    String?
+  source    String   @default("manual")
+  createdAt DateTime @default(now())
+  worker    Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
-  @@index([workerId, active, startDate, endDate])
-  @@index([startDate, endDate])
-}
-
-model JobAuditLog {
-  id            Int      @id @default(autoincrement())
-  jobId         Int
-  actorWorkerId Int?
-  action        String
-  beforeJson    String?
-  afterJson     String?
-  createdAt     DateTime @default(now())
-  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  actorWorker   Worker?  @relation(fields: [actorWorkerId], references: [id])
-
-  @@index([jobId, createdAt])
-  @@index([actorWorkerId, createdAt])
-  @@index([action, createdAt])
+  @@index([workerId, startAt])
+  @@index([startAt, endAt])
 }
 
 model Notification {
-  id             Int       @id @default(autoincrement())
-  jobId          Int
-  kind           String
-  channel        String    @default("sms")
-  recipientPhone String
-  scheduledFor   DateTime
-  sentAt         DateTime?
-  status         String    @default("pending")
-  body           String?
-  metaJson       String?
-  failureReason  String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id        Int      @id @default(autoincrement())
+  jobId     Int
+  type      String
+  scheduledFor DateTime
+  sentAt    DateTime?
+  cancelledAt DateTime?
+  createdAt DateTime @default(now())
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  @@index([jobId, scheduledFor])
+  @@index([sentAt, scheduledFor])
+}
 
-  @@index([jobId])
-  @@index([status, scheduledFor])
-  @@index([kind, status, scheduledFor])
+model JobAuditLog {
+  id         Int      @id @default(autoincrement())
+  jobId      Int
+  action     String
+  beforeJson String?
+  afterJson  String?
+  createdAt  DateTime @default(now())
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
 }
 
 model ActivityLog {
-  id           Int      @id @default(autoincrement())
-  createdAt    DateTime @default(now())
-  workerId     Int?
-  workerName   String?
-  jobId        Int?
-  eventType    String
-  page         String?
-  details      String?
-  metadataJson String?
-  userAgent    String?
-  worker       Worker?  @relation(fields: [workerId], references: [id], onDelete: SetNull)
-  job          Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  id        Int      @id @default(autoincrement())
+  workerId  Int?
+  jobId     Int?
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+  worker    Worker?  @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  job       Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
-  @@index([createdAt])
   @@index([workerId, createdAt])
   @@index([jobId, createdAt])
-  @@index([eventType, createdAt])
-  @@index([page, createdAt])
 }
 
-model Todo {
-  id          Int       @id @default(autoincrement())
-  description String
-  assignedTo  String
-  completed   Boolean   @default(false)
-  dueDate     DateTime?
-  completedAt DateTime?
-  createdAt   DateTime  @default(now())
+model InboxMessage {
+  id             Int      @id @default(autoincrement())
+  customerId     Int?
+  jobId          Int?
+  channel        String
+  externalId     String?
+  subject        String?
+  body           String
+  senderName     String?
+  senderAddress  String?
+  receivedAt     DateTime
+  createdAt      DateTime @default(now())
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  job            Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
-  @@index([completed])
-  @@index([assignedTo])
-  @@index([dueDate])
+  @@index([customerId, receivedAt])
+  @@index([jobId, receivedAt])
+  @@index([channel, receivedAt])
+}
+
+model Quote {
+  id                Int       @id @default(autoincrement())
+  customerId        Int
+  jobId             Int?
+  status            String    @default("draft")
+  title             String
+  description       String?
+  total             Float?
+  depositPercent    Float?
+  depositAmount     Float?
+  estimatedDays     Float?
+  estimatedTeamSize Int?
+  internalNotes     String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  customer          Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  job               Job?       @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  items             QuoteItem[]
+
+  @@index([customerId, createdAt])
+  @@index([jobId])
+  @@index([status, createdAt])
+}
+
+model QuoteItem {
+  id          Int      @id @default(autoincrement())
+  quoteId     Int
+  description String
+  quantity    Float?
+  unit        String?
+  unitPrice   Float?
+  total       Float?
+  sortOrder   Int      @default(0)
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId, sortOrder])
 }
