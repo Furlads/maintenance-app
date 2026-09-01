@@ -2,8 +2,11 @@
 
 import { useState } from 'react'
 
+type AssignmentStatus = 'not_linked' | 'confirmed' | 'transport_required' | null
+
 export default function OpportunityActions({ token, initialStatus }: { token: string; initialStatus: string }) {
   const [status, setStatus] = useState(initialStatus)
+  const [assignmentStatus, setAssignmentStatus] = useState<AssignmentStatus>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -19,6 +22,7 @@ export default function OpportunityActions({ token, initialStatus }: { token: st
       const data = await response.json()
       if (!response.ok) throw new Error(data?.error || 'Could not save your response.')
       setStatus(data.status)
+      setAssignmentStatus(data.assignmentStatus ?? null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your response.')
     } finally {
@@ -31,7 +35,15 @@ export default function OpportunityActions({ token, initialStatus }: { token: st
   }
 
   if (status === 'accepted') {
-    return <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">Accepted ✓ We’ve recorded your acceptance against this opportunity.</div>
+    if (assignmentStatus === 'transport_required') {
+      return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">Accepted ✓ Your place is recorded, but the booking will only become confirmed once transport is arranged.</div>
+    }
+
+    if (assignmentStatus === 'not_linked') {
+      return <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">Accepted ✓ We’ve recorded your acceptance against this opportunity.</div>
+    }
+
+    return <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">Accepted and confirmed ✓ This job has now been added to your confirmed work.</div>
   }
 
   if (status === 'interested') {
@@ -39,6 +51,7 @@ export default function OpportunityActions({ token, initialStatus }: { token: st
       <div className="space-y-3">
         <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">Interest recorded ✓</div>
         <button disabled={busy} onClick={() => respond('accept')} className="w-full rounded-2xl bg-[#91b83d] px-5 py-4 font-black text-[#17220f] disabled:opacity-60">Accept this opportunity</button>
+        {error ? <div className="text-sm font-bold text-red-700">{error}</div> : null}
       </div>
     )
   }
