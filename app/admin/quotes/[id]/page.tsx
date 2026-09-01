@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import QuoteEditor from './QuoteEditor'
 import QuoteDraftGuard from './QuoteDraftGuard'
 import KellyQuoteOverview from './KellyQuoteOverview'
+import AcceptedQuoteActions from './AcceptedQuoteActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -147,6 +148,10 @@ export default async function QuoteDetailPage({ params }: PageProps) {
           </Link>
         </div>
       </section>
+
+      {quote.status === 'accepted' && quote.jobId ? (
+        <AcceptedQuoteActions quoteId={quote.id} jobId={quote.jobId} />
+      ) : null}
 
       {showKellyOverview ? (
         <KellyQuoteOverview
