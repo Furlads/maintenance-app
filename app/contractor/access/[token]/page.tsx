@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
 export default function ContractorAccessPage() {
@@ -8,7 +8,35 @@ export default function ContractorAccessPage() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
+  const [checking, setChecking] = useState(true)
+  const [valid, setValid] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    async function check() {
+      try {
+        const response = await fetch(`/api/contractor/auth/access?token=${encodeURIComponent(params.token)}`, { cache: 'no-store' })
+        const data = await response.json().catch(() => null)
+        if (cancelled) return
+        if (!response.ok || !data?.valid) {
+          setValid(false)
+          setError(data?.error || 'This link is invalid or has expired.')
+          return
+        }
+        setValid(true)
+      } catch {
+        if (!cancelled) {
+          setValid(false)
+          setError('This link is invalid or has expired.')
+        }
+      } finally {
+        if (!cancelled) setChecking(false)
+      }
+    }
+    void check()
+    return () => { cancelled = true }
+  }, [params.token])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -23,5 +51,5 @@ export default function ContractorAccessPage() {
     finally { setBusy(false) }
   }
 
-  return <main className="min-h-dvh bg-[#eef2e9] px-4 py-8 text-[#162111]"><div className="mx-auto max-w-md overflow-hidden rounded-[28px] bg-white shadow-xl"><div className="bg-gradient-to-br from-[#13220f] via-[#223718] to-[#30491c] p-6 text-white"><div className="text-xs font-black uppercase tracking-[0.16em] text-[#b8d874]">Furlads subcontractor portal</div><h1 className="mt-2 text-3xl font-black">Set your password</h1><p className="mt-3 text-sm font-semibold leading-6 text-[#dce6d6]">Create a password for your subcontractor account. This secure link stops working once the password is changed.</p></div><form onSubmit={submit} className="space-y-4 p-6"><label className="block"><span className="mb-2 block text-xs font-black uppercase tracking-wide text-zinc-500">New password</span><input required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="new-password" className="w-full rounded-2xl border border-zinc-200 px-4 py-3 font-semibold outline-none focus:border-[#8caf3a]" /></label><label className="block"><span className="mb-2 block text-xs font-black uppercase tracking-wide text-zinc-500">Confirm password</span><input required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} type="password" autoComplete="new-password" className="w-full rounded-2xl border border-zinc-200 px-4 py-3 font-semibold outline-none focus:border-[#8caf3a]" /></label>{error ? <div className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div> : null}<button disabled={busy} className="w-full rounded-2xl bg-[#a8ca4a] px-5 py-4 font-black text-[#18220f] disabled:opacity-50">{busy ? 'Saving…' : 'Save password & continue'}</button></form></div></main>
+  return <main className="min-h-dvh bg-[#eef2e9] px-4 py-8 text-[#162111]"><div className="mx-auto max-w-md overflow-hidden rounded-[28px] bg-white shadow-xl"><div className="bg-gradient-to-br from-[#13220f] via-[#223718] to-[#30491c] p-6 text-white"><div className="text-xs font-black uppercase tracking-[0.16em] text-[#b8d874]">Furlads subcontractor portal</div><h1 className="mt-2 text-3xl font-black">{checking ? 'Checking your secure link' : valid ? 'Set your password' : 'Link unavailable'}</h1><p className="mt-3 text-sm font-semibold leading-6 text-[#dce6d6]">{checking ? 'One moment while we verify this account link.' : valid ? 'Create a password for your subcontractor account. This secure link stops working once the password is changed.' : 'This setup or reset link is no longer valid. Contact the office if you need a new one.'}</p></div>{checking ? <div className="p-6 text-sm font-bold text-zinc-600">Checking link…</div> : valid ? <form onSubmit={submit} className="space-y-4 p-6"><label className="block"><span className="mb-2 block text-xs font-black uppercase tracking-wide text-zinc-500">New password</span><input required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="new-password" className="w-full rounded-2xl border border-zinc-200 px-4 py-3 font-semibold outline-none focus:border-[#8caf3a]" /></label><label className="block"><span className="mb-2 block text-xs font-black uppercase tracking-wide text-zinc-500">Confirm password</span><input required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} type="password" autoComplete="new-password" className="w-full rounded-2xl border border-zinc-200 px-4 py-3 font-semibold outline-none focus:border-[#8caf3a]" /></label>{error ? <div className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div> : null}<button disabled={busy} className="w-full rounded-2xl bg-[#a8ca4a] px-5 py-4 font-black text-[#18220f] disabled:opacity-50">{busy ? 'Saving…' : 'Save password & continue'}</button></form> : <div className="space-y-3 p-6"><div className="rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-900">{error || 'This link is invalid or has expired.'}</div><a href="/contractor/login" className="block rounded-2xl bg-[#a8ca4a] px-5 py-4 text-center font-black text-[#18220f]">Back to subcontractor login</a></div>}</div></main>
 }
