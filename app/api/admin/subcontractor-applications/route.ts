@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getSession } from '@/lib/auth'
+import { getBaseUrl, getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { createContractorAccessToken } from '@/lib/subcontractor-access-token'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -56,7 +57,11 @@ export async function PATCH(req: Request) {
 
   if (action === 'approve') {
     if (application.status === 'approved' && application.approvedWorkerId) {
-      return NextResponse.json({ ok: true, status: 'approved', workerId: application.approvedWorkerId })
+      const existing = await prisma.worker.findUnique({ where: { id: application.approvedWorkerId }, select: { id: true, firstName: true, phone: true, passwordHash: true } })
+      if (!existing) return NextResponse.json({ error: 'Approved subcontractor profile was not found.' }, { status: 404 })
+      const token = createContractorAccessToken({ workerId: existing.id, purpose: 'onboarding', phone: existing.phone, passwordHash: existing.passwordHash })
+      const onboardingUrl = `${await getBaseUrl()}/contractor/access/${encodeURIComponent(token)}`
+      return NextResponse.json({ ok: true, status: 'approved', workerId: existing.id, onboardingUrl, onboardingMessage: `Hi ${existing.firstName}, your Furlads subcontractor application has been approved. Please set up your account and password here: ${onboardingUrl}` })
     }
 
     const duplicate = await prisma.worker.findFirst({
@@ -95,7 +100,7 @@ export async function PATCH(req: Request) {
         publicLiabilityExpiresAt: application.publicLiabilityExpiresAt,
         dayRate: application.dayRate,
       },
-      select: { id: true },
+      select: { id: true, firstName: true, phone: true, passwordHash: true },
     })
 
     const docs = await prisma.$queryRaw<Array<Record<string, any>>>`
@@ -115,7 +120,9 @@ export async function PATCH(req: Request) {
       WHERE "id"=${applicationId}
     `
 
-    return NextResponse.json({ ok: true, status: 'approved', workerId: worker.id })
+    const token = createContractorAccessToken({ workerId: worker.id, purpose: 'onboarding', phone: worker.phone, passwordHash: worker.passwordHash })
+    const onboardingUrl = `${await getBaseUrl()}/contractor/access/${encodeURIComponent(token)}`
+    return NextResponse.json({ ok: true, status: 'approved', workerId: worker.id, onboardingUrl, onboardingMessage: `Hi ${worker.firstName}, your Furlads subcontractor application has been approved. Please set up your account and password here: ${onboardingUrl}` })
   }
 
   return NextResponse.json({ error: 'Invalid action.' }, { status: 400 })
