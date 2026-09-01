@@ -74,7 +74,8 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
   const [actionBusy, setActionBusy] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [amendmentMode, setAmendmentMode] = useState(false)
+  const [revisionOpen, setRevisionOpen] = useState(false)
+  const [revisionInstructions, setRevisionInstructions] = useState('')
   const [reviewInput, setReviewInput] = useState('')
   const [reviewBusy, setReviewBusy] = useState(false)
   const [reviewError, setReviewError] = useState('')
@@ -97,8 +98,8 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
     quote.estimatedTeamSize == null ? '' : String(quote.estimatedTeamSize)
   )
 
-  const acceptedBaseline = quote.status === 'accepted' || Boolean(quote.jobId)
-  const fieldsLocked = acceptedBaseline && !amendmentMode
+  const acceptedBaseline = ['sent', 'accepted'].includes(quote.status) || Boolean(quote.jobId)
+  const fieldsLocked = acceptedBaseline
 
   useEffect(() => {
     let cancelled = false
@@ -184,13 +185,13 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
       estimatedTeamSize: estimatedTeamSize.trim()
         ? Math.max(1, Math.round(asNumber(estimatedTeamSize, 1)))
         : null,
-      amendmentMode,
+      amendmentMode: false,
     }
   }
 
   async function save(status?: string) {
     if (fieldsLocked) {
-      setError('This accepted quote is locked. Use “Reopen quote for amendment” first if the commercial baseline genuinely needs changing.')
+      setError('This sent quote is protected. Use “Revise quote” so CHAS recalculates the complete quotation.')
       return
     }
 
@@ -212,9 +213,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
       if (!res.ok) throw new Error(data?.error || 'Failed to save quote.')
 
       setSuccess(
-        acceptedBaseline && amendmentMode
-          ? 'Quote amendment saved. Review the linked landscaping job pack because its accepted baseline may now differ.'
-          : status
+        status
             ? `Quote moved to ${status.replaceAll('_', ' ')}.`
             : 'Quote saved.'
       )
@@ -230,6 +229,160 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
     setActionBusy(status)
     try {
       await save(status)
+    } finally {
+      setActionBusy('')
+    }
+  }
+
+  async function reviseQuote() {
+    const requestedChanges = revisionInstructions.trim()
+    if (!requestedChanges) {
+      setError('Describe what the customer wants changed before revising the quote.')
+      return
+    }
+
+    try {
+      setActionBusy('revise')
+      setError('')
+      setSuccess('')
+
+      const pricingResponse = await fetch('/api/ai/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'price',
+          customerName,
+          jobDetails: [
+            'EXISTING QUOTE TO BE REVISED',
+            `Current agreed scope:\n${scope}`,
+            quote.quoteWorking ? `Current CHAS pricing working:\n${quote.quoteWorking}` : '',
+            `CUSTOMER REQUESTED CHANGES:\n${requestedChanges}`,
+          ].filter(Boolean).join('\n\n'),
+          additionalInstructions:
+            'Requote the complete revised job from scratch. Apply the customer changes to the existing scope, remove anything they no longer want, add anything newly requested, and recalculate all labour, materials, plant, waste, logistics, programme, margin and selling price. Return the complete revised scope and full fresh calculations, not just the price difference.',
+        }),
+      })
+      const pricing = await pricingResponse.json().catch(() => null)
+      if (!pricingResponse.ok) {
+        throw new Error(pricing?.error || 'CHAS could not recalculate the revised quote.')
+      }
+
+      const options = Array.isArray(pricing?.options) ? pricing.options : []
+      const combinedOffers = Array.isArray(pricing?.combinedOffers)
+        ? pricing.combinedOffers
+        : pricing?.combinedOffer
+          ? [pricing.combinedOffer]
+          : []
+      const quoteMode = pricing?.quoteMode || (pricing?.optionMode ? 'alternatives' : 'single')
+      const revisedScope = [
+        String(pricing?.summary || '').trim(),
+        ...(Array.isArray(pricing?.confirmedInformation)
+          ? pricing.confirmedInformation.map((item: unknown) => String(item || '').trim())
+          : []),
+      ].filter(Boolean).join('\n') || scope
+      const revisedPrice = Number(pricing?.recommendedPriceExVat || 0)
+      const revisedDays = Number(pricing?.estimatedDuration?.workingDays || 0)
+      const revisedTeamSize = Number(pricing?.estimatedDuration?.teamSize || 1)
+
+      if (!(revisedPrice > 0)) {
+        throw new Error('CHAS did not return a valid revised selling price.')
+      }
+
+      const wordingResponse = await fetch('/api/ai/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'write',
+          customerName,
+          quoteMode,
+          options,
+          combinedOffers,
+          combinedOffer: combinedOffers[0] || null,
+          jobDetails: revisedScope,
+          additionalInstructions:
+            'Write this as a revised quotation following the customer’s requested changes. Make the complete revised scope and prices clear and explain that this version replaces the previous quotation.',
+          priceExVat: revisedPrice,
+          vatRate: STANDARD_VAT_RATE,
+          depositPercent: figures.deposit,
+        }),
+      })
+      const wording = await wordingResponse.json().catch(() => null)
+      if (!wordingResponse.ok) {
+        throw new Error(wording?.error || 'CHAS recalculated the price but could not write the revised quote.')
+      }
+
+      const optionsWorking = options.length
+        ? `OPTIONS / PACKAGES\n${options.map((option: any) => `${option.label || option.title}: £${Number(option.priceExVat || 0).toFixed(2)} + VAT\n${option.summary || ''}`).join('\n\n')}`
+        : ''
+      const combinedWorking = combinedOffers.length
+        ? `ALL-TOGETHER COMBINATIONS\n${combinedOffers.map((offer: any) => `${offer.label || 'All work together'}: £${Number(offer.priceExVat || 0).toFixed(2)} + VAT\n${offer.summary || ''}`).join('\n\n')}`
+        : ''
+      const revisedWorking = [
+        'CHAS FULL REQUOTATION',
+        `Customer requested changes: ${requestedChanges}`,
+        `Quote mode: ${quoteMode}`,
+        `Revised scope: ${revisedScope}`,
+        optionsWorking,
+        combinedWorking,
+        `FULL PRICING JSON\n${JSON.stringify(pricing, null, 2)}`,
+        quote.quoteWorking ? `PREVIOUS QUOTE WORKING — SUPERSEDED\n${quote.quoteWorking}` : '',
+      ].filter(Boolean).join('\n\n')
+      const revisedNotes = [
+        internalNotes,
+        `QUOTE REVISED ${new Date().toLocaleDateString('en-GB')}: ${requestedChanges}`,
+      ].filter(Boolean).join('\n\n')
+
+      const saveResponse = await fetch(`/api/quotes/${quote.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName,
+          customerPhone,
+          customerEmail,
+          customerAddress,
+          customerPostcode,
+          scope: revisedScope,
+          customerMessage: String(wording?.whatsappQuote || '').trim(),
+          internalNotes: revisedNotes,
+          quoteWorking: revisedWorking,
+          priceExVat: revisedPrice,
+          depositPercent: figures.deposit,
+          estimatedDays: revisedDays > 0 ? revisedDays : null,
+          estimatedTeamSize: Math.max(1, Math.round(revisedTeamSize)),
+          status: 'ready_to_send',
+          amendmentMode: true,
+        }),
+      })
+      const saved = await saveResponse.json().catch(() => null)
+      if (!saveResponse.ok) {
+        throw new Error(saved?.error || 'The revised quote could not be saved.')
+      }
+
+      setScope(revisedScope)
+      setCustomerMessage(String(wording?.whatsappQuote || '').trim())
+      setInternalNotes(revisedNotes)
+      setPriceExVat(String(revisedPrice))
+      setEstimatedDays(revisedDays > 0 ? String(revisedDays) : '')
+      setEstimatedTeamSize(String(Math.max(1, Math.round(revisedTeamSize))))
+      setRevisionInstructions('')
+      setRevisionOpen(false)
+
+      let packMessage = ''
+      if (quote.jobId) {
+        const planResponse = await fetch(`/api/landscaping/jobs/${quote.jobId}/plan`, {
+          method: 'POST',
+        })
+        if (!planResponse.ok) {
+          packMessage = ' The quote is updated, but please regenerate the linked worker job pack.'
+        } else {
+          packMessage = ' The linked worker job pack has also been refreshed.'
+        }
+      }
+
+      setSuccess(`Full revised quote created with fresh pricing and expected costs.${packMessage}`)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not revise the quote.')
     } finally {
       setActionBusy('')
     }
@@ -294,7 +447,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
 
   async function regenerateCustomerMessage() {
     if (fieldsLocked) {
-      setError('The accepted quote is locked. Reopen it for amendment before changing customer-facing wording.')
+      setError('This sent quote is protected. Use “Revise quote” to create fresh customer wording and calculations.')
       return
     }
 
@@ -338,7 +491,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
 
   async function regenerateAsTrev() {
     if (fieldsLocked) {
-      setError('The accepted quote is locked. Reopen it for amendment before changing customer-facing wording.')
+      setError('This sent quote is protected. Use “Revise quote” to create fresh customer wording and calculations.')
       return
     }
 
@@ -444,31 +597,53 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
       </section>
 
       {acceptedBaseline ? (
-        <section className={`rounded-2xl border p-5 shadow-sm ${amendmentMode ? 'border-amber-300 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
+        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-600">Accepted quote protection</div>
-              <h2 className="mt-1 text-lg font-black text-zinc-950">
-                {amendmentMode ? 'Amendment mode is ON' : 'Commercial baseline locked'}
-              </h2>
+              <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-600">Quote revision</div>
+              <h2 className="mt-1 text-lg font-black text-zinc-950">Sent quotation protected</h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-700">
-                {amendmentMode
-                  ? 'Changes here can make the linked landscaping job pack out of date. Save deliberately, then review/regenerate the job pack if the scope, price, duration or team changed.'
-                  : 'This quote has been accepted and/or converted to a job. Scope, price, programme and customer wording are read-only until you deliberately reopen it.'}
+                Use Revise quote when the customer asks for changes. CHAS will recalculate the complete job, expected costs, price, programme and customer wording together.
               </p>
             </div>
             <button
               type="button"
               onClick={() => {
-                setAmendmentMode((current) => !current)
+                setRevisionOpen((current) => !current)
                 setError('')
                 setSuccess('')
               }}
-              className={`min-h-11 rounded-xl px-4 text-sm font-black ${amendmentMode ? 'border border-zinc-300 bg-white text-zinc-900' : 'bg-amber-500 text-zinc-950'}`}
+              className="min-h-11 rounded-xl bg-amber-500 px-4 text-sm font-black text-zinc-950"
             >
-              {amendmentMode ? 'Cancel amendment mode' : 'Reopen quote for amendment'}
+              {revisionOpen ? 'Cancel revision' : 'Revise quote'}
             </button>
           </div>
+
+          {revisionOpen ? (
+            <div className="mt-5 rounded-2xl border border-amber-300 bg-white p-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-black text-zinc-950">What would the customer like changed?</span>
+                <textarea
+                  value={revisionInstructions}
+                  onChange={(event) => setRevisionInstructions(event.target.value)}
+                  rows={5}
+                  placeholder="For example: Remove the pergola, make the patio 3m larger and change the paving to porcelain."
+                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm leading-6 text-zinc-900"
+                />
+              </label>
+              <p className="mt-2 text-xs leading-5 text-zinc-600">
+                This creates a complete replacement quotation. Check the new wording and figures before sending it to the customer.
+              </p>
+              <button
+                type="button"
+                onClick={() => void reviseQuote()}
+                disabled={actionBusy === 'revise' || !revisionInstructions.trim()}
+                className="mt-4 min-h-11 rounded-xl bg-zinc-950 px-5 text-sm font-black text-white disabled:opacity-50"
+              >
+                {actionBusy === 'revise' ? 'CHAS is fully recalculating…' : 'Create full revised quote'}
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -619,7 +794,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
             </p>
           </div>
           {acceptedBaseline ? (
-            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-zinc-700 ring-1 ring-inset ring-yellow-300">Accepted baseline protected</span>
+            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-zinc-700 ring-1 ring-inset ring-yellow-300">Sent quote protected — use Revise quote</span>
           ) : null}
         </div>
 
@@ -668,7 +843,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
         <div className="flex flex-wrap gap-2">
           {!fieldsLocked ? (
             <button type="button" onClick={() => void save()} disabled={disabled} className="min-h-11 rounded-xl bg-zinc-950 px-4 text-sm font-black text-white disabled:opacity-50">
-              {saving ? 'Saving…' : amendmentMode ? 'Save amended quote' : 'Save changes'}
+              {saving ? 'Saving…' : 'Save changes'}
             </button>
           ) : null}
 
