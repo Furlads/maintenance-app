@@ -99,38 +99,28 @@ export async function POST(req: Request) {
   const workerIds = parseWorkerIds(body.workerIds)
   const createdByWorkerId = Number(session.workerId)
 
-  if (!title || !trade || !roughArea || !publicDescription) {
-    return NextResponse.json({ error: 'Title, trade, rough area and description are required.' }, { status: 400 })
-  }
-  if (!workerIds.length) {
-    return NextResponse.json({ error: 'Choose at least one subcontractor.' }, { status: 400 })
-  }
-  if (pricingMode === 'price' && fixedPrice == null) {
-    return NextResponse.json({ error: 'Enter a valid subcontractor price.' }, { status: 400 })
-  }
+  if (!title || !trade || !roughArea || !publicDescription) return NextResponse.json({ error: 'Title, trade, rough area and description are required.' }, { status: 400 })
+  if (!workerIds.length) return NextResponse.json({ error: 'Choose at least one subcontractor.' }, { status: 400 })
+  if (pricingMode === 'price' && fixedPrice == null) return NextResponse.json({ error: 'Enter a valid subcontractor price.' }, { status: 400 })
 
   if (sourceJobId) {
-    const sourceJob = await prisma.job.findUnique({
-      where: { id: sourceJobId },
-      select: { id: true, status: true },
-    })
-
-    if (!sourceJob) {
-      return NextResponse.json({ error: 'The linked job could not be found.' }, { status: 404 })
-    }
-
-    if (['cancelled', 'archived', 'done'].includes(clean(sourceJob.status).toLowerCase())) {
-      return NextResponse.json({ error: 'This job is not open for subcontractor assignment.' }, { status: 400 })
-    }
+    const sourceJob = await prisma.job.findUnique({ where: { id: sourceJobId }, select: { id: true, status: true } })
+    if (!sourceJob) return NextResponse.json({ error: 'The linked job could not be found.' }, { status: 404 })
+    if (['cancelled', 'archived', 'done'].includes(clean(sourceJob.status).toLowerCase())) return NextResponse.json({ error: 'This job is not open for subcontractor assignment.' }, { status: 400 })
   }
 
   const workers = await prisma.worker.findMany({
     where: { id: { in: workerIds }, active: true, employmentType: 'subcontractor' },
-    select: { id: true, firstName: true, lastName: true, phone: true },
+    select: { id: true, firstName: true, lastName: true, phone: true, publicLiabilityExpiresAt: true },
   })
 
-  if (workers.length !== workerIds.length) {
-    return NextResponse.json({ error: 'One or more selected workers are not active subcontractors.' }, { status: 400 })
+  if (workers.length !== workerIds.length) return NextResponse.json({ error: 'One or more selected workers are not active subcontractors.' }, { status: 400 })
+
+  const expiredWorkers = workers.filter((worker) => worker.publicLiabilityExpiresAt && worker.publicLiabilityExpiresAt.getTime() < Date.now())
+  if (expiredWorkers.length) {
+    return NextResponse.json({
+      error: `Cannot send new work until public liability insurance is updated for ${expiredWorkers.map((worker) => `${worker.firstName} ${worker.lastName}`.trim()).join(', ')}.`,
+    }, { status: 400 })
   }
 
   const opportunity = await prisma.$transaction(async (tx) => {
@@ -142,22 +132,15 @@ export async function POST(req: Request) {
       RETURNING "id"
     `
     const id = rows[0].id
-
     for (const worker of workers) {
       const token = crypto.randomBytes(24).toString('hex')
-      await tx.$executeRaw`
-        INSERT INTO "SubcontractorOpportunityRecipient" ("opportunityId", "workerId", "token")
-        VALUES (${id}, ${worker.id}, ${token})
-      `
+      await tx.$executeRaw`INSERT INTO "SubcontractorOpportunityRecipient" ("opportunityId", "workerId", "token") VALUES (${id}, ${worker.id}, ${token})`
     }
-
     return { id }
   })
 
   const recipients = await prisma.$queryRaw<Array<{ workerId: number; token: string }>>`
-    SELECT "workerId", "token"
-    FROM "SubcontractorOpportunityRecipient"
-    WHERE "opportunityId" = ${opportunity.id}
+    SELECT "workerId", "token" FROM "SubcontractorOpportunityRecipient" WHERE "opportunityId" = ${opportunity.id}
   `
 
   const origin = new URL(req.url).origin
