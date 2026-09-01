@@ -58,6 +58,16 @@ export default async function SubcontractorsPage() {
     FROM "SubcontractorWorkOrder"
   `
 
+  let pendingApplications = 0
+  try {
+    const applicationStats = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) AS "count" FROM "SubcontractorApplication" WHERE "status"='pending'
+    `
+    pendingApplications = Number(applicationStats[0]?.count || 0)
+  } catch {
+    pendingApplications = 0
+  }
+
   const awaiting = opportunities.reduce((sum, item) => sum + Number(item.sentCount) - Number(item.acceptedCount) - Number(item.declinedCount), 0)
   const accepted = opportunities.reduce((sum, item) => sum + Number(item.acceptedCount), 0)
   const workStats = workOrderStats[0] ?? { awaiting: BigInt(0), snags: BigInt(0), payment: BigInt(0) }
@@ -67,11 +77,17 @@ export default async function SubcontractorsPage() {
       <section className="rounded-[28px] bg-gradient-to-br from-[#152315] via-[#273c1d] to-[#3b5625] p-6 text-white shadow-xl sm:p-8">
         <div className="text-xs font-black uppercase tracking-[0.18em] text-[#b8d874]">Trade network</div>
         <h1 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">Subcontractors</h1>
-        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#dce6d6]">Offer work, capture acceptance, completion evidence, sign-off, CIS and payment without treating subcontractors like hourly staff.</p>
-        <div className="mt-5 flex flex-wrap gap-2"><Link href="/admin/subcontractors/new" className="inline-flex rounded-2xl bg-[#a9cc4b] px-5 py-3 text-sm font-black text-[#17220f]">+ Send an opportunity</Link><Link href="/admin/subcontractors/work-orders" className="inline-flex rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white">Work orders & sign-off →</Link></div>
+        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#dce6d6]">Build the trade network, review applications, offer work, capture acceptance, completion evidence, sign-off, CIS and payment.</p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Link href="/admin/subcontractors/new" className="inline-flex rounded-2xl bg-[#a9cc4b] px-5 py-3 text-sm font-black text-[#17220f]">+ Send an opportunity</Link>
+          <Link href="/admin/subcontractors/applications" className="inline-flex rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white">Applications{pendingApplications ? ` (${pendingApplications})` : ''} →</Link>
+          <Link href="/admin/subcontractors/work-orders" className="inline-flex rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white">Work orders & sign-off →</Link>
+          <a href="/subcontractors/apply" target="_blank" className="inline-flex rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white">Public application form ↗</a>
+        </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Stat label="Applications" value={String(pendingApplications)} />
         <Stat label="Awaiting reply" value={String(awaiting)} />
         <Stat label="Accepted" value={String(accepted)} />
         <Stat label="Awaiting sign-off" value={String(Number(workStats.awaiting))} />
