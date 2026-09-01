@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import Link from 'next/link'
 import TrevLegacyPauseCleaner from './TrevLegacyPauseCleaner'
 import TrevMobileDock from './TrevMobileDock'
 import TrevDashboardAvatarEnhancer from './TrevDashboardAvatarEnhancer'
@@ -23,6 +24,25 @@ export default function TrevLayout({ children }: Props) {
 
         .trev-mobile-shell > main {
           background: transparent !important;
+        }
+
+        .trev-admin-shortcut {
+          position: fixed;
+          top: calc(10px + env(safe-area-inset-top));
+          right: 12px;
+          z-index: 120;
+          display: inline-flex;
+          min-height: 42px;
+          align-items: center;
+          justify-content: center;
+          padding: 0 15px;
+          border-radius: 14px;
+          background: #111827;
+          color: #ffffff;
+          text-decoration: none;
+          font-size: 13px;
+          font-weight: 900;
+          box-shadow: 0 10px 26px rgba(0,0,0,.22);
         }
 
         .trev-mobile-shell > main > div > section:first-child {
@@ -244,6 +264,9 @@ export default function TrevLayout({ children }: Props) {
           }
         }
       `}</style>
+      <Link href="/admin" className="trev-admin-shortcut" aria-label="Open admin control centre">
+        Admin
+      </Link>
       {children}
       <TrevDashboardAvatarEnhancer />
       <TrevLegacyPauseCleaner />
