@@ -1,5 +1,6 @@
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { SUBCONTRACTOR_AGREEMENT_VERSION } from '@/lib/subcontractor-agreement'
 
 export type ContractorRecipient = {
   workerId: number
@@ -24,6 +25,15 @@ export async function contractorSessionMatchesWorker(workerId: number) {
   return Number(session.workerId) === workerId
 }
 
+export async function contractorHasCurrentAgreement(workerId: number) {
+  const rows = await prisma.$queryRaw<Array<{ id: number }>>`
+    SELECT "id" FROM "SubcontractorAgreementAcceptance"
+    WHERE "workerId" = ${workerId} AND "version" = ${SUBCONTRACTOR_AGREEMENT_VERSION}
+    LIMIT 1
+  `
+  return Boolean(rows[0])
+}
+
 export async function requireContractorForToken(token: string) {
   const recipient = await getContractorRecipient(token)
   if (!recipient) return { ok: false as const, reason: 'not_found' as const, recipient: null }
@@ -37,6 +47,10 @@ export async function requireContractorForToken(token: string) {
 
   if (!worker || !worker.active || worker.employmentType !== 'subcontractor' || !worker.passwordHash) {
     return { ok: false as const, reason: 'unauthenticated' as const, recipient }
+  }
+
+  if (!(await contractorHasCurrentAgreement(recipient.workerId))) {
+    return { ok: false as const, reason: 'agreement_required' as const, recipient }
   }
 
   return { ok: true as const, recipient }
