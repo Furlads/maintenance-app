@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getLatestLandscapingPlan } from '@/lib/landscaping-plan'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -67,7 +68,7 @@ export async function GET(_: Request, ctx: Ctx) {
 
   const workOrders = await prisma.$queryRaw<Array<Record<string, unknown>>>`
     SELECT wo.*, o."title", o."trade", o."publicDescription", o."timingText", o."durationText",
-      j."address", j."notes" AS "jobNotes", j."visitDate", j."startTime", j."status" AS "jobStatus",
+      j."address", j."notes" AS "jobNotes", j."visitDate", j."startTime", j."status" AS "jobStatus", j."jobType",
       c."name" AS "customerName", c."phone" AS "customerPhone", c."email" AS "customerEmail",
       c."address" AS "customerAddress", c."postcode" AS "customerPostcode"
     FROM "SubcontractorWorkOrder" wo
@@ -93,7 +94,38 @@ export async function GET(_: Request, ctx: Ctx) {
       })
     : []
 
-  return NextResponse.json({ workOrder: workOrders[0], variations, photos })
+  const workOrder = workOrders[0] || null
+  const jobType = clean(workOrder?.jobType).toLowerCase()
+  const landscapingPlan = recipient.sourceJobId && jobType.includes('land')
+    ? await getLatestLandscapingPlan(recipient.sourceJobId)
+    : null
+
+  const operationalPlan = landscapingPlan
+    ? {
+        totalDays: landscapingPlan.totalDays,
+        teamSize: landscapingPlan.teamSize,
+        workerSummary: landscapingPlan.workerSummary,
+        dayPlan: landscapingPlan.dayPlan.map((day) => ({
+          day: day.day,
+          heading: day.heading,
+          target: day.target,
+          tasks: day.tasks,
+          ifAhead: day.ifAhead,
+          checkpoint: day.checkpoint,
+        })),
+        materials: landscapingPlan.materials.map((item) => ({
+          item: item.item,
+          quantity: item.neededQuantity || item.quantity,
+          orderFor: item.orderFor,
+          note: item.note,
+        })),
+        plantTools: landscapingPlan.plantTools,
+        siteChecks: landscapingPlan.siteChecks,
+        risks: landscapingPlan.risks,
+      }
+    : null
+
+  return NextResponse.json({ workOrder, variations, photos, operationalPlan })
 }
 
 export async function PATCH(req: Request, ctx: Ctx) {
