@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 
 type Worker = {
   id: number
@@ -34,12 +33,10 @@ type CreatedLink = {
 }
 
 export default function NewSubcontractorOpportunityPage() {
-  const searchParams = useSearchParams()
-  const requestedJobId = searchParams.get('jobId') || ''
   const [workers, setWorkers] = useState<Worker[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [selected, setSelected] = useState<number[]>([])
-  const [sourceJobId, setSourceJobId] = useState(requestedJobId)
+  const [sourceJobId, setSourceJobId] = useState('')
   const [mode, setMode] = useState<'price' | 'quote'>('price')
   const [company, setCompany] = useState('furlads')
   const [trade, setTrade] = useState('Landscaping')
@@ -55,6 +52,8 @@ export default function NewSubcontractorOpportunityPage() {
   const [createdLinks, setCreatedLinks] = useState<CreatedLink[]>([])
 
   useEffect(() => {
+    const requestedJobId = new URLSearchParams(window.location.search).get('jobId') || ''
+
     Promise.all([
       fetch('/api/admin/workers', { cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))),
       fetch('/api/jobs', { cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))),
@@ -77,7 +76,7 @@ export default function NewSubcontractorOpportunityPage() {
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load subcontractors.'))
-  }, [requestedJobId])
+  }, [])
 
   const selectedNames = useMemo(() => workers.filter((worker) => selected.includes(worker.id)).map((worker) => worker.fullName || `${worker.firstName} ${worker.lastName}`.trim()), [workers, selected])
   const linkedJob = useMemo(() => jobs.find((job) => String(job.id) === sourceJobId) ?? null, [jobs, sourceJobId])
