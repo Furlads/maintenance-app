@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { FURLADS_QUOTE_PRICING_RULES } from '@/lib/quotePricingRules'
+import { compareCrewCosts } from '@/lib/crewCosting'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -63,6 +64,40 @@ export async function GET(_request: Request, { params }: RouteContext) {
       return NextResponse.json({ ok: false, error: 'Quote not found.' }, { status: 404 })
     }
 
+    const crews = await prisma.crew.findMany({
+      where: { active: true },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        dayRate: true,
+        durationMultiplier: true,
+        skillLevel: true,
+        suitableJobTypes: true,
+        technicalSpecialist: true,
+        summary: true,
+        members: {
+          select: {
+            worker: {
+              select: {
+                firstName: true,
+                lastName: true,
+                transportRequired: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const crewComparison = compareCrewCosts({
+      scope: quote.scope,
+      internalNotes: quote.internalNotes,
+      estimatedDays: quote.estimatedDays,
+      crews,
+    })
+
     const sellingPriceExVat = allTogetherPriceFromWorking(quote.quoteWorking) || quote.priceExVat
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.')
@@ -114,7 +149,9 @@ Use exactly this shape:
 
     const result = extractJson(response.output_text || '')
     const materials = cleanNumber(result.materials)
-    const labour = cleanNumber(result.labour)
+    const aiLabour = cleanNumber(result.labour)
+    const recommendedCrew = crewComparison.options.find((option) => option.recommended)
+    const labour = recommendedCrew?.totalLabourCost ?? aiLabour
     const plantWasteLogistics = cleanNumber(result.plantWasteLogistics)
     const other = cleanNumber(result.other)
     const totalDirectCost = Number((materials + labour + plantWasteLogistics + other).toFixed(2))
@@ -137,6 +174,7 @@ Use exactly this shape:
         notes: Array.isArray(result.notes)
           ? result.notes.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 4)
           : [],
+        crewComparison,
       },
     })
   } catch (error) {

@@ -15,35 +15,78 @@ model Company {
 }
 
 model Worker {
-  id                  Int                       @id @default(autoincrement())
-  phone               String?
-  email               String?
-  active              Boolean                   @default(true)
-  createdAt           DateTime                  @default(now())
-  accessLevel         String
-  firstName           String
-  jobTitle            String
-  lastName            String
-  pinHash             String?
-  failedLoginAttempts Int                       @default(0)
-  lastLoginAt         DateTime?
-  lockedUntil         DateTime?
-  passwordHash        String?
-  mustChangePassword  Boolean                   @default(false)
-  assignedJobs        JobAssignment[]
-  notes               JobNote[]
-  uploadedPhotos      JobPhoto[]
-  timeOffRequests     TimeOffRequest[]
-  webauthnCredentials WebAuthnCredential[]
-  availabilityBlocks  WorkerAvailabilityBlock[]
-  companies           WorkerCompany[]
-  chasMessages        ChasMessage[]
-  jobAuditLogs        JobAuditLog[]
-  activityLogs        ActivityLog[]
+  id                     Int                       @id @default(autoincrement())
+  phone                  String?
+  email                  String?
+  active                 Boolean                   @default(true)
+  createdAt              DateTime                  @default(now())
+  accessLevel            String
+  firstName              String
+  jobTitle               String
+  lastName               String
+  pinHash                String?
+  failedLoginAttempts    Int                       @default(0)
+  lastLoginAt            DateTime?
+  lockedUntil            DateTime?
+  passwordHash           String?
+  mustChangePassword     Boolean                   @default(false)
+  assignedJobs           JobAssignment[]
+  notes                  JobNote[]
+  uploadedPhotos         JobPhoto[]
+  timeOffRequests        TimeOffRequest[]
+  webauthnCredentials    WebAuthnCredential[]
+  availabilityBlocks     WorkerAvailabilityBlock[]
+  companies              WorkerCompany[]
+  chasMessages           ChasMessage[]
+  jobAuditLogs           JobAuditLog[]
+  activityLogs           ActivityLog[]
+  employmentType         String                    @default("employee")
+  dayRate                Float?
+  skills                 String[]                  @default([])
+  transportNotes         String?
+  canDrive               Boolean                   @default(true)
+  transportRequired      Boolean                   @default(false)
+  canUseCompanyTools     Boolean                   @default(false)
+  canUseCompanyVehicle   Boolean                   @default(false)
+  cisRegistered          Boolean                   @default(false)
+  cisVerified            Boolean                   @default(false)
+  cisVerificationNumber  String?
+  cisDeductionRate       Float?
+  workAcceptanceRequired Boolean                   @default(false)
+  crewMemberships        CrewMember[]
 
   @@index([active, accessLevel])
   @@index([lastName, firstName])
   @@index([email])
+}
+
+model Crew {
+  id                  Int          @id @default(autoincrement())
+  slug                String       @unique
+  name                String
+  dayRate             Float
+  durationMultiplier  Float        @default(1)
+  skillLevel          String       @default("standard")
+  suitableJobTypes    String[]     @default([])
+  technicalSpecialist Boolean      @default(false)
+  summary             String?
+  active              Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  members             CrewMember[]
+
+  @@index([active, name])
+}
+
+model CrewMember {
+  id       Int    @id @default(autoincrement())
+  crewId   Int
+  workerId Int
+  crew     Crew   @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  worker   Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([crewId, workerId])
+  @@index([workerId])
 }
 
 model WebAuthnCredential {
@@ -169,13 +212,13 @@ model JobNote {
 
 model JobPhoto {
   id                 Int      @id @default(autoincrement())
-  jobId               Int
+  jobId              Int
   uploadedByWorkerId Int?
-  label               String?
-  imageUrl            String
-  createdAt           DateTime @default(now())
-  job                 Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  uploadedByWorker    Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
+  label              String?
+  imageUrl           String
+  createdAt          DateTime @default(now())
+  job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  uploadedByWorker   Worker?  @relation(fields: [uploadedByWorkerId], references: [id])
 
   @@index([jobId, createdAt])
   @@index([uploadedByWorkerId, createdAt])
@@ -234,7 +277,7 @@ model Conversation {
 }
 
 model InboxMessage {
-  id                Int      @id @default(autoincrement())
+  id                Int           @id @default(autoincrement())
   source            String
   senderName        String?
   senderEmail       String?
@@ -242,8 +285,8 @@ model InboxMessage {
   preview           String?
   body              String?
   assignedTo        String?
-  status            String   @default("unread")
-  createdAt         DateTime @default(now())
+  status            String        @default("unread")
+  createdAt         DateTime      @default(now())
   conversationId    String?
   customerId        Int?
   jobId             Int?
@@ -262,37 +305,37 @@ model InboxMessage {
 }
 
 model Quote {
-  id                 Int       @id @default(autoincrement())
-  customerId         Int?
-  jobId              Int?
-  conversationId     String?
-  customerName       String?
-  customerPhone      String?
-  customerEmail      String?
-  customerAddress    String?
-  customerPostcode   String?
-  scope              String
-  customerMessage    String?
-  internalNotes      String?
-  quoteWorking       String?
-  priceExVat         Float     @default(0)
-  vatRate            Float     @default(20)
-  vatAmount          Float     @default(0)
-  totalIncVat        Float     @default(0)
-  depositPercent     Float     @default(25)
-  depositAmount      Float     @default(0)
-  estimatedDays      Float?
-  estimatedTeamSize  Int?
-  status             String    @default("needs_review")
-  sentAt             DateTime?
-  acceptedAt         DateTime?
-  declinedAt         DateTime?
-  archivedAt         DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  customer           Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  job                Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  conversation       Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  id                Int           @id @default(autoincrement())
+  customerId        Int?
+  jobId             Int?
+  conversationId    String?
+  customerName      String?
+  customerPhone     String?
+  customerEmail     String?
+  customerAddress   String?
+  customerPostcode  String?
+  scope             String
+  customerMessage   String?
+  internalNotes     String?
+  quoteWorking      String?
+  priceExVat        Float         @default(0)
+  vatRate           Float         @default(20)
+  vatAmount         Float         @default(0)
+  totalIncVat       Float         @default(0)
+  depositPercent    Float         @default(25)
+  depositAmount     Float         @default(0)
+  estimatedDays     Float?
+  estimatedTeamSize Int?
+  status            String        @default("needs_review")
+  sentAt            DateTime?
+  acceptedAt        DateTime?
+  declinedAt        DateTime?
+  archivedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  customer          Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  job               Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  conversation      Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
   @@index([customerId, createdAt])
@@ -302,12 +345,12 @@ model Quote {
 }
 
 model InboxConnection {
-  id                String   @id @default(cuid())
-  service           String   @unique
+  id                String    @id @default(cuid())
+  service           String    @unique
   account           String?
   lastSync          DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
   accessToken       String?
   externalAccountId String?
   refreshToken      String?
@@ -316,15 +359,15 @@ model InboxConnection {
 }
 
 model TimeOffRequest {
-  id                Int      @id @default(autoincrement())
+  id                Int                      @id @default(autoincrement())
   workerId          Int
   requestType       String
-  status            String   @default("pending")
+  status            String                   @default("pending")
   startDate         DateTime
   endDate           DateTime
   startTime         String?
   endTime           String?
-  isFullDay         Boolean  @default(true)
+  isFullDay         Boolean                  @default(true)
   reason            String?
   requestedByName   String?
   reviewedByName    String?
@@ -332,9 +375,9 @@ model TimeOffRequest {
   reviewedAt        DateTime?
   cancelledAt       DateTime?
   cancellationNote  String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  worker            Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  worker            Worker                   @relation(fields: [workerId], references: [id], onDelete: Cascade)
   availabilityBlock WorkerAvailabilityBlock?
 
   @@index([workerId, status, startDate])
@@ -343,20 +386,20 @@ model TimeOffRequest {
 }
 
 model WorkerAvailabilityBlock {
-  id        Int      @id @default(autoincrement())
+  id        Int             @id @default(autoincrement())
   workerId  Int
-  requestId Int?     @unique
-  source    String   @default("time_off_request")
+  requestId Int?            @unique
+  source    String          @default("time_off_request")
   title     String
   startDate DateTime
   endDate   DateTime
   startTime String?
   endTime   String?
-  isFullDay Boolean  @default(true)
+  isFullDay Boolean         @default(true)
   notes     String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   request   TimeOffRequest? @relation(fields: [requestId], references: [id])
   worker    Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
@@ -381,19 +424,19 @@ model JobAuditLog {
 }
 
 model Notification {
-  id             Int      @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   jobId          Int
   kind           String
-  channel        String   @default("sms")
+  channel        String    @default("sms")
   recipientPhone String
   scheduledFor   DateTime
   sentAt         DateTime?
-  status         String   @default("pending")
+  status         String    @default("pending")
   body           String?
   metaJson       String?
   failureReason  String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
@@ -424,13 +467,13 @@ model ActivityLog {
 }
 
 model Todo {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   description String
   assignedTo  String
-  completed   Boolean  @default(false)
+  completed   Boolean   @default(false)
   dueDate     DateTime?
   completedAt DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([completed])
   @@index([assignedTo])

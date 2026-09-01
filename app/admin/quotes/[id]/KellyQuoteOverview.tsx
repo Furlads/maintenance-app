@@ -17,6 +17,25 @@ type Costing = {
   grossMarginPercent: number
   labourManDays: number
   notes: string[]
+  crewComparison: {
+    jobProfile: string
+    basedOnDefaultDuration?: boolean
+    options: CrewOption[]
+  }
+}
+
+type CrewOption = {
+  crewId: number
+  name: string
+  dayRate: number
+  expectedDays: number
+  totalLabourCost: number
+  skillLevel: string
+  suitability: string
+  transportWarning: string | null
+  summary: string
+  recommended: boolean
+  reason: string
 }
 
 type Props = {
@@ -208,6 +227,68 @@ export default function KellyQuoteOverview({
               </div>
             )}
           </div>
+
+          {costing?.crewComparison?.options?.length ? (
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 lg:col-span-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">
+                    Crew cost comparison
+                  </div>
+                  <div className="mt-1 text-sm text-zinc-600">
+                    Compared by expected duration and total labour cost — not day rate alone.
+                  </div>
+                </div>
+                <div className="text-xs font-bold text-zinc-500">
+                  {costing.crewComparison.jobProfile === 'technical'
+                    ? 'Technical / finish-critical scope detected'
+                    : 'Standard work profile'}
+                </div>
+              </div>
+
+              {costing.crewComparison.basedOnDefaultDuration ? (
+                <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">
+                  The quote has no duration yet, so these figures use a one-day planning baseline. Add the expected days for a final comparison.
+                </div>
+              ) : null}
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {costing.crewComparison.options.map((option) => (
+                  <div
+                    key={option.crewId}
+                    className={`rounded-2xl p-4 ring-1 ring-inset ${option.recommended ? 'bg-green-50 ring-green-300' : 'bg-white ring-zinc-200'}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-base font-black text-zinc-950">{option.name}</div>
+                        <div className="mt-1 text-xs font-semibold text-zinc-500">
+                          {option.skillLevel} · {option.suitability}
+                        </div>
+                      </div>
+                      {option.recommended ? (
+                        <span className="rounded-full bg-green-700 px-2.5 py-1 text-[11px] font-black text-white">
+                          Recommended
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <CrewMetric label="Day rate" value={money(option.dayRate)} />
+                      <CrewMetric label="Expected" value={`${option.expectedDays} days`} />
+                      <CrewMetric label="Total labour" value={money(option.totalLabourCost)} />
+                    </div>
+
+                    <p className="mt-3 text-xs leading-5 text-zinc-600">{option.reason}</p>
+                    {option.transportWarning ? (
+                      <div className="mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-xs font-bold text-amber-900">
+                        {option.transportWarning}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -244,6 +325,15 @@ function CostRow({ label, value }: { label: string; value: number }) {
     <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-inset ring-zinc-200">
       <span className="text-sm font-semibold text-zinc-600">{label}</span>
       <span className="text-sm font-black text-zinc-950">{money(value)}</span>
+    </div>
+  )
+}
+
+function CrewMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-white px-2.5 py-2 ring-1 ring-inset ring-zinc-200">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">{label}</div>
+      <div className="mt-1 text-sm font-black text-zinc-900">{value}</div>
     </div>
   )
 }

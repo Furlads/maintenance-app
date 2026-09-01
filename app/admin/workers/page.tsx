@@ -15,6 +15,19 @@ type Worker = {
   active: boolean;
   createdAt?: string;
   lastLoginAt?: string | null;
+  employmentType: string;
+  dayRate: number | null;
+  skills: string[];
+  transportNotes: string | null;
+  canDrive: boolean;
+  transportRequired: boolean;
+  canUseCompanyTools: boolean;
+  canUseCompanyVehicle: boolean;
+  cisRegistered: boolean;
+  cisVerified: boolean;
+  cisVerificationNumber: string | null;
+  cisDeductionRate: number | null;
+  workAcceptanceRequired: boolean;
 };
 
 type WorkerForm = {
@@ -25,6 +38,19 @@ type WorkerForm = {
   jobTitle: string;
   accessLevel: string;
   active: boolean;
+  employmentType: string;
+  dayRate: string;
+  skills: string;
+  transportNotes: string;
+  canDrive: boolean;
+  transportRequired: boolean;
+  canUseCompanyTools: boolean;
+  canUseCompanyVehicle: boolean;
+  cisRegistered: boolean;
+  cisVerified: boolean;
+  cisVerificationNumber: string;
+  cisDeductionRate: string;
+  workAcceptanceRequired: boolean;
 };
 
 const emptyForm: WorkerForm = {
@@ -35,6 +61,19 @@ const emptyForm: WorkerForm = {
   jobTitle: "",
   accessLevel: "worker",
   active: true,
+  employmentType: "employee",
+  dayRate: "",
+  skills: "",
+  transportNotes: "",
+  canDrive: true,
+  transportRequired: false,
+  canUseCompanyTools: false,
+  canUseCompanyVehicle: false,
+  cisRegistered: false,
+  cisVerified: false,
+  cisVerificationNumber: "",
+  cisDeductionRate: "",
+  workAcceptanceRequired: false,
 };
 
 function fmtDateTime(value?: string | null) {
@@ -154,6 +193,19 @@ export default function WorkersAdminPage() {
       jobTitle: worker.jobTitle || "",
       accessLevel: worker.accessLevel || "worker",
       active: !!worker.active,
+      employmentType: worker.employmentType || "employee",
+      dayRate: worker.dayRate == null ? "" : String(worker.dayRate),
+      skills: (worker.skills || []).join(", "),
+      transportNotes: worker.transportNotes || "",
+      canDrive: worker.canDrive !== false,
+      transportRequired: !!worker.transportRequired,
+      canUseCompanyTools: !!worker.canUseCompanyTools,
+      canUseCompanyVehicle: !!worker.canUseCompanyVehicle,
+      cisRegistered: !!worker.cisRegistered,
+      cisVerified: !!worker.cisVerified,
+      cisVerificationNumber: worker.cisVerificationNumber || "",
+      cisDeductionRate: worker.cisDeductionRate == null ? "" : String(worker.cisDeductionRate),
+      workAcceptanceRequired: !!worker.workAcceptanceRequired,
     });
     setEditOpen(true);
     setMessage("");
@@ -421,6 +473,8 @@ export default function WorkersAdminPage() {
             </select>
           </div>
 
+          <WorkerProfileFields form={addForm} update={updateAddForm} />
+
           <label
             style={{
               display: "inline-flex",
@@ -512,6 +566,17 @@ export default function WorkersAdminPage() {
                     <div style={{ opacity: 0.75, marginTop: 4 }}>
                       {worker.jobTitle || "No job title"} • {worker.accessLevel || "worker"}
                     </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
+                      <span style={badgeStyle}>
+                        {worker.employmentType === "subcontractor" ? "Subcontractor" : "Employee"}
+                      </span>
+                      {worker.dayRate != null ? <span style={badgeStyle}>£{worker.dayRate}/day</span> : null}
+                      {worker.transportRequired ? (
+                        <span style={{ ...badgeStyle, background: "#fef3c7", color: "#92400e" }}>
+                          Transport required
+                        </span>
+                      ) : null}
+                    </div>
                     <div style={{ opacity: 0.75, marginTop: 4 }}>
                       {worker.phone || "No phone"} {worker.email ? `• ${worker.email}` : ""}
                     </div>
@@ -587,16 +652,21 @@ export default function WorkersAdminPage() {
           }}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-worker-heading"
             style={{
               width: "100%",
               maxWidth: 720,
+              maxHeight: "calc(100vh - 40px)",
+              overflowY: "auto",
               background: "#fff",
               borderRadius: 18,
               padding: 18,
               border: "1px solid #e5e7eb",
             }}
           >
-            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 900 }}>Edit worker</h2>
+            <h2 id="edit-worker-heading" style={{ margin: 0, fontSize: 24, fontWeight: 900 }}>Edit worker</h2>
 
             <div
               style={{
@@ -648,6 +718,8 @@ export default function WorkersAdminPage() {
                 <option value="owner">Owner</option>
               </select>
             </div>
+
+            <WorkerProfileFields form={editForm} update={updateEditForm} />
 
             <label
               style={{
@@ -706,3 +778,124 @@ export default function WorkersAdminPage() {
     </main>
   );
 }
+
+function WorkerProfileFields({
+  form,
+  update,
+}: {
+  form: WorkerForm;
+  update: <K extends keyof WorkerForm>(key: K, value: WorkerForm[K]) => void;
+}) {
+  const fieldStyle: React.CSSProperties = {
+    padding: "12px 14px",
+    borderRadius: 12,
+    border: "1px solid #d4d4d8",
+    width: "100%",
+  };
+
+  const checkboxes: Array<[keyof WorkerForm, string]> = [
+    ["canDrive", "Can drive"],
+    ["transportRequired", "Transport must be arranged"],
+    ["canUseCompanyTools", "Can use company tools"],
+    ["canUseCompanyVehicle", "Can use company vehicle"],
+    ["workAcceptanceRequired", "Must accept work before booking"],
+    ["cisRegistered", "CIS registered"],
+    ["cisVerified", "CIS verified"],
+  ];
+
+  return (
+    <fieldset style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 14, marginTop: 14 }}>
+      <legend style={{ padding: "0 6px", fontWeight: 900 }}>Worker profile and costing</legend>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+        <label style={{ fontSize: 13, fontWeight: 700 }}>
+          Employment type
+          <select
+            value={form.employmentType}
+            onChange={(event) => {
+              const value = event.target.value;
+              update("employmentType", value);
+              if (value === "subcontractor") update("workAcceptanceRequired", true);
+            }}
+            style={{ ...fieldStyle, marginTop: 6 }}
+          >
+            <option value="employee">Employee</option>
+            <option value="subcontractor">Subcontractor</option>
+          </select>
+        </label>
+        <label style={{ fontSize: 13, fontWeight: 700 }}>
+          Day rate (£)
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.dayRate}
+            onChange={(event) => update("dayRate", event.target.value)}
+            placeholder="150"
+            style={{ ...fieldStyle, marginTop: 6 }}
+          />
+        </label>
+        <label style={{ gridColumn: "1 / -1", fontSize: 13, fontWeight: 700 }}>
+          Skills (comma separated)
+          <input
+            value={form.skills}
+            onChange={(event) => update("skills", event.target.value)}
+            placeholder="Landscaping, groundworks, fencing"
+            style={{ ...fieldStyle, marginTop: 6 }}
+          />
+        </label>
+        <label style={{ gridColumn: "1 / -1", fontSize: 13, fontWeight: 700 }}>
+          Driver / transport notes
+          <textarea
+            value={form.transportNotes}
+            onChange={(event) => update("transportNotes", event.target.value)}
+            placeholder="Transport arrangements or restrictions"
+            rows={2}
+            style={{ ...fieldStyle, marginTop: 6, resize: "vertical" }}
+          />
+        </label>
+        <label style={{ fontSize: 13, fontWeight: 700 }}>
+          CIS verification number
+          <input
+            value={form.cisVerificationNumber}
+            onChange={(event) => update("cisVerificationNumber", event.target.value)}
+            style={{ ...fieldStyle, marginTop: 6 }}
+          />
+        </label>
+        <label style={{ fontSize: 13, fontWeight: 700 }}>
+          CIS deduction rate (%)
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+            value={form.cisDeductionRate}
+            onChange={(event) => update("cisDeductionRate", event.target.value)}
+            style={{ ...fieldStyle, marginTop: 6 }}
+          />
+        </label>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 18px", marginTop: 14 }}>
+        {checkboxes.map(([key, label]) => (
+          <label key={key} style={{ display: "inline-flex", gap: 7, alignItems: "center", fontSize: 13, fontWeight: 700 }}>
+            <input
+              type="checkbox"
+              checked={Boolean(form[key])}
+              onChange={(event) => update(key, event.target.checked as WorkerForm[typeof key])}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+const badgeStyle: React.CSSProperties = {
+  display: "inline-flex",
+  borderRadius: 999,
+  background: "#f4f4f5",
+  color: "#3f3f46",
+  padding: "4px 8px",
+  fontSize: 11,
+  fontWeight: 800,
+};
