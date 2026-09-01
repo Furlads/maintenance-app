@@ -12,10 +12,14 @@ function clean(value: unknown) {
 
 type OpportunityView = {
   recipientId: number
+  opportunityId: number
+  sourceJobId: number | null
   status: string
   workerId: number
   firstName: string
   lastName: string
+  transportRequired: boolean
+  canDrive: boolean
   company: string
   title: string
   trade: string
@@ -28,12 +32,18 @@ type OpportunityView = {
   quoteGuidance: string | null
 }
 
+type AcceptedRecipient = {
+  workerId: number
+  transportRequired: boolean
+  canDrive: boolean
+}
+
 async function loadOpportunity(token: string) {
   const rows = await prisma.$queryRaw<OpportunityView[]>`
-    SELECT r."id" AS "recipientId", r."status", r."workerId",
-      w."firstName", w."lastName", o."company", o."title", o."trade", o."roughArea",
-      o."publicDescription", o."durationText", o."timingText", o."pricingMode",
-      o."fixedPrice", o."quoteGuidance"
+    SELECT r."id" AS "recipientId", r."opportunityId", r."status", r."workerId",
+      o."sourceJobId", w."firstName", w."lastName", w."transportRequired", w."canDrive",
+      o."company", o."title", o."trade", o."roughArea", o."publicDescription",
+      o."durationText", o."timingText", o."pricingMode", o."fixedPrice", o."quoteGuidance"
     FROM "SubcontractorOpportunityRecipient" r
     JOIN "SubcontractorOpportunity" o ON o."id" = r."opportunityId"
     JOIN "Worker" w ON w."id" = r."workerId"
@@ -41,6 +51,58 @@ async function loadOpportunity(token: string) {
     LIMIT 1
   `
   return rows[0] ?? null
+}
+
+async function syncAcceptedJobAssignments(jobId: number) {
+  const acceptedRecipients = await prisma.$queryRaw<AcceptedRecipient[]>`
+    SELECT DISTINCT r."workerId", w."transportRequired", w."canDrive"
+    FROM "SubcontractorOpportunityRecipient" r
+    JOIN "SubcontractorOpportunity" o ON o."id" = r."opportunityId"
+    JOIN "Worker" w ON w."id" = r."workerId"
+    WHERE o."sourceJobId" = ${jobId}
+      AND r."status" = 'accepted'
+      AND w."active" = TRUE
+  `
+
+  const existingAssignments = await prisma.jobAssignment.findMany({
+    where: { jobId },
+    include: {
+      worker: {
+        select: { id: true, canDrive: true },
+      },
+    },
+  })
+
+  const assignedIds = new Set(existingAssignments.map((item) => item.workerId))
+  let hasDriver = existingAssignments.some((item) => item.worker.canDrive)
+
+  const noTransportNeeded = acceptedRecipients.filter((item) => !item.transportRequired)
+  const transportNeeded = acceptedRecipients.filter((item) => item.transportRequired)
+
+  for (const recipient of noTransportNeeded) {
+    if (!assignedIds.has(recipient.workerId)) {
+      await prisma.jobAssignment.create({
+        data: { jobId, workerId: recipient.workerId },
+      })
+      assignedIds.add(recipient.workerId)
+    }
+    if (recipient.canDrive) hasDriver = true
+  }
+
+  for (const recipient of transportNeeded) {
+    if (assignedIds.has(recipient.workerId)) continue
+    if (!hasDriver) continue
+
+    await prisma.jobAssignment.create({
+      data: { jobId, workerId: recipient.workerId },
+    })
+    assignedIds.add(recipient.workerId)
+  }
+
+  return {
+    assignedWorkerIds: [...assignedIds],
+    hasDriver,
+  }
 }
 
 export async function GET(_: Request, ctx: Ctx) {
@@ -75,5 +137,25 @@ export async function PATCH(req: Request, ctx: Ctx) {
     WHERE "id" = ${opportunity.recipientId}
   `
 
-  return NextResponse.json({ ok: true, status: nextStatus })
+  let assignmentStatus: 'not_linked' | 'confirmed' | 'transport_required' | null = null
+
+  if (nextStatus === 'accepted' && opportunity.sourceJobId) {
+    const job = await prisma.job.findUnique({
+      where: { id: opportunity.sourceJobId },
+      select: { id: true, status: true },
+    })
+
+    if (job && !['cancelled', 'archived', 'done'].includes(clean(job.status).toLowerCase())) {
+      const result = await syncAcceptedJobAssignments(job.id)
+      assignmentStatus = result.assignedWorkerIds.includes(opportunity.workerId)
+        ? 'confirmed'
+        : opportunity.transportRequired
+          ? 'transport_required'
+          : 'confirmed'
+    }
+  } else if (nextStatus === 'accepted') {
+    assignmentStatus = 'not_linked'
+  }
+
+  return NextResponse.json({ ok: true, status: nextStatus, assignmentStatus })
 }
