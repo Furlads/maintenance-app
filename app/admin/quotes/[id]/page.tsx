@@ -70,10 +70,15 @@ export default async function QuoteDetailPage({ params }: PageProps) {
   const quote = await prisma.quote.findUnique({ where: { id } })
   if (!quote) notFound()
 
+  // A quote with a linked job is secured work even if an older workflow left
+  // the stored quote status behind. Treat the linked job as the source of truth
+  // so the UI can never show "Ready to send" for work already converted to a job.
+  const effectiveStatus = quote.jobId ? 'accepted' : quote.status
+
   // An in-progress quote is still Trevor's live CHAS working session. Opening
   // it from the admin quote list should resume that conversation/editor rather
   // than dropping into Kelly's post-draft quote management screen.
-  if (quote.status === 'in_progress') {
+  if (effectiveStatus === 'in_progress') {
     redirect(`/quote-test?resume=${quote.id}`)
   }
 
@@ -118,8 +123,8 @@ export default async function QuoteDetailPage({ params }: PageProps) {
     storedEstimatedDays: quote.estimatedDays,
     storedEstimatedTeamSize: quote.estimatedTeamSize,
   })
-  const showKellyOverview = ['needs_review', 'ready_to_send'].includes(quote.status)
-  const canDelete = quote.status !== 'accepted' && !quote.jobId
+  const showKellyOverview = ['needs_review', 'ready_to_send'].includes(effectiveStatus)
+  const canDelete = effectiveStatus !== 'accepted' && !quote.jobId
 
   return (
     <div className="space-y-5">
@@ -129,8 +134,8 @@ export default async function QuoteDetailPage({ params }: PageProps) {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClass(quote.status)}`}>
-                {statusLabel(quote.status)}
+              <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClass(effectiveStatus)}`}>
+                {statusLabel(effectiveStatus)}
               </span>
               <span className="text-xs font-semibold text-zinc-400">Quote #{quote.id}</span>
             </div>
@@ -153,7 +158,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
         </div>
       </section>
 
-      {quote.status === 'accepted' && quote.jobId ? (
+      {effectiveStatus === 'accepted' && quote.jobId ? (
         <AcceptedQuoteActions quoteId={quote.id} jobId={quote.jobId} />
       ) : null}
 
@@ -188,7 +193,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
             depositPercent: quote.depositPercent,
             estimatedDays: reference.estimatedDays,
             estimatedTeamSize: reference.estimatedTeamSize,
-            status: quote.status,
+            status: effectiveStatus,
             jobId: quote.jobId,
           }}
         />
