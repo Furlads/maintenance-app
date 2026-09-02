@@ -51,16 +51,16 @@ export default function PhotoUploadProgress() {
         }
 
         const titleText = uploading > 0
-          ? `Uploading photos… ${ready} of ${total} ready`
+          ? `Uploading photos… ${ready} of ${total} uploaded`
           : failed > 0
-            ? `${ready} of ${total} photos ready`
-            : `All ${total} photos ready ✓`
+            ? `${ready} of ${total} photos uploaded`
+            : `${total} ${total === 1 ? 'photo' : 'photos'} uploaded ✓`
 
         const detailText = uploading > 0
           ? `${uploading} still uploading`
           : failed > 0
-            ? `${failed} failed`
-            : 'Done'
+            ? `${failed} failed — tap the failed photo to try again`
+            : 'Safely attached to this quote'
 
         const stateKey = `${titleText}|${detailText}|${percent}|${failed}`
         if (progress.dataset.progressState === stateKey) return
