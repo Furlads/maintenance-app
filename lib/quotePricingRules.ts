@@ -114,6 +114,25 @@ If a sandstone patio with no major retaining structure, drainage scheme or concr
 Calibration example: around 17-18m2 of Autumn Brown Indian sandstone, full dig-out and build-up, one straightforward domestic step, short pressure-treated sleeper edging, and squaring/levelling an adjoining planter area should normally be tested around 6-8 total man-days, commonly about 3-4 working days for a 2-person crew. Do not default to 10 man-days / 5 full crew days unless access, roots, excavation depth or level changes genuinely justify it.
 For that genuinely comparable scope, sense-check the customer selling price broadly around £3,500-£4,000 ex VAT before exceptional extras. A price approaching £5,500-£6,000 ex VAT should trigger a mandatory recalculation rather than being accepted on a generic 'complexity' explanation.
 
+EXISTING CONCRETE HARDSTANDING REPLACED WITH PAVING
+When existing concrete is being broken out so the area can be repaved, do NOT automatically price a complete new sub-base/build-up underneath it.
+Existing concrete hardstanding will commonly already have hardcore or another formation layer beneath it. Treat that underlying base as potentially reusable unless the survey, levels, photos or site facts give a reason not to.
+Default practical assumption for pricing:
+- break out and remove the concrete
+- expose and inspect the existing base
+- retain and reuse it where it is stable and suitable
+- recompact and regulate levels as required
+- allow only local Type 1 make-up where needed
+- then install the paving on the specified full mortar bed / bedding system
+
+Only price a complete new sub-base by default where there is evidence of soft or unsuitable formation, inadequate existing depth, major level changes, drainage reconstruction, contamination, significant settlement, or an explicit instruction for a full rebuild.
+Unknown condition beneath the concrete is a caveat or modest contingency, NOT permission to charge for a full new sub-base as though failure is already known.
+Do not use wording such as 'form full build-up' unless a full build-up is genuinely required. Prefer wording such as: 'Existing sub-base beneath the concrete will be retained and reused where suitable, with localised making-up and compaction as required.'
+Customer protection wording can state: 'Price assumes the existing sub-base is suitable for reuse once the concrete is removed. Any significant additional excavation or reconstruction required due to unsuitable ground conditions will be discussed before proceeding.'
+
+Calibration example: for a genuinely comparable narrow domestic run of roughly 25-30m2, breaking out existing concrete and replacing it with standard Indian sandstone while reusing a suitable existing base, first test the programme around 8 total man-days, commonly about 4 working days for a 2-person crew. Five full 2-person days should require a task-by-task reason such as unusually thick/reinforced concrete, very difficult waste handling, poor access, significant base failure or extra drainage/level work.
+For a comparable 26m2 job with standard sandstone supplied and no major structural extras, sense-check the selling price broadly around £4,750-£5,000 ex VAT before genuine exceptional costs. A result around £5,900 ex VAT or more should trigger a mandatory review for duplicated excavation, unnecessary new sub-base, excess labour or over-allowance for access/unknowns.
+
 GRAVEL GRIDS / STABILISED GRAVEL FULL BUILD
 Where the specified scope includes excavation, suitable sub-base, compaction, membrane, plastic gravel grids, pea-gravel grid infill and a self-binding gravel finishing layer, treat it as FULL DIG-OUT / REBUILD rather than a simple gravel refresh.
 Do not benchmark this work against the normal decorative-gravel refresh rate. Price the grids, both aggregate layers, excavation/disposal, sub-base, compaction, plant, deliveries and labour explicitly.
@@ -238,6 +257,7 @@ Before accepting the quote ask:
 9. Am I charging for excavation/base construction that the stated scope does not actually require?
 10. Am I using the right number of workers for each task, or just defaulting to 2 people all day?
 11. Does calendar duration reflect productive labour rather than curing/waiting time?
+12. If I am removing existing concrete, have I assumed a full new sub-base without evidence that the existing base is unsuitable?
 
 If a final price differs by more than about 15% from the first benchmark sense-check, explain the specific real costs causing the difference. If the explanation is only 'complexity' or 'restricted access', recalculate with explicit man-days and handling costs.
 
@@ -256,6 +276,8 @@ AUTOMATIC REVIEW FLAGS
 - labour duration cannot be explained by task sequence
 - estimated hard costs appear to contain selling-rate assumptions
 - gravel refresh/overlay priced as though full excavation and new sub-base are required when they are not in scope
+- concrete-to-paving replacement automatically priced with a full new sub-base without evidence the exposed existing base will be unsuitable
+- ordinary 25-30m2 concrete-to-sandstone replacement with reusable base priced at 10+ man-days without a task-by-task explanation
 - ordinary 60-70m2 gravel refresh exceeding about 7 man-days without a clear task-by-task explanation
 - single 1-1.5m domestic step exceeding about 2 man-days without demolition, multiple risers or significant level changes
 - small masonry/finishing task automatically assigned 2 workers for multiple full days
