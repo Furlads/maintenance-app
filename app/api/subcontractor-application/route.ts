@@ -17,7 +17,9 @@ function bool(value: FormDataEntryValue | null) {
 }
 
 function intOrNull(value: FormDataEntryValue | null) {
-  const n = Number(clean(value))
+  const raw = clean(value)
+  if (!raw) return null
+  const n = Number(raw)
   return Number.isInteger(n) ? n : null
 }
 
@@ -49,19 +51,14 @@ export async function POST(req: Request) {
     const trades = form.getAll('trades').map((value) => clean(value)).filter(Boolean)
     const privacyConsent = bool(form.get('privacyConsent'))
     const declarationAccepted = bool(form.get('declarationAccepted'))
-    const workSetup = clean(form.get('workSetup')) || 'just_me'
+    const workSetup = ['just_me', 'team', 'business'].includes(clean(form.get('workSetup'))) ? clean(form.get('workSetup')) : 'just_me'
     const teamSize = intOrNull(form.get('teamSize'))
     const teamDayRate = floatOrNull(form.get('teamDayRate'))
-    const teamDescription = clean(form.get('teamDescription'))
-    const userNotes = clean(form.get('additionalNotes'))
-    const setupLabel = workSetup === 'business' ? 'Business' : workSetup === 'team' ? 'Team / crew' : 'Just me'
-    const structuredNotes = [
-      `Work setup: ${setupLabel}`,
-      teamSize ? `Typical team size: ${teamSize}` : '',
-      teamDayRate != null ? `Team / crew day rate: £${teamDayRate}` : '',
-      teamDescription ? `Typical team: ${teamDescription}` : '',
-      userNotes ? `Other notes: ${userNotes}` : '',
-    ].filter(Boolean).join('\n') || null
+    const teamDescription = clean(form.get('teamDescription')) || null
+    const minimumCharge = floatOrNull(form.get('minimumCharge'))
+    const halfDayRate = floatOrNull(form.get('halfDayRate'))
+    const pricingPreference = ['labour_only', 'labour_materials', 'either'].includes(clean(form.get('pricingPreference'))) ? clean(form.get('pricingPreference')) : 'either'
+    const vatRegistered = bool(form.get('vatRegistered'))
 
     if (!firstName || !lastName || !email || !phone) {
       return NextResponse.json({ error: 'Name, email and mobile number are required.' }, { status: 400 })
@@ -84,7 +81,9 @@ export async function POST(req: Request) {
         "suppliesTools", "suppliesMaterials", "worksForOthers", "fixesOwnDefects", "comfortableFixedPrice",
         "hasEmployees", "publicLiabilityInsurer", "publicLiabilityPolicyNumber", "publicLiabilityExpiresAt",
         "publicLiabilityCover", "qualifications", "availability", "preferredWork", "dayRate",
-        "referenceOne", "referenceTwo", "additionalNotes", "privacyConsent", "declarationAccepted"
+        "referenceOne", "referenceTwo", "additionalNotes", "privacyConsent", "declarationAccepted",
+        "workSetup", "teamSize", "teamDayRate", "teamDescription", "minimumCharge", "halfDayRate",
+        "pricingPreference", "vatRegistered"
       ) VALUES (
         ${firstName}, ${lastName}, ${clean(form.get('tradingName')) || null}, ${email}, ${phone},
         ${clean(form.get('address')) || null}, ${clean(form.get('postcode')) || null},
@@ -96,7 +95,8 @@ export async function POST(req: Request) {
         ${clean(form.get('publicLiabilityInsurer')) || null}, ${clean(form.get('publicLiabilityPolicyNumber')) || null}, ${dateOrNull(form.get('publicLiabilityExpiresAt'))},
         ${clean(form.get('publicLiabilityCover')) || null}, ${clean(form.get('qualifications')) || null}, ${clean(form.get('availability')) || null},
         ${clean(form.get('preferredWork')) || null}, ${floatOrNull(form.get('dayRate'))}, ${clean(form.get('referenceOne')) || null},
-        ${clean(form.get('referenceTwo')) || null}, ${structuredNotes}, ${privacyConsent}, ${declarationAccepted}
+        ${clean(form.get('referenceTwo')) || null}, ${clean(form.get('additionalNotes')) || null}, ${privacyConsent}, ${declarationAccepted},
+        ${workSetup}, ${teamSize}, ${teamDayRate}, ${teamDescription}, ${minimumCharge}, ${halfDayRate}, ${pricingPreference}, ${vatRegistered}
       ) RETURNING "id"
     `
 
