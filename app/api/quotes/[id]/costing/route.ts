@@ -26,20 +26,6 @@ function extractJson(value: string) {
   }
 }
 
-function allTogetherPriceFromWorking(value: string | null) {
-  if (!value) return null
-  const marker = 'ALL-TOGETHER COMBINATIONS'
-  const index = value.indexOf(marker)
-  if (index < 0) return null
-
-  const section = value.slice(index + marker.length)
-  const match = section.match(/£\s*([0-9,]+(?:\.\d{1,2})?)\s*\+\s*VAT/i)
-  if (!match) return null
-
-  const price = Number(match[1].replace(/,/g, ''))
-  return Number.isFinite(price) && price > 0 ? price : null
-}
-
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
     const id = Number(params.id)
@@ -98,7 +84,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
       crews,
     })
 
-    const sellingPriceExVat = allTogetherPriceFromWorking(quote.quoteWorking) || quote.priceExVat
+    // The stored Quote price is the commercial source of truth. This matters
+    // after an explicit office/customer price amendment: old package figures in
+    // historical CHAS working must never override the current accepted price.
+    const sellingPriceExVat = quote.priceExVat
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.')
 
