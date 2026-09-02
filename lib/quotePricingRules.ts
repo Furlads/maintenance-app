@@ -105,7 +105,29 @@ NEW GRAVEL DRIVEWAY / FULL BUILD
 Typical scope: excavation to suitable formation, waste removal, sub-base, compaction, levels/drainage, grids or edging where specified, then decorative gravel.
 This is the high-labour/high-hard-cost category and may reasonably sit near or above broad gravel surfacing benchmarks.
 
-The broad gravel £/m2 benchmark is a sanity check only. It must not force a refresh/overlay up to a full-build selling rate when the underlying work is already done.
+INDIAN SANDSTONE PATIOS
+£140/m2 ex VAT is the normal Furlads starting customer benchmark for a straightforward complete Indian sandstone installation.
+Treat this as a starting sense-check, not a hard cap. Add only the real additional cost for steps, sleeper edging, unusual excavation, drainage, difficult access, significant level changes or additional waste.
+For an ordinary domestic sandstone patio with one small step and modest sleeper/bed detailing, do not let those minor extras double the effective square-metre rate.
+If a sandstone patio with no major retaining structure, drainage scheme or concrete breakout exceeds roughly £220-£240/m2, STOP and review for duplicated labour, duplicated excavation/base costs or inflated hard costs.
+
+Calibration example: around 17-18m2 of Autumn Brown Indian sandstone, full dig-out and build-up, one straightforward domestic step, short pressure-treated sleeper edging, and squaring/levelling an adjoining planter area should normally be tested around 6-8 total man-days, commonly about 3-4 working days for a 2-person crew. Do not default to 10 man-days / 5 full crew days unless access, roots, excavation depth or level changes genuinely justify it.
+For that genuinely comparable scope, sense-check the customer selling price broadly around £3,500-£4,000 ex VAT before exceptional extras. A price approaching £5,500-£6,000 ex VAT should trigger a mandatory recalculation rather than being accepted on a generic 'complexity' explanation.
+
+GRAVEL GRIDS / STABILISED GRAVEL FULL BUILD
+Where the specified scope includes excavation, suitable sub-base, compaction, membrane, plastic gravel grids, pea-gravel grid infill and a self-binding gravel finishing layer, treat it as FULL DIG-OUT / REBUILD rather than a simple gravel refresh.
+Do not benchmark this work against the normal decorative-gravel refresh rate. Price the grids, both aggregate layers, excavation/disposal, sub-base, compaction, plant, deliveries and labour explicitly.
+For this type of full-build grid system, the selling rate can reasonably be much higher than a simple gravel overlay because the materials and groundworks are materially different.
+
+Calibration example: around 30m2 of path/vegetable-area grid surfacing with excavation, sub-base, membrane, grids, pea-gravel infill and self-binding gravel top should normally be tested around 6-8 total man-days depending on access and handwork, commonly about 3-4 working days for a 2-person crew. For a genuinely comparable job, sense-check the selling price broadly around £3,300-£3,700 ex VAT. A result below about £3,000 ex VAT should trigger a hard-cost/margin review because grids, multiple aggregates, excavation, disposal and labour can consume most of that figure.
+
+MIXED PATIO + GRID-SURFACING CALIBRATION
+When a job contains both of the above packages, do not try to make the total look right by overpricing one and underpricing the other. Each package must stand on its own realistic hard costs and man-days first.
+For a comparable 17-18m2 sandstone patio package plus roughly 30m2 full-build gravel-grid package, a healthy combined customer price will commonly sense-check around £6,800-£7,200 ex VAT, subject to actual material, disposal and access costs.
+A combined programme around 6.5-7 working days for 2 people is a sensible starting test. Rebuild the programme if standalone patio duration has drifted to 5 days while the more materials-heavy grid work has been compressed unrealistically.
+Combined savings should come from shared setup, plant, deliveries, disposal and cleanup, not by starving one package of margin.
+
+The broad gravel £/m2 benchmark is a sanity check only. It must not force a refresh/overlay up to a full-build selling rate when the underlying work is already done, and it must not force a genuine gravel-grid full build down to refresh pricing.
 
 SMALL STEPS AND MINOR MASONRY
 Price small domestic steps and short decorative wall extensions from actual materials plus realistic labour; do not let the masonry classification by itself inflate the duration.
@@ -221,6 +243,10 @@ If a final price differs by more than about 15% from the first benchmark sense-c
 
 AUTOMATIC REVIEW FLAGS
 - horizontal porcelain above about £240/m2 without major exceptional scope
+- sandstone patio above about £240/m2 without major retaining, drainage or concrete-breakout scope
+- 17-18m2 sandstone patio with one small step and modest sleeper/bed detailing exceeding about 8 man-days without a task-by-task explanation
+- 30m2 full-build gravel-grid system below about £3,000 ex VAT without unusually low hard costs
+- mixed sandstone + full-build grid job materially outside the calibrated package balance without explicit hard-cost reasons
 - through-house access charged both as extra man-days and a blanket percentage
 - retaining wall cost duplicated in patio complexity
 - combined package saving below about 2% despite multiple standalone mobilisations
