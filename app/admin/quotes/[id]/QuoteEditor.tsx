@@ -98,7 +98,11 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
     quote.estimatedTeamSize == null ? '' : String(quote.estimatedTeamSize)
   )
 
-  const acceptedBaseline = ['sent', 'accepted'].includes(quote.status) || Boolean(quote.jobId)
+  // Kelly must be able to amend a sent quote when a customer negotiates the
+  // price or wording. Only an accepted quote / quote already converted to a job
+  // is commercially locked and requires the full revision workflow.
+  const acceptedBaseline = quote.status === 'accepted' || Boolean(quote.jobId)
+  const sentQuote = quote.status === 'sent' && !acceptedBaseline
   const fieldsLocked = acceptedBaseline
 
   useEffect(() => {
@@ -191,7 +195,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
 
   async function save(status?: string) {
     if (fieldsLocked) {
-      setError('This sent quote is protected. Use “Revise quote” so CHAS recalculates the complete quotation.')
+      setError('This accepted quote is protected. Use “Revise quote” so CHAS recalculates the complete quotation.')
       return
     }
 
@@ -215,7 +219,9 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
       setSuccess(
         status
             ? `Quote moved to ${status.replaceAll('_', ' ')}.`
-            : 'Quote saved.'
+            : sentQuote
+              ? 'Negotiated quote changes saved. It remains marked as sent.'
+              : 'Quote saved.'
       )
       router.refresh()
     } catch (err) {
@@ -447,7 +453,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
 
   async function regenerateCustomerMessage() {
     if (fieldsLocked) {
-      setError('This sent quote is protected. Use “Revise quote” to create fresh customer wording and calculations.')
+      setError('This accepted quote is protected. Use “Revise quote” to create fresh customer wording and calculations.')
       return
     }
 
@@ -491,7 +497,7 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
 
   async function regenerateAsTrev() {
     if (fieldsLocked) {
-      setError('This sent quote is protected. Use “Revise quote” to create fresh customer wording and calculations.')
+      setError('This accepted quote is protected. Use “Revise quote” to create fresh customer wording and calculations.')
       return
     }
 
@@ -596,14 +602,24 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
         </div>
       </section>
 
+      {sentQuote ? (
+        <section className="rounded-2xl border border-blue-300 bg-blue-50 p-5 shadow-sm">
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Customer negotiation</div>
+          <h2 className="mt-1 text-lg font-black text-zinc-950">Kelly can amend this sent quote</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-700">
+            If the customer haggles or agrees a different figure, change the price below and amend or regenerate the customer message. VAT, total and deposit recalculate automatically. Press Save changes and the quote remains marked as sent.
+          </p>
+        </section>
+      ) : null}
+
       {acceptedBaseline ? (
         <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-600">Quote revision</div>
-              <h2 className="mt-1 text-lg font-black text-zinc-950">Sent quotation protected</h2>
+              <h2 className="mt-1 text-lg font-black text-zinc-950">Accepted quotation protected</h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-700">
-                Use Revise quote when the customer asks for changes. CHAS will recalculate the complete job, expected costs, price, programme and customer wording together.
+                Use Revise quote once a quote has been accepted or converted to a job. CHAS will recalculate the complete job, expected costs, price, programme and customer wording together.
               </p>
             </div>
             <button
@@ -794,7 +810,9 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
             </p>
           </div>
           {acceptedBaseline ? (
-            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-zinc-700 ring-1 ring-inset ring-yellow-300">Sent quote protected — use Revise quote</span>
+            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-zinc-700 ring-1 ring-inset ring-yellow-300">Accepted quote protected — use Revise quote</span>
+          ) : sentQuote ? (
+            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-blue-700 ring-1 ring-inset ring-blue-300">Sent quote — Kelly can amend price</span>
           ) : null}
         </div>
 
@@ -843,17 +861,17 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
         <div className="flex flex-wrap gap-2">
           {!fieldsLocked ? (
             <button type="button" onClick={() => void save()} disabled={disabled} className="min-h-11 rounded-xl bg-zinc-950 px-4 text-sm font-black text-white disabled:opacity-50">
-              {saving ? 'Saving…' : 'Save changes'}
+              {saving ? 'Saving…' : sentQuote ? 'Save negotiated changes' : 'Save changes'}
             </button>
           ) : null}
 
-          {!acceptedBaseline && !['accepted', 'archived'].includes(quote.status) ? (
+          {!acceptedBaseline && !['accepted', 'archived', 'sent'].includes(quote.status) ? (
             <button type="button" onClick={() => void runStatusAction('ready_to_send')} disabled={disabled || !readiness.readyToSend} className="min-h-11 rounded-xl bg-yellow-300 px-4 text-sm font-black text-zinc-950 disabled:opacity-50">
               Ready to send
             </button>
           ) : null}
 
-          {!acceptedBaseline && !['accepted', 'archived'].includes(quote.status) ? (
+          {!acceptedBaseline && !['accepted', 'archived', 'sent'].includes(quote.status) ? (
             <button type="button" onClick={() => void runStatusAction('sent')} disabled={disabled || !readiness.readyToSend} className="min-h-11 rounded-xl border border-blue-300 bg-blue-50 px-4 text-sm font-black text-blue-800 disabled:opacity-50">
               Mark sent
             </button>
@@ -888,10 +906,10 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
           {!acceptedBaseline ? (
             quote.status === 'archived' ? (
               <button type="button" onClick={() => void runStatusAction('needs_review')} disabled={disabled} className="min-h-11 rounded-xl border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-800 disabled:opacity-50">
-                Restore
+                Restore quote
               </button>
             ) : (
-              <button type="button" onClick={() => void runStatusAction('archived')} disabled={disabled} className="min-h-11 rounded-xl border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-600 disabled:opacity-50">
+              <button type="button" onClick={() => void runStatusAction('archived')} disabled={disabled} className="min-h-11 rounded-xl border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-700 disabled:opacity-50">
                 Archive
               </button>
             )
@@ -902,18 +920,10 @@ export default function QuoteEditor({ quote }: QuoteEditorProps) {
   )
 }
 
-function ReadinessPill({
-  label,
-  ready,
-  strong = false,
-}: {
-  label: string
-  ready: boolean
-  strong?: boolean
-}) {
+function ReadinessPill({ label, ready, strong = false }: { label: string; ready: boolean; strong?: boolean }) {
   return (
-    <span className={`rounded-xl border px-3 py-2 text-xs font-black ${readinessClass(ready)} ${strong ? 'ring-2 ring-inset ring-current/10' : ''}`}>
-      {ready ? '✓' : '•'} {label}
+    <span className={`rounded-full border px-3 py-1.5 text-xs font-black ${readinessClass(ready)} ${strong ? 'ring-2 ring-offset-1' : ''}`}>
+      {ready ? '✓ ' : '• '}{label}
     </span>
   )
 }
