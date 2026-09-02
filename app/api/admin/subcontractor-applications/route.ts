@@ -103,6 +103,21 @@ export async function PATCH(req: Request) {
       select: { id: true, firstName: true, phone: true, passwordHash: true },
     })
 
+    await prisma.$executeRaw`
+      UPDATE "Worker" SET
+        "workSetup"=${application.workSetup || 'just_me'},
+        "teamSize"=${application.teamSize || null},
+        "teamDayRate"=${application.teamDayRate || null},
+        "teamDescription"=${application.teamDescription || null},
+        "minimumCharge"=${application.minimumCharge || null},
+        "halfDayRate"=${application.halfDayRate || null},
+        "pricingPreference"=${application.pricingPreference || 'either'},
+        "vatRegistered"=${Boolean(application.vatRegistered)},
+        "vatNumber"=${application.vatNumber || null},
+        "availabilityStatus"='available'
+      WHERE "id"=${worker.id}
+    `
+
     const docs = await prisma.$queryRaw<Array<Record<string, any>>>`
       SELECT * FROM "SubcontractorApplicationDocument" WHERE "applicationId"=${applicationId}
     `
