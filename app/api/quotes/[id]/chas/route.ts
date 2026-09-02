@@ -64,6 +64,12 @@ function formatPricingWorking(pricing: Record<string, any>) {
   const missing = Array.isArray(pricing.missingInformation) ? pricing.missingInformation : []
   const notes = Array.isArray(pricing.pricingNotes) ? pricing.pricingNotes : []
   const warnings = Array.isArray(pricing.warningFlags) ? pricing.warningFlags : []
+  const options = Array.isArray(pricing.options) ? pricing.options : []
+  const combinedOffers = Array.isArray(pricing.combinedOffers)
+    ? pricing.combinedOffers
+    : pricing.combinedOffer
+      ? [pricing.combinedOffer]
+      : []
   const labour = pricing.labourSummary && typeof pricing.labourSummary === 'object'
     ? pricing.labourSummary
     : null
@@ -83,6 +89,18 @@ function formatPricingWorking(pricing: Record<string, any>) {
     labour
       ? `Labour: ${cleanNumber(labour.manDays).toFixed(1)} man-day(s), internal cost ${money(labour.estimatedCost)}${cleanText(labour.notes) ? ` — ${cleanText(labour.notes)}` : ''}`
       : '',
+    '',
+    options.length ? 'OPTIONS / PACKAGES' : '',
+    ...options.map((option: any) => {
+      const label = cleanText(option.label) || cleanText(option.title) || 'Option'
+      return `${label}: ${money(option.priceExVat)} + VAT (${money(option.totalIncVat)} inc VAT)${cleanText(option.summary) ? `\n${cleanText(option.summary)}` : ''}`
+    }),
+    '',
+    combinedOffers.length ? 'ALL-TOGETHER COMBINATIONS' : '',
+    ...combinedOffers.map((offer: any) => {
+      const label = cleanText(offer.label) || 'All work together'
+      return `${label}: ${money(offer.priceExVat)} + VAT (${money(offer.totalIncVat)} inc VAT)${cleanText(offer.summary) ? `\n${cleanText(offer.summary)}` : ''}`
+    }),
     '',
     rows.length ? 'COST BREAKDOWN' : '',
     ...rows.map((row: any) => `- ${cleanText(row.category)}: ${money(row.amount)}${cleanText(row.detail) ? ` — ${cleanText(row.detail)}` : ''}`),
@@ -209,115 +227,152 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const decisionResponse = await openai.responses.create({
       model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-      instructions: `You are CHAS reviewing one Furlads landscaping quote with Trev or Kelly in the office.
+      instructions: `You are CHAS helping Trev or Kelly operate one Furlads landscaping quote in the office.
+
+Be straightforward. Answer the question first. Do not give process lectures, legalistic caveats, or tell them to perform system steps that the app can do itself.
 
 First decide whether the latest message is:
-- review: a question, challenge, explanation request, or suggestion that does NOT clearly tell you the stored scope is wrong; or
-- correct_quote: Trev/Kelly explicitly corrects, replaces, clarifies or changes what the customer actually wants and expects the quote to be updated/repriced. Phrases such as "no sorry", "that's wrong", "she actually wants", "change it to", "I meant", "correct that", or an equivalent clear correction normally mean correct_quote.
+- review: a question, challenge, explanation request, calculation request, or suggestion that does NOT clearly ask you to change the stored quote; or
+- correct_quote: Trev/Kelly explicitly corrects, removes, replaces, clarifies or changes part of the quote and expects the quote itself to be updated. Phrases such as "remove option C", "change it to", "update the quote", "that's wrong", "she actually wants", "I meant", "correct that", or equivalent clear instructions mean correct_quote.
 
-For correct_quote, write correctedScope as a clean, concise scope using the latest correction as authoritative. Preserve any parts of the existing scope that are clearly still valid, but do not preserve an earlier misunderstanding that the correction replaces.
+For correct_quote, correctedScope must be the complete replacement scope after applying the requested change. Preserve everything that remains valid. Remove anything the user explicitly removes. If the quote contains Options A/B/C/D and they say remove C, return the full remaining A/B/D scope with C absent.
 
-For review, answer questions about price, scope, duration, team size, assumptions, omissions, risk and customer wording using the supplied quote as source of truth.
+For review:
+- Give the useful number or conclusion first.
+- Use the stored pricing working when available.
+- If exact material/labour costs are not stored, give the best sensible estimate and label it briefly as an estimate; do not ramble about ledgers, procurement systems or timesheets unless the user asks.
+- Keep answers concise, practical and commercial.
 
 Important rules:
 - Never invent work, materials or extras that are not in the current/corrected scope.
-- If the user is clearly correcting a draft quote, do not merely explain what should change: classify it as correct_quote so the app can re-run the real pricing engine.
-- Accepted quotes are protected. The app will refuse to alter them unless deliberately reopened elsewhere.
-- Keep review answers practical and commercially useful.
+- A clear correction instruction is authority to update the quote, even if the quote was previously sent, accepted or linked to a job. Do NOT tell the user to reopen it first.
+- If an accepted/linked quote is changed, the app will preserve the link and refresh or flag the job plan after the quote update.
+- If the corrected quote still contains several valid packages/options, that is fine. Do not refuse the correction just because it is multi-option.
 - Return ONLY valid JSON with exactly this structure:
 {
   "intent": "review" or "correct_quote",
-  "answer": "short internal reply",
+  "answer": "short direct internal reply",
   "correctedScope": "only for correct_quote, otherwise empty"
 }`,
       input: `CURRENT QUOTE\n${context}\n\n${recentConversation ? `RECENT REVIEW CHAT\n${recentConversation}\n\n` : ''}LATEST MESSAGE\n${question}`,
     })
 
     const decision = extractJson(decisionResponse.output_text || '')
-    let answer = cleanText(decision?.answer) || 'CHAS could not produce a useful answer.'
+    let answer = cleanText(decision?.answer) || 'I could not produce a useful answer.'
     let quoteUpdated = false
 
     if (decision?.intent === 'correct_quote') {
-      if (quote.status === 'accepted' || quote.jobId) {
-        answer = 'I understand that as a correction to the quote, but this quote is already accepted/linked to a job. Reopen it for amendment first so we do not silently move the agreed commercial baseline.'
+      const correctedScope = cleanText(decision.correctedScope)
+      if (!correctedScope) {
+        answer = 'I understand the change, but I could not turn it into a clear replacement scope. I have not changed anything yet.'
       } else {
-        const correctedScope = cleanText(decision.correctedScope)
-        if (!correctedScope) {
-          answer = 'I understood that as a correction, but I could not turn it into a clear replacement scope. Nothing has been changed.'
-        } else {
-          const pricingResponse = await fetch(new URL('/api/ai/quote', request.url), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'price',
-              customerName: quote.customerName,
-              jobDetails: correctedScope,
-              additionalInstructions: 'This is an office correction to an existing draft quote. Treat the corrected scope as authoritative, price only that work, and recalculate labour, materials, programme and margin from scratch. Do not carry forward assumptions from the earlier misunderstood scope unless they are still stated here.',
-            }),
-          })
-          const pricing = await pricingResponse.json().catch(() => null)
+        const pricingResponse = await fetch(new URL('/api/ai/quote', request.url), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'price',
+            customerName: quote.customerName,
+            jobDetails: correctedScope,
+            additionalInstructions: 'This is an explicit office correction to an existing quote. Treat the corrected scope as authoritative. Price only the work that remains. If it contains multiple packages/options, preserve them and calculate only valid combinations. Recalculate labour, materials, programme and margin from scratch. Do not carry forward removed options or superseded scope.',
+          }),
+        })
+        const pricing = await pricingResponse.json().catch(() => null)
 
-          if (!pricingResponse.ok) {
-            throw new Error(pricing?.error || 'CHAS could not reprice the corrected scope.')
-          }
+        if (!pricingResponse.ok) {
+          throw new Error(pricing?.error || 'CHAS could not reprice the corrected scope.')
+        }
 
-          if (pricing?.optionMode) {
-            answer = 'I understood the correction, but it now looks like a multi-option/package quote. I have not overwritten the existing quote because that needs the full options workflow rather than a single headline price.'
-          } else {
-            const priceExVat = cleanNumber(pricing?.recommendedPriceExVat)
-            const vatRate = cleanNumber(pricing?.vatRate, 20)
-            const vatAmount = cleanNumber(pricing?.vatAmount)
-            const totalIncVat = cleanNumber(pricing?.recommendedTotalIncVat)
-            const depositPercent = cleanNumber(pricing?.depositPercent, quote.depositPercent || 25)
-            const depositAmount = cleanNumber(pricing?.depositAmount)
-            const estimatedDays = cleanNumber(pricing?.estimatedDuration?.workingDays)
-            const estimatedTeamSize = Math.max(1, Math.round(cleanNumber(pricing?.estimatedDuration?.teamSize, 1)))
+        const quoteMode = cleanText(pricing?.quoteMode) || (pricing?.optionMode ? 'packages' : 'single')
+        const options = Array.isArray(pricing?.options) ? pricing.options : []
+        const combinedOffers = Array.isArray(pricing?.combinedOffers)
+          ? pricing.combinedOffers
+          : pricing?.combinedOffer
+            ? [pricing.combinedOffer]
+            : []
 
-            if (priceExVat <= 0) {
-              throw new Error('CHAS returned the corrected scope without a usable selling price.')
-            }
+        const priceExVat = cleanNumber(pricing?.recommendedPriceExVat)
+        const vatRate = cleanNumber(pricing?.vatRate, 20)
+        const vatAmount = cleanNumber(pricing?.vatAmount)
+        const totalIncVat = cleanNumber(pricing?.recommendedTotalIncVat)
+        const depositPercent = cleanNumber(pricing?.depositPercent, quote.depositPercent || 25)
+        const depositAmount = cleanNumber(pricing?.depositAmount)
+        const estimatedDays = cleanNumber(pricing?.estimatedDuration?.workingDays)
+        const estimatedTeamSize = Math.max(1, Math.round(cleanNumber(pricing?.estimatedDuration?.teamSize, 1)))
 
-            const messageResponse = await fetch(new URL('/api/ai/quote', request.url), {
+        if (priceExVat <= 0) {
+          throw new Error('CHAS returned the corrected scope without a usable selling price.')
+        }
+
+        const messageResponse = await fetch(new URL('/api/ai/quote', request.url), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'write',
+            customerName: quote.customerName,
+            quoteMode,
+            options,
+            combinedOffers,
+            combinedOffer: combinedOffers[0] || null,
+            jobDetails: correctedScope,
+            additionalInstructions: pricing?.optionMode
+              ? 'Rewrite this corrected multi-option quote from Kelly in the normal warm Furlads style. Show only the remaining options and valid combinations. Do not mention any removed option. Keep all commercial figures exact.'
+              : 'Rewrite this corrected quote from Kelly in the normal warm Furlads style. Keep the corrected scope and commercial figures exact. Kelly is the main point of contact from here.',
+            priceExVat,
+            vatRate,
+            depositPercent,
+          }),
+        })
+        const messageData = await messageResponse.json().catch(() => null)
+        const customerMessage = messageResponse.ok
+          ? cleanText(messageData?.whatsappQuote)
+          : quote.customerMessage
+
+        const wasAcceptedOrLinked = quote.status === 'accepted' || Boolean(quote.jobId)
+        const amendmentNote = `CHAS AMENDMENT: ${question}`
+        const internalNotes = [quote.internalNotes, amendmentNote]
+          .filter(Boolean)
+          .join('\n\n')
+
+        await prisma.quote.update({
+          where: { id },
+          data: {
+            scope: correctedScope,
+            quoteWorking: formatPricingWorking(pricing),
+            priceExVat,
+            vatRate,
+            vatAmount,
+            totalIncVat,
+            depositPercent,
+            depositAmount,
+            estimatedDays: estimatedDays > 0 ? estimatedDays : null,
+            estimatedTeamSize,
+            customerMessage: customerMessage || null,
+            internalNotes,
+            status: wasAcceptedOrLinked ? quote.status : 'needs_review',
+          },
+        })
+
+        quoteUpdated = true
+
+        let jobMessage = ''
+        if (quote.jobId) {
+          try {
+            const planResponse = await fetch(new URL(`/api/landscaping/jobs/${quote.jobId}/plan`, request.url), {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'write',
-                customerName: quote.customerName,
-                quoteMode: 'single',
-                jobDetails: correctedScope,
-                additionalInstructions: 'Rewrite this corrected quote from Kelly in the normal warm Furlads style. Keep the corrected scope and commercial figures exact. Kelly is the main point of contact from here.',
-                priceExVat,
-                vatRate,
-                depositPercent,
-              }),
             })
-            const messageData = await messageResponse.json().catch(() => null)
-            const customerMessage = messageResponse.ok
-              ? cleanText(messageData?.whatsappQuote)
-              : quote.customerMessage
-
-            await prisma.quote.update({
-              where: { id },
-              data: {
-                scope: correctedScope,
-                quoteWorking: formatPricingWorking(pricing),
-                priceExVat,
-                vatRate,
-                vatAmount,
-                totalIncVat,
-                depositPercent,
-                depositAmount,
-                estimatedDays: estimatedDays > 0 ? estimatedDays : null,
-                estimatedTeamSize,
-                customerMessage: customerMessage || null,
-                status: 'needs_review',
-              },
-            })
-
-            quoteUpdated = true
-            answer = `Corrected and repriced. I have updated the actual quote to: ${correctedScope}\n\nNew price: ${money(priceExVat)} + VAT (${money(totalIncVat)} inc VAT).${estimatedDays > 0 ? ` Programme: ${estimatedDays} working day(s) with ${estimatedTeamSize} ${estimatedTeamSize === 1 ? 'person' : 'people'}.` : ''}\n\nThe quote is back in Needs Review so Kelly can sense-check it before sending.`
+            jobMessage = planResponse.ok
+              ? ` Linked job #${quote.jobId} has been refreshed too.`
+              : ` Linked job #${quote.jobId} still needs its worker plan refreshing.`
+          } catch {
+            jobMessage = ` Linked job #${quote.jobId} still needs its worker plan refreshing.`
           }
         }
+
+        const optionNote = pricing?.optionMode
+          ? ` The remaining options/packages have been rebuilt without the removed work.`
+          : ''
+
+        answer = `Done — I've updated the quote and repriced it.${optionNote}\n\nNew reference price: ${money(priceExVat)} + VAT (${money(totalIncVat)} inc VAT). Deposit: ${money(depositAmount)}.${estimatedDays > 0 ? ` Programme: ${estimatedDays} working day(s) with ${estimatedTeamSize} ${estimatedTeamSize === 1 ? 'person' : 'people'}.` : ''}${jobMessage}`
       }
     }
 
