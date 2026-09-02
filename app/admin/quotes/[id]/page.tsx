@@ -5,9 +5,9 @@ import { safeQuoteReference } from '@/lib/quoteOptionReference'
 import QuoteEditor from './QuoteEditor'
 import QuoteDraftGuard from './QuoteDraftGuard'
 import QuoteChasAutoRefresh from './QuoteChasAutoRefresh'
-import QuoteStatusControls from './QuoteStatusControls'
 import KellyQuoteOverview from './KellyQuoteOverview'
 import AcceptedQuoteActions from './AcceptedQuoteActions'
+import QuoteStatusControls from './QuoteStatusControls'
 import DeleteQuoteButton from '../DeleteQuoteButton'
 
 export const dynamic = 'force-dynamic'
@@ -177,7 +177,14 @@ export default async function QuoteDetailPage({ params }: PageProps) {
         </div>
       </section>
 
-      <QuoteStatusControls quoteId={quote.id} currentStatus={quote.status} jobId={quote.jobId} />
+      <QuoteStatusControls
+        quoteId={quote.id}
+        currentStatus={quote.status}
+        jobId={quote.jobId}
+        sentAt={quote.sentAt?.toISOString() || null}
+        acceptedAt={quote.acceptedAt?.toISOString() || null}
+        declinedAt={quote.declinedAt?.toISOString() || null}
+      />
 
       {quote.status === 'accepted' && quote.jobId ? (
         <AcceptedQuoteActions quoteId={quote.id} jobId={quote.jobId} />
