@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { buildContactKey } from "@/lib/inbox/contactKey"
+import { safeQuoteReference } from "@/lib/quoteOptionReference"
 
 function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : ""
@@ -72,6 +73,22 @@ function conciseExistingCustomerMessage(params: {
   ].join("\n")
 }
 
+function cleanMultiOptionCustomerMessage(value: string) {
+  return value
+    .split("\n")
+    .filter((line) => {
+      const text = line.toLowerCase()
+      return !(
+        text.includes("reference total") ||
+        text.includes("headline/reference total") ||
+        text.includes("full headline")
+      )
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
 function readSurveyPhotos(quoteWorking: string | null | undefined) {
   const value = clean(quoteWorking)
   if (!value) return [] as Array<{ url: string; fileName: string }>
@@ -131,15 +148,11 @@ function parseChasQuoteDraft(workSummary: string) {
     "Customer-ready draft:",
   ])
 
-  const priceExVat = parseMoney(
+  const rawPriceExVat = parseMoney(
     valueAfterAny(workSummary, ["Reference price ex VAT:", "Price ex VAT:"], ["Reference VAT:", "VAT:"])
   )
 
-  const vatAmount = parseMoney(
-    valueAfterAny(workSummary, ["Reference VAT:", "VAT:"], ["Reference total inc VAT:", "Total inc VAT:"])
-  )
-
-  const totalIncVat = parseMoney(
+  const rawTotalIncVat = parseMoney(
     valueAfterAny(workSummary, ["Reference total inc VAT:", "Total inc VAT:"], [
       "Reference estimated install:",
       "Estimated install:",
@@ -161,11 +174,25 @@ function parseChasQuoteDraft(workSummary: string) {
 
   const daysMatch = install.match(/([0-9]+(?:\.[0-9]+)?)\s+day/i)
   const peopleMatch = install.match(/([0-9]+)\s+(?:person|people)/i)
-  const estimatedDays = daysMatch ? Number(daysMatch[1]) : null
-  const estimatedTeamSize = peopleMatch ? Number(peopleMatch[1]) : null
-  const vatRate = priceExVat > 0 ? Number(((vatAmount / priceExVat) * 100).toFixed(2)) : 20
+  const rawEstimatedDays = daysMatch ? Number(daysMatch[1]) : null
+  const rawEstimatedTeamSize = peopleMatch ? Number(peopleMatch[1]) : null
+  const isMultiOption = Boolean(optionsAndPackages || allTogetherCombinations)
+
+  const safeReference = safeQuoteReference({
+    quoteWorking,
+    storedPriceExVat: rawPriceExVat,
+    storedEstimatedDays: rawEstimatedDays,
+    storedEstimatedTeamSize: rawEstimatedTeamSize,
+  })
+
+  const priceExVat = safeReference.priceExVat
+  const vatRate = 20
+  const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
+  const totalIncVat = Number((priceExVat + vatAmount).toFixed(2))
   const depositPercent = 25
   const depositAmount = Number(((totalIncVat * depositPercent) / 100).toFixed(2))
+  const estimatedDays = safeReference.estimatedDays ?? rawEstimatedDays
+  const estimatedTeamSize = safeReference.estimatedTeamSize ?? rawEstimatedTeamSize
 
   if (!scope || priceExVat <= 0 || totalIncVat <= 0) return null
 
@@ -181,9 +208,10 @@ function parseChasQuoteDraft(workSummary: string) {
       estimatedDays != null && Number.isFinite(estimatedDays) ? estimatedDays : null,
     estimatedTeamSize:
       estimatedTeamSize != null && Number.isFinite(estimatedTeamSize) ? estimatedTeamSize : null,
-    customerMessage,
+    customerMessage: isMultiOption ? cleanMultiOptionCustomerMessage(customerMessage) : customerMessage,
     quoteWorking,
-    isMultiOption: Boolean(optionsAndPackages || allTogetherCombinations),
+    isMultiOption,
+    rawTotalIncVat,
   }
 }
 
