@@ -431,3 +431,20 @@ body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel
     padding: 16px !important;
   }
 }
+
+/* ===== PUBLIC SUBCONTRACTOR APPLICATION HERO ===== */
+/* The generic app-polish card rule forces rounded sections white with !important.
+   This public form intentionally uses a dark hero, so restore its intended contrast. */
+body.app-polished main.min-h-dvh > form > section:first-child {
+  background: #1f3218 !important;
+  border-color: #1f3218 !important;
+}
+
+body.app-polished main.min-h-dvh > form > section:first-child h1,
+body.app-polished main.min-h-dvh > form > section:first-child p {
+  color: #ffffff !important;
+}
+
+body.app-polished main.min-h-dvh > form > section:first-child > div:first-child {
+  color: #c7e678 !important;
+}
