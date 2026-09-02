@@ -60,6 +60,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       select: {
         status: true,
         jobId: true,
+        acceptedAt: true,
         priceExVat: true,
         depositPercent: true,
       },
@@ -73,7 +74,10 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     }
 
     const amendmentMode = body.amendmentMode === true
-    const protectedAcceptedQuote = currentQuote.status === 'accepted' || Boolean(currentQuote.jobId)
+    // A job can exist before the customer accepts (legacy/survey/planning flows).
+    // Only an explicit accepted status/timestamp makes the commercial quote locked.
+    const protectedAcceptedQuote =
+      currentQuote.status === 'accepted' || Boolean(currentQuote.acceptedAt)
     const commercialFields = [
       'customerName',
       'customerPhone',
@@ -154,6 +158,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
         'needs_review',
         'ready_to_send',
         'sent',
+        'no_reply',
         'accepted',
         'declined',
         'archived',
@@ -177,9 +182,9 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       }
 
       data.status = status
-      data.sentAt = status === 'sent' ? new Date() : undefined
-      data.acceptedAt = status === 'accepted' ? new Date() : undefined
-      data.declinedAt = status === 'declined' ? new Date() : undefined
+      if (status === 'sent') data.sentAt = new Date()
+      if (status === 'accepted') data.acceptedAt = currentQuote.acceptedAt || new Date()
+      if (status === 'declined') data.declinedAt = new Date()
       data.archivedAt = status === 'archived' ? new Date() : null
     }
 
@@ -207,16 +212,16 @@ export async function DELETE(_req: NextRequest, { params }: RouteContext) {
 
     const quote = await prisma.quote.findUnique({
       where: { id },
-      select: { id: true, status: true, jobId: true },
+      select: { id: true, status: true, acceptedAt: true },
     })
 
     if (!quote) {
       return NextResponse.json({ ok: false, error: 'Quote not found.' }, { status: 404 })
     }
 
-    if (quote.jobId || quote.status === 'accepted') {
+    if (quote.status === 'accepted' || quote.acceptedAt) {
       return NextResponse.json(
-        { ok: false, error: 'Accepted quotes or quotes already linked to a job cannot be deleted.' },
+        { ok: false, error: 'Accepted quotes cannot be deleted.' },
         { status: 409 }
       )
     }
