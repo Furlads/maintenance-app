@@ -17,7 +17,7 @@ export default function InviteSubcontractorPage() {
   const firstName = name.trim().split(/\s+/)[0] || 'there'
   const message = useMemo(
     () =>
-      `Hi ${firstName},\n\nWe'd like to invite you to join the Furlads subcontractor network. We use it to offer suitable work, keep job details together and make the admin around acceptance, sign-off and payment much easier.\n\nPlease complete the short application here:\n${applicationUrl}\n\nOnce it's submitted, we'll review it and get you set up.\n\nThanks,\nFurlads`,
+      `Hi ${firstName},\n\nWe’re building a trusted local network of subcontractors across Furlads and Three Counties Property Care, and we’d like to invite you to apply to join us.\n\nWe regularly have landscaping, groundworks, property maintenance and trade work available, and the network lets us match suitable jobs to the right people and teams.\n\nIf you’re interested, please complete the short application below. It covers the type of work you do, the areas you cover, your rates, availability, insurance and CIS details where applicable.\n\n${applicationUrl}\n\nOnce you’ve submitted it, we’ll review your details and come back to you. There’s no obligation to accept any work offered, and each opportunity can be considered individually.\n\nThanks,\nTrev & the team\nFurlads | Three Counties Property Care`,
     [firstName, applicationUrl]
   )
 
@@ -39,9 +39,9 @@ export default function InviteSubcontractorPage() {
       <Link href="/admin/subcontractors" className="inline-flex text-sm font-black text-zinc-600">← Back to subcontractors</Link>
 
       <section className="rounded-[28px] bg-gradient-to-br from-[#152315] via-[#273c1d] to-[#3b5625] p-6 text-white shadow-xl sm:p-8">
-        <div className="text-xs font-black uppercase tracking-[0.18em] text-[#b8d874]">Trade network</div>
+        <div className="text-xs font-black uppercase tracking-[0.18em] text-[#b8d874]">Furlads & Three Counties trade network</div>
         <h1 className="mt-2 text-4xl font-black tracking-tight">Invite a subcontractor</h1>
-        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#dce6d6]">Send somebody new the Furlads application link with a ready-written WhatsApp message. Once they apply, they will appear in Applications for review.</p>
+        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#dce6d6]">Send somebody new a ready-written WhatsApp invitation to apply to the shared Furlads & Three Counties Property Care subcontractor network.</p>
       </section>
 
       <div className="grid gap-5 lg:grid-cols-[.85fr_1.15fr]">
