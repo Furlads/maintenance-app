@@ -49,6 +49,19 @@ export async function POST(req: Request) {
     const trades = form.getAll('trades').map((value) => clean(value)).filter(Boolean)
     const privacyConsent = bool(form.get('privacyConsent'))
     const declarationAccepted = bool(form.get('declarationAccepted'))
+    const workSetup = clean(form.get('workSetup')) || 'just_me'
+    const teamSize = intOrNull(form.get('teamSize'))
+    const teamDayRate = floatOrNull(form.get('teamDayRate'))
+    const teamDescription = clean(form.get('teamDescription'))
+    const userNotes = clean(form.get('additionalNotes'))
+    const setupLabel = workSetup === 'business' ? 'Business' : workSetup === 'team' ? 'Team / crew' : 'Just me'
+    const structuredNotes = [
+      `Work setup: ${setupLabel}`,
+      teamSize ? `Typical team size: ${teamSize}` : '',
+      teamDayRate != null ? `Team / crew day rate: £${teamDayRate}` : '',
+      teamDescription ? `Typical team: ${teamDescription}` : '',
+      userNotes ? `Other notes: ${userNotes}` : '',
+    ].filter(Boolean).join('\n') || null
 
     if (!firstName || !lastName || !email || !phone) {
       return NextResponse.json({ error: 'Name, email and mobile number are required.' }, { status: 400 })
@@ -79,11 +92,11 @@ export async function POST(req: Request) {
         ${bool(form.get('cisRegistered'))}, ${trades}, ${clean(form.get('otherTrade')) || null},
         ${intOrNull(form.get('yearsExperience'))}, ${clean(form.get('coverageArea')) || null}, ${intOrNull(form.get('maxTravelMiles'))},
         ${bool(form.get('canDrive'))}, ${bool(form.get('hasOwnVehicle'))}, ${bool(form.get('suppliesTools'))}, ${bool(form.get('suppliesMaterials'))},
-        ${bool(form.get('worksForOthers'))}, ${bool(form.get('fixesOwnDefects'))}, ${bool(form.get('comfortableFixedPrice'))}, ${bool(form.get('hasEmployees'))},
+        ${bool(form.get('worksForOthers'))}, ${bool(form.get('fixesOwnDefects'))}, ${bool(form.get('comfortableFixedPrice'))}, ${workSetup !== 'just_me'},
         ${clean(form.get('publicLiabilityInsurer')) || null}, ${clean(form.get('publicLiabilityPolicyNumber')) || null}, ${dateOrNull(form.get('publicLiabilityExpiresAt'))},
         ${clean(form.get('publicLiabilityCover')) || null}, ${clean(form.get('qualifications')) || null}, ${clean(form.get('availability')) || null},
         ${clean(form.get('preferredWork')) || null}, ${floatOrNull(form.get('dayRate'))}, ${clean(form.get('referenceOne')) || null},
-        ${clean(form.get('referenceTwo')) || null}, ${clean(form.get('additionalNotes')) || null}, ${privacyConsent}, ${declarationAccepted}
+        ${clean(form.get('referenceTwo')) || null}, ${structuredNotes}, ${privacyConsent}, ${declarationAccepted}
       ) RETURNING "id"
     `
 
