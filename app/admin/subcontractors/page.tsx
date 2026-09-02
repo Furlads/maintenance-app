@@ -96,10 +96,10 @@ export default async function SubcontractorsPage() {
         <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#dce6d6]">Build the trade network, review applications, offer work, capture acceptance, completion evidence, sign-off, CIS and payment.</p>
         <div className="mt-5 flex flex-wrap gap-2">
           <Link href="/admin/subcontractors/new" className="inline-flex rounded-2xl bg-[#a9cc4b] px-5 py-3 text-sm font-black text-[#17220f]">+ Send an opportunity</Link>
-          <Link href="/admin/subcontractors/applications" className="inline-flex rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white">Applications{pendingApplications ? ` (${pendingApplications})` : ''} →</Link>
-          <Link href="/admin/subcontractors/password-resets" className="inline-flex rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white">Password resets{pendingPasswordResets ? ` (${pendingPasswordResets})` : ''} →</Link>
-          <Link href="/admin/subcontractors/work-orders" className="inline-flex rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white">Work orders & sign-off →</Link>
-          <a href="/subcontractors/apply" target="_blank" className="inline-flex rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white">Public application form ↗</a>
+          <Link href="/admin/subcontractors/applications" className="inline-flex rounded-2xl border border-zinc-200 bg-white px-5 py-3 text-sm font-black text-zinc-900 shadow-sm">Applications{pendingApplications ? ` (${pendingApplications})` : ''} →</Link>
+          <Link href="/admin/subcontractors/password-resets" className="inline-flex rounded-2xl border border-zinc-200 bg-white px-5 py-3 text-sm font-black text-zinc-900 shadow-sm">Password resets{pendingPasswordResets ? ` (${pendingPasswordResets})` : ''} →</Link>
+          <Link href="/admin/subcontractors/work-orders" className="inline-flex rounded-2xl border border-zinc-200 bg-white px-5 py-3 text-sm font-black text-zinc-900 shadow-sm">Work orders & sign-off →</Link>
+          <a href="/subcontractors/apply" target="_blank" className="inline-flex rounded-2xl border border-zinc-200 bg-white px-5 py-3 text-sm font-black text-zinc-900 shadow-sm">Public application form ↗</a>
         </div>
       </section>
 
