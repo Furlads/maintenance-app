@@ -114,6 +114,13 @@ If a sandstone patio with no major retaining structure, drainage scheme or concr
 Calibration example: around 17-18m2 of Autumn Brown Indian sandstone, full dig-out and build-up, one straightforward domestic step, short pressure-treated sleeper edging, and squaring/levelling an adjoining planter area should normally be tested around 6-8 total man-days, commonly about 3-4 working days for a 2-person crew. Do not default to 10 man-days / 5 full crew days unless access, roots, excavation depth or level changes genuinely justify it.
 For that genuinely comparable scope, sense-check the customer selling price broadly around £3,500-£4,000 ex VAT before exceptional extras. A price approaching £5,500-£6,000 ex VAT should trigger a mandatory recalculation rather than being accepted on a generic 'complexity' explanation.
 
+CUSTOMER-SUPPLIED PAVING
+When the customer supplies the paving slabs, remove the slab purchase cost completely from Furlads hard costs and do not force the quote back up to the normal full supply-and-fit £/m2 benchmark.
+Price only what Furlads is actually supplying: productive labour, sand/cement or bedding materials, jointing materials where included, cutting consumables, plant, waste, deliveries/logistics and contingency.
+A full-install benchmark that assumes Furlads supplies the paving is only a sense-check for comparable supply-and-fit work; it must not override a lower cost-led price where the slabs are free-issued by the customer.
+If a requested target gross margin is 30%, calculate the recommendation from realistic direct job costs using Direct Job Cost / 0.70. Do not add a broad market-rate uplift after that calculation unless a specific real cost or risk has been omitted.
+For a straightforward prepared patio/path of roughly 15-17m2 where the customer supplies slabs and Furlads supplies labour plus sand/cement, a normal two-person programme should first be tested around 2 working days. With ordinary access and no excavation or new sub-base, sense-check the customer price broadly around £1,550-£1,750 ex VAT before genuine exceptional costs.
+
 EXISTING CONCRETE HARDSTANDING REPLACED WITH PAVING
 When existing concrete is being broken out so the area can be repaved, do NOT automatically price a complete new sub-base/build-up underneath it.
 Existing concrete hardstanding will commonly already have hardcore or another formation layer beneath it. Treat that underlying base as potentially reusable unless the survey, levels, photos or site facts give a reason not to.
@@ -131,14 +138,34 @@ Do not use wording such as 'form full build-up' unless a full build-up is genuin
 Customer protection wording can state: 'Price assumes the existing sub-base is suitable for reuse once the concrete is removed. Any significant additional excavation or reconstruction required due to unsuitable ground conditions will be discussed before proceeding.'
 
 Calibration example: for a genuinely comparable narrow domestic run of roughly 25-30m2, breaking out existing concrete and replacing it with standard Indian sandstone while reusing a suitable existing base, first test the programme around 8 total man-days, commonly about 4 working days for a 2-person crew. Five full 2-person days should require a task-by-task reason such as unusually thick/reinforced concrete, very difficult waste handling, poor access, significant base failure or extra drainage/level work.
-For a comparable 26m2 job with standard sandstone supplied and no major structural extras, sense-check the selling price broadly around £4,750-£5,000 ex VAT before genuine exceptional costs. A result around £5,900 ex VAT or more should trigger a mandatory review for duplicated excavation, unnecessary new sub-base, excess labour or over-allowance for access/unknowns.
+For a comparable 26m2 job where Furlads SUPPLIES the standard sandstone and there are no major structural extras, sense-check the selling price broadly around £4,750-£5,000 ex VAT before genuine exceptional costs. A result around £5,900 ex VAT or more should trigger a mandatory review for duplicated excavation, unnecessary new sub-base, excess labour or over-allowance for access/unknowns.
+If the CUSTOMER supplies the slabs for that same 25-30m2 concrete-breakout scope, do not use the £4,750-£5,000 supply-and-fit calibration. Build the direct costs without slab purchase and first sense-check the selling price broadly around £2,700-£3,050 ex VAT at a 30% gross-margin target, subject to actual concrete thickness, disposal, plant and access.
+
+CALIBRATION - CUSTOMER-SUPPLIED PATIO/PATH PLUS CONCRETE RUN
+For a mixed job consisting of roughly 16m2 of prepared patio/path plus roughly 26m2 of concrete breakout and repaving, with the customer supplying all slabs and Furlads supplying labour, sand/cement, plant and disposal:
+- test the prepared patio/path standalone around £1,550-£1,750 ex VAT
+- test the concrete-breakout/repave standalone around £2,700-£3,050 ex VAT
+- test the complete programme around 10 total man-days, commonly about 5 working days for a 2-person crew
+- a realistic whole-job hard-cost range around £2,800-£3,100 should produce a 30% gross-margin selling range of roughly £4,000-£4,430 ex VAT
+- around £4,350 ex VAT is a sensible calibration point where the actual hard costs and programme support it
+Do not allow the standalone benchmark prices to override the hard-cost calculation. The requested gross-margin target governs unless a genuine omitted cost or risk justifies more.
+
+PACKAGE / OPTION LOGIC
+When presenting standalone choices plus an all-together price, calculate each standalone option independently from its own real costs, then calculate the combined job from a fresh combined programme and actual shared efficiencies.
+Only claim savings that genuinely disappear when the work is combined, such as duplicated mobilisation, setup/cleanup, shared deliveries or overlapping plant hire.
+Do not invent duplicated waste or disposal costs. If only one option contains concrete breakout, that concrete waste exists once whether the customer books that option alone or as part of the combined job.
+Do not inflate standalone options to manufacture a dramatic combined saving.
+Do not present the exact same complete scope twice. Use either:
+- standalone Option 1 + standalone Option 2 + one combined/all-together offer, OR
+- Option 1 + Option 2 + Option 3 complete package with no duplicate combined offer.
+For a small two-package job, a modest genuine combined saving can be appropriate; it does not need to be a large percentage if duplicated costs are limited.
 
 GRAVEL GRIDS / STABILISED GRAVEL FULL BUILD
 Where the specified scope includes excavation, suitable sub-base, compaction, membrane, plastic gravel grids, pea-gravel grid infill and a self-binding gravel finishing layer, treat it as FULL DIG-OUT / REBUILD rather than a simple gravel refresh.
 Do not benchmark this work against the normal decorative-gravel refresh rate. Price the grids, both aggregate layers, excavation/disposal, sub-base, compaction, plant, deliveries and labour explicitly.
 For this type of full-build grid system, the selling rate can reasonably be much higher than a simple gravel overlay because the materials and groundworks are materially different.
 
-Calibration example: around 30m2 of path/vegetable-area grid surfacing with excavation, sub-base, membrane, grids, pea-gravel infill and self-binding gravel top should normally be tested around 6-8 total man-days depending on access and handwork, commonly about 3-4 working days for a 2-person crew. For a genuinely comparable job, sense-check the selling price broadly around £3,300-£3,700 ex VAT. A result below about £3,000 ex VAT should trigger a hard-cost/margin review because grids, multiple aggregates, excavation, disposal and labour can consume most of that figure.
+Calibration example: around 30m2 of path/vegetable-area grid surfacing with excavation, sub-base, membrane, grids, pea-gravel infill and a self-binding gravel top should normally be tested around 6-8 total man-days depending on access and handwork, commonly about 3-4 working days for a 2-person crew. For a genuinely comparable job, sense-check the selling price broadly around £3,300-£3,700 ex VAT. A result below about £3,000 ex VAT should trigger a hard-cost/margin review because grids, multiple aggregates, excavation, disposal and labour can consume most of that figure.
 
 MIXED PATIO + GRID-SURFACING CALIBRATION
 When a job contains both of the above packages, do not try to make the total look right by overpricing one and underpricing the other. Each package must stand on its own realistic hard costs and man-days first.
@@ -232,7 +259,8 @@ Do not simply sum every standalone package and call that the combined price.
 Do not create token savings such as a few hundred pounds on a £25k-£30k multi-package job if the separate options each include duplicated setup.
 For several substantial packages completed together, a genuine combined saving often lands in the rough region of 3-8% of the separate total, but calculate it from real duplicated costs rather than forcing a percentage.
 
-Shared disposal is part of those combined efficiencies, but do not show the grab/skip as a separate customer line. Keep it inside the package pricing.
+Shared disposal is part of those combined efficiencies only where separate bookings genuinely create duplicated disposal cost. Never claim two waste loads when only one work package creates that waste.
+Do not show the grab/skip as a separate customer line. Keep it inside the package pricing.
 
 COMBINED PROGRAMME
 Do not add all standalone durations and then only shave a little off.
@@ -258,6 +286,10 @@ Before accepting the quote ask:
 10. Am I using the right number of workers for each task, or just defaulting to 2 people all day?
 11. Does calendar duration reflect productive labour rather than curing/waiting time?
 12. If I am removing existing concrete, have I assumed a full new sub-base without evidence that the existing base is unsuitable?
+13. If the customer supplies the paving, have I removed the slab purchase from hard costs and avoided forcing a full supply-and-fit benchmark onto the job?
+14. Does the recommended price actually reflect the requested gross-margin target, or have I added an unexplained market uplift afterwards?
+15. If I claim a combined saving, can I name the exact duplicated costs that disappear, without inventing a second waste/disposal cost?
+16. Have I accidentally presented the same complete/all-together scope twice?
 
 If a final price differs by more than about 15% from the first benchmark sense-check, explain the specific real costs causing the difference. If the explanation is only 'complexity' or 'restricted access', recalculate with explicit man-days and handling costs.
 
@@ -265,11 +297,18 @@ AUTOMATIC REVIEW FLAGS
 - horizontal porcelain above about £240/m2 without major exceptional scope
 - sandstone patio above about £240/m2 without major retaining, drainage or concrete-breakout scope
 - 17-18m2 sandstone patio with one small step and modest sleeper/bed detailing exceeding about 8 man-days without a task-by-task explanation
+- customer-supplied paving priced using a full supply-and-fit benchmark without removing slab purchase cost
+- prepared 15-17m2 customer-supplied patio/path materially above about £1,750 ex VAT without a specific exceptional cost
+- 25-30m2 concrete-breakout/repave with customer-supplied slabs materially above about £3,050 ex VAT at a 30% target margin without a specific exceptional cost
+- customer-supplied 16m2 patio/path plus 26m2 concrete-run package materially above about £4,450 ex VAT at a 30% target margin without hard costs justifying it
 - 30m2 full-build gravel-grid system below about £3,000 ex VAT without unusually low hard costs
 - mixed sandstone + full-build grid job materially outside the calibrated package balance without explicit hard-cost reasons
 - through-house access charged both as extra man-days and a blanket percentage
 - retaining wall cost duplicated in patio complexity
 - combined package saving below about 2% despite multiple standalone mobilisations
+- combined saving manufactured by inflating standalone option prices
+- combined saving justified by a duplicated waste load that does not actually exist
+- complete/all-together scope presented twice under different labels
 - grab/disposal allowance far above expected supplier cost without multiple loads
 - grab/skip/waste shown as a separate customer-facing option without explicit user request
 - combined duration close to the sum of every standalone duration
