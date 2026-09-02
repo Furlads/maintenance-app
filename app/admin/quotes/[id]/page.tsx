@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import QuoteAmendmentPanel from './QuoteAmendmentPanel'
 import QuoteEditor from './QuoteEditor'
 import QuoteDraftGuard from './QuoteDraftGuard'
 
@@ -59,6 +60,13 @@ export default async function QuoteDetailPage({ params }: PageProps) {
           </Link>
         </div>
       </section>
+
+      <QuoteAmendmentPanel
+        quoteId={quote.id}
+        status={quote.status}
+        jobId={quote.jobId}
+        totalIncVat={quote.totalIncVat}
+      />
 
       <div id="quote-editor-autosave">
         <QuoteDraftGuard quoteId={quote.id} />
