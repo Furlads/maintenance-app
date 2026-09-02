@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { safeQuoteReference } from '@/lib/quoteOptionReference'
 import QuoteEditor from './QuoteEditor'
 import QuoteDraftGuard from './QuoteDraftGuard'
+import QuoteChasAutoRefresh from './QuoteChasAutoRefresh'
 import KellyQuoteOverview from './KellyQuoteOverview'
 import AcceptedQuoteActions from './AcceptedQuoteActions'
 import DeleteQuoteButton from '../DeleteQuoteButton'
@@ -122,6 +123,8 @@ export default async function QuoteDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-5">
+      <QuoteChasAutoRefresh quoteId={quote.id} />
+
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
