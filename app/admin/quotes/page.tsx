@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
-import { safeQuoteReference } from '@/lib/quoteOptionReference'
 import ClearArchiveButton from './ClearArchiveButton'
 import DeleteQuoteButton from './DeleteQuoteButton'
 
@@ -56,7 +55,7 @@ function statusClass(status: string) {
   return 'bg-orange-100 text-orange-800 ring-orange-200'
 }
 
-function storedQuoteReference(quote: {
+function quoteReference(quote: {
   priceExVat: number
   vatRate: number
   totalIncVat: number
@@ -67,6 +66,7 @@ function storedQuoteReference(quote: {
   const priceExVat = Number.isFinite(quote.priceExVat) ? quote.priceExVat : 0
   const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
   const storedTotal = Number(quote.totalIncVat || 0)
+
   return {
     priceExVat,
     vatRate,
@@ -77,36 +77,9 @@ function storedQuoteReference(quote: {
   }
 }
 
-function quoteReference(quote: {
-  status: string
-  quoteWorking: string | null
-  priceExVat: number
-  vatRate: number
-  totalIncVat: number
-  estimatedDays: number | null
-  estimatedTeamSize: number | null
-}) {
-  // Once a quote has been sent, the stored commercial figures are the source of
-  // truth. CHAS working may contain historical options and must not alter what
-  // the customer was actually quoted.
-  if (['sent', 'no_reply', 'accepted', 'declined', 'archived'].includes(quote.status)) {
-    return storedQuoteReference(quote)
-  }
-
-  return safeQuoteReference({
-    quoteWorking: quote.quoteWorking,
-    storedPriceExVat: quote.priceExVat,
-    storedEstimatedDays: quote.estimatedDays,
-    storedEstimatedTeamSize: quote.estimatedTeamSize,
-  })
-}
-
 export default async function AdminQuotesPage({ searchParams }: PageProps) {
   const selected = String(searchParams?.status || 'active')
 
-  // Sent quotes automatically move to No Reply after 30 full days without an
-  // explicit accept/decline action. This is idempotent and runs whenever the
-  // live quotes dashboard is loaded.
   const noReplyCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
   await prisma.quote.updateMany({
     where: {
@@ -139,7 +112,6 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
       where: { status: { notIn: ['declined', 'archived', 'no_reply'] } },
       select: {
         status: true,
-        quoteWorking: true,
         priceExVat: true,
         vatRate: true,
         totalIncVat: true,
