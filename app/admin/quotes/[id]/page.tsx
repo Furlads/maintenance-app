@@ -5,6 +5,7 @@ import { safeQuoteReference } from '@/lib/quoteOptionReference'
 import QuoteEditor from './QuoteEditor'
 import QuoteDraftGuard from './QuoteDraftGuard'
 import QuoteChasAutoRefresh from './QuoteChasAutoRefresh'
+import QuoteStatusControls from './QuoteStatusControls'
 import KellyQuoteOverview from './KellyQuoteOverview'
 import AcceptedQuoteActions from './AcceptedQuoteActions'
 import DeleteQuoteButton from '../DeleteQuoteButton'
@@ -71,8 +72,6 @@ export default async function QuoteDetailPage({ params }: PageProps) {
   let quote = await prisma.quote.findUnique({ where: { id } })
   if (!quote) notFound()
 
-  // A linked planning/job record does not mean the customer accepted the quote.
-  // Acceptance must be explicit. Sent quotes also age to No Reply after 30 days.
   if (
     quote.status === 'sent' &&
     quote.sentAt &&
@@ -177,6 +176,8 @@ export default async function QuoteDetailPage({ params }: PageProps) {
           </div>
         </div>
       </section>
+
+      <QuoteStatusControls quoteId={quote.id} currentStatus={quote.status} jobId={quote.jobId} />
 
       {quote.status === 'accepted' && quote.jobId ? (
         <AcceptedQuoteActions quoteId={quote.id} jobId={quote.jobId} />
