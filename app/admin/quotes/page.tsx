@@ -54,6 +54,20 @@ function statusClass(status: string) {
   return 'bg-orange-100 text-orange-800 ring-orange-200'
 }
 
+function quoteValue(quote: {
+  quoteWorking: string | null
+  priceExVat: number
+  estimatedDays: number | null
+  estimatedTeamSize: number | null
+}) {
+  return safeQuoteReference({
+    quoteWorking: quote.quoteWorking,
+    storedPriceExVat: quote.priceExVat,
+    storedEstimatedDays: quote.estimatedDays,
+    storedEstimatedTeamSize: quote.estimatedTeamSize,
+  }).totalIncVat
+}
+
 export default async function AdminQuotesPage({ searchParams }: PageProps) {
   const selected = String(searchParams?.status || 'active')
 
@@ -64,7 +78,7 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
         ? { status: { notIn: ['declined', 'archived'] } }
         : { status: selected }
 
-  const [quotes, counts] = await Promise.all([
+  const [quotes, counts, valueQuotes] = await Promise.all([
     prisma.quote.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
@@ -73,6 +87,16 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
     prisma.quote.groupBy({
       by: ['status'],
       _count: { _all: true },
+    }),
+    prisma.quote.findMany({
+      where: { status: { notIn: ['declined', 'archived'] } },
+      select: {
+        status: true,
+        quoteWorking: true,
+        priceExVat: true,
+        estimatedDays: true,
+        estimatedTeamSize: true,
+      },
     }),
   ])
 
@@ -84,17 +108,15 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
     .filter((item) => !['declined', 'archived'].includes(item.status))
     .reduce((total, item) => total + item._count._all, 0)
 
-  const totalPipeline = quotes
-    .filter((quote) => !['declined', 'archived'].includes(quote.status))
-    .reduce((total, quote) => {
-      const reference = safeQuoteReference({
-        quoteWorking: quote.quoteWorking,
-        storedPriceExVat: quote.priceExVat,
-        storedEstimatedDays: quote.estimatedDays,
-        storedEstimatedTeamSize: quote.estimatedTeamSize,
-      })
-      return total + reference.totalIncVat
-    }, 0)
+  // Keep potential work and secured work separate. Accepted quotes are booked
+  // revenue and must not inflate the sales pipeline figure.
+  const pipelineValue = valueQuotes
+    .filter((quote) => quote.status !== 'accepted')
+    .reduce((total, quote) => total + quoteValue(quote), 0)
+
+  const bookedValue = valueQuotes
+    .filter((quote) => quote.status === 'accepted')
+    .reduce((total, quote) => total + quoteValue(quote), 0)
 
   const archivedCount = countMap.archived || 0
 
@@ -122,7 +144,7 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
           </Link>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
             <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Active quotes</div>
             <div className="mt-1 text-2xl font-black text-zinc-950">{activeCount}</div>
@@ -132,8 +154,14 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
             <div className="mt-1 text-2xl font-black text-zinc-950">{quotes.length}</div>
           </div>
           <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-inset ring-yellow-200">
-            <div className="text-xs font-bold uppercase tracking-wide text-yellow-800">Visible pipeline</div>
-            <div className="mt-1 text-2xl font-black text-zinc-950">{money(totalPipeline)}</div>
+            <div className="text-xs font-bold uppercase tracking-wide text-yellow-800">Pipeline</div>
+            <div className="mt-1 text-2xl font-black text-zinc-950">{money(pipelineValue)}</div>
+            <div className="mt-1 text-[11px] font-semibold text-yellow-800">Potential work not yet accepted</div>
+          </div>
+          <div className="rounded-2xl bg-green-50 p-4 ring-1 ring-inset ring-green-200">
+            <div className="text-xs font-bold uppercase tracking-wide text-green-800">Booked in</div>
+            <div className="mt-1 text-2xl font-black text-zinc-950">{money(bookedValue)}</div>
+            <div className="mt-1 text-[11px] font-semibold text-green-800">Accepted / secured work</div>
           </div>
         </div>
       </section>
@@ -221,8 +249,8 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
                     </div>
                   </Link>
 
-                  <div className="flex flex-none items-end gap-3 sm:items-center">
-                    <Link href={`/admin/quotes/${quote.id}`} className="text-right">
+                  <div className="flex flex-none items-center gap-3 sm:text-right">
+                    <Link href={`/admin/quotes/${quote.id}`} className="block">
                       <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Total inc VAT</div>
                       <div className="mt-1 text-2xl font-black text-zinc-950">
                         {money(reference.totalIncVat)}
