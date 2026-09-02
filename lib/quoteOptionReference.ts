@@ -26,34 +26,40 @@ function durationFromText(value: string) {
   }
 }
 
-function optionLines(working: string) {
-  const marker = 'OPTIONS / PACKAGES'
-  const start = working.indexOf(marker)
-  if (start < 0) return [] as string[]
+function quoteSection(working: string) {
+  const startMarker = 'OPTIONS / PACKAGES'
+  const start = working.indexOf(startMarker)
+  if (start < 0) return working
 
-  const after = working.slice(start + marker.length)
-  const endMarkers = ['ALL-TOGETHER COMBINATIONS', 'TREVOR / CHAS CONVERSATION', 'SURVEY PHOTOS JSON']
+  const after = working.slice(start + startMarker.length)
+  const endMarkers = ['TREVOR / CHAS CONVERSATION', 'SURVEY PHOTOS JSON']
   const ends = endMarkers
     .map((item) => after.indexOf(item))
     .filter((index) => index >= 0)
-  const section = ends.length ? after.slice(0, Math.min(...ends)) : after
 
-  return section
+  return ends.length ? after.slice(0, Math.min(...ends)) : after
+}
+
+function optionLines(working: string) {
+  return quoteSection(working)
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => /^Option\s+/i.test(line) && /£\s*[0-9]/.test(line))
 }
 
 function combinedLine(working: string) {
-  const marker = 'ALL-TOGETHER COMBINATIONS'
-  const start = working.indexOf(marker)
-  if (start < 0) return ''
+  const section = quoteSection(working)
+  const lines = section.split('\n').map((line) => line.trim())
 
-  return working
-    .slice(start + marker.length)
-    .split('\n')
-    .map((line) => line.trim())
-    .find((line) => /£\s*[0-9]/.test(line)) || ''
+  const explicitMarkerIndex = lines.findIndex((line) => /^ALL-TOGETHER COMBINATIONS$/i.test(line))
+  if (explicitMarkerIndex >= 0) {
+    return lines.slice(explicitMarkerIndex + 1).find((line) => /£\s*[0-9]/.test(line)) || ''
+  }
+
+  return lines.find((line) =>
+    /£\s*[0-9]/.test(line) &&
+    /\b(if all completed together|all completed together|all work together|all works together|all together|combined package|combined offer|complete job)\b/i.test(line)
+  ) || ''
 }
 
 function resultFromLine(line: string, source: QuoteReference['source']): QuoteReference | null {
@@ -81,29 +87,11 @@ export function safeQuoteReference(params: {
   storedEstimatedDays?: number | null
   storedEstimatedTeamSize?: number | null
 }): QuoteReference {
-  const storedPriceExVat = Number.isFinite(params.storedPriceExVat)
-    ? params.storedPriceExVat
-    : 0
-
-  // The database commercial figures are the source of truth whenever they exist.
-  // CHAS working is conversational history and can contain superseded option prices.
-  // Parsing that history was causing old figures to overwrite the current quote card.
-  if (storedPriceExVat > 0) {
-    const vatAmount = Number(((storedPriceExVat * VAT_RATE) / 100).toFixed(2))
-    return {
-      priceExVat: storedPriceExVat,
-      vatRate: VAT_RATE,
-      vatAmount,
-      totalIncVat: Number((storedPriceExVat + vatAmount).toFixed(2)),
-      estimatedDays: params.storedEstimatedDays ?? null,
-      estimatedTeamSize: params.storedEstimatedTeamSize ?? null,
-      source: 'stored',
-    }
-  }
-
-  // Legacy fallback only: recover a usable figure from CHAS working when an old
-  // record genuinely has no stored price.
   const working = String(params.quoteWorking || '')
+
+  // Multi-option quotes must always show the customer's best complete/all-together
+  // package first. Do not let stale stored figures or older CHAS calculations
+  // replace the headline package price.
   const combined = combinedLine(working)
   const combinedResult = combined ? resultFromLine(combined, 'combined_offer') : null
   if (combinedResult) return combinedResult
@@ -127,11 +115,16 @@ export function safeQuoteReference(params: {
     }
   }
 
+  const storedPriceExVat = Number.isFinite(params.storedPriceExVat)
+    ? params.storedPriceExVat
+    : 0
+  const vatAmount = Number(((storedPriceExVat * VAT_RATE) / 100).toFixed(2))
+
   return {
-    priceExVat: 0,
+    priceExVat: storedPriceExVat,
     vatRate: VAT_RATE,
-    vatAmount: 0,
-    totalIncVat: 0,
+    vatAmount,
+    totalIncVat: Number((storedPriceExVat + vatAmount).toFixed(2)),
     estimatedDays: params.storedEstimatedDays ?? null,
     estimatedTeamSize: params.storedEstimatedTeamSize ?? null,
     source: 'stored',
