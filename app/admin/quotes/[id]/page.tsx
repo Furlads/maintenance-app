@@ -215,7 +215,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
             estimatedDays: reference.estimatedDays,
             estimatedTeamSize: reference.estimatedTeamSize,
             status: quote.status,
-            jobId: quote.jobId,
+            jobId: quote.status === 'accepted' ? quote.jobId : null,
           }}
         />
       </div>
