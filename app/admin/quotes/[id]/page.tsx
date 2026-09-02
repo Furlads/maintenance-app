@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import QuoteEditor from './QuoteEditor'
 import QuoteDraftGuard from './QuoteDraftGuard'
@@ -80,6 +80,13 @@ export default async function QuoteDetailPage({ params }: PageProps) {
 
   const quote = await prisma.quote.findUnique({ where: { id } })
   if (!quote) notFound()
+
+  // An in-progress quote is still Trevor's live CHAS working session. Opening
+  // it from the admin quote list should resume that conversation/editor rather
+  // than dropping into Kelly's post-draft quote management screen.
+  if (quote.status === 'in_progress') {
+    redirect(`/quote-test?resume=${quote.id}`)
+  }
 
   const storedSurveyPhotos = surveyPhotosFromWorking(quote.quoteWorking)
   const workerPhotoRows = quote.conversationId || quote.jobId
