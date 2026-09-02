@@ -4,6 +4,8 @@ import QuoteResultPolish from './QuoteResultPolish'
 import QuoteResultReadability from './QuoteResultReadability'
 import QuoteWorkingStatus from './QuoteWorkingStatus'
 import IPhonePhotoPickerFix from './IPhonePhotoPickerFix'
+import PhotoUploadQueue from './PhotoUploadQueue'
+import SafeLibraryPhotoPreparation from './SafeLibraryPhotoPreparation'
 
 export default function QuoteTestLayout({ children }: { children: ReactNode }) {
   return (
@@ -59,6 +61,8 @@ export default function QuoteTestLayout({ children }: { children: ReactNode }) {
       <QuoteResultPolish />
       <QuoteResultReadability />
       <QuoteWorkingStatus />
+      <SafeLibraryPhotoPreparation />
+      <PhotoUploadQueue />
       <IPhonePhotoPickerFix />
       {children}
     </>
