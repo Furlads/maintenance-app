@@ -6,6 +6,7 @@ import QuoteWorkingStatus from './QuoteWorkingStatus'
 import IPhonePhotoPickerFix from './IPhonePhotoPickerFix'
 import PhotoUploadQueue from './PhotoUploadQueue'
 import SafeLibraryPhotoPreparation from './SafeLibraryPhotoPreparation'
+import ResumeQuoteDraft from './ResumeQuoteDraft'
 
 export default function QuoteTestLayout({ children }: { children: ReactNode }) {
   return (
@@ -57,6 +58,7 @@ export default function QuoteTestLayout({ children }: { children: ReactNode }) {
           }
         }
       `}</style>
+      <ResumeQuoteDraft />
       <QuoteDraftAutosave />
       <QuoteResultPolish />
       <QuoteResultReadability />
