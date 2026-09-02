@@ -3,6 +3,7 @@ import QuoteDraftAutosave from './QuoteDraftAutosave'
 import QuoteResultPolish from './QuoteResultPolish'
 import QuoteResultReadability from './QuoteResultReadability'
 import QuoteWorkingStatus from './QuoteWorkingStatus'
+import IPhonePhotoPickerFix from './IPhonePhotoPickerFix'
 
 export default function QuoteTestLayout({ children }: { children: ReactNode }) {
   return (
@@ -58,6 +59,7 @@ export default function QuoteTestLayout({ children }: { children: ReactNode }) {
       <QuoteResultPolish />
       <QuoteResultReadability />
       <QuoteWorkingStatus />
+      <IPhonePhotoPickerFix />
       {children}
     </>
   )
