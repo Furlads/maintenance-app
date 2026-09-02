@@ -8,6 +8,7 @@ export default function SubcontractorApplicationPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+  const [workSetup, setWorkSetup] = useState('just_me')
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -60,22 +61,35 @@ export default function SubcontractorApplicationPage() {
         <div className="mt-4"><Textarea name="preferredWork" label="What sort of work are you best at / looking for?" /></div>
       </Section>
 
-      <Section title="3. Area, transport & how you work">
-        <Grid>
-          <Input name="coverageArea" label="Areas you cover" placeholder="e.g. Shropshire, Cheshire, Staffordshire" />
-          <Input name="maxTravelMiles" label="Typical maximum travel distance (miles)" type="number" min="0" />
-        </Grid>
+      <Section title="3. How you work & your rates">
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="text-sm font-black text-zinc-900">How do you normally take on work?</div>
+          <p className="mt-1 text-xs font-semibold leading-5 text-zinc-600">This helps us know whether we are booking you personally, a regular team, or your business.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {[
+              ['just_me', 'Just me'],
+              ['team', 'I work as a team / crew'],
+              ['business', 'I operate as a business'],
+            ].map(([value, label]) => <label key={value} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm font-black ${workSetup === value ? 'border-[#9fbe55] bg-[#f0f6e6] text-[#314816]' : 'border-zinc-200 bg-white text-zinc-900'}`}><input required type="radio" name="workSetup" value={value} checked={workSetup === value} onChange={() => setWorkSetup(value)} className="h-5 w-5" />{label}</label>)}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Input name="dayRate" label="Your own day rate (if applicable)" inputMode="decimal" placeholder="e.g. 180" />
+          {workSetup !== 'just_me' ? <Input name="teamSize" label="Typical team size" type="number" min="2" placeholder="e.g. 2" /> : null}
+          {workSetup !== 'just_me' ? <Input name="teamDayRate" label="Team / crew day rate (if applicable)" inputMode="decimal" placeholder="e.g. 350" /> : null}
+          {workSetup !== 'just_me' ? <Input name="teamDescription" label="Who is normally included?" placeholder="e.g. me + labourer / 2-person paving team" /> : null}
+        </div>
+
+        <div className="mt-5"><Grid><Input name="coverageArea" label="Areas you cover" placeholder="e.g. Shropshire, Cheshire, Staffordshire" /><Input name="maxTravelMiles" label="Typical maximum travel distance (miles)" type="number" min="0" /></Grid></div>
         <Checks items={[
-          ['canDrive', 'I can drive'], ['hasOwnVehicle', 'I have my own suitable vehicle'], ['suppliesTools', 'I normally supply my own tools'], ['suppliesMaterials', 'I can supply materials when agreed'], ['worksForOthers', 'I work for other customers/businesses as well'], ['comfortableFixedPrice', 'I am comfortable accepting fixed-price jobs'], ['fixesOwnDefects', 'I will return to remedy defects in my own work where reasonably required'], ['hasEmployees', 'I may use my own employees/labourers'],
+          ['canDrive', 'I can drive'], ['hasOwnVehicle', 'I have my own suitable vehicle'], ['suppliesTools', 'I normally supply my own tools'], ['suppliesMaterials', 'I can supply materials when agreed'], ['worksForOthers', 'I work for other customers/businesses as well'], ['comfortableFixedPrice', 'I am comfortable accepting fixed-price jobs'], ['fixesOwnDefects', 'I will return to remedy defects in my own work where reasonably required'],
         ]} />
         <div className="mt-4"><Textarea name="availability" label="Typical availability" placeholder="e.g. Mon–Thu, ad hoc Fridays, 1–2 weeks notice" /></div>
-        <div className="mt-4"><Input name="dayRate" label="Typical day rate / costing guide (optional)" inputMode="decimal" placeholder="This is only a guide; jobs may be offered at fixed prices" /></div>
       </Section>
 
       <Section title="4. CIS, tax & insurance">
-        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-900">
-          Your UTR is used for CIS verification if you are approved to join the network. You can leave it blank at application stage, but we will need it before you can be marked ready for CIS work.
-        </div>
+        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-900">Your UTR is used for CIS verification if you are approved to join the network. You can leave it blank at application stage, but we will need it before you can be marked ready for CIS work.</div>
         <Grid>
           <Input name="utrNumber" label="UTR — required for CIS verification" placeholder="Optional at application stage" />
           <Input name="publicLiabilityInsurer" label="Public liability insurer" />
@@ -87,24 +101,14 @@ export default function SubcontractorApplicationPage() {
       </Section>
 
       <Section title="5. References & documents">
-        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-          <div className="text-sm font-black text-zinc-900">Trade references are optional</div>
-          <p className="mt-1 text-xs font-semibold leading-5 text-zinc-600">If you choose to provide a referee, only give us the details needed to contact them. Please make sure they know you are naming them as a referee and that Furlads / Three Counties may contact them about your work.</p>
-        </div>
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4"><div className="text-sm font-black text-zinc-900">Trade references are optional</div><p className="mt-1 text-xs font-semibold leading-5 text-zinc-600">If you choose to provide a referee, only give us the details needed to contact them. Please make sure they know you are naming them as a referee and that Furlads / Three Counties may contact them about your work.</p></div>
         <div className="mt-4 grid gap-4 sm:grid-cols-2"><Textarea name="referenceOne" label="Trade reference 1 (optional)" placeholder="Name, business/company, relationship to you and phone/email" /><Textarea name="referenceTwo" label="Trade reference 2 (optional)" placeholder="Name, business/company, relationship to you and phone/email" /></div>
         <label className="mt-4 flex items-start gap-3 rounded-2xl border border-zinc-200 bg-white p-4 text-sm font-semibold leading-6 text-zinc-700"><input type="checkbox" name="refereeAwarenessConfirmed" value="true" className="mt-1 h-5 w-5" /><span>If I have provided referee details, I confirm those people are aware I am using them as a reference and that Furlads / Three Counties may contact them.</span></label>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <FileField name="insuranceDocument" label="Public liability certificate" />
-          <FileField name="utrDocument" label="UTR / CIS evidence (optional at application stage)" />
-          <FileField name="qualificationDocuments" label="Qualifications / tickets" multiple />
-          <FileField name="workPhotos" label="Examples of your work" multiple accept="image/jpeg,image/png,image/webp" />
-        </div>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2"><FileField name="insuranceDocument" label="Public liability certificate" /><FileField name="utrDocument" label="UTR / CIS evidence (optional at application stage)" /><FileField name="qualificationDocuments" label="Qualifications / tickets" multiple /><FileField name="workPhotos" label="Examples of your work" multiple accept="image/jpeg,image/png,image/webp" /></div>
         <p className="mt-3 text-xs font-semibold text-zinc-500">PDF, JPG, PNG or WebP. Maximum 10MB per file. Documents are stored privately and used for subcontractor vetting/compliance.</p>
       </Section>
 
-      <Section title="6. Anything else">
-        <Textarea name="additionalNotes" label="Anything we should know?" placeholder="Team size, specialist equipment, access limitations, preferred job types, lead times etc." />
-      </Section>
+      <Section title="6. Anything else"><Textarea name="additionalNotes" label="Anything we should know?" placeholder="Specialist equipment, access limitations, preferred job types, lead times etc." /></Section>
 
       <Section title="Declaration & privacy">
         <div className="space-y-3 text-sm font-semibold leading-6 text-zinc-700">
