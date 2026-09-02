@@ -5,6 +5,7 @@ import QuoteResultReadability from './QuoteResultReadability'
 import QuoteWorkingStatus from './QuoteWorkingStatus'
 import IPhonePhotoPickerFix from './IPhonePhotoPickerFix'
 import PhotoUploadQueue from './PhotoUploadQueue'
+import PhotoUploadProgress from './PhotoUploadProgress'
 import SafeLibraryPhotoPreparation from './SafeLibraryPhotoPreparation'
 import ResumeQuoteDraft from './ResumeQuoteDraft'
 
@@ -65,6 +66,7 @@ export default function QuoteTestLayout({ children }: { children: ReactNode }) {
       <QuoteWorkingStatus />
       <SafeLibraryPhotoPreparation />
       <PhotoUploadQueue />
+      <PhotoUploadProgress />
       <IPhonePhotoPickerFix />
       {children}
     </>
