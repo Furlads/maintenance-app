@@ -29,6 +29,7 @@ export default function DeleteQuoteButton({ quoteId, customerName, compact = fal
         throw new Error(data?.error || 'Could not delete the quote.')
       }
 
+      router.push('/admin/quotes')
       router.refresh()
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the quote.')
