@@ -1,10 +1,12 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { safeQuoteReference } from '@/lib/quoteOptionReference'
 import QuoteEditor from './QuoteEditor'
 import QuoteDraftGuard from './QuoteDraftGuard'
 import KellyQuoteOverview from './KellyQuoteOverview'
 import AcceptedQuoteActions from './AcceptedQuoteActions'
+import DeleteQuoteButton from '../DeleteQuoteButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,20 +62,6 @@ function surveyPhotosFromWorking(value: string | null): SurveyPhoto[] {
   }
 }
 
-function allTogetherPriceFromWorking(value: string | null) {
-  if (!value) return null
-  const marker = 'ALL-TOGETHER COMBINATIONS'
-  const index = value.indexOf(marker)
-  if (index < 0) return null
-
-  const section = value.slice(index + marker.length)
-  const match = section.match(/£\s*([0-9,]+(?:\.\d{1,2})?)\s*\+\s*VAT/i)
-  if (!match) return null
-
-  const price = Number(match[1].replace(/,/g, ''))
-  return Number.isFinite(price) && price > 0 ? price : null
-}
-
 export default async function QuoteDetailPage({ params }: PageProps) {
   const id = Number(params.id)
   if (!Number.isInteger(id) || id <= 0) notFound()
@@ -123,13 +111,14 @@ export default async function QuoteDetailPage({ params }: PageProps) {
     .filter((photo, index, all) => all.findIndex((item) => item.url === photo.url) === index)
     .slice(0, 12)
 
-  const combinedPrice = allTogetherPriceFromWorking(quote.quoteWorking)
-  const headlinePriceExVat = combinedPrice || quote.priceExVat
-  const headlineVatRate = quote.vatRate || 20
-  const headlineTotalIncVat = Number(
-    (headlinePriceExVat * (1 + headlineVatRate / 100)).toFixed(2)
-  )
+  const reference = safeQuoteReference({
+    quoteWorking: quote.quoteWorking,
+    storedPriceExVat: quote.priceExVat,
+    storedEstimatedDays: quote.estimatedDays,
+    storedEstimatedTeamSize: quote.estimatedTeamSize,
+  })
   const showKellyOverview = ['needs_review', 'ready_to_send'].includes(quote.status)
+  const canDelete = quote.status !== 'accepted' && !quote.jobId
 
   return (
     <div className="space-y-5">
@@ -150,9 +139,14 @@ export default async function QuoteDetailPage({ params }: PageProps) {
             </p>
           </div>
 
-          <Link href="/admin/quotes" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-800">
-            Back to quotes
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {canDelete ? (
+              <DeleteQuoteButton quoteId={quote.id} customerName={quote.customerName} />
+            ) : null}
+            <Link href="/admin/quotes" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-800">
+              Back to quotes
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -163,11 +157,11 @@ export default async function QuoteDetailPage({ params }: PageProps) {
       {showKellyOverview ? (
         <KellyQuoteOverview
           quoteId={quote.id}
-          priceExVat={headlinePriceExVat}
-          vatRate={headlineVatRate}
-          totalIncVat={headlineTotalIncVat}
-          estimatedDays={quote.estimatedDays}
-          estimatedTeamSize={quote.estimatedTeamSize}
+          priceExVat={reference.priceExVat}
+          vatRate={reference.vatRate}
+          totalIncVat={reference.totalIncVat}
+          estimatedDays={reference.estimatedDays}
+          estimatedTeamSize={reference.estimatedTeamSize}
           surveyPhotos={surveyPhotos}
         />
       ) : null}
@@ -186,11 +180,11 @@ export default async function QuoteDetailPage({ params }: PageProps) {
             customerMessage: quote.customerMessage,
             internalNotes: quote.internalNotes,
             quoteWorking: quote.quoteWorking,
-            priceExVat: headlinePriceExVat,
-            vatRate: headlineVatRate,
+            priceExVat: reference.priceExVat,
+            vatRate: reference.vatRate,
             depositPercent: quote.depositPercent,
-            estimatedDays: quote.estimatedDays,
-            estimatedTeamSize: quote.estimatedTeamSize,
+            estimatedDays: reference.estimatedDays,
+            estimatedTeamSize: reference.estimatedTeamSize,
             status: quote.status,
             jobId: quote.jobId,
           }}
