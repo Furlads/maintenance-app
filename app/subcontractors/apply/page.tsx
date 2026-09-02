@@ -28,7 +28,7 @@ export default function SubcontractorApplicationPage() {
   }
 
   if (done) {
-    return <main className="min-h-dvh bg-[#eef2e9] px-4 py-10 text-[#162111]"><div className="mx-auto max-w-2xl rounded-[30px] bg-white p-8 shadow-xl"><div className="text-xs font-black uppercase tracking-[0.16em] text-[#789333]">Application received</div><h1 className="mt-2 text-4xl font-black">Thanks — we’ve got it.</h1><p className="mt-4 text-base font-semibold leading-7 text-zinc-600">We’ll review your details, insurance and experience before adding you to our subcontractor network. Submitting this form does not guarantee work or create an employment relationship.</p></div></main>
+    return <main className="min-h-dvh bg-[#eef2e9] px-4 py-10 text-[#162111]"><div className="mx-auto max-w-2xl rounded-[30px] bg-white p-8 shadow-xl"><div className="text-xs font-black uppercase tracking-[0.16em] text-[#789333]">Application received</div><h1 className="mt-2 text-4xl font-black">Thanks — we’ve got it.</h1><p className="mt-4 text-base font-semibold leading-7 text-zinc-600">We’ll review your details, insurance and experience before adding you to our subcontractor network. If approved, we’ll complete any remaining CIS verification details before you are marked ready for work. Submitting this form does not guarantee work or create an employment relationship.</p></div></main>
   }
 
   return <main className="min-h-dvh bg-[#eef2e9] px-3 py-5 text-[#162111] sm:px-5 sm:py-8">
@@ -73,8 +73,11 @@ export default function SubcontractorApplicationPage() {
       </Section>
 
       <Section title="4. CIS, tax & insurance">
+        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-900">
+          Your UTR is used for CIS verification if you are approved to join the network. You can leave it blank at application stage, but we will need it before you can be marked ready for CIS work.
+        </div>
         <Grid>
-          <Input name="utrNumber" label="UTR number" />
+          <Input name="utrNumber" label="UTR — required for CIS verification" placeholder="Optional at application stage" />
           <Input name="publicLiabilityInsurer" label="Public liability insurer" />
           <Input name="publicLiabilityPolicyNumber" label="Policy number" />
           <Input name="publicLiabilityExpiresAt" label="Policy expiry date" type="date" />
@@ -84,10 +87,15 @@ export default function SubcontractorApplicationPage() {
       </Section>
 
       <Section title="5. References & documents">
-        <div className="grid gap-4 sm:grid-cols-2"><Textarea name="referenceOne" label="Reference 1" placeholder="Name, company/customer, phone/email and what work you did" /><Textarea name="referenceTwo" label="Reference 2" placeholder="Name, company/customer, phone/email and what work you did" /></div>
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="text-sm font-black text-zinc-900">Trade references are optional</div>
+          <p className="mt-1 text-xs font-semibold leading-5 text-zinc-600">If you choose to provide a referee, only give us the details needed to contact them. Please make sure they know you are naming them as a referee and that Furlads / Three Counties may contact them about your work.</p>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2"><Textarea name="referenceOne" label="Trade reference 1 (optional)" placeholder="Name, business/company, relationship to you and phone/email" /><Textarea name="referenceTwo" label="Trade reference 2 (optional)" placeholder="Name, business/company, relationship to you and phone/email" /></div>
+        <label className="mt-4 flex items-start gap-3 rounded-2xl border border-zinc-200 bg-white p-4 text-sm font-semibold leading-6 text-zinc-700"><input type="checkbox" name="refereeAwarenessConfirmed" value="true" className="mt-1 h-5 w-5" /><span>If I have provided referee details, I confirm those people are aware I am using them as a reference and that Furlads / Three Counties may contact them.</span></label>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <FileField name="insuranceDocument" label="Public liability certificate" />
-          <FileField name="utrDocument" label="UTR / CIS evidence" />
+          <FileField name="utrDocument" label="UTR / CIS evidence (optional at application stage)" />
           <FileField name="qualificationDocuments" label="Qualifications / tickets" multiple />
           <FileField name="workPhotos" label="Examples of your work" multiple accept="image/jpeg,image/png,image/webp" />
         </div>
@@ -100,7 +108,7 @@ export default function SubcontractorApplicationPage() {
 
       <Section title="Declaration & privacy">
         <div className="space-y-3 text-sm font-semibold leading-6 text-zinc-700">
-          <label className="flex items-start gap-3"><input required type="checkbox" name="privacyConsent" value="true" className="mt-1 h-5 w-5" /><span>I agree that Furlads / Three Counties may use the information and documents supplied here to assess my application, verify compliance and contact me about subcontract work. I understand sensitive documents should only be retained for as long as reasonably needed for those purposes.</span></label>
+          <label className="flex items-start gap-3"><input required type="checkbox" name="privacyConsent" value="true" className="mt-1 h-5 w-5" /><span>I agree that Furlads / Three Counties may use the information and documents supplied here to assess my application, verify compliance and contact me about subcontract work. If I provide referee details, I understand those details will only be used for checking my suitability and should only be retained for as long as reasonably needed.</span></label>
           <label className="flex items-start gap-3"><input required type="checkbox" name="declarationAccepted" value="true" className="mt-1 h-5 w-5" /><span>I confirm the information supplied is accurate. I understand this is an application to join a subcontractor network, not an offer of employment or a guarantee of work, and that any work I later accept will be governed by the specific work order/terms agreed for that job.</span></label>
         </div>
       </Section>
