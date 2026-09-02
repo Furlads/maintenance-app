@@ -81,8 +81,29 @@ export function safeQuoteReference(params: {
   storedEstimatedDays?: number | null
   storedEstimatedTeamSize?: number | null
 }): QuoteReference {
-  const working = String(params.quoteWorking || '')
+  const storedPriceExVat = Number.isFinite(params.storedPriceExVat)
+    ? params.storedPriceExVat
+    : 0
 
+  // The database commercial figures are the source of truth whenever they exist.
+  // CHAS working is conversational history and can contain superseded option prices.
+  // Parsing that history was causing old figures to overwrite the current quote card.
+  if (storedPriceExVat > 0) {
+    const vatAmount = Number(((storedPriceExVat * VAT_RATE) / 100).toFixed(2))
+    return {
+      priceExVat: storedPriceExVat,
+      vatRate: VAT_RATE,
+      vatAmount,
+      totalIncVat: Number((storedPriceExVat + vatAmount).toFixed(2)),
+      estimatedDays: params.storedEstimatedDays ?? null,
+      estimatedTeamSize: params.storedEstimatedTeamSize ?? null,
+      source: 'stored',
+    }
+  }
+
+  // Legacy fallback only: recover a usable figure from CHAS working when an old
+  // record genuinely has no stored price.
+  const working = String(params.quoteWorking || '')
   const combined = combinedLine(working)
   const combinedResult = combined ? resultFromLine(combined, 'combined_offer') : null
   if (combinedResult) return combinedResult
@@ -106,14 +127,11 @@ export function safeQuoteReference(params: {
     }
   }
 
-  const priceExVat = Number.isFinite(params.storedPriceExVat) ? params.storedPriceExVat : 0
-  const vatAmount = Number(((priceExVat * VAT_RATE) / 100).toFixed(2))
-
   return {
-    priceExVat,
+    priceExVat: 0,
     vatRate: VAT_RATE,
-    vatAmount,
-    totalIncVat: Number((priceExVat + vatAmount).toFixed(2)),
+    vatAmount: 0,
+    totalIncVat: 0,
     estimatedDays: params.storedEstimatedDays ?? null,
     estimatedTeamSize: params.storedEstimatedTeamSize ?? null,
     source: 'stored',
