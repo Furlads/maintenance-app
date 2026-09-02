@@ -32,6 +32,11 @@ type CreatedLink = {
   whatsappUrl: string
 }
 
+function dateInputIn(days: number) {
+  const date = new Date(Date.now() + days * 86400000)
+  return date.toISOString().slice(0, 10)
+}
+
 export default function NewSubcontractorOpportunityPage() {
   const [workers, setWorkers] = useState<Worker[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
@@ -47,6 +52,13 @@ export default function NewSubcontractorOpportunityPage() {
   const [timing, setTiming] = useState('')
   const [price, setPrice] = useState('')
   const [quoteGuidance, setQuoteGuidance] = useState('')
+  const [replyBy, setReplyBy] = useState(dateInputIn(7))
+  const [priceIncludesVat, setPriceIncludesVat] = useState(true)
+  const [workBasis, setWorkBasis] = useState('labour_only')
+  const [materialsResponsibility, setMaterialsResponsibility] = useState('Furlads supplies materials')
+  const [plantResponsibility, setPlantResponsibility] = useState('Furlads supplies agreed plant')
+  const [wasteResponsibility, setWasteResponsibility] = useState('Furlads arranges waste removal')
+  const [siteNotes, setSiteNotes] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [createdLinks, setCreatedLinks] = useState<CreatedLink[]>([])
@@ -116,6 +128,13 @@ export default function NewSubcontractorOpportunityPage() {
           fixedPrice: price,
           quoteGuidance,
           workerIds: selected,
+          replyBy,
+          priceIncludesVat,
+          workBasis,
+          materialsResponsibility,
+          plantResponsibility,
+          wasteResponsibility,
+          siteNotes,
         }),
       })
       const data = await response.json()
@@ -135,7 +154,7 @@ export default function NewSubcontractorOpportunityPage() {
         <form onSubmit={submit} className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="text-xs font-black uppercase tracking-[0.16em] text-[#789333]">New opportunity</div>
           <h1 className="mt-2 text-3xl font-black tracking-tight">Send work to subcontractors</h1>
-          <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">Link it to a real job if you want acceptance to control the diary. The private link still only shows the rough area and job outline.</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">This first step asks who is interested. The job is only awarded after Kelly/Trev chooses a subcontractor.</p>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2"><Field label="Link to existing job (recommended)"><select value={sourceJobId} onChange={(e) => chooseJob(e.target.value)} className="input"><option value="">Manual opportunity — not tied to diary</option>{jobs.map((job) => <option key={job.id} value={job.id}>{job.title} · {job.jobType || 'Job'}{job.visitDate ? ` · ${new Date(job.visitDate).toLocaleDateString('en-GB')}` : ''}</option>)}</select></Field></div>
@@ -146,14 +165,23 @@ export default function NewSubcontractorOpportunityPage() {
             <div className="sm:col-span-2"><Field label="Public job description"><textarea required value={description} onChange={(e) => setDescription(e.target.value)} className="input min-h-32 resize-y" placeholder="Describe the work without customer names, exact address or identifying details." /></Field></div>
             <Field label="Likely duration"><input value={duration} onChange={(e) => setDuration(e.target.value)} className="input" placeholder="e.g. 2 days" /></Field>
             <Field label="Target timing"><input value={timing} onChange={(e) => setTiming(e.target.value)} className="input" placeholder="e.g. Next week" /></Field>
+            <Field label="Reply by"><input required type="date" value={replyBy} onChange={(e) => setReplyBy(e.target.value)} className="input" /></Field>
+            <Field label="Work basis"><select value={workBasis} onChange={(e) => setWorkBasis(e.target.value)} className="input"><option value="labour_only">Labour only</option><option value="labour_materials">Labour + materials</option></select></Field>
+            <Field label="Materials"><input value={materialsResponsibility} onChange={(e) => setMaterialsResponsibility(e.target.value)} className="input" /></Field>
+            <Field label="Plant"><input value={plantResponsibility} onChange={(e) => setPlantResponsibility(e.target.value)} className="input" /></Field>
+            <Field label="Waste"><input value={wasteResponsibility} onChange={(e) => setWasteResponsibility(e.target.value)} className="input" /></Field>
+            <div className="sm:col-span-2"><Field label="Site / access notes"><textarea value={siteNotes} onChange={(e) => setSiteNotes(e.target.value)} className="input min-h-24 resize-y" placeholder="Parking, access, storage, customer constraints, start details etc." /></Field></div>
           </div>
 
-          {linkedJob ? <div className="mt-4 rounded-2xl border border-[#dce8bd] bg-[#f4f8e9] p-4 text-sm font-bold text-[#405820]">Linked to job #{linkedJob.id}. Acceptance will control the confirmed assignment for this job.</div> : null}
+          {linkedJob ? <div className="mt-4 rounded-2xl border border-[#dce8bd] bg-[#f4f8e9] p-4 text-sm font-bold text-[#405820]">Linked to job #{linkedJob.id}. Interest does not assign the job. Assignment only happens after office award and contractor confirmation.</div> : null}
 
           <div className="mt-5">
             <div className="mb-2 text-xs font-black uppercase tracking-wider text-zinc-500">Pricing</div>
             <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setMode('price')} className={`choice ${mode === 'price' ? 'choice-on' : ''}`}>Fixed trade price</button><button type="button" onClick={() => setMode('quote')} className={`choice ${mode === 'quote' ? 'choice-on' : ''}`}>Ask them to quote</button></div>
-            <div className="mt-3">{mode === 'price' ? <Field label="Subcontractor price"><input required value={price} onChange={(e) => setPrice(e.target.value)} className="input" inputMode="decimal" placeholder="e.g. 300" /></Field> : <Field label="Quote guidance"><input value={quoteGuidance} onChange={(e) => setQuoteGuidance(e.target.value)} className="input" placeholder="e.g. Labour only" /></Field>}</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {mode === 'price' ? <Field label="Subcontractor price"><input required value={price} onChange={(e) => setPrice(e.target.value)} className="input" inputMode="decimal" placeholder="e.g. 300" /></Field> : <Field label="Quote guidance"><input value={quoteGuidance} onChange={(e) => setQuoteGuidance(e.target.value)} className="input" placeholder="e.g. Labour only" /></Field>}
+              {mode === 'price' ? <Field label="VAT basis"><select value={priceIncludesVat ? 'inc' : 'plus'} onChange={(e) => setPriceIncludesVat(e.target.value === 'inc')} className="input"><option value="inc">Price includes any VAT</option><option value="plus">Price is + VAT if applicable</option></select></Field> : null}
+            </div>
           </div>
 
           <div className="mt-5">
@@ -171,8 +199,8 @@ export default function NewSubcontractorOpportunityPage() {
         <aside className="rounded-3xl bg-gradient-to-br from-[#142311] via-[#23381a] to-[#30491d] p-5 text-white shadow-xl sm:p-6 lg:sticky lg:top-24">
           <div className="text-xs font-black uppercase tracking-[0.16em] text-[#b9d974]">Contractor preview</div>
           <h2 className="mt-2 text-3xl font-black">What they’ll see</h2>
-          <div className="mt-5 space-y-2 rounded-2xl border border-white/10 bg-white/10 p-4 text-sm"><Preview label="Trade" value={trade || '—'} /><Preview label="Rough area" value={roughArea || '—'} /><Preview label="Duration" value={duration || 'To be confirmed'} /><Preview label={mode === 'price' ? 'Trade price' : 'Pricing'} value={mode === 'price' ? (price ? `£${price.replace(/^£/, '')}` : '—') : 'Quote requested'} /></div>
-          <div className="mt-4 rounded-2xl bg-white p-4 text-[#263220]"><div className="text-[10px] font-black uppercase tracking-wider text-zinc-500">WhatsApp intro</div><div className="mt-2 text-sm font-bold leading-5">Hi — we’ve got a new {trade || 'work'} opportunity around {roughArea || 'your area'}. Tap the private link to see the outline and let us know if you’re interested.</div></div>
+          <div className="mt-5 space-y-2 rounded-2xl border border-white/10 bg-white/10 p-4 text-sm"><Preview label="Trade" value={trade || '—'} /><Preview label="Rough area" value={roughArea || '—'} /><Preview label="Duration" value={duration || 'To be confirmed'} /><Preview label="Reply by" value={replyBy ? new Date(`${replyBy}T12:00:00`).toLocaleDateString('en-GB') : '—'} /><Preview label="Basis" value={workBasis === 'labour_materials' ? 'Labour + materials' : 'Labour only'} /><Preview label={mode === 'price' ? 'Trade price' : 'Pricing'} value={mode === 'price' ? (price ? `£${price.replace(/^£/, '')}${priceIncludesVat ? ' inc VAT' : ' + VAT if applicable'}` : '—') : 'Quote requested'} /></div>
+          <div className="mt-4 rounded-2xl bg-white p-4 text-[#263220]"><div className="text-[10px] font-black uppercase tracking-wider text-zinc-500">WhatsApp intro</div><div className="mt-2 text-sm font-bold leading-5">Hi — we’ve got a new {trade || 'work'} opportunity around {roughArea || 'your area'}. Tap the private link, tell us if you’re interested or send a counter-price. We’ll confirm separately if the work is awarded to you.</div></div>
           <div className="mt-4 text-xs font-semibold leading-5 text-[#cbd9c4]">Selected: {selectedNames.length ? selectedNames.join(', ') : 'Nobody yet'}</div>
 
           {createdLinks.length ? <div className="mt-5 space-y-3"><div className="rounded-2xl bg-[#eaf5d6] p-4 text-sm font-black text-[#314816]">Created ✓ Send each person their own tracked link:</div>{createdLinks.map((link) => <div key={link.workerId} className="rounded-2xl border border-white/10 bg-white/10 p-4"><div className="font-black">{link.workerName}</div><div className="mt-3 grid gap-2"><a href={link.whatsappUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-[#a8ca4a] px-4 py-3 text-center text-sm font-black text-[#18220f]">Open WhatsApp</a><a href={link.url} target="_blank" rel="noreferrer" className="rounded-xl border border-white/20 px-4 py-3 text-center text-sm font-black text-white">Preview their link ↗</a></div></div>)}</div> : null}
