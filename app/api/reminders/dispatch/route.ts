@@ -4,6 +4,7 @@ import twilio from "twilio"
 export const runtime = "nodejs"
 
 const ORIGIN = "TF9 3FT"
+const LONDON_TIME_ZONE = "Europe/London"
 
 async function getTravelTime(address: string) {
   try {
@@ -18,8 +19,7 @@ async function getTravelTime(address: string) {
     const res = await fetch(url)
     const data = await res.json()
 
-    const duration =
-      data?.routes?.[0]?.legs?.[0]?.duration?.text
+    const duration = data?.routes?.[0]?.legs?.[0]?.duration?.text
 
     return duration || "Not available"
   } catch {
@@ -45,10 +45,35 @@ function buildSms(job: any, travelTime: string) {
   ].join("\n")
 }
 
-function formatTime(date: Date) {
-  const hours = String(date.getHours()).padStart(2, "0")
-  const minutes = String(date.getMinutes()).padStart(2, "0")
-  return `${hours}:${minutes}`
+function londonDateAndTime(date: Date) {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: LONDON_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })
+
+  const parts = formatter.formatToParts(date)
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value
+
+  const year = get("year")
+  const month = get("month")
+  const day = get("day")
+  const hour = get("hour")
+  const minute = get("minute")
+
+  if (!year || !month || !day || !hour || !minute) {
+    throw new Error("Failed to calculate Europe/London reminder time")
+  }
+
+  return {
+    date: `${year}-${month}-${day}`,
+    time: `${hour}:${minute}`,
+  }
 }
 
 export async function GET() {
@@ -57,34 +82,71 @@ export async function GET() {
     const in60 = new Date(now.getTime() + 60 * 60 * 1000)
     const in65 = new Date(now.getTime() + 65 * 60 * 1000)
 
-    const startOfDay = new Date(in60)
-    startOfDay.setHours(0, 0, 0, 0)
+    const from = londonDateAndTime(in60)
+    const to = londonDateAndTime(in65)
 
-    const endOfDay = new Date(in60)
-    endOfDay.setHours(23, 59, 59, 999)
+    // Jobs store visitDate as the selected calendar date at UTC midnight, while
+    // startTime is a local UK HH:MM string. Always calculate the reminder window
+    // in Europe/London so BST/GMT changes cannot shift reminders by an hour.
+    const startOfVisitDate = new Date(`${from.date}T00:00:00.000Z`)
+    const endOfVisitDate = new Date(`${from.date}T23:59:59.999Z`)
 
-    const startTimeFrom = formatTime(in60)
-    const startTimeTo = formatTime(in65)
+    // A five-minute forward-only window means an invocation that runs late never
+    // catches up by sending an appointment reminder after its intended time.
+    // If the window crosses midnight, handle the second date separately.
+    const dateChanged = from.date !== to.date
 
     const jobs = await prisma.job.findMany({
-      where: {
-        visitDate: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-        startTime: {
-          not: null,
-          gte: startTimeFrom,
-          lte: startTimeTo,
-        },
-      },
+      where: dateChanged
+        ? {
+            OR: [
+              {
+                visitDate: {
+                  gte: startOfVisitDate,
+                  lte: endOfVisitDate,
+                },
+                startTime: {
+                  not: null,
+                  gte: from.time,
+                  lte: "23:59",
+                },
+              },
+              {
+                visitDate: {
+                  gte: new Date(`${to.date}T00:00:00.000Z`),
+                  lte: new Date(`${to.date}T23:59:59.999Z`),
+                },
+                startTime: {
+                  not: null,
+                  gte: "00:00",
+                  lte: to.time,
+                },
+              },
+            ],
+          }
+        : {
+            visitDate: {
+              gte: startOfVisitDate,
+              lte: endOfVisitDate,
+            },
+            startTime: {
+              not: null,
+              gte: from.time,
+              lte: to.time,
+            },
+          },
       include: {
         customer: true,
       },
     })
 
     if (!jobs.length) {
-      return Response.json({ ok: true, message: "No jobs to notify" })
+      return Response.json({
+        ok: true,
+        message: "No jobs to notify",
+        checkedAt: now.toISOString(),
+        londonWindow: { from, to },
+      })
     }
 
     const client = twilio(
@@ -117,6 +179,8 @@ export async function GET() {
     return Response.json({
       ok: true,
       sent: results.length,
+      checkedAt: now.toISOString(),
+      londonWindow: { from, to },
       results,
     })
   } catch (err: any) {
