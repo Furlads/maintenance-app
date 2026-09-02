@@ -54,6 +54,10 @@ function statusClass(status: string) {
   return 'bg-orange-100 text-orange-800 ring-orange-200'
 }
 
+function effectiveStatus(status: string, jobId: number | null) {
+  return jobId ? 'accepted' : status
+}
+
 function quoteValue(quote: {
   quoteWorking: string | null
   priceExVat: number
@@ -76,22 +80,26 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
       ? {}
       : selected === 'active'
         ? { status: { notIn: ['declined', 'archived'] } }
-        : { status: selected }
+        : selected === 'accepted'
+          ? { OR: [{ status: 'accepted' }, { jobId: { not: null } }] }
+          : { status: selected, jobId: null }
 
-  const [quotes, counts, valueQuotes] = await Promise.all([
+  const [quotes, statusRows, valueQuotes] = await Promise.all([
     prisma.quote.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
       include: { customer: true, job: true },
     }),
-    prisma.quote.groupBy({
-      by: ['status'],
-      _count: { _all: true },
-    }),
     prisma.quote.findMany({
-      where: { status: { notIn: ['declined', 'archived'] } },
       select: {
         status: true,
+        jobId: true,
+      },
+    }),
+    prisma.quote.findMany({
+      select: {
+        status: true,
+        jobId: true,
         quoteWorking: true,
         priceExVat: true,
         estimatedDays: true,
@@ -100,22 +108,29 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
     }),
   ])
 
-  const countMap = Object.fromEntries(
-    counts.map((item) => [item.status, item._count._all])
+  const countMap: Record<string, number> = {}
+  for (const item of statusRows) {
+    const status = effectiveStatus(item.status, item.jobId)
+    countMap[status] = (countMap[status] || 0) + 1
+  }
+
+  const activeCount = statusRows
+    .filter((item) => !['declined', 'archived'].includes(effectiveStatus(item.status, item.jobId)))
+    .length
+
+  // A linked job is definitive evidence that the quote is secured work. This
+  // protects the dashboard from older/stale quote statuses and keeps accepted
+  // revenue out of the pipeline even before the stored status self-heals.
+  const activeValueQuotes = valueQuotes.filter(
+    (quote) => !['declined', 'archived'].includes(effectiveStatus(quote.status, quote.jobId))
   )
 
-  const activeCount = counts
-    .filter((item) => !['declined', 'archived'].includes(item.status))
-    .reduce((total, item) => total + item._count._all, 0)
-
-  // Keep potential work and secured work separate. Accepted quotes are booked
-  // revenue and must not inflate the sales pipeline figure.
-  const pipelineValue = valueQuotes
-    .filter((quote) => quote.status !== 'accepted')
+  const pipelineValue = activeValueQuotes
+    .filter((quote) => effectiveStatus(quote.status, quote.jobId) !== 'accepted')
     .reduce((total, quote) => total + quoteValue(quote), 0)
 
-  const bookedValue = valueQuotes
-    .filter((quote) => quote.status === 'accepted')
+  const bookedValue = activeValueQuotes
+    .filter((quote) => effectiveStatus(quote.status, quote.jobId) === 'accepted')
     .reduce((total, quote) => total + quoteValue(quote), 0)
 
   const archivedCount = countMap.archived || 0
@@ -174,7 +189,7 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
               filter.key === 'active'
                 ? activeCount
                 : filter.key === 'all'
-                  ? counts.reduce((total, item) => total + item._count._all, 0)
+                  ? statusRows.length
                   : countMap[filter.key] || 0
 
             return (
@@ -221,7 +236,8 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
               storedEstimatedDays: quote.estimatedDays,
               storedEstimatedTeamSize: quote.estimatedTeamSize,
             })
-            const canDelete = quote.status !== 'accepted' && !quote.jobId
+            const displayStatus = effectiveStatus(quote.status, quote.jobId)
+            const canDelete = displayStatus !== 'accepted' && !quote.jobId
 
             return (
               <div
@@ -231,8 +247,8 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <Link href={`/admin/quotes/${quote.id}`} className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClass(quote.status)}`}>
-                        {statusLabel(quote.status)}
+                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClass(displayStatus)}`}>
+                        {statusLabel(displayStatus)}
                       </span>
                       <span className="text-xs font-semibold text-zinc-400">Quote #{quote.id}</span>
                     </div>
@@ -271,4 +287,4 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
   )
 }
 
-// Deployment marker: retrigger Vercel Git integration after the archive controls update.
+// Deployment marker: linked jobs are always treated as accepted secured work.
