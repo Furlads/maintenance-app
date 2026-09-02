@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import { safeQuoteReference } from '@/lib/quoteOptionReference'
 import ClearArchiveButton from './ClearArchiveButton'
 import DeleteQuoteButton from './DeleteQuoteButton'
 
@@ -56,25 +57,17 @@ function statusClass(status: string) {
 }
 
 function quoteReference(quote: {
+  quoteWorking: string | null
   priceExVat: number
-  vatRate: number
-  totalIncVat: number
   estimatedDays: number | null
   estimatedTeamSize: number | null
 }) {
-  const vatRate = Number.isFinite(quote.vatRate) ? quote.vatRate : 20
-  const priceExVat = Number.isFinite(quote.priceExVat) ? quote.priceExVat : 0
-  const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
-  const storedTotal = Number(quote.totalIncVat || 0)
-
-  return {
-    priceExVat,
-    vatRate,
-    vatAmount,
-    totalIncVat: storedTotal > 0 ? storedTotal : Number((priceExVat + vatAmount).toFixed(2)),
-    estimatedDays: quote.estimatedDays,
-    estimatedTeamSize: quote.estimatedTeamSize,
-  }
+  return safeQuoteReference({
+    quoteWorking: quote.quoteWorking,
+    storedPriceExVat: quote.priceExVat,
+    storedEstimatedDays: quote.estimatedDays,
+    storedEstimatedTeamSize: quote.estimatedTeamSize,
+  })
 }
 
 export default async function AdminQuotesPage({ searchParams }: PageProps) {
@@ -112,9 +105,8 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
       where: { status: { notIn: ['declined', 'archived', 'no_reply'] } },
       select: {
         status: true,
+        quoteWorking: true,
         priceExVat: true,
-        vatRate: true,
-        totalIncVat: true,
         estimatedDays: true,
         estimatedTeamSize: true,
       },
