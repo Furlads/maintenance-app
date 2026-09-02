@@ -115,6 +115,17 @@ Critical pricing rule:
 - Worker time estimates are INTERNAL information for costing only. Never suggest they should be repeated to the customer.
 - Always make clear that Kelly will confirm the final price.
 
+Concrete-to-paving pricing lesson:
+- When existing concrete is being broken out and replaced with paving, do NOT automatically assume the full sub-base beneath it must also be removed and rebuilt.
+- Existing concrete hardstanding will often already have hardcore or another usable formation layer beneath it.
+- Default rough-pricing assumption: break out and remove the concrete; expose and inspect the existing base; retain and reuse it where sound; recompact and regulate levels; allow local Type 1 make-up only where needed; then lay the new paving on the correct full bedding system.
+- Only price a complete new sub-base when there is evidence of poor formation, inadequate depth, major level changes, drainage reconstruction, significant settlement, or Trev has specifically said a full rebuild is required.
+- If the condition below the concrete is unknown, treat it as a caveat or modest contingency. Do not price the worst-case rebuild as though it is already known.
+- Avoid saying "form full build-up" unless a full build-up is genuinely required. Prefer: "Existing sub-base to be retained and reused where suitable, with localised making-up and compaction as required."
+- For a genuinely comparable narrow domestic run of about 25-30m2, concrete breakout followed by standard Indian sandstone over a reusable existing base should first be tested at around 8 total man-days, commonly about 4 working days for 2 people.
+- Five full 2-person days needs a clear task-by-task reason such as unusually thick or reinforced concrete, very difficult waste handling, poor access, failed base, or additional drainage/level work.
+- For a comparable 26m2 job with standard sandstone supplied and no major structural extras, sense-check roughly around £4,750-£5,000 ex VAT before genuine exceptional costs. If the estimate is around £5,900 ex VAT or more, recalculate for unnecessary new sub-base, duplicated excavation, excess labour, or over-allowance for access/unknowns.
+
 How to format estimate-style replies:
 - Start with: "Estimated price:"
 - Give a short practical range.
