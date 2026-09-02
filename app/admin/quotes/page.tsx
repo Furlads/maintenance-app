@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import { safeQuoteReference } from '@/lib/quoteOptionReference'
 import ClearArchiveButton from './ClearArchiveButton'
+import DeleteQuoteButton from './DeleteQuoteButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,7 +86,15 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
 
   const totalPipeline = quotes
     .filter((quote) => !['declined', 'archived'].includes(quote.status))
-    .reduce((total, quote) => total + quote.totalIncVat, 0)
+    .reduce((total, quote) => {
+      const reference = safeQuoteReference({
+        quoteWorking: quote.quoteWorking,
+        storedPriceExVat: quote.priceExVat,
+        storedEstimatedDays: quote.estimatedDays,
+        storedEstimatedTeamSize: quote.estimatedTeamSize,
+      })
+      return total + reference.totalIncVat
+    }, 0)
 
   const archivedCount = countMap.archived || 0
 
@@ -177,15 +187,21 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
           quotes.map((quote) => {
             const customerName =
               quote.customerName || quote.customer?.name || 'Customer details needed'
+            const reference = safeQuoteReference({
+              quoteWorking: quote.quoteWorking,
+              storedPriceExVat: quote.priceExVat,
+              storedEstimatedDays: quote.estimatedDays,
+              storedEstimatedTeamSize: quote.estimatedTeamSize,
+            })
+            const canDelete = quote.status !== 'accepted' && !quote.jobId
 
             return (
-              <Link
+              <div
                 key={quote.id}
-                href={`/admin/quotes/${quote.id}`}
-                className="block rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-400"
+                className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-400"
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
+                  <Link href={`/admin/quotes/${quote.id}`} className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClass(quote.status)}`}>
                         {statusLabel(quote.status)}
@@ -200,20 +216,25 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
                     </p>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
                       <span>Updated {formatDate(quote.updatedAt)}</span>
-                      {quote.estimatedDays ? <span>{quote.estimatedDays} day estimate</span> : null}
+                      {reference.estimatedDays ? <span>{reference.estimatedDays} day estimate</span> : null}
                       {quote.job ? <span>Job #{quote.job.id} created</span> : null}
                     </div>
-                  </div>
+                  </Link>
 
-                  <div className="flex-none sm:text-right">
-                    <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Total inc VAT</div>
-                    <div className="mt-1 text-2xl font-black text-zinc-950">
-                      {money(quote.totalIncVat)}
-                    </div>
-                    <div className="mt-1 text-xs font-semibold text-zinc-400">Open quote →</div>
+                  <div className="flex flex-none items-end gap-3 sm:items-center">
+                    <Link href={`/admin/quotes/${quote.id}`} className="text-right">
+                      <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Total inc VAT</div>
+                      <div className="mt-1 text-2xl font-black text-zinc-950">
+                        {money(reference.totalIncVat)}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold text-zinc-400">Open quote →</div>
+                    </Link>
+                    {canDelete ? (
+                      <DeleteQuoteButton quoteId={quote.id} customerName={customerName} compact />
+                    ) : null}
                   </div>
                 </div>
-              </Link>
+              </div>
             )
           })
         )}
