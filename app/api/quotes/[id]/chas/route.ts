@@ -6,17 +6,12 @@ import { getSession } from '@/lib/auth'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+const VAT_RATE = 20
+
 type RouteContext = {
   params: {
     id: string
   }
-}
-
-type ChasDecision = {
-  intent?: 'review' | 'correct_quote'
-  answer?: string
-  correctedScope?: string
-  customerTotalIncVatOverride?: number | null
 }
 
 function validId(value: string) {
@@ -37,60 +32,119 @@ function roundMoney(value: number) {
   return Number(value.toFixed(2))
 }
 
-function sessionKey(quoteId: number) {
-  return `quote-review-${quoteId}`
-}
-
-function extractJson(value: string): ChasDecision | null {
-  const trimmed = value.trim()
-
-  try {
-    return JSON.parse(trimmed) as ChasDecision
-  } catch {
-    const firstBrace = trimmed.indexOf('{')
-    const lastBrace = trimmed.lastIndexOf('}')
-    if (firstBrace === -1 || lastBrace <= firstBrace) return null
-
-    try {
-      return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)) as ChasDecision
-    } catch {
-      return null
-    }
-  }
-}
-
 function money(value: unknown) {
   return `£${cleanNumber(value).toFixed(2)}`
 }
 
+function sessionKey(quoteId: number) {
+  return `quote-review-${quoteId}`
+}
+
+function isExplicitCorrection(question: string) {
+  const text = question.toLowerCase()
+  return [
+    'remove ',
+    'delete ',
+    'take out',
+    'change ',
+    'update ',
+    'correct ',
+    'replace ',
+    'make the agreed price',
+    'make the price',
+    'agreed price',
+    'accepted price',
+    'she actually wants',
+    'they actually want',
+    'customer wants',
+    'i meant',
+    "that's wrong",
+    'that is wrong',
+  ].some((phrase) => text.includes(phrase))
+}
+
+function extractAllInOverride(question: string) {
+  const text = question.replace(/,/g, '')
+  const allIn = /(?:£\s*)?(\d+(?:\.\d{1,2})?)\s*(?:all\s*in|inc(?:luding)?\s*vat|including\s*vat)/i.exec(text)
+  if (allIn) return cleanNumber(allIn[1])
+
+  const accepted = /(?:agreed|accepted)\s*price[^£\d]*(?:£\s*)?(\d+(?:\.\d{1,2})?)/i.exec(text)
+  if (accepted && /(?:all\s*in|inc(?:luding)?\s*vat|including\s*vat)/i.test(text)) {
+    return cleanNumber(accepted[1])
+  }
+
+  return 0
+}
+
+function buildCorrectedScope(pricing: Record<string, any>, fallback: string) {
+  const summary = cleanText(pricing.summary)
+  const confirmed = Array.isArray(pricing.confirmedInformation)
+    ? pricing.confirmedInformation.map((item: unknown) => cleanText(item)).filter(Boolean)
+    : []
+  const options = Array.isArray(pricing.options) ? pricing.options : []
+
+  const optionText = options
+    .map((option: any) => {
+      const label = cleanText(option.label) || cleanText(option.title)
+      const detail = cleanText(option.summary)
+      return [label, detail].filter(Boolean).join(' — ')
+    })
+    .filter(Boolean)
+
+  return [summary, ...confirmed, ...optionText].filter(Boolean).join('\n') || fallback
+}
+
+function buildCustomerMessage(args: {
+  customerName: string | null
+  scope: string
+  priceExVat: number
+  vatAmount: number
+  totalIncVat: number
+  depositPercent: number
+  depositAmount: number
+}) {
+  const firstName = cleanText(args.customerName).split(/\s+/)[0]
+  const greeting = firstName ? `Hi ${firstName},` : 'Hi,'
+
+  return [
+    greeting,
+    '',
+    'Following the changes discussed, I have updated your quotation so it now reflects the agreed scope:',
+    '',
+    args.scope,
+    '',
+    `Price: ${money(args.priceExVat)} + VAT`,
+    `VAT: ${money(args.vatAmount)}`,
+    `Total: ${money(args.totalIncVat)} including VAT`,
+    `${args.depositPercent}% deposit: ${money(args.depositAmount)}`,
+    '',
+    'This updated quotation replaces the previous version.',
+    '',
+    'If you are happy with everything, just let me know and I can take care of the next steps for you.',
+    '',
+    'Kelly',
+    'Furlads',
+  ].join('\n')
+}
+
 function formatPricingWorking(pricing: Record<string, any>) {
   const rows = Array.isArray(pricing.costBreakdown) ? pricing.costBreakdown : []
-  const assumptions = Array.isArray(pricing.assumptions) ? pricing.assumptions : []
-  const missing = Array.isArray(pricing.missingInformation) ? pricing.missingInformation : []
-  const notes = Array.isArray(pricing.pricingNotes) ? pricing.pricingNotes : []
   const warnings = Array.isArray(pricing.warningFlags) ? pricing.warningFlags : []
-  const options = Array.isArray(pricing.options) ? pricing.options : []
-  const combinedOffers = Array.isArray(pricing.combinedOffers)
-    ? pricing.combinedOffers
-    : pricing.combinedOffer
-      ? [pricing.combinedOffer]
-      : []
+  const notes = Array.isArray(pricing.pricingNotes) ? pricing.pricingNotes : []
   const labour = pricing.labourSummary && typeof pricing.labourSummary === 'object'
     ? pricing.labourSummary
     : null
 
   return [
     'CHAS REPRICE — OFFICE CORRECTION APPLIED',
-    '',
     pricing.officePriceOverrideIncVat
       ? `OFFICE-APPROVED CUSTOMER TOTAL: ${money(pricing.officePriceOverrideIncVat)} inc VAT`
       : '',
     pricing.officePriceOverrideIncVat
-      ? 'Selling price manually approved by the office; direct job costs below were not changed by the price override.'
+      ? 'Selling price manually approved by the office; direct job costs were not changed by the price override.'
       : '',
-    '',
-    pricing.summary ? `Scope summary: ${pricing.summary}` : '',
-    `Recommended price ex VAT: ${money(pricing.recommendedPriceExVat)}`,
+    cleanText(pricing.summary) ? `Scope summary: ${cleanText(pricing.summary)}` : '',
+    `Selling price ex VAT: ${money(pricing.recommendedPriceExVat)}`,
     `Estimated direct cost: ${money(pricing.estimatedHardCosts)}`,
     pricing.achievedGrossMargin == null
       ? ''
@@ -99,39 +153,15 @@ function formatPricingWorking(pricing: Record<string, any>) {
       ? `Programme: ${pricing.estimatedDuration.workingDays} working day(s) with ${pricing.estimatedDuration.teamSize || 1} people`
       : '',
     labour
-      ? `Labour: ${cleanNumber(labour.manDays).toFixed(1)} man-day(s), internal cost ${money(labour.estimatedCost)}${cleanText(labour.notes) ? ` — ${cleanText(labour.notes)}` : ''}`
+      ? `Labour: ${cleanNumber(labour.manDays).toFixed(1)} man-day(s), internal cost ${money(labour.estimatedCost)}`
       : '',
-    '',
-    options.length ? 'OPTIONS / PACKAGES' : '',
-    ...options.map((option: any) => {
-      const label = cleanText(option.label) || cleanText(option.title) || 'Option'
-      return `${label}: ${money(option.priceExVat)} + VAT (${money(option.totalIncVat)} inc VAT)${cleanText(option.summary) ? `\n${cleanText(option.summary)}` : ''}`
-    }),
-    '',
-    combinedOffers.length ? 'ALL-TOGETHER COMBINATIONS' : '',
-    ...combinedOffers.map((offer: any) => {
-      const label = cleanText(offer.label) || 'All work together'
-      return `${label}: ${money(offer.priceExVat)} + VAT (${money(offer.totalIncVat)} inc VAT)${cleanText(offer.summary) ? `\n${cleanText(offer.summary)}` : ''}`
-    }),
-    '',
     rows.length ? 'COST BREAKDOWN' : '',
     ...rows.map((row: any) => `- ${cleanText(row.category)}: ${money(row.amount)}${cleanText(row.detail) ? ` — ${cleanText(row.detail)}` : ''}`),
-    '',
-    assumptions.length ? 'ASSUMPTIONS' : '',
-    ...assumptions.map((item: unknown) => `- ${cleanText(item)}`),
-    '',
-    missing.length ? 'MISSING / CHECK' : '',
-    ...missing.map((item: unknown) => `- ${cleanText(item)}`),
-    '',
     notes.length ? 'PRICING NOTES' : '',
     ...notes.map((item: unknown) => `- ${cleanText(item)}`),
-    '',
     warnings.length ? 'WARNINGS' : '',
     ...warnings.map((item: unknown) => `- ${cleanText(item)}`),
-  ]
-    .filter((line, index, all) => line || (index > 0 && all[index - 1]))
-    .join('\n')
-    .trim()
+  ].filter(Boolean).join('\n')
 }
 
 async function loadQuote(id: number) {
@@ -158,6 +188,42 @@ async function loadQuote(id: number) {
   })
 }
 
+async function saveChasMessage(args: {
+  quoteId: number
+  jobId: number | null
+  session: any
+  question: string
+  answer: string
+  quoteUpdated: boolean
+}) {
+  const worker = cleanText(args.session?.workerName) || 'Office'
+  const workerId = args.session?.workerId && Number.isInteger(Number(args.session.workerId))
+    ? Number(args.session.workerId)
+    : null
+
+  return prisma.chasMessage.create({
+    data: {
+      company: 'furlads',
+      worker,
+      workerId,
+      jobId: args.jobId,
+      question: args.question,
+      answer: args.answer,
+      sessionId: sessionKey(args.quoteId),
+      conversationId: sessionKey(args.quoteId),
+      intent: args.quoteUpdated ? 'quote_correction_applied' : 'quote_review',
+      confidence: 0.9,
+      safetyFlag: false,
+    },
+    select: {
+      id: true,
+      question: true,
+      answer: true,
+      createdAt: true,
+    },
+  })
+}
+
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
     const id = validId(params.id)
@@ -167,18 +233,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
     if (!quote) return NextResponse.json({ ok: false, error: 'Quote not found.' }, { status: 404 })
 
     const messages = await prisma.chasMessage.findMany({
-      where: {
-        company: 'furlads',
-        sessionId: sessionKey(id),
-      },
+      where: { company: 'furlads', sessionId: sessionKey(id) },
       orderBy: { createdAt: 'asc' },
       take: 30,
-      select: {
-        id: true,
-        question: true,
-        answer: true,
-        createdAt: true,
-      },
+      select: { id: true, question: true, answer: true, createdAt: true },
     })
 
     return NextResponse.json({ ok: true, messages })
@@ -200,289 +258,183 @@ export async function POST(request: Request, { params }: RouteContext) {
     const [quote, session] = await Promise.all([loadQuote(id), getSession()])
     if (!quote) return NextResponse.json({ ok: false, error: 'Quote not found.' }, { status: 404 })
 
-    const history = await prisma.chasMessage.findMany({
-      where: {
-        company: 'furlads',
-        sessionId: sessionKey(id),
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-      select: { question: true, answer: true },
-    })
+    if (isExplicitCorrection(question)) {
+      const pricingResponse = await fetch(new URL('/api/ai/quote', request.url), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'price',
+          customerName: quote.customerName,
+          jobDetails: [
+            'CURRENT QUOTE SCOPE',
+            quote.scope,
+            '',
+            'OFFICE CHANGE TO APPLY',
+            question,
+          ].join('\n'),
+          additionalInstructions:
+            'Apply the office change to the current quote and reprice the COMPLETE corrected job from scratch. The office instruction is authoritative. Remove anything explicitly removed and preserve everything else that remains valid. Do not carry forward removed options. Recalculate materials, labour, plant, waste, logistics, programme and direct costs. Your summary and confirmed information must describe the complete corrected scope, not just the difference.',
+        }),
+      })
+
+      const pricing = await pricingResponse.json().catch(() => null)
+      if (!pricingResponse.ok) {
+        throw new Error(pricing?.error || 'CHAS could not reprice the corrected scope.')
+      }
+
+      const correctedScope = buildCorrectedScope(pricing || {}, quote.scope)
+      const depositPercent = cleanNumber(pricing?.depositPercent, quote.depositPercent || 25)
+      const customerTotalOverride = extractAllInOverride(question)
+      const hasCustomerTotalOverride = customerTotalOverride > 0
+
+      let priceExVat = cleanNumber(pricing?.recommendedPriceExVat)
+      let vatAmount = cleanNumber(pricing?.vatAmount)
+      let totalIncVat = cleanNumber(pricing?.recommendedTotalIncVat)
+      let depositAmount = cleanNumber(pricing?.depositAmount)
+
+      if (hasCustomerTotalOverride) {
+        totalIncVat = roundMoney(customerTotalOverride)
+        priceExVat = roundMoney(totalIncVat / 1.2)
+        vatAmount = roundMoney(totalIncVat - priceExVat)
+        depositAmount = roundMoney((totalIncVat * depositPercent) / 100)
+
+        const directCost = cleanNumber(pricing?.estimatedHardCosts)
+        const grossProfit = roundMoney(priceExVat - directCost)
+        const grossMargin = priceExVat > 0 ? roundMoney((grossProfit / priceExVat) * 100) : 0
+
+        pricing.recommendedPriceExVat = priceExVat
+        pricing.vatRate = VAT_RATE
+        pricing.vatAmount = vatAmount
+        pricing.recommendedTotalIncVat = totalIncVat
+        pricing.depositPercent = depositPercent
+        pricing.depositAmount = depositAmount
+        pricing.achievedGrossMargin = grossMargin
+        pricing.officePriceOverrideIncVat = totalIncVat
+        pricing.pricingNotes = [
+          ...(Array.isArray(pricing.pricingNotes) ? pricing.pricingNotes : []),
+          `Office-approved customer total set to £${totalIncVat.toFixed(2)} inc VAT. Direct job costs were not changed by this selling-price override.`,
+        ]
+        if (grossMargin < 30) {
+          pricing.warningFlags = Array.from(new Set([
+            ...(Array.isArray(pricing.warningFlags) ? pricing.warningFlags : []),
+            'Office-approved selling price is below the 30% gross-margin target.',
+          ]))
+        }
+      }
+
+      if (priceExVat <= 0 || totalIncVat <= 0) {
+        throw new Error('CHAS returned the corrected scope without a usable selling price.')
+      }
+
+      if (!vatAmount) vatAmount = roundMoney((priceExVat * VAT_RATE) / 100)
+      if (!totalIncVat) totalIncVat = roundMoney(priceExVat + vatAmount)
+      if (!depositAmount) depositAmount = roundMoney((totalIncVat * depositPercent) / 100)
+
+      const estimatedDays = cleanNumber(pricing?.estimatedDuration?.workingDays)
+      const estimatedTeamSize = Math.max(1, Math.round(cleanNumber(pricing?.estimatedDuration?.teamSize, 1)))
+      const customerMessage = buildCustomerMessage({
+        customerName: quote.customerName,
+        scope: correctedScope,
+        priceExVat,
+        vatAmount,
+        totalIncVat,
+        depositPercent,
+        depositAmount,
+      })
+
+      const internalNotes = [quote.internalNotes, `CHAS AMENDMENT: ${question}`]
+        .filter(Boolean)
+        .join('\n\n')
+
+      await prisma.quote.update({
+        where: { id },
+        data: {
+          scope: correctedScope,
+          quoteWorking: formatPricingWorking(pricing || {}),
+          priceExVat,
+          vatRate: VAT_RATE,
+          vatAmount,
+          totalIncVat,
+          depositPercent,
+          depositAmount,
+          estimatedDays: estimatedDays > 0 ? estimatedDays : null,
+          estimatedTeamSize,
+          customerMessage,
+          internalNotes,
+          status: quote.status === 'accepted' || quote.jobId ? quote.status : 'needs_review',
+        },
+      })
+
+      const directCost = cleanNumber(pricing?.estimatedHardCosts)
+      const grossProfit = directCost > 0 ? roundMoney(priceExVat - directCost) : null
+      const grossMargin = grossProfit == null || priceExVat <= 0
+        ? null
+        : roundMoney((grossProfit / priceExVat) * 100)
+
+      let answer = `Done — quote updated. New price: ${money(priceExVat)} + VAT (${money(totalIncVat)} inc VAT). VAT: ${money(vatAmount)}. Deposit: ${money(depositAmount)}.`
+      if (grossMargin != null) {
+        answer += ` Direct job cost: ${money(directCost)}. Gross profit: ${money(grossProfit)} (${grossMargin.toFixed(1)}% GP).${grossMargin < 30 ? ' ⚠️ Below the 30% target.' : ''}`
+      }
+      if (estimatedDays > 0) {
+        answer += ` Programme: ${estimatedDays} working day(s) with ${estimatedTeamSize} ${estimatedTeamSize === 1 ? 'person' : 'people'}.`
+      }
+      if (quote.jobId) {
+        answer += ` Linked job #${quote.jobId} will use the updated quote details; refresh its worker plan before site work if needed.`
+      }
+
+      const saved = await saveChasMessage({
+        quoteId: id,
+        jobId: quote.jobId || null,
+        session,
+        question,
+        answer,
+        quoteUpdated: true,
+      })
+
+      return NextResponse.json({ ok: true, message: saved, quoteUpdated: true, jobId: quote.jobId || null })
+    }
 
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.')
 
     const openai = new OpenAI({ apiKey })
-    const recentConversation = history
-      .reverse()
-      .map((row) => `User: ${row.question}\nCHAS: ${row.answer}`)
-      .join('\n\n')
-
-    const context = [
-      `Quote #${quote.id}`,
-      `Status: ${quote.status}`,
-      `Customer: ${quote.customerName || 'Not entered'}`,
-      `Postcode: ${quote.customerPostcode || 'Not entered'}`,
-      `Scope: ${quote.scope}`,
-      `Price ex VAT: £${quote.priceExVat.toFixed(2)}`,
-      `VAT: £${quote.vatAmount.toFixed(2)}`,
-      `Total inc VAT: £${quote.totalIncVat.toFixed(2)}`,
-      `Deposit: ${quote.depositPercent}% / £${quote.depositAmount.toFixed(2)}`,
-      `Estimated duration: ${quote.estimatedDays ?? 'Not set'} working days`,
-      `Estimated team: ${quote.estimatedTeamSize ?? 'Not set'} people`,
-      `Internal notes: ${quote.internalNotes || 'None'}`,
-      `How the quote was priced / CHAS working: ${quote.quoteWorking || 'No stored pricing working'}`,
-      `Current customer message: ${quote.customerMessage || 'Not drafted'}`,
-      `Linked accepted job: ${quote.jobId || 'None yet'}`,
-    ].join('\n')
-
-    const decisionResponse = await openai.responses.create({
+    const reviewResponse = await openai.responses.create({
       model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-      instructions: `You are CHAS helping Trev or Kelly operate one Furlads landscaping quote in the office.
-
-Be straightforward. Answer the question first. Do not give process lectures, legalistic caveats, or tell them to perform system steps that the app can do itself.
-
-First decide whether the latest message is:
-- review: a question, challenge, explanation request, calculation request, or suggestion that does NOT clearly ask you to change the stored quote; or
-- correct_quote: Trev/Kelly explicitly corrects, removes, replaces, clarifies or changes part of the quote and expects the quote itself to be updated. Phrases such as "remove option C", "change it to", "update the quote", "that's wrong", "she actually wants", "I meant", "correct that", or equivalent clear instructions mean correct_quote.
-
-For correct_quote:
-- correctedScope must be the complete replacement scope after applying the requested change. Preserve everything that remains valid. Remove anything the user explicitly removes. If the quote contains Options A/B/C/D and they say remove C, return the full remaining A/B/D scope with C absent.
-- If Trev/Kelly explicitly sets the CUSTOMER TOTAL INCLUDING VAT using wording such as "£4,220 all in", "total £4,220", "accepted price £4,220 inc VAT" or equivalent, put that exact customer total in customerTotalIncVatOverride. This is an authorised selling-price override, not a request for CHAS to choose a new price.
-- Never put an ex-VAT figure in customerTotalIncVatOverride unless the user explicitly says the figure is all-in/inc-VAT/total including VAT.
-- If no explicit all-in/inc-VAT customer total is set, return customerTotalIncVatOverride as null.
-
-For review:
-- Give the useful number or conclusion first.
-- Use the stored pricing working when available.
-- If exact material/labour costs are not stored, give the best sensible estimate and label it briefly as an estimate; do not ramble about ledgers, procurement systems or timesheets unless the user asks.
-- Keep answers concise, practical and commercial.
-
-Important rules:
-- Never invent work, materials or extras that are not in the current/corrected scope.
-- A clear correction instruction is authority to update the quote, even if the quote was previously sent, accepted or linked to a job. Do NOT tell the user to reopen it first.
-- If an accepted/linked quote is changed, the app will preserve the link and refresh or flag the job plan after the quote update.
-- If the corrected quote still contains several valid packages/options, that is fine. Do not refuse the correction just because it is multi-option.
-- A manual customer-price override changes selling revenue, VAT, deposit, gross profit and GP%. It must NOT change the recalculated materials, labour, plant, waste or other direct job costs.
-- Return ONLY valid JSON with exactly this structure:
-{
-  "intent": "review" or "correct_quote",
-  "answer": "short direct internal reply",
-  "correctedScope": "only for correct_quote, otherwise empty",
-  "customerTotalIncVatOverride": null
-}`,
-      input: `CURRENT QUOTE\n${context}\n\n${recentConversation ? `RECENT REVIEW CHAT\n${recentConversation}\n\n` : ''}LATEST MESSAGE\n${question}`,
+      instructions: `You are CHAS helping Trev or Kelly review one Furlads landscaping quote. Answer the latest office question directly and concisely. Do not change the quote. Use the supplied figures and pricing working. If an exact cost is unavailable, say it is an estimate. Do not give process lectures.`,
+      input: [
+        `Quote #${quote.id}`,
+        `Status: ${quote.status}`,
+        `Customer: ${quote.customerName || 'Not entered'}`,
+        `Scope: ${quote.scope}`,
+        `Price ex VAT: ${money(quote.priceExVat)}`,
+        `Total inc VAT: ${money(quote.totalIncVat)}`,
+        `Deposit: ${quote.depositPercent}% / ${money(quote.depositAmount)}`,
+        `Programme: ${quote.estimatedDays ?? 'Not set'} day(s), ${quote.estimatedTeamSize ?? 'Not set'} people`,
+        `Pricing working: ${quote.quoteWorking || 'No stored pricing working'}`,
+        `Question: ${question}`,
+      ].join('\n'),
     })
 
-    const decision = extractJson(decisionResponse.output_text || '')
-    let answer = cleanText(decision?.answer) || 'I could not produce a useful answer.'
-    let quoteUpdated = false
-
-    if (decision?.intent === 'correct_quote') {
-      const correctedScope = cleanText(decision.correctedScope)
-      if (!correctedScope) {
-        answer = 'I understand the change, but I could not turn it into a clear replacement scope. I have not changed anything yet.'
-      } else {
-        const pricingResponse = await fetch(new URL('/api/ai/quote', request.url), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'price',
-            customerName: quote.customerName,
-            jobDetails: correctedScope,
-            additionalInstructions: 'This is an explicit office correction to an existing quote. Treat the corrected scope as authoritative. Price only the work that remains. If it contains multiple packages/options, preserve them and calculate only valid combinations. Recalculate labour, materials, programme and margin from scratch. Do not carry forward removed options or superseded scope.',
-          }),
-        })
-        const pricing = await pricingResponse.json().catch(() => null)
-
-        if (!pricingResponse.ok) {
-          throw new Error(pricing?.error || 'CHAS could not reprice the corrected scope.')
-        }
-
-        let quoteMode = cleanText(pricing?.quoteMode) || (pricing?.optionMode ? 'packages' : 'single')
-        let options = Array.isArray(pricing?.options) ? pricing.options : []
-        let combinedOffers = Array.isArray(pricing?.combinedOffers)
-          ? pricing.combinedOffers
-          : pricing?.combinedOffer
-            ? [pricing.combinedOffer]
-            : []
-
-        const vatRate = cleanNumber(pricing?.vatRate, 20) || 20
-        const depositPercent = cleanNumber(pricing?.depositPercent, quote.depositPercent || 25)
-        const customerTotalOverride = cleanNumber(decision.customerTotalIncVatOverride)
-        const hasCustomerTotalOverride = customerTotalOverride > 0
-
-        let priceExVat = cleanNumber(pricing?.recommendedPriceExVat)
-        let vatAmount = cleanNumber(pricing?.vatAmount)
-        let totalIncVat = cleanNumber(pricing?.recommendedTotalIncVat)
-        let depositAmount = cleanNumber(pricing?.depositAmount)
-
-        if (hasCustomerTotalOverride) {
-          totalIncVat = roundMoney(customerTotalOverride)
-          priceExVat = roundMoney(totalIncVat / (1 + vatRate / 100))
-          vatAmount = roundMoney(totalIncVat - priceExVat)
-          depositAmount = roundMoney((totalIncVat * depositPercent) / 100)
-
-          const estimatedHardCosts = cleanNumber(pricing?.estimatedHardCosts)
-          const grossProfit = roundMoney(priceExVat - estimatedHardCosts)
-          const grossMarginPercent = priceExVat > 0
-            ? roundMoney((grossProfit / priceExVat) * 100)
-            : 0
-
-          pricing.recommendedPriceExVat = priceExVat
-          pricing.vatRate = vatRate
-          pricing.vatAmount = vatAmount
-          pricing.recommendedTotalIncVat = totalIncVat
-          pricing.depositPercent = depositPercent
-          pricing.depositAmount = depositAmount
-          pricing.achievedGrossMargin = grossMarginPercent
-          pricing.officePriceOverrideIncVat = totalIncVat
-          pricing.pricingNotes = [
-            ...(Array.isArray(pricing.pricingNotes) ? pricing.pricingNotes : []),
-            `Office-approved customer total manually set to £${totalIncVat.toFixed(2)} inc VAT. Direct job costs were left unchanged by this selling-price override.`,
-          ]
-
-          if (grossMarginPercent < 30) {
-            pricing.warningFlags = Array.from(new Set([
-              ...(Array.isArray(pricing.warningFlags) ? pricing.warningFlags : []),
-              'Office-approved selling price is below the 30% gross-margin target.',
-            ]))
-          }
-
-          // An explicit accepted/all-in price means the remaining corrected scope is
-          // now one agreed commercial package. Keep the underlying cost calculation,
-          // but do not show stale individual option selling prices to the customer.
-          quoteMode = 'single'
-          options = []
-          combinedOffers = []
-        }
-
-        const estimatedDays = cleanNumber(pricing?.estimatedDuration?.workingDays)
-        const estimatedTeamSize = Math.max(1, Math.round(cleanNumber(pricing?.estimatedDuration?.teamSize, 1)))
-
-        if (priceExVat <= 0) {
-          throw new Error('CHAS returned the corrected scope without a usable selling price.')
-        }
-
-        const messageResponse = await fetch(new URL('/api/ai/quote', request.url), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'write',
-            customerName: quote.customerName,
-            quoteMode,
-            options,
-            combinedOffers,
-            combinedOffer: combinedOffers[0] || null,
-            jobDetails: correctedScope,
-            additionalInstructions: hasCustomerTotalOverride
-              ? `Rewrite this corrected quote from Kelly using the office-approved all-in customer total of £${totalIncVat.toFixed(2)} including VAT. Show only the remaining corrected scope. Do not mention removed options or alternative selling prices. This figure is approved and must not be changed.`
-              : pricing?.optionMode
-                ? 'Rewrite this corrected multi-option quote from Kelly in the normal warm Furlads style. Show only the remaining options and valid combinations. Do not mention any removed option. Keep all commercial figures exact.'
-                : 'Rewrite this corrected quote from Kelly in the normal warm Furlads style. Keep the corrected scope and commercial figures exact. Kelly is the main point of contact from here.',
-            priceExVat,
-            vatRate,
-            depositPercent,
-          }),
-        })
-        const messageData = await messageResponse.json().catch(() => null)
-        const customerMessage = messageResponse.ok
-          ? cleanText(messageData?.whatsappQuote)
-          : quote.customerMessage
-
-        const wasAcceptedOrLinked = quote.status === 'accepted' || Boolean(quote.jobId)
-        const amendmentNote = `CHAS AMENDMENT: ${question}`
-        const internalNotes = [quote.internalNotes, amendmentNote]
-          .filter(Boolean)
-          .join('\n\n')
-
-        await prisma.quote.update({
-          where: { id },
-          data: {
-            scope: correctedScope,
-            quoteWorking: formatPricingWorking(pricing),
-            priceExVat,
-            vatRate,
-            vatAmount,
-            totalIncVat,
-            depositPercent,
-            depositAmount,
-            estimatedDays: estimatedDays > 0 ? estimatedDays : null,
-            estimatedTeamSize,
-            customerMessage: customerMessage || null,
-            internalNotes,
-            status: wasAcceptedOrLinked ? quote.status : 'needs_review',
-          },
-        })
-
-        quoteUpdated = true
-
-        let jobMessage = ''
-        if (quote.jobId) {
-          try {
-            const planResponse = await fetch(new URL(`/api/landscaping/jobs/${quote.jobId}/plan`, request.url), {
-              method: 'POST',
-            })
-            jobMessage = planResponse.ok
-              ? ` Linked job #${quote.jobId} has been refreshed too.`
-              : ` Linked job #${quote.jobId} still needs its worker plan refreshing.`
-          } catch {
-            jobMessage = ` Linked job #${quote.jobId} still needs its worker plan refreshing.`
-          }
-        }
-
-        const optionNote = !hasCustomerTotalOverride && pricing?.optionMode
-          ? ` The remaining options/packages have been rebuilt without the removed work.`
-          : ''
-        const estimatedHardCosts = cleanNumber(pricing?.estimatedHardCosts)
-        const grossProfit = estimatedHardCosts > 0 ? roundMoney(priceExVat - estimatedHardCosts) : null
-        const grossMarginPercent = grossProfit == null || priceExVat <= 0
-          ? null
-          : roundMoney((grossProfit / priceExVat) * 100)
-        const marginNote = grossMarginPercent == null
-          ? ''
-          : ` Direct job cost: ${money(estimatedHardCosts)}. Gross profit: ${money(grossProfit)} (${grossMarginPercent.toFixed(1)}% GP).${grossMarginPercent < 30 ? ' ⚠️ This is below the 30% target.' : ''}`
-        const overrideNote = hasCustomerTotalOverride
-          ? ' The customer price was applied exactly as instructed; it did not alter the underlying job costs.'
-          : ''
-
-        answer = `Done — I've updated the quote and repriced the corrected scope.${optionNote}${overrideNote}\n\nNew price: ${money(priceExVat)} + VAT (${money(totalIncVat)} inc VAT). VAT: ${money(vatAmount)}. Deposit: ${money(depositAmount)}.${marginNote}${estimatedDays > 0 ? ` Programme: ${estimatedDays} working day(s) with ${estimatedTeamSize} ${estimatedTeamSize === 1 ? 'person' : 'people'}.` : ''}${jobMessage}`
-      }
-    }
-
-    const worker = cleanText(session?.workerName) || 'Office'
-    const workerId = session?.workerId && Number.isInteger(Number(session.workerId))
-      ? Number(session.workerId)
-      : null
-
-    const saved = await prisma.chasMessage.create({
-      data: {
-        company: 'furlads',
-        worker,
-        workerId,
-        jobId: quote.jobId || null,
-        question,
-        answer,
-        sessionId: sessionKey(id),
-        conversationId: sessionKey(id),
-        intent: quoteUpdated ? 'quote_correction_applied' : 'quote_review',
-        confidence: 0.9,
-        safetyFlag: false,
-      },
-      select: {
-        id: true,
-        question: true,
-        answer: true,
-        createdAt: true,
-      },
+    const answer = cleanText(reviewResponse.output_text) || 'I could not produce a useful answer.'
+    const saved = await saveChasMessage({
+      quoteId: id,
+      jobId: quote.jobId || null,
+      session,
+      question,
+      answer,
+      quoteUpdated: false,
     })
 
-    return NextResponse.json({ ok: true, message: saved, quoteUpdated })
+    return NextResponse.json({ ok: true, message: saved, quoteUpdated: false })
   } catch (error) {
     console.error('QUOTE CHAS ERROR', error)
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : 'Could not ask CHAS about this quote.' },
+      {
+        ok: false,
+        error: error instanceof Error
+          ? error.message
+          : 'Nothing was changed. CHAS could not complete that request — please try again.',
+      },
       { status: 500 }
     )
   }
