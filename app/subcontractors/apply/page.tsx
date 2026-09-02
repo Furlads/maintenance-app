@@ -37,7 +37,7 @@ export default function SubcontractorApplicationPage() {
       <section className="rounded-[30px] p-6 shadow-xl sm:p-8" style={{ backgroundColor: '#1f3218', color: '#ffffff' }}>
         <div className="text-xs font-black uppercase tracking-[0.18em]" style={{ color: '#c7e678' }}>Furlads & Three Counties</div>
         <h1 className="mt-2 text-4xl font-black sm:text-5xl" style={{ color: '#ffffff' }}>Apply to join our subcontractor network</h1>
-        <p className="mt-4 max-w-3xl text-sm font-semibold leading-6 sm:text-base" style={{ color: '#ffffff' }}>Tell us what you do, where you work and what cover/qualifications you hold. We use this to decide which jobs may be suitable for you. You remain responsible for how you carry out accepted subcontract work and for your own tax, insurance and business obligations.</p>
+        <p className="mt-4 max-w-3xl text-sm font-semibold leading-6 sm:text-base" style={{ color: '#ffffff' }}>Tell us what you do, how you work, your rates and the cover/qualifications you hold. We use this to decide which jobs may be suitable for you.</p>
       </section>
 
       <Section title="1. Your details">
@@ -52,6 +52,7 @@ export default function SubcontractorApplicationPage() {
           <Input name="companyNumber" label="Company number (if applicable)" />
           <Input name="vatNumber" label="VAT number (if applicable)" />
         </Grid>
+        <label className="mt-4 flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-sm font-bold text-zinc-900"><input type="checkbox" name="vatRegistered" value="true" className="h-5 w-5" />I am VAT registered</label>
       </Section>
 
       <Section title="2. Trade & experience">
@@ -76,9 +77,20 @@ export default function SubcontractorApplicationPage() {
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Input name="dayRate" label="Your own day rate (if applicable)" inputMode="decimal" placeholder="e.g. 180" />
+          <Input name="halfDayRate" label="Half-day rate (if applicable)" inputMode="decimal" placeholder="e.g. 110" />
+          <Input name="minimumCharge" label="Minimum / call-out charge" inputMode="decimal" placeholder="e.g. 80" />
           {workSetup !== 'just_me' ? <Input name="teamSize" label="Typical team size" type="number" min="2" placeholder="e.g. 2" /> : null}
           {workSetup !== 'just_me' ? <Input name="teamDayRate" label="Team / crew day rate (if applicable)" inputMode="decimal" placeholder="e.g. 350" /> : null}
           {workSetup !== 'just_me' ? <Input name="teamDescription" label="Who is normally included?" placeholder="e.g. me + labourer / 2-person paving team" /> : null}
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 text-[11px] font-black uppercase tracking-wider text-zinc-600">How do you normally price work?</div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Radio name="pricingPreference" value="labour_only" label="Labour only" />
+            <Radio name="pricingPreference" value="labour_materials" label="Labour + materials" />
+            <Radio name="pricingPreference" value="either" label="Either" defaultChecked />
+          </div>
         </div>
 
         <div className="mt-5"><Grid><Input name="coverageArea" label="Areas you cover" placeholder="e.g. Shropshire, Cheshire, Staffordshire" /><Input name="maxTravelMiles" label="Typical maximum travel distance (miles)" type="number" min="0" /></Grid></div>
@@ -128,4 +140,5 @@ function Grid({ children }: { children: React.ReactNode }) { return <div classNa
 function Input(props: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) { const { label, ...rest } = props; return <label className="block"><span className="mb-2 block text-[11px] font-black uppercase tracking-wider text-zinc-600">{label}</span><input {...rest} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-950 outline-none focus:border-[#789333] focus:ring-2 focus:ring-[#dce8bd]" /></label> }
 function Textarea({ name, label, placeholder }: { name: string; label: string; placeholder?: string }) { return <label className="block"><span className="mb-2 block text-[11px] font-black uppercase tracking-wider text-zinc-600">{label}</span><textarea name={name} placeholder={placeholder} className="min-h-28 w-full resize-y rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-950 outline-none focus:border-[#789333] focus:ring-2 focus:ring-[#dce8bd]" /></label> }
 function Checks({ items }: { items: string[][] }) { return <div className="mt-4 grid gap-2 sm:grid-cols-2">{items.map(([name, label]) => <label key={name} className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-sm font-bold text-zinc-900"><input type="checkbox" name={name} value="true" className="h-5 w-5" />{label}</label>)}</div> }
+function Radio({ name, value, label, defaultChecked }: { name: string; value: string; label: string; defaultChecked?: boolean }) { return <label className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-sm font-bold text-zinc-900"><input type="radio" name={name} value={value} defaultChecked={defaultChecked} className="h-5 w-5" />{label}</label> }
 function FileField({ name, label, multiple, accept = 'application/pdf,image/jpeg,image/png,image/webp' }: { name: string; label: string; multiple?: boolean; accept?: string }) { return <label className="block rounded-2xl border border-dashed border-zinc-300 bg-white p-4"><span className="block text-sm font-black text-zinc-900">{label}</span><input type="file" name={name} multiple={multiple} accept={accept} className="mt-3 block w-full text-sm text-zinc-900" /></label> }
