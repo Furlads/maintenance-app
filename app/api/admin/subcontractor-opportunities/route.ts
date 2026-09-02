@@ -31,6 +31,13 @@ function parseOptionalPositiveInt(value: unknown) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 }
 
+function parseDate(value: unknown) {
+  const raw = clean(value)
+  if (!raw) return null
+  const date = new Date(`${raw}T23:59:59.999Z`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 type OpportunityRow = {
   id: number
   company: string
@@ -42,10 +49,13 @@ type OpportunityRow = {
   fixedPrice: number | null
   status: string
   createdAt: Date
+  replyBy: Date | null
   sentCount: bigint
   interestedCount: bigint
+  awardedCount: bigint
   acceptedCount: bigint
   declinedCount: bigint
+  counterCount: bigint
 }
 
 export async function GET() {
@@ -53,13 +63,23 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthenticated.' }, { status: 401 })
   if (!isAdminLikeRole(session.role)) return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
 
+  await prisma.$executeRaw`
+    UPDATE "SubcontractorOpportunityRecipient" r
+    SET "status"='expired'
+    FROM "SubcontractorOpportunity" o
+    WHERE r."opportunityId"=o."id" AND o."replyBy" IS NOT NULL AND o."replyBy" < CURRENT_TIMESTAMP
+      AND r."status" IN ('sent','viewed','interested','countered')
+  `
+
   const opportunities = await prisma.$queryRaw<OpportunityRow[]>`
     SELECT o."id", o."company", o."sourceJobId", o."title", o."trade", o."roughArea", o."pricingMode",
-      o."fixedPrice", o."status", o."createdAt",
+      o."fixedPrice", o."status", o."createdAt", o."replyBy",
       COUNT(r."id") AS "sentCount",
       COUNT(r."id") FILTER (WHERE r."status" = 'interested') AS "interestedCount",
+      COUNT(r."id") FILTER (WHERE r."status" = 'awarded') AS "awardedCount",
       COUNT(r."id") FILTER (WHERE r."status" = 'accepted') AS "acceptedCount",
-      COUNT(r."id") FILTER (WHERE r."status" = 'declined') AS "declinedCount"
+      COUNT(r."id") FILTER (WHERE r."status" = 'declined') AS "declinedCount",
+      COUNT(r."id") FILTER (WHERE r."status" = 'countered') AS "counterCount"
     FROM "SubcontractorOpportunity" o
     LEFT JOIN "SubcontractorOpportunityRecipient" r ON r."opportunityId" = o."id"
     GROUP BY o."id"
@@ -72,8 +92,10 @@ export async function GET() {
       ...item,
       sentCount: Number(item.sentCount),
       interestedCount: Number(item.interestedCount),
+      awardedCount: Number(item.awardedCount),
       acceptedCount: Number(item.acceptedCount),
       declinedCount: Number(item.declinedCount),
+      counterCount: Number(item.counterCount),
     })),
   })
 }
@@ -98,6 +120,13 @@ export async function POST(req: Request) {
   const quoteGuidance = pricingMode === 'quote' ? clean(body.quoteGuidance) || null : null
   const workerIds = parseWorkerIds(body.workerIds)
   const createdByWorkerId = Number(session.workerId)
+  const replyBy = parseDate(body.replyBy) || new Date(Date.now() + 7 * 86400000)
+  const priceIncludesVat = body.priceIncludesVat !== false
+  const workBasis = ['labour_only', 'labour_materials'].includes(clean(body.workBasis)) ? clean(body.workBasis) : 'labour_only'
+  const materialsResponsibility = clean(body.materialsResponsibility) || null
+  const plantResponsibility = clean(body.plantResponsibility) || null
+  const wasteResponsibility = clean(body.wasteResponsibility) || null
+  const siteNotes = clean(body.siteNotes) || null
 
   if (!title || !trade || !roughArea || !publicDescription) return NextResponse.json({ error: 'Title, trade, rough area and description are required.' }, { status: 400 })
   if (!workerIds.length) return NextResponse.json({ error: 'Choose at least one subcontractor.' }, { status: 400 })
@@ -109,26 +138,33 @@ export async function POST(req: Request) {
     if (['cancelled', 'archived', 'done'].includes(clean(sourceJob.status).toLowerCase())) return NextResponse.json({ error: 'This job is not open for subcontractor assignment.' }, { status: 400 })
   }
 
-  const workers = await prisma.worker.findMany({
-    where: { id: { in: workerIds }, active: true, employmentType: 'subcontractor' },
-    select: { id: true, firstName: true, lastName: true, phone: true, publicLiabilityExpiresAt: true },
-  })
+  const workers = await prisma.$queryRaw<Array<{
+    id: number; firstName: string; lastName: string; phone: string | null; publicLiabilityExpiresAt: Date | null;
+    availabilityStatus: string; unavailableUntil: Date | null; doNotUse: boolean; vatRegistered: boolean;
+  }>>`
+    SELECT "id", "firstName", "lastName", "phone", "publicLiabilityExpiresAt", "availabilityStatus", "unavailableUntil", "doNotUse", "vatRegistered"
+    FROM "Worker"
+    WHERE "id" = ANY(${workerIds}::int[]) AND "active"=TRUE AND "employmentType"='subcontractor'
+  `
 
   if (workers.length !== workerIds.length) return NextResponse.json({ error: 'One or more selected workers are not active subcontractors.' }, { status: 400 })
 
+  const blocked = workers.filter((worker) => worker.doNotUse || worker.availabilityStatus === 'unavailable' || (worker.unavailableUntil && worker.unavailableUntil.getTime() > Date.now()))
+  if (blocked.length) {
+    return NextResponse.json({ error: `Cannot send this opportunity to ${blocked.map((worker) => `${worker.firstName} ${worker.lastName}`.trim()).join(', ')} because they are unavailable or restricted.` }, { status: 400 })
+  }
+
   const expiredWorkers = workers.filter((worker) => worker.publicLiabilityExpiresAt && worker.publicLiabilityExpiresAt.getTime() < Date.now())
   if (expiredWorkers.length) {
-    return NextResponse.json({
-      error: `Cannot send new work until public liability insurance is updated for ${expiredWorkers.map((worker) => `${worker.firstName} ${worker.lastName}`.trim()).join(', ')}.`,
-    }, { status: 400 })
+    return NextResponse.json({ error: `Cannot send new work until public liability insurance is updated for ${expiredWorkers.map((worker) => `${worker.firstName} ${worker.lastName}`.trim()).join(', ')}.` }, { status: 400 })
   }
 
   const opportunity = await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<Array<{ id: number }>>`
       INSERT INTO "SubcontractorOpportunity"
-        ("company", "sourceType", "sourceJobId", "title", "trade", "roughArea", "publicDescription", "durationText", "timingText", "pricingMode", "fixedPrice", "quoteGuidance", "createdByWorkerId")
+        ("company", "sourceType", "sourceJobId", "title", "trade", "roughArea", "publicDescription", "durationText", "timingText", "pricingMode", "fixedPrice", "quoteGuidance", "createdByWorkerId", "replyBy", "priceIncludesVat", "workBasis", "materialsResponsibility", "plantResponsibility", "wasteResponsibility", "siteNotes")
       VALUES
-        (${company}, ${sourceType}, ${sourceJobId}, ${title}, ${trade}, ${roughArea}, ${publicDescription}, ${durationText}, ${timingText}, ${pricingMode}, ${fixedPrice}, ${quoteGuidance}, ${Number.isInteger(createdByWorkerId) ? createdByWorkerId : null})
+        (${company}, ${sourceType}, ${sourceJobId}, ${title}, ${trade}, ${roughArea}, ${publicDescription}, ${durationText}, ${timingText}, ${pricingMode}, ${fixedPrice}, ${quoteGuidance}, ${Number.isInteger(createdByWorkerId) ? createdByWorkerId : null}, ${replyBy}, ${priceIncludesVat}, ${workBasis}, ${materialsResponsibility}, ${plantResponsibility}, ${wasteResponsibility}, ${siteNotes})
       RETURNING "id"
     `
     const id = rows[0].id
@@ -148,7 +184,8 @@ export async function POST(req: Request) {
     const worker = workers.find((item) => item.id === recipient.workerId)!
     const url = `${origin}/contractor/opportunity/${recipient.token}`
     const name = worker.firstName || 'there'
-    const message = `Hi ${name} — we have a new ${trade} opportunity around ${roughArea}. Have a look here and let us know if you're interested: ${url}`
+    const vatText = pricingMode === 'price' ? (priceIncludesVat ? ' including any VAT' : ' plus VAT if applicable') : ''
+    const message = `Hi ${name} — we have a new ${trade} opportunity around ${roughArea}. Reply by ${replyBy.toLocaleDateString('en-GB')}. Have a look here${vatText}: ${url}`
     const phone = clean(worker.phone).replace(/[^0-9+]/g, '')
     return {
       workerId: worker.id,
