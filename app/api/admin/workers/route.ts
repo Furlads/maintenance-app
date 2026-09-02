@@ -57,6 +57,23 @@ const workerProfileSelect = {
   workAcceptanceRequired: true,
 } as const;
 
+type ExtendedWorker = {
+  id: number;
+  workSetup: string;
+  teamSize: number | null;
+  teamDayRate: number | null;
+  teamDescription: string | null;
+  availabilityStatus: string;
+  unavailableUntil: Date | null;
+  minimumCharge: number | null;
+  halfDayRate: number | null;
+  pricingPreference: string;
+  vatRegistered: boolean;
+  vatNumber: string | null;
+  doNotUse: boolean;
+  doNotUseReason: string | null;
+};
+
 export async function GET() {
   try {
     const session = await getSession();
@@ -64,17 +81,21 @@ export async function GET() {
     if (!isAdminLikeRole(session.role)) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
 
     const workers = await prisma.worker.findMany({
-      orderBy: [
-        { active: "desc" },
-        { firstName: "asc" },
-        { lastName: "asc" },
-      ],
+      orderBy: [{ active: "desc" }, { firstName: "asc" }, { lastName: "asc" }],
       select: workerProfileSelect,
     });
+
+    const extended = await prisma.$queryRaw<ExtendedWorker[]>`
+      SELECT "id", "workSetup", "teamSize", "teamDayRate", "teamDescription", "availabilityStatus", "unavailableUntil",
+        "minimumCharge", "halfDayRate", "pricingPreference", "vatRegistered", "vatNumber", "doNotUse", "doNotUseReason"
+      FROM "Worker"
+    `;
+    const extraById = new Map(extended.map((row) => [row.id, row]));
 
     return NextResponse.json({
       workers: workers.map((worker) => ({
         ...worker,
+        ...(extraById.get(worker.id) || {}),
         firstName: titleCasePersonName(worker.firstName),
         lastName: titleCasePersonName(worker.lastName),
         fullName: buildFullName(worker.firstName, worker.lastName),
@@ -86,10 +107,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("GET /api/admin/workers failed:", error);
-    return NextResponse.json(
-      { error: "Failed to load workers" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to load workers" }, { status: 500 });
   }
 }
 
@@ -100,7 +118,6 @@ export async function POST(req: Request) {
     if (!isAdminLikeRole(session.role)) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
 
     const body = await req.json().catch(() => ({}));
-
     const firstName = titleCasePersonName(clean(body.firstName));
     const lastName = titleCasePersonName(clean(body.lastName));
     const phone = clean(body.phone);
@@ -111,10 +128,7 @@ export async function POST(req: Request) {
     const workerType = employmentType(body.employmentType);
 
     if (!firstName || !lastName) {
-      return NextResponse.json(
-        { error: "First name and last name are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "First name and last name are required" }, { status: 400 });
     }
 
     const worker = await prisma.worker.create({
@@ -138,13 +152,29 @@ export async function POST(req: Request) {
         cisVerified: !!body.cisVerified,
         cisVerificationNumber: clean(body.cisVerificationNumber) || null,
         cisDeductionRate: optionalNumber(body.cisDeductionRate, 100),
-        workAcceptanceRequired:
-          typeof body.workAcceptanceRequired === "boolean"
-            ? body.workAcceptanceRequired
-            : workerType === "subcontractor",
+        workAcceptanceRequired: typeof body.workAcceptanceRequired === "boolean" ? body.workAcceptanceRequired : workerType === "subcontractor",
       },
       select: workerProfileSelect,
     });
+
+    if (workerType === "subcontractor") {
+      await prisma.$executeRaw`
+        UPDATE "Worker" SET
+          "workSetup"=${["just_me", "team", "business"].includes(clean(body.workSetup)) ? clean(body.workSetup) : "just_me"},
+          "teamSize"=${optionalNumber(body.teamSize)},
+          "teamDayRate"=${optionalNumber(body.teamDayRate)},
+          "teamDescription"=${clean(body.teamDescription) || null},
+          "availabilityStatus"=${["available", "limited", "unavailable"].includes(clean(body.availabilityStatus)) ? clean(body.availabilityStatus) : "available"},
+          "unavailableUntil"=${null},
+          "minimumCharge"=${optionalNumber(body.minimumCharge)},
+          "halfDayRate"=${optionalNumber(body.halfDayRate)},
+          "pricingPreference"=${["labour_only", "labour_materials", "either"].includes(clean(body.pricingPreference)) ? clean(body.pricingPreference) : "either"},
+          "vatRegistered"=${!!body.vatRegistered},
+          "vatNumber"=${clean(body.vatNumber) || null},
+          "doNotUse"=FALSE
+        WHERE "id"=${worker.id}
+      `;
+    }
 
     return NextResponse.json({
       success: true,
@@ -161,9 +191,6 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("POST /api/admin/workers failed:", error);
-    return NextResponse.json(
-      { error: "Failed to create worker" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create worker" }, { status: 500 });
   }
 }
