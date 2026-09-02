@@ -17,6 +17,7 @@ const FILTERS = [
   { key: 'needs_review', label: 'Needs review' },
   { key: 'ready_to_send', label: 'Ready to send' },
   { key: 'sent', label: 'Sent' },
+  { key: 'no_reply', label: 'No reply' },
   { key: 'accepted', label: 'Accepted' },
   { key: 'declined', label: 'Declined' },
   { key: 'archived', label: 'Archived' },
@@ -48,90 +49,121 @@ function statusLabel(status: string) {
 function statusClass(status: string) {
   if (status === 'accepted') return 'bg-green-100 text-green-800 ring-green-200'
   if (status === 'sent') return 'bg-blue-100 text-blue-800 ring-blue-200'
+  if (status === 'no_reply') return 'bg-zinc-100 text-zinc-700 ring-zinc-300'
   if (status === 'ready_to_send') return 'bg-yellow-100 text-yellow-900 ring-yellow-200'
   if (status === 'declined') return 'bg-red-50 text-red-700 ring-red-200'
   if (status === 'archived') return 'bg-zinc-100 text-zinc-600 ring-zinc-200'
   return 'bg-orange-100 text-orange-800 ring-orange-200'
 }
 
-function effectiveStatus(status: string, jobId: number | null) {
-  return jobId ? 'accepted' : status
-}
-
-function quoteValue(quote: {
-  quoteWorking: string | null
+function storedQuoteReference(quote: {
   priceExVat: number
+  vatRate: number
+  totalIncVat: number
   estimatedDays: number | null
   estimatedTeamSize: number | null
 }) {
+  const vatRate = Number.isFinite(quote.vatRate) ? quote.vatRate : 20
+  const priceExVat = Number.isFinite(quote.priceExVat) ? quote.priceExVat : 0
+  const vatAmount = Number(((priceExVat * vatRate) / 100).toFixed(2))
+  const storedTotal = Number(quote.totalIncVat || 0)
+  return {
+    priceExVat,
+    vatRate,
+    vatAmount,
+    totalIncVat: storedTotal > 0 ? storedTotal : Number((priceExVat + vatAmount).toFixed(2)),
+    estimatedDays: quote.estimatedDays,
+    estimatedTeamSize: quote.estimatedTeamSize,
+  }
+}
+
+function quoteReference(quote: {
+  status: string
+  quoteWorking: string | null
+  priceExVat: number
+  vatRate: number
+  totalIncVat: number
+  estimatedDays: number | null
+  estimatedTeamSize: number | null
+}) {
+  // Once a quote has been sent, the stored commercial figures are the source of
+  // truth. CHAS working may contain historical options and must not alter what
+  // the customer was actually quoted.
+  if (['sent', 'no_reply', 'accepted', 'declined', 'archived'].includes(quote.status)) {
+    return storedQuoteReference(quote)
+  }
+
   return safeQuoteReference({
     quoteWorking: quote.quoteWorking,
     storedPriceExVat: quote.priceExVat,
     storedEstimatedDays: quote.estimatedDays,
     storedEstimatedTeamSize: quote.estimatedTeamSize,
-  }).totalIncVat
+  })
 }
 
 export default async function AdminQuotesPage({ searchParams }: PageProps) {
   const selected = String(searchParams?.status || 'active')
 
+  // Sent quotes automatically move to No Reply after 30 full days without an
+  // explicit accept/decline action. This is idempotent and runs whenever the
+  // live quotes dashboard is loaded.
+  const noReplyCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  await prisma.quote.updateMany({
+    where: {
+      status: 'sent',
+      sentAt: { not: null, lte: noReplyCutoff },
+      acceptedAt: null,
+      declinedAt: null,
+    },
+    data: { status: 'no_reply' },
+  })
+
   const where =
     selected === 'all'
       ? {}
       : selected === 'active'
-        ? { status: { notIn: ['declined', 'archived'] } }
-        : selected === 'accepted'
-          ? { OR: [{ status: 'accepted' }, { jobId: { not: null } }] }
-          : { status: selected, jobId: null }
+        ? { status: { notIn: ['declined', 'archived', 'no_reply'] } }
+        : { status: selected }
 
-  const [quotes, statusRows, valueQuotes] = await Promise.all([
+  const [quotes, counts, valueQuotes] = await Promise.all([
     prisma.quote.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
       include: { customer: true, job: true },
     }),
-    prisma.quote.findMany({
-      select: {
-        status: true,
-        jobId: true,
-      },
+    prisma.quote.groupBy({
+      by: ['status'],
+      _count: { _all: true },
     }),
     prisma.quote.findMany({
+      where: { status: { notIn: ['declined', 'archived', 'no_reply'] } },
       select: {
         status: true,
-        jobId: true,
         quoteWorking: true,
         priceExVat: true,
+        vatRate: true,
+        totalIncVat: true,
         estimatedDays: true,
         estimatedTeamSize: true,
       },
     }),
   ])
 
-  const countMap: Record<string, number> = {}
-  for (const item of statusRows) {
-    const status = effectiveStatus(item.status, item.jobId)
-    countMap[status] = (countMap[status] || 0) + 1
-  }
-
-  const activeCount = statusRows
-    .filter((item) => !['declined', 'archived'].includes(effectiveStatus(item.status, item.jobId)))
-    .length
-
-  // A linked job is definitive evidence that the quote is secured work. This
-  // protects the dashboard from older/stale quote statuses and keeps accepted
-  // revenue out of the pipeline even before the stored status self-heals.
-  const activeValueQuotes = valueQuotes.filter(
-    (quote) => !['declined', 'archived'].includes(effectiveStatus(quote.status, quote.jobId))
+  const countMap = Object.fromEntries(
+    counts.map((item) => [item.status, item._count._all])
   )
 
-  const pipelineValue = activeValueQuotes
-    .filter((quote) => effectiveStatus(quote.status, quote.jobId) !== 'accepted')
-    .reduce((total, quote) => total + quoteValue(quote), 0)
+  const activeCount = counts
+    .filter((item) => !['declined', 'archived', 'no_reply'].includes(item.status))
+    .reduce((total, item) => total + item._count._all, 0)
 
-  const bookedValue = activeValueQuotes
-    .filter((quote) => effectiveStatus(quote.status, quote.jobId) === 'accepted')
-    .reduce((total, quote) => total + quoteValue(quote), 0)
+  const pipelineValue = valueQuotes
+    .filter((quote) => quote.status !== 'accepted')
+    .reduce((total, quote) => total + quoteReference(quote).totalIncVat, 0)
+
+  const bookedValue = valueQuotes
+    .filter((quote) => quote.status === 'accepted')
+    .reduce((total, quote) => total + quoteReference(quote).totalIncVat, 0)
 
   const archivedCount = countMap.archived || 0
 
@@ -140,21 +172,13 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.15em] text-zinc-500">
-              Furlads
-            </p>
-            <h1 className="mt-1 text-3xl font-black tracking-tight text-zinc-950">
-              Quotes
-            </h1>
+            <p className="text-xs font-black uppercase tracking-[0.15em] text-zinc-500">Furlads</p>
+            <h1 className="mt-1 text-3xl font-black tracking-tight text-zinc-950">Quotes</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
               Review, edit and manage quotes from CHAS through to customer acceptance and booking.
             </p>
           </div>
-
-          <Link
-            href="/quote-test"
-            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-bold text-white"
-          >
+          <Link href="/quote-test" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-bold text-white">
             + New quote with CHAS
           </Link>
         </div>
@@ -185,23 +209,14 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
         <div className="flex gap-2 overflow-x-auto pb-1">
           {FILTERS.map((filter) => {
             const active = selected === filter.key
-            const count =
-              filter.key === 'active'
-                ? activeCount
-                : filter.key === 'all'
-                  ? statusRows.length
-                  : countMap[filter.key] || 0
+            const count = filter.key === 'active'
+              ? activeCount
+              : filter.key === 'all'
+                ? counts.reduce((total, item) => total + item._count._all, 0)
+                : countMap[filter.key] || 0
 
             return (
-              <Link
-                key={filter.key}
-                href={`/admin/quotes?status=${filter.key}`}
-                className={`flex-none rounded-full px-3 py-2 text-sm font-bold ring-1 ring-inset ${
-                  active
-                    ? 'bg-zinc-950 text-white ring-zinc-950'
-                    : 'bg-white text-zinc-700 ring-zinc-200'
-                }`}
-              >
+              <Link key={filter.key} href={`/admin/quotes?status=${filter.key}`} className={`flex-none rounded-full px-3 py-2 text-sm font-bold ring-1 ring-inset ${active ? 'bg-zinc-950 text-white ring-zinc-950' : 'bg-white text-zinc-700 ring-zinc-200'}`}>
                 {filter.label} · {count}
               </Link>
             )
@@ -210,9 +225,7 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
 
         {selected === 'archived' ? (
           <div className="flex flex-none items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 shadow-sm">
-            <div className="hidden text-xs font-bold text-red-800 sm:block">
-              Remove all {archivedCount} archived quotes
-            </div>
+            <div className="hidden text-xs font-bold text-red-800 sm:block">Remove all {archivedCount} archived quotes</div>
             <ClearArchiveButton count={archivedCount} />
           </div>
         ) : null}
@@ -222,42 +235,24 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
         {quotes.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-8 text-center">
             <div className="text-lg font-black text-zinc-900">No quotes here yet</div>
-            <p className="mt-2 text-sm text-zinc-500">
-              New CHAS quotes sent to Kelly will appear here automatically.
-            </p>
+            <p className="mt-2 text-sm text-zinc-500">New CHAS quotes sent to Kelly will appear here automatically.</p>
           </div>
         ) : (
           quotes.map((quote) => {
-            const customerName =
-              quote.customerName || quote.customer?.name || 'Customer details needed'
-            const reference = safeQuoteReference({
-              quoteWorking: quote.quoteWorking,
-              storedPriceExVat: quote.priceExVat,
-              storedEstimatedDays: quote.estimatedDays,
-              storedEstimatedTeamSize: quote.estimatedTeamSize,
-            })
-            const displayStatus = effectiveStatus(quote.status, quote.jobId)
-            const canDelete = displayStatus !== 'accepted' && !quote.jobId
+            const customerName = quote.customerName || quote.customer?.name || 'Customer details needed'
+            const reference = quoteReference(quote)
+            const canDelete = quote.status !== 'accepted'
 
             return (
-              <div
-                key={quote.id}
-                className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-400"
-              >
+              <div key={quote.id} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-400">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <Link href={`/admin/quotes/${quote.id}`} className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClass(displayStatus)}`}>
-                        {statusLabel(displayStatus)}
-                      </span>
+                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClass(quote.status)}`}>{statusLabel(quote.status)}</span>
                       <span className="text-xs font-semibold text-zinc-400">Quote #{quote.id}</span>
                     </div>
-                    <h2 className="mt-2 truncate text-lg font-black text-zinc-950">
-                      {customerName}
-                    </h2>
-                    <p className="mt-1 line-clamp-2 text-sm leading-5 text-zinc-600">
-                      {quote.scope}
-                    </p>
+                    <h2 className="mt-2 truncate text-lg font-black text-zinc-950">{customerName}</h2>
+                    <p className="mt-1 line-clamp-2 text-sm leading-5 text-zinc-600">{quote.scope}</p>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
                       <span>Updated {formatDate(quote.updatedAt)}</span>
                       {reference.estimatedDays ? <span>{reference.estimatedDays} day estimate</span> : null}
@@ -268,14 +263,10 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
                   <div className="flex flex-none items-center gap-3 sm:text-right">
                     <Link href={`/admin/quotes/${quote.id}`} className="block">
                       <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Total inc VAT</div>
-                      <div className="mt-1 text-2xl font-black text-zinc-950">
-                        {money(reference.totalIncVat)}
-                      </div>
+                      <div className="mt-1 text-2xl font-black text-zinc-950">{money(reference.totalIncVat)}</div>
                       <div className="mt-1 text-xs font-semibold text-zinc-400">Open quote →</div>
                     </Link>
-                    {canDelete ? (
-                      <DeleteQuoteButton quoteId={quote.id} customerName={customerName} compact />
-                    ) : null}
+                    {canDelete ? <DeleteQuoteButton quoteId={quote.id} customerName={customerName} compact /> : null}
                   </div>
                 </div>
               </div>
@@ -286,5 +277,3 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
     </div>
   )
 }
-
-// Deployment marker: linked jobs are always treated as accepted secured work.
