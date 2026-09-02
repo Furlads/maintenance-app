@@ -197,3 +197,34 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     )
   }
 }
+
+export async function DELETE(_req: NextRequest, { params }: RouteContext) {
+  try {
+    const id = Number(params.id)
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ ok: false, error: 'Invalid quote id.' }, { status: 400 })
+    }
+
+    const quote = await prisma.quote.findUnique({
+      where: { id },
+      select: { id: true, status: true, jobId: true },
+    })
+
+    if (!quote) {
+      return NextResponse.json({ ok: false, error: 'Quote not found.' }, { status: 404 })
+    }
+
+    if (quote.jobId || quote.status === 'accepted') {
+      return NextResponse.json(
+        { ok: false, error: 'Accepted quotes or quotes already linked to a job cannot be deleted.' },
+        { status: 409 }
+      )
+    }
+
+    await prisma.quote.delete({ where: { id } })
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('DELETE QUOTE ERROR', error)
+    return NextResponse.json({ ok: false, error: 'Failed to delete quote.' }, { status: 500 })
+  }
+}
