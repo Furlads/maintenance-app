@@ -5,31 +5,43 @@ import { contractorSessionMatchesWorker } from '@/lib/contractor-auth'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const OPPORTUNITY_LINK_DAYS = 14
-
 type Ctx = { params: Promise<{ token: string }> }
 
 function clean(value: unknown) { return typeof value === 'string' ? value.trim() : '' }
+function numberOrNull(value: unknown) {
+  if (value == null || value === '') return null
+  const n = Number(String(value).replace(/[^0-9.]/g, ''))
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+function positiveIntOrNull(value: unknown) {
+  const n = Number(value)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
 
 type OpportunityView = {
   recipientId: number; opportunityId: number; sourceJobId: number | null; status: string; workerId: number;
   firstName: string; lastName: string; transportRequired: boolean; canDrive: boolean; company: string; title: string;
   trade: string; roughArea: string; publicDescription: string; durationText: string | null; timingText: string | null;
-  pricingMode: string; fixedPrice: number | null; quoteGuidance: string | null; createdAt: Date;
+  pricingMode: string; fixedPrice: number | null; quoteGuidance: string | null; createdAt: Date; replyBy: Date | null;
+  priceIncludesVat: boolean; workBasis: string; materialsResponsibility: string | null; plantResponsibility: string | null;
+  wasteResponsibility: string | null; siteNotes: string | null; counterOffer: number | null; counterOfferNotes: string | null;
+  declineReason: string | null; proposedCrewSize: number | null; attendeeNotes: string | null;
 }
 type AcceptedRecipient = { workerId: number; transportRequired: boolean; canDrive: boolean }
 
 function linkExpired(opportunity: OpportunityView) {
-  if (opportunity.status === 'accepted') return false
-  return Date.now() > new Date(opportunity.createdAt).getTime() + OPPORTUNITY_LINK_DAYS * 86400000
+  if (['awarded', 'accepted'].includes(opportunity.status)) return false
+  return opportunity.replyBy ? Date.now() > new Date(opportunity.replyBy).getTime() : false
 }
 
 async function loadOpportunity(token: string) {
   const rows = await prisma.$queryRaw<OpportunityView[]>`
-    SELECT r."id" AS "recipientId", r."opportunityId", r."status", r."workerId", o."sourceJobId",
+    SELECT r."id" AS "recipientId", r."opportunityId", r."status", r."workerId", r."counterOffer", r."counterOfferNotes",
+      r."declineReason", r."proposedCrewSize", r."attendeeNotes", o."sourceJobId",
       w."firstName", w."lastName", w."transportRequired", w."canDrive", o."company", o."title", o."trade",
       o."roughArea", o."publicDescription", o."durationText", o."timingText", o."pricingMode", o."fixedPrice",
-      o."quoteGuidance", o."createdAt"
+      o."quoteGuidance", o."createdAt", o."replyBy", o."priceIncludesVat", o."workBasis", o."materialsResponsibility",
+      o."plantResponsibility", o."wasteResponsibility", o."siteNotes"
     FROM "SubcontractorOpportunityRecipient" r
     JOIN "SubcontractorOpportunity" o ON o."id" = r."opportunityId"
     JOIN "Worker" w ON w."id" = r."workerId"
@@ -75,7 +87,10 @@ async function authorisedOpportunity(token: string) {
   const opportunity = await loadOpportunity(clean(token))
   if (!opportunity) return { error: NextResponse.json({ error: 'Opportunity not found.' }, { status: 404 }), opportunity: null }
   if (!(await contractorSessionMatchesWorker(opportunity.workerId))) return { error: NextResponse.json({ error: 'Please log in to open this subcontractor job.' }, { status: 401 }), opportunity: null }
-  if (linkExpired(opportunity)) return { error: NextResponse.json({ error: 'This opportunity link has expired. Contact the office if the work is still available.' }, { status: 410 }), opportunity: null }
+  if (linkExpired(opportunity)) {
+    await prisma.$executeRaw`UPDATE "SubcontractorOpportunityRecipient" SET "status"='expired' WHERE "id"=${opportunity.recipientId} AND "status" IN ('sent','viewed','interested','countered')`
+    return { error: NextResponse.json({ error: 'This opportunity has expired. Contact the office if the work is still available.' }, { status: 410 }), opportunity: null }
+  }
   return { error: null, opportunity }
 }
 
@@ -104,19 +119,39 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
   const body = await req.json().catch(() => ({} as Record<string, unknown>))
   const action = clean(body.action).toLowerCase()
-  const nextStatus = action === 'decline' ? 'declined' : action === 'accept' ? 'accepted' : action === 'interested' ? 'interested' : ''
-  if (!nextStatus) return NextResponse.json({ error: 'Invalid response.' }, { status: 400 })
 
-  await prisma.$executeRaw`UPDATE "SubcontractorOpportunityRecipient" SET "status" = ${nextStatus}, "respondedAt" = CURRENT_TIMESTAMP, "viewedAt" = COALESCE("viewedAt", CURRENT_TIMESTAMP) WHERE "id" = ${opportunity.recipientId}`
+  if (action === 'interested') {
+    await prisma.$executeRaw`UPDATE "SubcontractorOpportunityRecipient" SET "status"='interested', "respondedAt"=CURRENT_TIMESTAMP, "viewedAt"=COALESCE("viewedAt", CURRENT_TIMESTAMP), "proposedCrewSize"=${positiveIntOrNull(body.proposedCrewSize)}, "attendeeNotes"=${clean(body.attendeeNotes) || null} WHERE "id"=${opportunity.recipientId}`
+    return NextResponse.json({ ok: true, status: 'interested' })
+  }
 
-  let assignmentStatus: 'not_linked' | 'confirmed' | 'transport_required' | null = null
-  if (opportunity.sourceJobId && ['accepted', 'declined'].includes(nextStatus)) {
-    const job = await prisma.job.findUnique({ where: { id: opportunity.sourceJobId }, select: { id: true, status: true } })
-    if (job && !['cancelled', 'archived', 'done'].includes(clean(job.status).toLowerCase())) {
-      const result = await syncAcceptedJobAssignments(job.id)
-      if (nextStatus === 'accepted') assignmentStatus = result.assignedWorkerIds.includes(opportunity.workerId) ? 'confirmed' : opportunity.transportRequired ? 'transport_required' : 'confirmed'
-    }
-  } else if (nextStatus === 'accepted') assignmentStatus = 'not_linked'
+  if (action === 'counter') {
+    const counterOffer = numberOrNull(body.counterOffer)
+    if (counterOffer == null) return NextResponse.json({ error: 'Enter a valid counter-price.' }, { status: 400 })
+    await prisma.$executeRaw`UPDATE "SubcontractorOpportunityRecipient" SET "status"='countered', "counterOffer"=${counterOffer}, "counterOfferNotes"=${clean(body.counterOfferNotes) || null}, "respondedAt"=CURRENT_TIMESTAMP, "viewedAt"=COALESCE("viewedAt", CURRENT_TIMESTAMP), "proposedCrewSize"=${positiveIntOrNull(body.proposedCrewSize)}, "attendeeNotes"=${clean(body.attendeeNotes) || null} WHERE "id"=${opportunity.recipientId}`
+    return NextResponse.json({ ok: true, status: 'countered', counterOffer })
+  }
 
-  return NextResponse.json({ ok: true, status: nextStatus, assignmentStatus })
+  if (action === 'decline') {
+    await prisma.$executeRaw`UPDATE "SubcontractorOpportunityRecipient" SET "status"='declined', "declineReason"=${clean(body.declineReason) || 'Other'}, "respondedAt"=CURRENT_TIMESTAMP, "viewedAt"=COALESCE("viewedAt", CURRENT_TIMESTAMP) WHERE "id"=${opportunity.recipientId}`
+    return NextResponse.json({ ok: true, status: 'declined' })
+  }
+
+  if (action === 'confirm') {
+    if (opportunity.status !== 'awarded') return NextResponse.json({ error: 'This work has not been awarded to you yet.' }, { status: 409 })
+    await prisma.$executeRaw`UPDATE "SubcontractorOpportunityRecipient" SET "status"='accepted', "confirmedAt"=CURRENT_TIMESTAMP, "respondedAt"=CURRENT_TIMESTAMP WHERE "id"=${opportunity.recipientId}`
+
+    let assignmentStatus: 'not_linked' | 'confirmed' | 'transport_required' | null = null
+    if (opportunity.sourceJobId) {
+      const job = await prisma.job.findUnique({ where: { id: opportunity.sourceJobId }, select: { id: true, status: true } })
+      if (job && !['cancelled', 'archived', 'done'].includes(clean(job.status).toLowerCase())) {
+        const result = await syncAcceptedJobAssignments(job.id)
+        assignmentStatus = result.assignedWorkerIds.includes(opportunity.workerId) ? 'confirmed' : opportunity.transportRequired ? 'transport_required' : 'confirmed'
+      }
+    } else assignmentStatus = 'not_linked'
+
+    return NextResponse.json({ ok: true, status: 'accepted', assignmentStatus })
+  }
+
+  return NextResponse.json({ error: 'Invalid response.' }, { status: 400 })
 }
