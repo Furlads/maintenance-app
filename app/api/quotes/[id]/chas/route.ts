@@ -16,6 +16,7 @@ type ChasDecision = {
   intent?: 'review' | 'correct_quote'
   answer?: string
   correctedScope?: string
+  customerTotalIncVatOverride?: number | null
 }
 
 function validId(value: string) {
@@ -30,6 +31,10 @@ function cleanText(value: unknown) {
 function cleanNumber(value: unknown, fallback = 0) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function roundMoney(value: number) {
+  return Number(value.toFixed(2))
 }
 
 function sessionKey(quoteId: number) {
@@ -76,6 +81,13 @@ function formatPricingWorking(pricing: Record<string, any>) {
 
   return [
     'CHAS REPRICE — OFFICE CORRECTION APPLIED',
+    '',
+    pricing.officePriceOverrideIncVat
+      ? `OFFICE-APPROVED CUSTOMER TOTAL: ${money(pricing.officePriceOverrideIncVat)} inc VAT`
+      : '',
+    pricing.officePriceOverrideIncVat
+      ? 'Selling price manually approved by the office; direct job costs below were not changed by the price override.'
+      : '',
     '',
     pricing.summary ? `Scope summary: ${pricing.summary}` : '',
     `Recommended price ex VAT: ${money(pricing.recommendedPriceExVat)}`,
@@ -235,7 +247,11 @@ First decide whether the latest message is:
 - review: a question, challenge, explanation request, calculation request, or suggestion that does NOT clearly ask you to change the stored quote; or
 - correct_quote: Trev/Kelly explicitly corrects, removes, replaces, clarifies or changes part of the quote and expects the quote itself to be updated. Phrases such as "remove option C", "change it to", "update the quote", "that's wrong", "she actually wants", "I meant", "correct that", or equivalent clear instructions mean correct_quote.
 
-For correct_quote, correctedScope must be the complete replacement scope after applying the requested change. Preserve everything that remains valid. Remove anything the user explicitly removes. If the quote contains Options A/B/C/D and they say remove C, return the full remaining A/B/D scope with C absent.
+For correct_quote:
+- correctedScope must be the complete replacement scope after applying the requested change. Preserve everything that remains valid. Remove anything the user explicitly removes. If the quote contains Options A/B/C/D and they say remove C, return the full remaining A/B/D scope with C absent.
+- If Trev/Kelly explicitly sets the CUSTOMER TOTAL INCLUDING VAT using wording such as "£4,220 all in", "total £4,220", "accepted price £4,220 inc VAT" or equivalent, put that exact customer total in customerTotalIncVatOverride. This is an authorised selling-price override, not a request for CHAS to choose a new price.
+- Never put an ex-VAT figure in customerTotalIncVatOverride unless the user explicitly says the figure is all-in/inc-VAT/total including VAT.
+- If no explicit all-in/inc-VAT customer total is set, return customerTotalIncVatOverride as null.
 
 For review:
 - Give the useful number or conclusion first.
@@ -248,11 +264,13 @@ Important rules:
 - A clear correction instruction is authority to update the quote, even if the quote was previously sent, accepted or linked to a job. Do NOT tell the user to reopen it first.
 - If an accepted/linked quote is changed, the app will preserve the link and refresh or flag the job plan after the quote update.
 - If the corrected quote still contains several valid packages/options, that is fine. Do not refuse the correction just because it is multi-option.
+- A manual customer-price override changes selling revenue, VAT, deposit, gross profit and GP%. It must NOT change the recalculated materials, labour, plant, waste or other direct job costs.
 - Return ONLY valid JSON with exactly this structure:
 {
   "intent": "review" or "correct_quote",
   "answer": "short direct internal reply",
-  "correctedScope": "only for correct_quote, otherwise empty"
+  "correctedScope": "only for correct_quote, otherwise empty",
+  "customerTotalIncVatOverride": null
 }`,
       input: `CURRENT QUOTE\n${context}\n\n${recentConversation ? `RECENT REVIEW CHAT\n${recentConversation}\n\n` : ''}LATEST MESSAGE\n${question}`,
     })
@@ -282,20 +300,64 @@ Important rules:
           throw new Error(pricing?.error || 'CHAS could not reprice the corrected scope.')
         }
 
-        const quoteMode = cleanText(pricing?.quoteMode) || (pricing?.optionMode ? 'packages' : 'single')
-        const options = Array.isArray(pricing?.options) ? pricing.options : []
-        const combinedOffers = Array.isArray(pricing?.combinedOffers)
+        let quoteMode = cleanText(pricing?.quoteMode) || (pricing?.optionMode ? 'packages' : 'single')
+        let options = Array.isArray(pricing?.options) ? pricing.options : []
+        let combinedOffers = Array.isArray(pricing?.combinedOffers)
           ? pricing.combinedOffers
           : pricing?.combinedOffer
             ? [pricing.combinedOffer]
             : []
 
-        const priceExVat = cleanNumber(pricing?.recommendedPriceExVat)
-        const vatRate = cleanNumber(pricing?.vatRate, 20)
-        const vatAmount = cleanNumber(pricing?.vatAmount)
-        const totalIncVat = cleanNumber(pricing?.recommendedTotalIncVat)
+        const vatRate = cleanNumber(pricing?.vatRate, 20) || 20
         const depositPercent = cleanNumber(pricing?.depositPercent, quote.depositPercent || 25)
-        const depositAmount = cleanNumber(pricing?.depositAmount)
+        const customerTotalOverride = cleanNumber(decision.customerTotalIncVatOverride)
+        const hasCustomerTotalOverride = customerTotalOverride > 0
+
+        let priceExVat = cleanNumber(pricing?.recommendedPriceExVat)
+        let vatAmount = cleanNumber(pricing?.vatAmount)
+        let totalIncVat = cleanNumber(pricing?.recommendedTotalIncVat)
+        let depositAmount = cleanNumber(pricing?.depositAmount)
+
+        if (hasCustomerTotalOverride) {
+          totalIncVat = roundMoney(customerTotalOverride)
+          priceExVat = roundMoney(totalIncVat / (1 + vatRate / 100))
+          vatAmount = roundMoney(totalIncVat - priceExVat)
+          depositAmount = roundMoney((totalIncVat * depositPercent) / 100)
+
+          const estimatedHardCosts = cleanNumber(pricing?.estimatedHardCosts)
+          const grossProfit = roundMoney(priceExVat - estimatedHardCosts)
+          const grossMarginPercent = priceExVat > 0
+            ? roundMoney((grossProfit / priceExVat) * 100)
+            : 0
+
+          pricing.recommendedPriceExVat = priceExVat
+          pricing.vatRate = vatRate
+          pricing.vatAmount = vatAmount
+          pricing.recommendedTotalIncVat = totalIncVat
+          pricing.depositPercent = depositPercent
+          pricing.depositAmount = depositAmount
+          pricing.achievedGrossMargin = grossMarginPercent
+          pricing.officePriceOverrideIncVat = totalIncVat
+          pricing.pricingNotes = [
+            ...(Array.isArray(pricing.pricingNotes) ? pricing.pricingNotes : []),
+            `Office-approved customer total manually set to £${totalIncVat.toFixed(2)} inc VAT. Direct job costs were left unchanged by this selling-price override.`,
+          ]
+
+          if (grossMarginPercent < 30) {
+            pricing.warningFlags = Array.from(new Set([
+              ...(Array.isArray(pricing.warningFlags) ? pricing.warningFlags : []),
+              'Office-approved selling price is below the 30% gross-margin target.',
+            ]))
+          }
+
+          // An explicit accepted/all-in price means the remaining corrected scope is
+          // now one agreed commercial package. Keep the underlying cost calculation,
+          // but do not show stale individual option selling prices to the customer.
+          quoteMode = 'single'
+          options = []
+          combinedOffers = []
+        }
+
         const estimatedDays = cleanNumber(pricing?.estimatedDuration?.workingDays)
         const estimatedTeamSize = Math.max(1, Math.round(cleanNumber(pricing?.estimatedDuration?.teamSize, 1)))
 
@@ -314,9 +376,11 @@ Important rules:
             combinedOffers,
             combinedOffer: combinedOffers[0] || null,
             jobDetails: correctedScope,
-            additionalInstructions: pricing?.optionMode
-              ? 'Rewrite this corrected multi-option quote from Kelly in the normal warm Furlads style. Show only the remaining options and valid combinations. Do not mention any removed option. Keep all commercial figures exact.'
-              : 'Rewrite this corrected quote from Kelly in the normal warm Furlads style. Keep the corrected scope and commercial figures exact. Kelly is the main point of contact from here.',
+            additionalInstructions: hasCustomerTotalOverride
+              ? `Rewrite this corrected quote from Kelly using the office-approved all-in customer total of £${totalIncVat.toFixed(2)} including VAT. Show only the remaining corrected scope. Do not mention removed options or alternative selling prices. This figure is approved and must not be changed.`
+              : pricing?.optionMode
+                ? 'Rewrite this corrected multi-option quote from Kelly in the normal warm Furlads style. Show only the remaining options and valid combinations. Do not mention any removed option. Keep all commercial figures exact.'
+                : 'Rewrite this corrected quote from Kelly in the normal warm Furlads style. Keep the corrected scope and commercial figures exact. Kelly is the main point of contact from here.',
             priceExVat,
             vatRate,
             depositPercent,
@@ -368,11 +432,22 @@ Important rules:
           }
         }
 
-        const optionNote = pricing?.optionMode
+        const optionNote = !hasCustomerTotalOverride && pricing?.optionMode
           ? ` The remaining options/packages have been rebuilt without the removed work.`
           : ''
+        const estimatedHardCosts = cleanNumber(pricing?.estimatedHardCosts)
+        const grossProfit = estimatedHardCosts > 0 ? roundMoney(priceExVat - estimatedHardCosts) : null
+        const grossMarginPercent = grossProfit == null || priceExVat <= 0
+          ? null
+          : roundMoney((grossProfit / priceExVat) * 100)
+        const marginNote = grossMarginPercent == null
+          ? ''
+          : ` Direct job cost: ${money(estimatedHardCosts)}. Gross profit: ${money(grossProfit)} (${grossMarginPercent.toFixed(1)}% GP).${grossMarginPercent < 30 ? ' ⚠️ This is below the 30% target.' : ''}`
+        const overrideNote = hasCustomerTotalOverride
+          ? ' The customer price was applied exactly as instructed; it did not alter the underlying job costs.'
+          : ''
 
-        answer = `Done — I've updated the quote and repriced it.${optionNote}\n\nNew reference price: ${money(priceExVat)} + VAT (${money(totalIncVat)} inc VAT). Deposit: ${money(depositAmount)}.${estimatedDays > 0 ? ` Programme: ${estimatedDays} working day(s) with ${estimatedTeamSize} ${estimatedTeamSize === 1 ? 'person' : 'people'}.` : ''}${jobMessage}`
+        answer = `Done — I've updated the quote and repriced the corrected scope.${optionNote}${overrideNote}\n\nNew price: ${money(priceExVat)} + VAT (${money(totalIncVat)} inc VAT). VAT: ${money(vatAmount)}. Deposit: ${money(depositAmount)}.${marginNote}${estimatedDays > 0 ? ` Programme: ${estimatedDays} working day(s) with ${estimatedTeamSize} ${estimatedTeamSize === 1 ? 'person' : 'people'}.` : ''}${jobMessage}`
       }
     }
 
