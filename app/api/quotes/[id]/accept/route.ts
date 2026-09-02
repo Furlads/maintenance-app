@@ -58,7 +58,25 @@ export async function POST(_req: Request, { params }: RouteContext) {
     })
 
     if (!quote) return NextResponse.json({ ok: false, error: 'Quote not found.' }, { status: 404 })
-    if (quote.job) return NextResponse.json({ ok: true, quote, job: quote.job })
+
+    // A linked job means this quote has already been accepted. Older flows could
+    // create the job first and leave the quote badge stuck on ready_to_send.
+    // Self-heal that inconsistent state instead of returning the stale quote.
+    if (quote.job) {
+      const acceptedQuote = quote.status === 'accepted'
+        ? quote
+        : await prisma.quote.update({
+            where: { id: quote.id },
+            data: {
+              status: 'accepted',
+              acceptedAt: quote.acceptedAt || new Date(),
+              archivedAt: null,
+            },
+            include: { customer: true, job: true },
+          })
+
+      return NextResponse.json({ ok: true, quote: acceptedQuote, job: quote.job })
+    }
 
     const customerName = titleCasePersonName(clean(quote.customerName) || clean(quote.customer?.name))
     const customerPostcode = clean(quote.customerPostcode) || clean(quote.customer?.postcode)
