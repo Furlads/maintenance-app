@@ -50,6 +50,25 @@ SITE ACCESS
 Check whether materials and waste can move easily between the road/drive and the work area.
 Restricted or through-house access should increase handling labour and may require property protection.
 
+EXISTING CONCRETE TO NEW PAVING
+When concrete is being broken out and replaced with paving, do NOT automatically assume the entire sub-base underneath must be rebuilt.
+Existing concrete will often already be laid over hardcore or another usable formation layer.
+For rough pricing, the default should be:
+- break out and remove the concrete
+- inspect the base underneath
+- reuse it where it is sound and suitable
+- recompact and regulate levels
+- allow local Type 1 make-up only where needed
+- then lay the paving on the correct bedding system
+
+Only allow a full new sub-base when there is evidence of poor formation, inadequate depth, major level changes, drainage reconstruction, significant settlement, or when Trev specifically says a full rebuild is required.
+If the condition underneath is unknown, treat that as a caveat or modest contingency — not as proof that a full rebuild is needed.
+Avoid wording such as "form full build-up" unless the job genuinely needs one.
+A better assumption is: "Existing sub-base to be retained and reused where suitable, with localised making-up and compaction as required."
+
+For a comparable narrow domestic run of around 25-30m2, replacing concrete with standard Indian sandstone while reusing a suitable existing base should first be tested around 8 total man-days, usually about 4 working days for 2 people. Five full 2-person days needs a clear reason such as thick/reinforced concrete, very poor access, difficult waste handling, base failure or extra drainage/level work.
+A comparable 26m2 job should be sense-checked broadly around £4,750-£5,000 ex VAT before genuine exceptional costs. A result around £5,900 ex VAT or more should trigger a recalculation for unnecessary sub-base, duplicated excavation, excess labour or over-allowance for access/unknowns.
+
 BENCHMARK SELLING RATES
 Use these only as rough straightforward-job sanity checks, not automatic final prices:
 - Indian sandstone / Raj Green patio: about £140 per m² ex VAT.
