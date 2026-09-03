@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { titleCasePersonName } from '@/lib/nameCase'
+import { splitCustomerAddress } from '@/lib/customerAddress'
 
 export async function GET(
   request: Request,
@@ -35,14 +36,15 @@ export async function PUT(
     const existingCustomer = await prisma.customer.findUnique({ where: { id: customerId } })
     if (!existingCustomer) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
 
+    const split = splitCustomerAddress(body.address, body.postcode)
     const updatedCustomer = await prisma.customer.update({
       where: { id: customerId },
       data: {
         name,
         phone: typeof body.phone === 'string' && body.phone.trim() ? body.phone.trim() : null,
         email: typeof body.email === 'string' && body.email.trim() ? body.email.trim() : null,
-        address: typeof body.address === 'string' && body.address.trim() ? body.address.trim() : null,
-        postcode: typeof body.postcode === 'string' && body.postcode.trim() ? body.postcode.trim().toUpperCase() : null,
+        address: split.address || null,
+        postcode: split.postcode || null,
         notes: typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null
       }
     })
