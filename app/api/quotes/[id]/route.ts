@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { splitCustomerAddress } from '@/lib/customerAddress'
 
 export const runtime = 'nodejs'
 
@@ -60,6 +61,9 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       select: {
         status: true,
         jobId: true,
+        customerId: true,
+        customerAddress: true,
+        customerPostcode: true,
         acceptedAt: true,
         priceExVat: true,
         depositPercent: true,
@@ -74,8 +78,6 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     }
 
     const amendmentMode = body.amendmentMode === true
-    // A job can exist before the customer accepts (legacy/survey/planning flows).
-    // Only an explicit accepted status/timestamp makes the commercial quote locked.
     const protectedAcceptedQuote =
       currentQuote.status === 'accepted' || Boolean(currentQuote.acceptedAt)
     const commercialFields = [
@@ -106,12 +108,32 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     }
 
     const data: Record<string, unknown> = {}
+    const customerData: Record<string, unknown> = {}
 
-    if ('customerName' in body) data.customerName = cleanString(body.customerName) || null
-    if ('customerPhone' in body) data.customerPhone = cleanString(body.customerPhone) || null
-    if ('customerEmail' in body) data.customerEmail = cleanString(body.customerEmail) || null
-    if ('customerAddress' in body) data.customerAddress = cleanString(body.customerAddress) || null
-    if ('customerPostcode' in body) data.customerPostcode = cleanString(body.customerPostcode) || null
+    if ('customerName' in body) {
+      data.customerName = cleanString(body.customerName) || null
+      customerData.name = cleanString(body.customerName)
+    }
+    if ('customerPhone' in body) {
+      data.customerPhone = cleanString(body.customerPhone) || null
+      customerData.phone = cleanString(body.customerPhone) || null
+    }
+    if ('customerEmail' in body) {
+      data.customerEmail = cleanString(body.customerEmail) || null
+      customerData.email = cleanString(body.customerEmail) || null
+    }
+
+    if ('customerAddress' in body || 'customerPostcode' in body) {
+      const split = splitCustomerAddress(
+        'customerAddress' in body ? body.customerAddress : currentQuote.customerAddress,
+        'customerPostcode' in body ? body.customerPostcode : currentQuote.customerPostcode
+      )
+      data.customerAddress = split.address || null
+      data.customerPostcode = split.postcode || null
+      customerData.address = split.address || null
+      customerData.postcode = split.postcode || null
+    }
+
     if ('scope' in body) data.scope = cleanString(body.scope)
     if ('customerMessage' in body) data.customerMessage = cleanString(body.customerMessage) || null
     if ('internalNotes' in body) data.internalNotes = cleanString(body.internalNotes) || null
@@ -188,9 +210,20 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       data.archivedAt = status === 'archived' ? new Date() : null
     }
 
-    const quote = await prisma.quote.update({
-      where: { id },
-      data,
+    const quote = await prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.update({
+        where: { id },
+        data,
+      })
+
+      if (currentQuote.customerId && Object.keys(customerData).length) {
+        await tx.customer.update({
+          where: { id: currentQuote.customerId },
+          data: customerData,
+        })
+      }
+
+      return updated
     })
 
     return NextResponse.json({ ok: true, quote })
