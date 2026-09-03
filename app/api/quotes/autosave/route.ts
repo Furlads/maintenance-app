@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { splitCustomerAddress } from '@/lib/customerAddress'
 
 export const runtime = 'nodejs'
 
@@ -60,7 +61,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const conversationId = text(body.conversationId)
     const customerName = text(body.customerName)
-    const customerPostcode = text(body.customerPostcode)
+    const suppliedAddress = splitCustomerAddress(body.customerAddress, body.customerPostcode)
+    const customerPostcode = suppliedAddress.postcode
     const scope =
       text(body.scope) ||
       (customerName ? `Quote in progress for ${customerName}` : 'Quote in progress')
@@ -90,18 +92,31 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const customerAddress = suppliedAddress.address || customer?.address || ''
+    const resolvedPostcode = customerPostcode || customer?.postcode || ''
+
+    if (customer && ('customerAddress' in body || 'customerPostcode' in body)) {
+      customer = await prisma.customer.update({
+        where: { id: customer.id },
+        data: {
+          address: customerAddress || null,
+          postcode: resolvedPostcode || null,
+        },
+      })
+    }
+
     await prisma.conversation.upsert({
       where: { id: conversationId },
       update: {
         contactName: customerName,
-        contactRef: customerPostcode || customer?.postcode || null,
+        contactRef: resolvedPostcode || null,
         archived: false,
       },
       create: {
         id: conversationId,
         source: 'chas_quote_draft',
         contactName: customerName,
-        contactRef: customerPostcode || customer?.postcode || null,
+        contactRef: resolvedPostcode || null,
         archived: false,
       },
     })
@@ -126,8 +141,8 @@ export async function POST(req: NextRequest) {
       customerName: customerName || customer?.name || null,
       customerPhone: text(body.customerPhone) || customer?.phone || null,
       customerEmail: text(body.customerEmail) || customer?.email || null,
-      customerAddress: text(body.customerAddress) || customer?.address || null,
-      customerPostcode: customerPostcode || customer?.postcode || null,
+      customerAddress: customerAddress || null,
+      customerPostcode: resolvedPostcode || null,
       scope,
       quoteWorking,
       status: 'in_progress',
