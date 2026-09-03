@@ -94,48 +94,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       </nav>
 
       <style jsx global>{`
-        .admin-layout-shell main { color: #f8fafc; }
-        .admin-layout-shell main .bg-white { background-color: #101d2d !important; }
-        .admin-layout-shell main .bg-zinc-50 { background-color: #0d1928 !important; }
-        .admin-layout-shell main .bg-zinc-100 { background-color: #162438 !important; }
-        .admin-layout-shell main .border-zinc-200,
-        .admin-layout-shell main .border-zinc-300 { border-color: rgba(255,255,255,.12) !important; }
-        .admin-layout-shell main .ring-zinc-200,
-        .admin-layout-shell main .ring-zinc-300 { --tw-ring-color: rgba(255,255,255,.12) !important; }
-        .admin-layout-shell main .text-zinc-950,
-        .admin-layout-shell main .text-zinc-900,
-        .admin-layout-shell main .text-zinc-800,
-        .admin-layout-shell main .text-zinc-700 { color: #f8fafc !important; }
-        .admin-layout-shell main .text-zinc-600,
-        .admin-layout-shell main .text-zinc-500,
-        .admin-layout-shell main .text-zinc-400 { color: #aab7c8 !important; }
-        .admin-layout-shell main .bg-green-50 { background-color: #0d281d !important; }
-        .admin-layout-shell main .bg-blue-50 { background-color: #0c2138 !important; }
-        .admin-layout-shell main .bg-amber-50 { background-color: #2b220b !important; }
-        .admin-layout-shell main .bg-red-50 { background-color: #2b1218 !important; }
-        .admin-layout-shell main .bg-purple-50 { background-color: #21162f !important; }
-        .admin-layout-shell main .bg-fuchsia-50 { background-color: #2c1528 !important; }
-        .admin-layout-shell main .bg-emerald-50 { background-color: #0d281f !important; }
-        .admin-layout-shell main .text-green-700,
-        .admin-layout-shell main .text-green-800,
-        .admin-layout-shell main .text-emerald-700,
-        .admin-layout-shell main .text-emerald-800,
-        .admin-layout-shell main .text-emerald-900,
-        .admin-layout-shell main .text-emerald-950 { color: #86efac !important; }
-        .admin-layout-shell main .text-blue-700,
-        .admin-layout-shell main .text-blue-800,
-        .admin-layout-shell main .text-blue-900,
-        .admin-layout-shell main .text-blue-950 { color: #93c5fd !important; }
-        .admin-layout-shell main .text-amber-700,
-        .admin-layout-shell main .text-amber-800,
-        .admin-layout-shell main .text-amber-900,
-        .admin-layout-shell main .text-amber-950 { color: #fde68a !important; }
-        .admin-layout-shell main .text-red-700,
-        .admin-layout-shell main .text-red-800 { color: #fca5a5 !important; }
-        .admin-layout-shell main .bg-amber-400.text-zinc-950,
-        .admin-layout-shell main .bg-yellow-300.text-zinc-950,
-        .admin-layout-shell main .bg-yellow-400.text-zinc-950,
-        .admin-layout-shell main .bg-\[\#a8ca4a\] { color: #111827 !important; }
+        .admin-layout-shell > main > * { color: #111827; }
         @media (min-width: 900px) {
           .admin-layout-shell { grid-template-columns: 240px 1fr !important; }
           .admin-sidebar { display: block !important; }
