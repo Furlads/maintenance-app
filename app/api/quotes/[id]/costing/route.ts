@@ -84,9 +84,6 @@ export async function GET(_request: Request, { params }: RouteContext) {
       crews,
     })
 
-    // The stored Quote price is the commercial source of truth. This matters
-    // after an explicit office/customer price amendment: old package figures in
-    // historical CHAS working must never override the current accepted price.
     const sellingPriceExVat = quote.priceExVat
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.')
@@ -140,7 +137,14 @@ Use exactly this shape:
     const materials = cleanNumber(result.materials)
     const aiLabour = cleanNumber(result.labour)
     const recommendedCrew = crewComparison.options.find((option) => option.recommended)
-    const labour = recommendedCrew?.totalLabourCost ?? aiLabour
+
+    // CHAS' reconstructed labour cost is the costing source of truth because it
+    // can account for the full programme/man-days. Crew comparison is advisory.
+    // Only fall back to a crew total if CHAS could not produce a labour figure.
+    const labour = aiLabour > 0
+      ? aiLabour
+      : recommendedCrew?.totalLabourCost ?? 0
+
     const plantWasteLogistics = cleanNumber(result.plantWasteLogistics)
     const other = cleanNumber(result.other)
     const totalDirectCost = Number((materials + labour + plantWasteLogistics + other).toFixed(2))
