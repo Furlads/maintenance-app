@@ -144,7 +144,7 @@ export default function KellyQuoteOverview({
                 </div>
               </div>
               {costing ? (
-                <div className={`rounded-full px-3 py-1 text-xs font-black ${costing.grossMarginPercent >= 30 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${costing.grossMarginPercent >= 30 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {costing.grossMarginPercent.toFixed(1)}% GP
                 </div>
               ) : null}
@@ -171,18 +171,21 @@ export default function KellyQuoteOverview({
                 />
                 <CostRow label="Plant / waste / logistics" value={costing.plantWasteLogistics} />
                 {costing.other > 0 ? <CostRow label="Other / contingency" value={costing.other} /> : null}
-                <div className="mt-3 flex items-center justify-between border-t border-zinc-300 pt-3">
+                <div className="mt-3 flex items-center justify-between gap-4 border-t border-zinc-300 pt-3">
                   <span className="text-sm font-black text-zinc-900">Estimated direct cost</span>
-                  <span className="text-lg font-black text-zinc-950">{money(costing.totalDirectCost)}</span>
+                  <span className="whitespace-nowrap text-lg font-black text-zinc-950">{money(costing.totalDirectCost)}</span>
                 </div>
-                <div className="flex items-center justify-between rounded-xl bg-green-50 px-3 py-2.5 text-green-900">
+                <div className="flex items-center justify-between gap-4 rounded-xl bg-green-50 px-3 py-2.5 text-green-900">
                   <span className="text-sm font-black">Estimated gross profit</span>
-                  <span className="text-lg font-black">{money(costing.grossProfitEstimate)}</span>
+                  <span className="whitespace-nowrap text-lg font-black">{money(costing.grossProfitEstimate)}</span>
                 </div>
                 {costing.notes.length ? (
-                  <div className="pt-1 text-xs leading-5 text-zinc-500">
-                    {costing.notes.join(' · ')}
-                  </div>
+                  <details className="group pt-1">
+                    <summary className="cursor-pointer text-xs font-bold text-zinc-600">Cost assumptions</summary>
+                    <div className="mt-2 text-xs leading-5 text-zinc-500">
+                      {costing.notes.join(' · ')}
+                    </div>
+                  </details>
                 ) : null}
               </div>
             ) : null}
@@ -266,16 +269,18 @@ export default function KellyQuoteOverview({
                         </div>
                       </div>
                       {option.recommended ? (
-                        <span className="rounded-full bg-green-700 px-2.5 py-1 text-[11px] font-black text-white">
+                        <span className="shrink-0 rounded-full bg-green-700 px-2.5 py-1 text-[11px] font-black text-white">
                           Recommended
                         </span>
                       ) : null}
                     </div>
 
-                    <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="mt-3 grid grid-cols-2 gap-2">
                       <CrewMetric label="Day rate" value={money(option.dayRate)} />
-                      <CrewMetric label="Expected" value={`${option.expectedDays} days`} />
                       <CrewMetric label="Total labour" value={money(option.totalLabourCost)} />
+                    </div>
+                    <div className="mt-2 text-xs font-bold text-zinc-600">
+                      Expected programme: {option.expectedDays} {option.expectedDays === 1 ? 'day' : 'days'}
                     </div>
 
                     <p className="mt-3 text-xs leading-5 text-zinc-600">{option.reason}</p>
@@ -323,17 +328,17 @@ export default function KellyQuoteOverview({
 function CostRow({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-inset ring-zinc-200">
-      <span className="text-sm font-semibold text-zinc-600">{label}</span>
-      <span className="text-sm font-black text-zinc-950">{money(value)}</span>
+      <span className="min-w-0 text-sm font-semibold text-zinc-600">{label}</span>
+      <span className="shrink-0 whitespace-nowrap text-sm font-black text-zinc-950">{money(value)}</span>
     </div>
   )
 }
 
 function CrewMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl bg-white px-2.5 py-2 ring-1 ring-inset ring-zinc-200">
+    <div className="min-w-0 rounded-xl bg-white px-3 py-2 ring-1 ring-inset ring-zinc-200">
       <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">{label}</div>
-      <div className="mt-1 text-sm font-black text-zinc-900">{value}</div>
+      <div className="mt-1 whitespace-nowrap text-sm font-black text-zinc-900">{value}</div>
     </div>
   )
 }
