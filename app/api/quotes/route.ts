@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { splitCustomerAddress } from '@/lib/customerAddress'
 
 export const runtime = 'nodejs'
 
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const suppliedAddress = splitCustomerAddress(body.customerAddress, body.customerPostcode)
+
     let customer = null
     const requestedCustomerId = Number(body.customerId)
 
@@ -55,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     if (!customer) {
       const requestedName = cleanString(body.customerName)
-      const requestedPostcode = cleanString(body.customerPostcode)
+      const requestedPostcode = suppliedAddress.postcode
 
       if (requestedName && requestedPostcode) {
         customer = await prisma.customer.findFirst({
@@ -65,6 +68,27 @@ export async function POST(req: NextRequest) {
             postcode: requestedPostcode,
           },
           orderBy: { createdAt: 'desc' },
+        })
+      }
+    }
+
+    const customerAddress = suppliedAddress.address || customer?.address || ''
+    const customerPostcode = suppliedAddress.postcode || customer?.postcode || ''
+
+    if (customer) {
+      const customerData: Record<string, unknown> = {}
+      if (cleanString(body.customerName)) customerData.name = cleanString(body.customerName)
+      if (cleanString(body.customerPhone)) customerData.phone = cleanString(body.customerPhone)
+      if (cleanString(body.customerEmail)) customerData.email = cleanString(body.customerEmail)
+      if ('customerAddress' in body || 'customerPostcode' in body) {
+        customerData.address = customerAddress || null
+        customerData.postcode = customerPostcode || null
+      }
+
+      if (Object.keys(customerData).length) {
+        customer = await prisma.customer.update({
+          where: { id: customer.id },
+          data: customerData,
         })
       }
     }
@@ -93,8 +117,8 @@ export async function POST(req: NextRequest) {
         customerName: cleanString(body.customerName) || customer?.name || null,
         customerPhone: cleanString(body.customerPhone) || customer?.phone || null,
         customerEmail: cleanString(body.customerEmail) || customer?.email || null,
-        customerAddress: cleanString(body.customerAddress) || customer?.address || null,
-        customerPostcode: cleanString(body.customerPostcode) || customer?.postcode || null,
+        customerAddress: customerAddress || null,
+        customerPostcode: customerPostcode || null,
         scope,
         customerMessage: cleanString(body.customerMessage) || null,
         internalNotes: cleanString(body.internalNotes) || null,
