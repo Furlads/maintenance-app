@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { titleCasePersonName } from '@/lib/nameCase'
+import { splitCustomerAddress } from '@/lib/customerAddress'
 
 function normaliseText(value: unknown) {
   if (typeof value !== 'string') return ''
@@ -50,8 +51,9 @@ export async function POST(request: Request) {
     const name = titleCasePersonName(body.name)
     const phone = typeof body.phone === 'string' && body.phone.trim() ? body.phone.trim() : null
     const email = typeof body.email === 'string' && body.email.trim() ? body.email.trim() : null
-    const address = typeof body.address === 'string' && body.address.trim() ? body.address.trim() : null
-    const postcode = typeof body.postcode === 'string' && body.postcode.trim() ? body.postcode.trim().toUpperCase() : null
+    const split = splitCustomerAddress(body.address, body.postcode)
+    const address = split.address || null
+    const postcode = split.postcode || null
     const notes = typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null
     const forceCreate = body.forceCreate === true
 
