@@ -20,10 +20,38 @@ function normalisePhone(value: unknown) {
 
 export async function GET() {
   try {
-    const customers = await prisma.customer.findMany({
+    const rows = await prisma.customer.findMany({
       where: { archived: false },
       orderBy: { createdAt: 'desc' }
     })
+
+    // Self-heal older customer records where the postcode was stored at the end
+    // of the address instead of in the dedicated postcode field.
+    const repairs = rows.flatMap((customer) => {
+      const split = splitCustomerAddress(customer.address, customer.postcode)
+      const currentAddress = customer.address || ''
+      const currentPostcode = customer.postcode || ''
+      if (split.address === currentAddress && split.postcode === currentPostcode) return []
+      if (!split.postcode) return []
+      return [
+        prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            address: split.address || null,
+            postcode: split.postcode,
+          },
+        }),
+      ]
+    })
+
+    if (repairs.length) await prisma.$transaction(repairs)
+
+    const customers = repairs.length
+      ? await prisma.customer.findMany({
+          where: { archived: false },
+          orderBy: { createdAt: 'desc' }
+        })
+      : rows
 
     return NextResponse.json(
       customers.map((customer) => ({
