@@ -87,11 +87,29 @@ export function safeQuoteReference(params: {
   storedEstimatedDays?: number | null
   storedEstimatedTeamSize?: number | null
 }): QuoteReference {
-  const working = String(params.quoteWorking || '')
+  const storedPriceExVat = Number.isFinite(params.storedPriceExVat)
+    ? params.storedPriceExVat
+    : 0
 
-  // Multi-option quotes must always show the customer's best complete/all-together
-  // package first. Do not let stale stored figures or older CHAS calculations
-  // replace the headline package price.
+  // The stored quote is the commercial source of truth. Historical CHAS working
+  // can contain superseded package figures and must never overwrite the current
+  // office/customer price once one has been saved.
+  if (storedPriceExVat > 0) {
+    const vatAmount = Number(((storedPriceExVat * VAT_RATE) / 100).toFixed(2))
+    return {
+      priceExVat: storedPriceExVat,
+      vatRate: VAT_RATE,
+      vatAmount,
+      totalIncVat: Number((storedPriceExVat + vatAmount).toFixed(2)),
+      estimatedDays: params.storedEstimatedDays ?? null,
+      estimatedTeamSize: params.storedEstimatedTeamSize ?? null,
+      source: 'stored',
+    }
+  }
+
+  // Legacy fallback only: recover a figure from CHAS working when the record has
+  // no stored commercial price at all.
+  const working = String(params.quoteWorking || '')
   const combined = combinedLine(working)
   const combinedResult = combined ? resultFromLine(combined, 'combined_offer') : null
   if (combinedResult) return combinedResult
@@ -115,16 +133,11 @@ export function safeQuoteReference(params: {
     }
   }
 
-  const storedPriceExVat = Number.isFinite(params.storedPriceExVat)
-    ? params.storedPriceExVat
-    : 0
-  const vatAmount = Number(((storedPriceExVat * VAT_RATE) / 100).toFixed(2))
-
   return {
-    priceExVat: storedPriceExVat,
+    priceExVat: 0,
     vatRate: VAT_RATE,
-    vatAmount,
-    totalIncVat: Number((storedPriceExVat + vatAmount).toFixed(2)),
+    vatAmount: 0,
+    totalIncVat: 0,
     estimatedDays: params.storedEstimatedDays ?? null,
     estimatedTeamSize: params.storedEstimatedTeamSize ?? null,
     source: 'stored',
