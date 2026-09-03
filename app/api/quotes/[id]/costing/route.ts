@@ -26,6 +26,32 @@ function extractJson(value: string) {
   }
 }
 
+function durationFromWorking(working: string | null) {
+  const text = String(working || '')
+  if (!text) return null
+
+  // For packaged quotes, the all-together programme is the relevant office
+  // planning duration. This also repairs older quotes where estimatedDays was
+  // not persisted even though CHAS wrote the combined programme into working.
+  const combined = text.match(/(?:Combined install|Likely combined install)\s*:\s*([0-9]+(?:\.5)?)\s*(?:working\s*)?days?\s+with\s+([0-9]+)/i)
+  if (combined) {
+    return {
+      days: Number(combined[1]),
+      teamSize: Number(combined[2]),
+    }
+  }
+
+  const standard = text.match(/(?:Likely install|Install)\s*:\s*([0-9]+(?:\.5)?)\s*(?:working\s*)?days?\s+with\s+([0-9]+)/i)
+  if (standard) {
+    return {
+      days: Number(standard[1]),
+      teamSize: Number(standard[2]),
+    }
+  }
+
+  return null
+}
+
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
     const id = Number(params.id)
@@ -49,6 +75,14 @@ export async function GET(_request: Request, { params }: RouteContext) {
     if (!quote) {
       return NextResponse.json({ ok: false, error: 'Quote not found.' }, { status: 404 })
     }
+
+    const workingDuration = durationFromWorking(quote.quoteWorking)
+    const estimatedDays = quote.estimatedDays && quote.estimatedDays > 0
+      ? quote.estimatedDays
+      : workingDuration?.days ?? null
+    const estimatedTeamSize = quote.estimatedTeamSize && quote.estimatedTeamSize > 0
+      ? quote.estimatedTeamSize
+      : workingDuration?.teamSize ?? null
 
     const crews = await prisma.crew.findMany({
       where: { active: true },
@@ -80,7 +114,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
     const crewComparison = compareCrewCosts({
       scope: quote.scope,
       internalNotes: quote.internalNotes,
-      estimatedDays: quote.estimatedDays,
+      estimatedDays,
       crews,
     })
 
@@ -125,8 +159,8 @@ Use exactly this shape:
       input: [
         `Quote #${quote.id}`,
         `Selling price ex VAT: £${sellingPriceExVat.toFixed(2)}`,
-        `Estimated duration: ${quote.estimatedDays ?? 'not set'} days`,
-        `Estimated team size: ${quote.estimatedTeamSize ?? 'not set'}`,
+        `Estimated duration: ${estimatedDays ?? 'not set'} days`,
+        `Estimated team size: ${estimatedTeamSize ?? 'not set'}`,
         `Scope: ${quote.scope}`,
         `Internal notes: ${quote.internalNotes || 'None'}`,
         `Stored CHAS working: ${quote.quoteWorking || 'None'}`,
@@ -138,9 +172,6 @@ Use exactly this shape:
     const aiLabour = cleanNumber(result.labour)
     const recommendedCrew = crewComparison.options.find((option) => option.recommended)
 
-    // CHAS' reconstructed labour cost is the costing source of truth because it
-    // can account for the full programme/man-days. Crew comparison is advisory.
-    // Only fall back to a crew total if CHAS could not produce a labour figure.
     const labour = aiLabour > 0
       ? aiLabour
       : recommendedCrew?.totalLabourCost ?? 0
