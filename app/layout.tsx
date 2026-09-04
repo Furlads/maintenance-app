@@ -1,7 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import ServiceWorkerRegister from "@/app/components/ServiceWorkerRegister";
-import GlobalAppPolish from "@/app/components/GlobalAppPolish";
+import ChasEnhancements from "@/app/components/ChasEnhancements";
 import ThreeCountiesWorkerTheme from "@/app/components/ThreeCountiesWorkerTheme";
 import JobSubcontractorControl from "@/app/components/JobSubcontractorControl";
 
@@ -31,7 +31,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <ServiceWorkerRegister />
-        <GlobalAppPolish />
+        <ChasEnhancements />
         <ThreeCountiesWorkerTheme />
         {children}
         <JobSubcontractorControl />
