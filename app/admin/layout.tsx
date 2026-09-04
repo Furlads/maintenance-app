@@ -75,23 +75,23 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   return (
     <div style={{ minHeight: '100dvh', background: '#f4f4f5', color: '#111827' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 40, background: '#18181b', borderBottom: '1px solid #3f3f46' }}>
-        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-            <div style={{ width: 50, height: 50, flexShrink: 0, borderRadius: 999, overflow: 'hidden', background: '#facc15', border: '2px solid #facc15', display: 'grid', placeItems: 'center' }}>
+        <div className="admin-header-inner" style={{ maxWidth: 1400, margin: '0 auto', padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div className="admin-profile-avatar" style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 999, overflow: 'hidden', background: '#facc15', border: '2px solid #facc15', display: 'grid', placeItems: 'center' }}>
               {profile?.avatar ? (
                 <img src={profile.avatar} alt={profile.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
-                <span style={{ color: '#111827', fontWeight: 900, fontSize: 18 }}>{profile?.name?.charAt(0) || 'F'}</span>
+                <span style={{ color: '#111827', fontWeight: 900, fontSize: 17 }}>{profile?.name?.charAt(0) || 'F'}</span>
               )}
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#facc15', marginBottom: 2 }}>
+              <div className="admin-profile-kicker" style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#facc15', marginBottom: 2 }}>
                 {profile?.name ? `${profile.name} dashboard` : 'Admin dashboard'}
               </div>
-              <div style={{ fontSize: 22, fontWeight: 950, lineHeight: 1.05, color: '#facc15', wordBreak: 'break-word' }}>Furlads Control Centre</div>
+              <div className="admin-control-title" style={{ fontSize: 18, fontWeight: 950, lineHeight: 1.05, color: '#facc15', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Furlads Control Centre</div>
             </div>
           </div>
-          <Link href="/admin/worker-view" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, padding: '0 14px', borderRadius: 12, background: '#facc15', color: '#111827', textDecoration: 'none', fontSize: 14, fontWeight: 900, whiteSpace: 'nowrap' }}>Worker View</Link>
+          <Link className="admin-worker-view" href="/admin/worker-view" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 42, padding: '0 11px', borderRadius: 11, background: '#facc15', color: '#111827', textDecoration: 'none', fontSize: 13, fontWeight: 900, whiteSpace: 'nowrap' }}>Worker View</Link>
         </div>
       </header>
 
@@ -107,17 +107,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             </nav>
           </div>
         </aside>
-        <main style={{ minWidth: 0, padding: '18px 16px 112px', color: '#111827' }}>{children}</main>
+        <main style={{ minWidth: 0, padding: '14px 12px 104px', color: '#111827' }}>{children}</main>
       </div>
 
-      {moreOpen ? <div className="admin-mobile-more" style={{ position: 'fixed', left: 16, right: 16, bottom: 94, zIndex: 60, background: '#ffffff', border: '1px solid #d4d4d8', borderRadius: 22, boxShadow: '0 20px 50px rgba(0,0,0,0.18)', padding: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#52525b', padding: '6px 8px 10px' }}>More</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{mobileMoreNavItems.map((item) => { const active = isActivePath(pathname, item.href); return <Link key={item.href} href={item.href} style={{ minHeight: 52, display: 'flex', alignItems: 'center', padding: '0 14px', borderRadius: 14, border: '1px solid #d4d4d8', background: active ? '#facc15' : '#fafafa', color: '#111827', textDecoration: 'none', fontSize: 14, fontWeight: 850 }}>{item.label}</Link> })}</div>
+      {moreOpen ? <div className="admin-mobile-more" style={{ position: 'fixed', left: 10, right: 10, bottom: 80, zIndex: 60, background: '#ffffff', border: '1px solid #d4d4d8', borderRadius: 18, boxShadow: '0 18px 46px rgba(0,0,0,0.18)', padding: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#52525b', padding: '5px 7px 9px' }}>More</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>{mobileMoreNavItems.map((item) => { const active = isActivePath(pathname, item.href); return <Link key={item.href} href={item.href} style={{ minHeight: 50, display: 'flex', alignItems: 'center', padding: '0 12px', borderRadius: 12, border: '1px solid #d4d4d8', background: active ? '#facc15' : '#fafafa', color: '#111827', textDecoration: 'none', fontSize: 13, fontWeight: 850 }}>{item.label}</Link> })}</div>
       </div> : null}
 
-      <nav className="admin-mobile-nav" aria-label="Mobile admin navigation" style={{ position: 'fixed', left: 16, right: 16, bottom: 12, zIndex: 70, display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 4, padding: 7, borderRadius: 24, background: '#18181b', border: '1px solid #3f3f46', boxShadow: '0 15px 40px rgba(0,0,0,0.25)' }}>
-        {mobilePrimaryNavItems.map((item) => { const active = isActivePath(pathname,item.href); return <Link key={item.href} href={item.href} style={{ minWidth: 0, minHeight: 58, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 18, background: active ? '#facc15' : 'transparent', color: active ? '#111827' : '#facc15', textDecoration: 'none', fontSize: 11, fontWeight: 900 }}><NavIcon name={item.icon}/><span>{item.label}</span></Link> })}
-        <button type="button" onClick={() => setMoreOpen((current) => !current)} aria-expanded={moreOpen} aria-label="Open more admin navigation" style={{ minWidth: 0, minHeight: 58, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, border: 0, borderRadius: 18, background: moreOpen || moreActive ? '#facc15' : 'transparent', color: moreOpen || moreActive ? '#111827' : '#facc15', font: 'inherit', fontSize: 11, fontWeight: 900, cursor: 'pointer' }}><NavIcon name="more"/><span>More</span></button>
+      <nav className="admin-mobile-nav" aria-label="Mobile admin navigation" style={{ position: 'fixed', left: 10, right: 10, bottom: 8, zIndex: 70, display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 2, padding: 5, borderRadius: 20, background: '#18181b', border: '1px solid #3f3f46', boxShadow: '0 14px 34px rgba(0,0,0,0.24)' }}>
+        {mobilePrimaryNavItems.map((item) => { const active = isActivePath(pathname,item.href); return <Link key={item.href} href={item.href} style={{ minWidth: 0, minHeight: 54, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 15, background: active ? '#facc15' : 'transparent', color: active ? '#111827' : '#facc15', textDecoration: 'none', fontSize: 10, fontWeight: 900 }}><NavIcon name={item.icon}/><span>{item.label}</span></Link> })}
+        <button type="button" onClick={() => setMoreOpen((current) => !current)} aria-expanded={moreOpen} aria-label="Open more admin navigation" style={{ minWidth: 0, minHeight: 54, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, border: 0, borderRadius: 15, background: moreOpen || moreActive ? '#facc15' : 'transparent', color: moreOpen || moreActive ? '#111827' : '#facc15', font: 'inherit', fontSize: 10, fontWeight: 900, cursor: 'pointer' }}><NavIcon name="more"/><span>More</span></button>
       </nav>
 
       <style jsx global>{`
@@ -145,8 +145,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
         /* Main page heroes keep the Trev-dashboard feel: clean cards, dark readable type. */
         .admin-layout-shell main > div > section:first-child {
-          border-radius: 28px !important;
-          box-shadow: 0 16px 36px rgba(0,0,0,0.10) !important;
+          border-radius: 18px !important;
+          box-shadow: 0 10px 26px rgba(0,0,0,0.08) !important;
         }
         .admin-layout-shell main > div > section:first-child * { color: #111827; }
         .admin-layout-shell main > div > section:first-child .bg-zinc-950,
@@ -158,10 +158,37 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           color: #facc15 !important;
         }
 
+        .admin-layout-shell main a,
+        .admin-layout-shell main button,
+        .admin-layout-shell main input,
+        .admin-layout-shell main select,
+        .admin-layout-shell main textarea {
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .admin-layout-shell main .overflow-x-auto {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .admin-layout-shell main .overflow-x-auto::-webkit-scrollbar { display: none; }
+
+        @media (min-width: 600px) {
+          .admin-header-inner { padding: 12px 16px !important; gap: 12px !important; }
+          .admin-profile-avatar { width: 50px !important; height: 50px !important; }
+          .admin-profile-kicker { font-size: 11px !important; letter-spacing: 0.16em !important; }
+          .admin-control-title { font-size: 22px !important; }
+          .admin-worker-view { min-height: 44px !important; padding: 0 14px !important; border-radius: 12px !important; font-size: 14px !important; }
+          .admin-layout-shell > main { padding: 18px 16px 112px !important; }
+          .admin-mobile-nav { left: 16px !important; right: 16px !important; bottom: 12px !important; padding: 7px !important; border-radius: 24px !important; gap: 4px !important; }
+          .admin-mobile-more { left: 16px !important; right: 16px !important; bottom: 94px !important; border-radius: 22px !important; padding: 12px !important; }
+        }
+
         @media (min-width: 900px) {
           .admin-layout-shell { grid-template-columns: 240px 1fr !important; }
           .admin-sidebar { display: block !important; }
           .admin-mobile-nav,.admin-mobile-more { display:none !important; }
+          .admin-layout-shell > main { padding: 24px 28px 48px !important; }
+          .admin-layout-shell main > div > section:first-child { border-radius: 24px !important; }
         }
       `}</style>
     </div>
