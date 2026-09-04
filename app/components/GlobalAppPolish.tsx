@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 import ChasAvatar from './ChasAvatar'
 
 function routeMode(pathname: string) {
-  if (pathname.startsWith('/admin')) return 'admin'
   if (pathname.startsWith('/trev') || pathname.startsWith('/kelly')) return 'office'
   if (
     pathname.startsWith('/today') ||
@@ -34,12 +33,28 @@ export default function GlobalAppPolish() {
 
   useEffect(() => {
     const body = document.body
-    const mode = routeMode(pathname)
+    const isAdmin = pathname.startsWith('/admin')
 
-    body.classList.add('app-polished')
-    body.classList.remove('app-worker-view', 'app-admin-view', 'app-office-view', 'app-public-view')
-    body.classList.add(`app-${mode}-view`)
+    body.classList.remove(
+      'app-polished',
+      'app-worker-view',
+      'app-admin-view',
+      'app-office-view',
+      'app-public-view',
+      'app-brand-three-counties',
+      'app-brand-furlads'
+    )
     body.dataset.appRoute = pathname
+
+    // Admin owns its styling in app/admin/layout.tsx. Keeping the global polish
+    // completely out of /admin prevents old worker/public rules overriding it.
+    if (isAdmin) {
+      body.dataset.appBrand = 'furlads'
+      return
+    }
+
+    const mode = routeMode(pathname)
+    body.classList.add('app-polished', `app-${mode}-view`)
 
     let cancelled = false
 
