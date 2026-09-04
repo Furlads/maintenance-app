@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic'
 
 type AdminLayoutProps = { children: React.ReactNode }
 type IconName = 'calendar' | 'inbox' | 'quotes' | 'jobs' | 'more'
+type Profile = { name: string; role: string; avatar: string | null }
 
 const adminNavItems = [
   { href: '/admin/schedule', label: 'Schedule' },
@@ -53,68 +54,92 @@ function NavIcon({ name }: { name: IconName }) {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname()
   const [moreOpen, setMoreOpen] = useState(false)
+  const [profile, setProfile] = useState<Profile | null>(null)
   const moreActive = mobileMoreNavItems.some((item) => isActivePath(pathname, item.href))
+
   useEffect(() => setMoreOpen(false), [pathname])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/auth/profile', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data?.ok) {
+          setProfile({ name: data.name, role: data.role, avatar: data.avatar || null })
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
   return (
-    <div style={{ minHeight: '100dvh', background: 'linear-gradient(180deg,#07101d 0%,#0b1626 55%,#101b2b 100%)', color: '#f8fafc' }}>
-      <header style={{ position: 'sticky', top: 0, zIndex: 40, background: 'rgba(7,16,29,0.96)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(250,204,21,0.24)' }}>
-        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#facc15', marginBottom: 3 }}>Admin</div>
-            <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1.1, color: '#facc15', wordBreak: 'break-word' }}>Furlads Control Centre</div>
+    <div style={{ minHeight: '100dvh', background: '#f4f4f5', color: '#111827' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 40, background: '#18181b', borderBottom: '1px solid #3f3f46' }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <div style={{ width: 50, height: 50, flexShrink: 0, borderRadius: 999, overflow: 'hidden', background: '#facc15', border: '2px solid #facc15', display: 'grid', placeItems: 'center' }}>
+              {profile?.avatar ? (
+                <img src={profile.avatar} alt={profile.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span style={{ color: '#111827', fontWeight: 900, fontSize: 18 }}>{profile?.name?.charAt(0) || 'F'}</span>
+              )}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#facc15', marginBottom: 2 }}>
+                {profile?.name ? `${profile.name} dashboard` : 'Admin dashboard'}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 950, lineHeight: 1.05, color: '#facc15', wordBreak: 'break-word' }}>Furlads Control Centre</div>
+            </div>
           </div>
           <Link href="/admin/worker-view" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, padding: '0 14px', borderRadius: 12, background: '#facc15', color: '#111827', textDecoration: 'none', fontSize: 14, fontWeight: 900, whiteSpace: 'nowrap' }}>Worker View</Link>
         </div>
       </header>
 
       <div className="admin-layout-shell" style={{ maxWidth: 1400, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr' }}>
-        <aside className="admin-sidebar" style={{ display: 'none', borderRight: '1px solid rgba(255,255,255,0.10)', background: '#081321' }}>
-          <div style={{ padding: 20, position: 'sticky', top: 73 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#facc15', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14 }}>Admin Navigation</div>
+        <aside className="admin-sidebar" style={{ display: 'none', borderRight: '1px solid #e4e4e7', background: '#fafafa' }}>
+          <div style={{ padding: 20, position: 'sticky', top: 75 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14 }}>Admin navigation</div>
             <nav aria-label="Admin navigation" style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {adminNavItems.map((item) => {
                 const active = isActivePath(pathname, item.href)
-                return <Link key={item.href} href={item.href} style={{ display: 'flex', alignItems: 'center', minHeight: 48, padding: '0 14px', borderRadius: 14, background: active ? '#facc15' : '#111d2d', color: active ? '#111827' : '#facc15', textDecoration: 'none', fontSize: 15, fontWeight: 800, border: active ? '1px solid #facc15' : '1px solid rgba(250,204,21,0.16)' }}>{item.label}</Link>
+                return <Link key={item.href} href={item.href} style={{ display: 'flex', alignItems: 'center', minHeight: 48, padding: '0 14px', borderRadius: 14, background: active ? '#facc15' : '#ffffff', color: '#111827', textDecoration: 'none', fontSize: 15, fontWeight: 850, border: active ? '1px solid #eab308' : '1px solid #d4d4d8', boxShadow: active ? '0 4px 14px rgba(0,0,0,0.06)' : 'none' }}>{item.label}</Link>
               })}
             </nav>
           </div>
         </aside>
-        <main style={{ minWidth: 0, padding: '18px 16px 112px' }}>{children}</main>
+        <main style={{ minWidth: 0, padding: '18px 16px 112px', color: '#111827' }}>{children}</main>
       </div>
 
-      {moreOpen ? <div className="admin-mobile-more" style={{ position: 'fixed', left: 16, right: 16, bottom: 94, zIndex: 60, background: '#0d1928', border: '1px solid rgba(250,204,21,0.24)', borderRadius: 22, boxShadow: '0 20px 50px rgba(0,0,0,0.42)', padding: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#facc15', padding: '6px 8px 10px' }}>More</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{mobileMoreNavItems.map((item) => { const active = isActivePath(pathname, item.href); return <Link key={item.href} href={item.href} style={{ minHeight: 52, display: 'flex', alignItems: 'center', padding: '0 14px', borderRadius: 14, border: '1px solid rgba(250,204,21,0.16)', background: active ? '#facc15' : '#142236', color: active ? '#111827' : '#facc15', textDecoration: 'none', fontSize: 14, fontWeight: 800 }}>{item.label}</Link> })}</div>
+      {moreOpen ? <div className="admin-mobile-more" style={{ position: 'fixed', left: 16, right: 16, bottom: 94, zIndex: 60, background: '#ffffff', border: '1px solid #d4d4d8', borderRadius: 22, boxShadow: '0 20px 50px rgba(0,0,0,0.18)', padding: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#52525b', padding: '6px 8px 10px' }}>More</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{mobileMoreNavItems.map((item) => { const active = isActivePath(pathname, item.href); return <Link key={item.href} href={item.href} style={{ minHeight: 52, display: 'flex', alignItems: 'center', padding: '0 14px', borderRadius: 14, border: '1px solid #d4d4d8', background: active ? '#facc15' : '#fafafa', color: '#111827', textDecoration: 'none', fontSize: 14, fontWeight: 850 }}>{item.label}</Link> })}</div>
       </div> : null}
 
-      <nav className="admin-mobile-nav" aria-label="Mobile admin navigation" style={{ position: 'fixed', left: 16, right: 16, bottom: 12, zIndex: 70, display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 4, padding: 7, borderRadius: 24, background: 'rgba(7,16,29,0.98)', border: '1px solid rgba(250,204,21,0.18)', boxShadow: '0 15px 40px rgba(0,0,0,0.42)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
+      <nav className="admin-mobile-nav" aria-label="Mobile admin navigation" style={{ position: 'fixed', left: 16, right: 16, bottom: 12, zIndex: 70, display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 4, padding: 7, borderRadius: 24, background: '#18181b', border: '1px solid #3f3f46', boxShadow: '0 15px 40px rgba(0,0,0,0.25)' }}>
         {mobilePrimaryNavItems.map((item) => { const active = isActivePath(pathname,item.href); return <Link key={item.href} href={item.href} style={{ minWidth: 0, minHeight: 58, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 18, background: active ? '#facc15' : 'transparent', color: active ? '#111827' : '#facc15', textDecoration: 'none', fontSize: 11, fontWeight: 900 }}><NavIcon name={item.icon}/><span>{item.label}</span></Link> })}
         <button type="button" onClick={() => setMoreOpen((current) => !current)} aria-expanded={moreOpen} aria-label="Open more admin navigation" style={{ minWidth: 0, minHeight: 58, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, border: 0, borderRadius: 18, background: moreOpen || moreActive ? '#facc15' : 'transparent', color: moreOpen || moreActive ? '#111827' : '#facc15', font: 'inherit', fontSize: 11, fontWeight: 900, cursor: 'pointer' }}><NavIcon name="more"/><span>More</span></button>
       </nav>
 
       <style jsx global>{`
-        .admin-layout-shell > main > * { color: #111827; }
+        .admin-layout-shell > main, .admin-layout-shell > main * { color: #111827; }
+        .admin-layout-shell main .text-white { color: #111827 !important; }
+        .admin-layout-shell main .bg-zinc-950,
+        .admin-layout-shell main .bg-zinc-900,
+        .admin-layout-shell main .bg-black {
+          background-color: #facc15 !important;
+          color: #111827 !important;
+        }
+        .admin-layout-shell main a[class*='text-white'],
+        .admin-layout-shell main button[class*='text-white'] {
+          color: #111827 !important;
+        }
 
-        /* Dashboard hero only: Furlads yellow, dark type, no white panel or white text. */
+        /* Main page heroes keep the Trev-dashboard feel: strong yellow panel, dark type. */
         .admin-layout-shell main > div > section:first-child {
-          background: linear-gradient(135deg,#facc15 0%,#fde047 100%) !important;
-          border-color: #eab308 !important;
-          color: #111827 !important;
+          border-radius: 28px !important;
+          box-shadow: 0 16px 36px rgba(0,0,0,0.10) !important;
         }
-        .admin-layout-shell main > div > section:first-child * {
-          color: #111827 !important;
-        }
-        .admin-layout-shell main > div > section:first-child a {
-          background: #111827 !important;
-          color: #facc15 !important;
-          border-color: #111827 !important;
-        }
-        .admin-layout-shell main > div > section:first-child a:last-child {
-          background: #fff3a3 !important;
-          color: #111827 !important;
-          border-color: #eab308 !important;
-        }
+        .admin-layout-shell main > div > section:first-child * { color: #111827 !important; }
 
         @media (min-width: 900px) {
           .admin-layout-shell { grid-template-columns: 240px 1fr !important; }
