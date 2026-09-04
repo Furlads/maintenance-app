@@ -140,6 +140,17 @@ function quoteChoices(working: string | null): QuoteChoice[] {
   return combinedChoice ? [...optionChoices, combinedChoice] : optionChoices
 }
 
+function pipelineQuoteValue(quote: {
+  quoteWorking: string | null
+  priceExVat: number
+  estimatedDays: number | null
+  estimatedTeamSize: number | null
+}) {
+  const combined = quoteChoices(quote.quoteWorking).find((choice) => choice.combined)
+  if (combined) return combined.totalIncVat
+  return quoteReference(quote).totalIncVat
+}
+
 export default async function AdminQuotesPage({ searchParams }: PageProps) {
   const selected = String(searchParams?.status || 'active')
 
@@ -193,7 +204,7 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
 
   const pipelineValue = valueQuotes
     .filter((quote) => quote.status !== 'accepted')
-    .reduce((total, quote) => total + quoteReference(quote).totalIncVat, 0)
+    .reduce((total, quote) => total + pipelineQuoteValue(quote), 0)
 
   const bookedValue = valueQuotes
     .filter((quote) => quote.status === 'accepted')
@@ -229,7 +240,7 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
           <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-inset ring-yellow-200">
             <div className="text-xs font-bold uppercase tracking-wide text-yellow-800">Pipeline</div>
             <div className="mt-1 text-2xl font-black text-zinc-950">{money(pipelineValue)}</div>
-            <div className="mt-1 text-[11px] font-semibold text-yellow-800">Potential work not yet accepted</div>
+            <div className="mt-1 text-[11px] font-semibold text-yellow-800">All-together value for open package quotes</div>
           </div>
           <div className="rounded-2xl bg-green-50 p-4 ring-1 ring-inset ring-green-200">
             <div className="text-xs font-bold uppercase tracking-wide text-green-800">Booked in</div>
