@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma migrate deploy || (sleep 12 && prisma migrate deploy) || (sleep 20 && prisma migrate deploy) && prisma generate && next build",
+    "build": "(prisma migrate deploy || (sleep 12 && prisma migrate deploy) || (sleep 20 && prisma migrate deploy)) && prisma generate && next build",
     "start": "next start",
     "test": "tsx --test lib/*.test.ts",
     "lint": "next lint",
