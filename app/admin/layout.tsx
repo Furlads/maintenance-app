@@ -122,24 +122,41 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
       <style jsx global>{`
         .admin-layout-shell > main, .admin-layout-shell > main * { color: #111827; }
-        .admin-layout-shell main .text-white { color: #111827 !important; }
+
+        /* White text is never allowed in admin content. */
+        .admin-layout-shell main .text-white,
+        .admin-layout-shell main a[class*='text-white'],
+        .admin-layout-shell main button[class*='text-white'] {
+          color: #facc15 !important;
+        }
+
+        /* Dark controls stay dark and always use Furlads yellow text. */
         .admin-layout-shell main .bg-zinc-950,
         .admin-layout-shell main .bg-zinc-900,
         .admin-layout-shell main .bg-black {
-          background-color: #facc15 !important;
-          color: #111827 !important;
+          background-color: #18181b !important;
+          color: #facc15 !important;
         }
-        .admin-layout-shell main a[class*='text-white'],
-        .admin-layout-shell main button[class*='text-white'] {
-          color: #111827 !important;
+        .admin-layout-shell main .bg-zinc-950 *,
+        .admin-layout-shell main .bg-zinc-900 *,
+        .admin-layout-shell main .bg-black * {
+          color: #facc15 !important;
         }
 
-        /* Main page heroes keep the Trev-dashboard feel: strong yellow panel, dark type. */
+        /* Main page heroes keep the Trev-dashboard feel: clean cards, dark readable type. */
         .admin-layout-shell main > div > section:first-child {
           border-radius: 28px !important;
           box-shadow: 0 16px 36px rgba(0,0,0,0.10) !important;
         }
-        .admin-layout-shell main > div > section:first-child * { color: #111827 !important; }
+        .admin-layout-shell main > div > section:first-child * { color: #111827; }
+        .admin-layout-shell main > div > section:first-child .bg-zinc-950,
+        .admin-layout-shell main > div > section:first-child .bg-zinc-900,
+        .admin-layout-shell main > div > section:first-child .bg-black,
+        .admin-layout-shell main > div > section:first-child .bg-zinc-950 *,
+        .admin-layout-shell main > div > section:first-child .bg-zinc-900 *,
+        .admin-layout-shell main > div > section:first-child .bg-black * {
+          color: #facc15 !important;
+        }
 
         @media (min-width: 900px) {
           .admin-layout-shell { grid-template-columns: 240px 1fr !important; }
