@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
-import AdminWorkerAvatarEnhancer from './AdminWorkerAvatarEnhancer'
-import AdminTrevAvatarEnhancer from './AdminTrevAvatarEnhancer'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,11 +22,5 @@ export default async function AdminTemplate({ children }: { children: ReactNode 
   if (!session) redirect('/login')
   if (!isAdminLike(session)) redirect('/worker/home')
 
-  return (
-    <>
-      {children}
-      <AdminWorkerAvatarEnhancer />
-      <AdminTrevAvatarEnhancer />
-    </>
-  )
+  return children
 }
