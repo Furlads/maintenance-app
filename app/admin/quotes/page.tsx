@@ -213,45 +213,45 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
   const archivedCount = countMap.archived || 0
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <div className="space-y-4 sm:space-y-5">
+      <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.15em] text-zinc-500">Furlads</p>
-            <h1 className="mt-1 text-3xl font-black tracking-tight text-zinc-950">Quotes</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500 sm:text-xs">Furlads</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">Quotes</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-5 text-zinc-600 sm:leading-6">
               Review, edit and manage quotes from CHAS through to customer acceptance and booking.
             </p>
           </div>
-          <Link href="/quote-test" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-bold text-white">
+          <Link href="/quote-test" className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-bold text-white sm:w-auto">
             + New quote with CHAS
           </Link>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
-            <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Active quotes</div>
-            <div className="mt-1 text-2xl font-black text-zinc-950">{activeCount}</div>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:gap-3 xl:grid-cols-4">
+          <div className="rounded-xl bg-zinc-50 p-3 ring-1 ring-inset ring-zinc-200 sm:rounded-2xl sm:p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 sm:text-xs">Active quotes</div>
+            <div className="mt-1 text-xl font-black text-zinc-950 sm:text-2xl">{activeCount}</div>
           </div>
-          <div className="rounded-2xl bg-zinc-50 p-4 ring-1 ring-inset ring-zinc-200">
-            <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Showing</div>
-            <div className="mt-1 text-2xl font-black text-zinc-950">{quotes.length}</div>
+          <div className="rounded-xl bg-zinc-50 p-3 ring-1 ring-inset ring-zinc-200 sm:rounded-2xl sm:p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 sm:text-xs">Showing</div>
+            <div className="mt-1 text-xl font-black text-zinc-950 sm:text-2xl">{quotes.length}</div>
           </div>
-          <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-inset ring-yellow-200">
-            <div className="text-xs font-bold uppercase tracking-wide text-yellow-800">Pipeline</div>
-            <div className="mt-1 text-2xl font-black text-zinc-950">{money(pipelineValue)}</div>
-            <div className="mt-1 text-[11px] font-semibold text-yellow-800">All-together value for open package quotes</div>
+          <div className="col-span-2 rounded-xl bg-yellow-50 p-3 ring-1 ring-inset ring-yellow-200 sm:col-span-1 sm:rounded-2xl sm:p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-yellow-800 sm:text-xs">Pipeline</div>
+            <div className="mt-1 break-words text-xl font-black text-zinc-950 sm:text-2xl">{money(pipelineValue)}</div>
+            <div className="mt-1 text-[10px] font-semibold leading-4 text-yellow-800 sm:text-[11px]">All-together value for open package quotes</div>
           </div>
-          <div className="rounded-2xl bg-green-50 p-4 ring-1 ring-inset ring-green-200">
-            <div className="text-xs font-bold uppercase tracking-wide text-green-800">Booked in</div>
-            <div className="mt-1 text-2xl font-black text-zinc-950">{money(bookedValue)}</div>
-            <div className="mt-1 text-[11px] font-semibold text-green-800">Accepted / secured work</div>
+          <div className="col-span-2 rounded-xl bg-green-50 p-3 ring-1 ring-inset ring-green-200 sm:col-span-1 sm:rounded-2xl sm:p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-green-800 sm:text-xs">Booked in</div>
+            <div className="mt-1 break-words text-xl font-black text-zinc-950 sm:text-2xl">{money(bookedValue)}</div>
+            <div className="mt-1 text-[10px] font-semibold leading-4 text-green-800 sm:text-[11px]">Accepted / secured work</div>
           </div>
         </div>
       </section>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {FILTERS.map((filter) => {
             const active = selected === filter.key
             const count = filter.key === 'active'
@@ -261,7 +261,7 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
                 : countMap[filter.key] || 0
 
             return (
-              <Link key={filter.key} href={`/admin/quotes?status=${filter.key}`} className={`flex-none rounded-full px-3 py-2 text-sm font-bold ring-1 ring-inset ${active ? 'bg-zinc-950 text-white ring-zinc-950' : 'bg-white text-zinc-700 ring-zinc-200'}`}>
+              <Link key={filter.key} href={`/admin/quotes?status=${filter.key}`} className={`flex-none rounded-full px-3 py-2 text-xs font-bold ring-1 ring-inset sm:text-sm ${active ? 'bg-zinc-950 text-white ring-zinc-950' : 'bg-white text-zinc-700 ring-zinc-200'}`}>
                 {filter.label} · {count}
               </Link>
             )
@@ -269,8 +269,8 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
         </div>
 
         {selected === 'archived' ? (
-          <div className="flex flex-none items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 shadow-sm">
-            <div className="hidden text-xs font-bold text-red-800 sm:block">Remove all {archivedCount} archived quotes</div>
+          <div className="flex w-full flex-none items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 shadow-sm sm:w-auto sm:rounded-2xl">
+            <div className="text-xs font-bold text-red-800">Remove all {archivedCount} archived quotes</div>
             <ClearArchiveButton count={archivedCount} />
           </div>
         ) : null}
@@ -278,7 +278,7 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
 
       <section className="space-y-3">
         {quotes.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-8 text-center">
+          <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-6 text-center sm:p-8">
             <div className="text-lg font-black text-zinc-900">No quotes here yet</div>
             <p className="mt-2 text-sm text-zinc-500">New CHAS quotes sent to Kelly will appear here automatically.</p>
           </div>
@@ -290,49 +290,49 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
             const choices = quote.status === 'accepted' ? [] : quoteChoices(quote.quoteWorking)
 
             return (
-              <div key={quote.id} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-400">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div key={quote.id} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm transition hover:border-zinc-400 sm:p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
                   <Link href={`/admin/quotes/${quote.id}`} className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClass(quote.status)}`}>{statusLabel(quote.status)}</span>
-                      <span className="text-xs font-semibold text-zinc-400">Quote #{quote.id}</span>
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ring-1 ring-inset sm:text-[11px] ${statusClass(quote.status)}`}>{statusLabel(quote.status)}</span>
+                      <span className="text-[11px] font-semibold text-zinc-400 sm:text-xs">Quote #{quote.id}</span>
                     </div>
-                    <h2 className="mt-2 truncate text-lg font-black text-zinc-950">{customerName}</h2>
+                    <h2 className="mt-2 truncate text-base font-black text-zinc-950 sm:text-lg">{customerName}</h2>
                     <p className="mt-1 line-clamp-2 text-sm leading-5 text-zinc-600">{quote.scope}</p>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500 sm:gap-x-4 sm:text-xs">
                       <span>Updated {formatDate(quote.updatedAt)}</span>
                       {reference.estimatedDays ? <span>{reference.estimatedDays} day estimate</span> : null}
                       {quote.job ? <span>Job #{quote.job.id} created</span> : null}
                     </div>
                   </Link>
 
-                  <div className="flex flex-none items-center gap-3">
+                  <div className="flex min-w-0 flex-col gap-2 border-t border-zinc-100 pt-3 sm:flex-row sm:items-end sm:justify-between lg:flex-none lg:border-0 lg:pt-0">
                     {choices.length >= 2 ? (
-                      <Link href={`/admin/quotes/${quote.id}`} className="block">
-                        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-500 lg:text-right">Customer choices · inc VAT</div>
-                        <div className="flex max-w-[620px] flex-wrap gap-2 lg:justify-end">
+                      <Link href={`/admin/quotes/${quote.id}`} className="min-w-0 flex-1 lg:flex-none">
+                        <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-zinc-500 sm:text-xs lg:text-right">Customer choices · inc VAT</div>
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:max-w-[620px] sm:flex-wrap lg:justify-end">
                           {choices.map((choice, index) => (
                             <div
                               key={`${choice.label}-${index}`}
-                              className={`min-w-[132px] rounded-xl px-3 py-2 text-left ring-1 ring-inset ${choice.combined ? 'bg-yellow-50 ring-yellow-300' : 'bg-zinc-50 ring-zinc-200'}`}
+                              className={`min-w-0 rounded-xl px-3 py-2 text-left ring-1 ring-inset sm:min-w-[132px] ${choice.combined ? 'bg-yellow-50 ring-yellow-300' : 'bg-zinc-50 ring-zinc-200'}`}
                             >
-                              <div className={`max-w-[170px] truncate text-[10px] font-black uppercase tracking-wide ${choice.combined ? 'text-yellow-800' : 'text-zinc-500'}`}>
+                              <div className={`truncate text-[9px] font-black uppercase tracking-wide sm:max-w-[170px] sm:text-[10px] ${choice.combined ? 'text-yellow-800' : 'text-zinc-500'}`}>
                                 {choice.combined ? 'All together' : choice.label}
                               </div>
-                              <div className="mt-0.5 text-lg font-black text-zinc-950">{money(choice.totalIncVat)}</div>
+                              <div className="mt-0.5 break-words text-base font-black text-zinc-950 sm:text-lg">{money(choice.totalIncVat)}</div>
                             </div>
                           ))}
                         </div>
-                        <div className="mt-2 text-xs font-semibold text-zinc-400 lg:text-right">Open quote →</div>
+                        <div className="mt-2 text-[11px] font-semibold text-zinc-400 sm:text-xs lg:text-right">Open quote →</div>
                       </Link>
                     ) : (
-                      <Link href={`/admin/quotes/${quote.id}`} className="block text-right">
-                        <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">{quote.status === 'accepted' ? 'Accepted total inc VAT' : 'Total inc VAT'}</div>
-                        <div className="mt-1 text-2xl font-black text-zinc-950">{money(reference.totalIncVat)}</div>
-                        <div className="mt-1 text-xs font-semibold text-zinc-400">Open quote →</div>
+                      <Link href={`/admin/quotes/${quote.id}`} className="block min-w-0 text-left sm:text-right">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 sm:text-xs">{quote.status === 'accepted' ? 'Accepted total inc VAT' : 'Total inc VAT'}</div>
+                        <div className="mt-1 break-words text-xl font-black text-zinc-950 sm:text-2xl">{money(reference.totalIncVat)}</div>
+                        <div className="mt-1 text-[11px] font-semibold text-zinc-400 sm:text-xs">Open quote →</div>
                       </Link>
                     )}
-                    {canDelete ? <DeleteQuoteButton quoteId={quote.id} customerName={customerName} compact /> : null}
+                    {canDelete ? <div className="self-start sm:self-end"><DeleteQuoteButton quoteId={quote.id} customerName={customerName} compact /></div> : null}
                   </div>
                 </div>
               </div>
