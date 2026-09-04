@@ -12,6 +12,13 @@ type PageProps = {
   }
 }
 
+type QuoteChoice = {
+  label: string
+  priceExVat: number
+  totalIncVat: number
+  combined?: boolean
+}
+
 const FILTERS = [
   { key: 'active', label: 'Active' },
   { key: 'needs_review', label: 'Needs review' },
@@ -68,6 +75,69 @@ function quoteReference(quote: {
     storedEstimatedDays: quote.estimatedDays,
     storedEstimatedTeamSize: quote.estimatedTeamSize,
   })
+}
+
+function priceFromLine(line: string) {
+  const match = line.match(/£\s*([0-9,]+(?:\.\d{1,2})?)/)
+  if (!match) return 0
+  const price = Number(match[1].replace(/,/g, ''))
+  return Number.isFinite(price) ? price : 0
+}
+
+function choiceFromLine(line: string, combined = false): QuoteChoice | null {
+  const priceExVat = priceFromLine(line)
+  if (priceExVat <= 0) return null
+
+  const beforePrice = line.split('£')[0].trim().replace(/[:—-]+$/g, '').trim()
+  const label = combined
+    ? beforePrice || 'All together'
+    : beforePrice || 'Option'
+
+  return {
+    label,
+    priceExVat,
+    totalIncVat: Number((priceExVat * 1.2).toFixed(2)),
+    combined,
+  }
+}
+
+function quoteChoices(working: string | null): QuoteChoice[] {
+  if (!working) return []
+
+  const marker = 'OPTIONS / PACKAGES'
+  const start = working.indexOf(marker)
+  if (start < 0) return []
+
+  const after = working.slice(start + marker.length)
+  const hardEnds = ['TREVOR / CHAS CONVERSATION', 'SURVEY PHOTOS JSON', 'PREVIOUS QUOTE WORKING']
+    .map((item) => after.indexOf(item))
+    .filter((index) => index >= 0)
+  const section = hardEnds.length ? after.slice(0, Math.min(...hardEnds)) : after
+  const lines = section.split('\n').map((line) => line.trim()).filter(Boolean)
+
+  const optionChoices = lines
+    .filter((line) => /^Option\s+/i.test(line) && /£\s*[0-9]/.test(line))
+    .map((line) => choiceFromLine(line))
+    .filter((choice): choice is QuoteChoice => choice !== null)
+
+  if (optionChoices.length < 2) return []
+
+  let combinedChoice: QuoteChoice | null = null
+  const combinedMarker = lines.findIndex((line) => /^ALL-TOGETHER COMBINATIONS$/i.test(line))
+  if (combinedMarker >= 0) {
+    const line = lines.slice(combinedMarker + 1).find((item) => /£\s*[0-9]/.test(item))
+    if (line) combinedChoice = choiceFromLine(line, true)
+  }
+
+  if (!combinedChoice) {
+    const line = lines.find((item) =>
+      /£\s*[0-9]/.test(item) &&
+      /\b(all completed together|all work together|all works together|all together|combined package|combined offer|complete job)\b/i.test(item)
+    )
+    if (line) combinedChoice = choiceFromLine(line, true)
+  }
+
+  return combinedChoice ? [...optionChoices, combinedChoice] : optionChoices
 }
 
 export default async function AdminQuotesPage({ searchParams }: PageProps) {
@@ -206,10 +276,11 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
             const customerName = quote.customerName || quote.customer?.name || 'Customer details needed'
             const reference = quoteReference(quote)
             const canDelete = quote.status !== 'accepted'
+            const choices = quote.status === 'accepted' ? [] : quoteChoices(quote.quoteWorking)
 
             return (
               <div key={quote.id} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-400">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <Link href={`/admin/quotes/${quote.id}`} className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ring-inset ${statusClass(quote.status)}`}>{statusLabel(quote.status)}</span>
@@ -224,12 +295,32 @@ export default async function AdminQuotesPage({ searchParams }: PageProps) {
                     </div>
                   </Link>
 
-                  <div className="flex flex-none items-center gap-3 sm:text-right">
-                    <Link href={`/admin/quotes/${quote.id}`} className="block">
-                      <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">Total inc VAT</div>
-                      <div className="mt-1 text-2xl font-black text-zinc-950">{money(reference.totalIncVat)}</div>
-                      <div className="mt-1 text-xs font-semibold text-zinc-400">Open quote →</div>
-                    </Link>
+                  <div className="flex flex-none items-center gap-3">
+                    {choices.length >= 2 ? (
+                      <Link href={`/admin/quotes/${quote.id}`} className="block">
+                        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-500 lg:text-right">Customer choices · inc VAT</div>
+                        <div className="flex max-w-[620px] flex-wrap gap-2 lg:justify-end">
+                          {choices.map((choice, index) => (
+                            <div
+                              key={`${choice.label}-${index}`}
+                              className={`min-w-[132px] rounded-xl px-3 py-2 text-left ring-1 ring-inset ${choice.combined ? 'bg-yellow-50 ring-yellow-300' : 'bg-zinc-50 ring-zinc-200'}`}
+                            >
+                              <div className={`max-w-[170px] truncate text-[10px] font-black uppercase tracking-wide ${choice.combined ? 'text-yellow-800' : 'text-zinc-500'}`}>
+                                {choice.combined ? 'All together' : choice.label}
+                              </div>
+                              <div className="mt-0.5 text-lg font-black text-zinc-950">{money(choice.totalIncVat)}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 text-xs font-semibold text-zinc-400 lg:text-right">Open quote →</div>
+                      </Link>
+                    ) : (
+                      <Link href={`/admin/quotes/${quote.id}`} className="block text-right">
+                        <div className="text-xs font-bold uppercase tracking-wide text-zinc-500">{quote.status === 'accepted' ? 'Accepted total inc VAT' : 'Total inc VAT'}</div>
+                        <div className="mt-1 text-2xl font-black text-zinc-950">{money(reference.totalIncVat)}</div>
+                        <div className="mt-1 text-xs font-semibold text-zinc-400">Open quote →</div>
+                      </Link>
+                    )}
                     {canDelete ? <DeleteQuoteButton quoteId={quote.id} customerName={customerName} compact /> : null}
                   </div>
                 </div>
