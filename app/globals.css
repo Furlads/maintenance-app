@@ -71,7 +71,9 @@ a {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* ===== APP-WIDE POLISH ===== */
+/* ===== NON-ADMIN APP POLISH =====
+   /admin deliberately does not receive app-polished. Admin styling belongs only
+   in app/admin/layout.tsx and the admin page components themselves. */
 
 body.app-polished {
   --brand-primary: #facc15;
@@ -92,7 +94,7 @@ body.app-polished {
     var(--brand-page);
 }
 
-body.app-brand-three-counties {
+body.app-polished.app-brand-three-counties {
   --brand-primary: #93b83d;
   --brand-primary-strong: #638126;
   --brand-ink: #163111;
@@ -142,8 +144,7 @@ body.app-polished :where(.rounded-xl, .rounded-2xl, .rounded-3xl) {
 }
 
 body.app-polished.app-worker-view main > div,
-body.app-polished.app-office-view main > div,
-body.app-polished.app-admin-view .admin-main > div {
+body.app-polished.app-office-view main > div {
   width: 100%;
   max-width: none !important;
 }
@@ -163,29 +164,18 @@ body.app-polished.app-worker-view [data-today-dashboard-home] .worker-home-shell
 }
 
 body.app-polished.app-office-view > main,
-body.app-polished.app-admin-view .admin-main {
-  background: transparent !important;
-}
-
-body.app-polished.app-admin-view .admin-main {
-  width: 100%;
-}
-
-body.app-polished.app-admin-view .admin-main,
-body.app-polished.app-office-view main,
 body.app-polished.app-worker-view main {
   background: transparent !important;
 }
 
-body.app-polished :where(main, .admin-main) > :where(div, section):first-child {
+body.app-polished main > :where(div, section):first-child {
   border-radius: var(--brand-radius-lg);
 }
 
-body.app-polished :where(.admin-main, main) :where(header, [class*="header"]):not(.today-top-header) {
+body.app-polished main :where(header, [class*="header"]):not(.today-top-header) {
   border-radius: 22px;
 }
 
-body.app-polished.app-admin-view .admin-main > div > :where(header, section):first-child,
 body.app-polished.app-office-view main > div > :where(header, section):first-child,
 body.app-polished.app-worker-view main > div > :where(header, section):first-child {
   position: relative;
@@ -240,10 +230,10 @@ body.app-polished :where(button, a)[class*="bg-green"] {
   border-color: color-mix(in srgb, var(--brand-primary) 72%, #000 10%) !important;
 }
 
-body.app-brand-three-counties :where(button, a)[class*="bg-yellow"],
-body.app-brand-three-counties :where(button, a)[class*="bg-amber"],
-body.app-brand-three-counties :where(button, a)[class*="bg-lime"],
-body.app-brand-three-counties :where(button, a)[class*="bg-green"] {
+body.app-polished.app-brand-three-counties :where(button, a)[class*="bg-yellow"],
+body.app-polished.app-brand-three-counties :where(button, a)[class*="bg-amber"],
+body.app-polished.app-brand-three-counties :where(button, a)[class*="bg-lime"],
+body.app-polished.app-brand-three-counties :where(button, a)[class*="bg-green"] {
   color: #14200d !important;
 }
 
@@ -284,22 +274,9 @@ body.app-polished tbody tr:hover {
   background: color-mix(in srgb, var(--brand-soft) 35%, white);
 }
 
-body.app-polished.app-admin-view :where(aside, nav)[class*="bg-white"],
-body.app-polished.app-admin-view :where(aside, nav)[class*="border"] {
-  background: rgba(255,255,255,.92) !important;
-  backdrop-filter: blur(14px);
-}
-
-body.app-polished.app-admin-view :where(aside, nav) a[aria-current="page"],
-body.app-polished.app-admin-view :where(aside, nav) a[class*="active"] {
-  background: var(--brand-soft) !important;
-  color: var(--brand-ink) !important;
-}
-
 @media (min-width: 900px) {
   body.app-polished.app-worker-view main,
-  body.app-polished.app-office-view main,
-  body.app-polished.app-admin-view .admin-main {
+  body.app-polished.app-office-view main {
     padding-left: clamp(22px, 3vw, 48px) !important;
     padding-right: clamp(22px, 3vw, 48px) !important;
     padding-top: 18px !important;
@@ -321,8 +298,7 @@ body.app-polished.app-admin-view :where(aside, nav) a[class*="active"] {
   }
 
   body.app-polished.app-worker-view main,
-  body.app-polished.app-office-view main,
-  body.app-polished.app-admin-view .admin-main {
+  body.app-polished.app-office-view main {
     padding-left: 10px !important;
     padding-right: 10px !important;
     padding-top: 10px !important;
@@ -392,49 +368,7 @@ body.app-polished.app-admin-view :where(aside, nav) a[class*="active"] {
   font-weight: 700;
 }
 
-/* ===== WORKER QUOTE THREADS ===== */
-body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) {
-  display: block !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0 !important;
-}
-
-body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) > div {
-  display: block !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0 !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-}
-
-body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) a[href*="vercel-storage.com"] {
-  display: block !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  margin-top: 14px !important;
-  min-height: 0 !important;
-}
-
-body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) a[href*="vercel-storage.com"] img {
-  display: block !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  height: auto !important;
-  max-height: 560px !important;
-  object-fit: contain !important;
-}
-
-@media (max-width: 760px) {
-  body.app-polished.app-admin-view .admin-main div.rounded-2xl:has(a[href*="vercel-storage.com"]) {
-    padding: 16px !important;
-  }
-}
-
 /* ===== PUBLIC SUBCONTRACTOR APPLICATION HERO ===== */
-/* The generic app-polish card rule forces rounded sections white with !important.
-   This public form intentionally uses a dark hero, so restore its intended contrast. */
 body.app-polished main.min-h-dvh > form > section:first-child {
   background: #1f3218 !important;
   border-color: #1f3218 !important;
