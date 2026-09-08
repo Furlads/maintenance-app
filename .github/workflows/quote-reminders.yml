@@ -12,18 +12,26 @@ permissions:
 jobs:
   dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 6
     steps:
-      - name: Dispatch due quote reminders
+      - name: Dispatch due quote reminders every minute
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl --fail --silent --show-error \
-            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=furlads-quote-reminders")"
-          token="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
-          curl --fail --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${token}" \
-            --header "Content-Type: application/json" \
-            https://app.furlads.com/api/cron/alerts/github
+
+          for attempt in 1 2 3 4 5; do
+            response="$(curl --fail --silent --show-error \
+              -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=furlads-quote-reminders")"
+            token="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+
+            curl --fail --silent --show-error \
+              --request POST \
+              --header "Authorization: Bearer ${token}" \
+              --header "Content-Type: application/json" \
+              https://app.furlads.com/api/cron/alerts/github
+
+            if [ "$attempt" -lt 5 ]; then
+              sleep 60
+            fi
+          done
