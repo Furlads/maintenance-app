@@ -166,6 +166,7 @@ export default function AddJobPage() {
   const [durationMinutes, setDurationMinutes] = useState('60')
   const [assignedWorkerIds, setAssignedWorkerIds] = useState<number[]>([])
   const [allowQuoteTimeOverride, setAllowQuoteTimeOverride] = useState(false)
+  const [wasteAway, setWasteAway] = useState(false)
 
   const [isRegularMaintenance, setIsRegularMaintenance] = useState(false)
   const [maintenanceFrequency, setMaintenanceFrequency] =
@@ -305,6 +306,12 @@ export default function AddJobPage() {
     })
   }, [selectedWorkers])
 
+  const isAssignedToJacob = useMemo(() => {
+    return selectedWorkers.some(
+      (worker) => clean(worker.firstName).toLowerCase() === 'jacob'
+    )
+  }, [selectedWorkers])
+
   const showQuoteOverride = isQuoteJobType(jobType) && isAssignedToTrev
 
   useEffect(() => {
@@ -312,6 +319,12 @@ export default function AddJobPage() {
       setAllowQuoteTimeOverride(false)
     }
   }, [showQuoteOverride])
+
+  useEffect(() => {
+    if (!isAssignedToJacob) {
+      setWasteAway(false)
+    }
+  }, [isAssignedToJacob])
 
   function handleCustomerChange(nextCustomerId: number | '') {
     setCustomerId(nextCustomerId)
@@ -392,12 +405,17 @@ export default function AddJobPage() {
         return
       }
 
+      const cleanNotes = notes.trim()
+      const savedNotes = isAssignedToJacob
+        ? `Waste away: ${wasteAway ? 'YES' : 'NO'}${cleanNotes ? `\n${cleanNotes}` : ''}`
+        : cleanNotes
+
       const payload: Record<string, unknown> = {
         customerId,
         title: title.trim() || selectedCustomer?.name || 'New Job',
         jobType: jobType.trim() || 'Quote',
         address: address.trim(),
-        notes: notes.trim(),
+        notes: savedNotes,
         assignedWorkerIds,
         allowQuoteTimeOverride,
         fixedSchedule,
@@ -807,6 +825,27 @@ export default function AddJobPage() {
                       </div>
                     </label>
                   ))}
+                </div>
+              )}
+
+              {isAssignedToJacob && (
+                <div className="mt-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4">
+                  <label className="flex min-h-11 items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={wasteAway}
+                      onChange={(e) => setWasteAway(e.target.checked)}
+                      className="h-5 w-5 shrink-0"
+                    />
+                    <div>
+                      <div className="text-sm font-bold text-emerald-950">
+                        Waste away? {wasteAway ? 'YES' : 'NO'}
+                      </div>
+                      <div className="mt-1 text-xs text-emerald-800">
+                        Tick if Jacob needs to take waste away from this job. Leave unticked for no.
+                      </div>
+                    </div>
+                  </label>
                 </div>
               )}
             </section>
