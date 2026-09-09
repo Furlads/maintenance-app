@@ -46,6 +46,19 @@ function isJacob(firstName?: string | null, lastName?: string | null) {
   return name === 'jacob walters' || name === 'jacob'
 }
 
+function getWasteAwayStatus(notes?: string | null) {
+  const match = String(notes || '').match(/Waste away:\s*(YES|NO)/i)
+  return match ? match[1].toUpperCase() : null
+}
+
+function stripWasteAwayLine(notes?: string | null) {
+  return String(notes || '')
+    .split('\n')
+    .filter((line) => !/^Waste away:\s*(YES|NO)\s*$/i.test(line.trim()))
+    .join('\n')
+    .trim()
+}
+
 export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
   const jobId = Number(params.id)
   if (!Number.isInteger(jobId) || jobId <= 0) notFound()
@@ -81,7 +94,9 @@ export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
     .map((assignment) => fullName(assignment.worker.firstName, assignment.worker.lastName))
     .filter(Boolean)
 
-  const workText = String(job.notes || '').trim() || String(job.title || '').trim() || 'Carry out the agreed maintenance visit.'
+  const wasteAwayStatus = getWasteAwayStatus(job.notes)
+  const cleanJobNotes = stripWasteAwayLine(job.notes)
+  const workText = cleanJobNotes || String(job.title || '').trim() || 'Carry out the agreed maintenance visit.'
   const address = job.address || job.customer.address || job.customer.postcode || 'Address not saved'
   const propertyMemory = controls.propertyMemory || previousPropertyMemory
 
@@ -90,10 +105,29 @@ export default async function MaintenanceWorkerJobPage({ params }: PageProps) {
       <div className="mx-auto max-w-3xl space-y-3 sm:space-y-4">
         <section className="rounded-3xl bg-zinc-950 p-4 text-white shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-xs font-black uppercase tracking-[0.18em] text-yellow-300">Maintenance visit</div>
               <h1 className="mt-2 break-words text-2xl font-black tracking-tight sm:text-3xl">{job.customer.name}</h1>
               <p className="mt-2 break-words text-sm leading-6 text-zinc-300">{address}</p>
+
+              <div
+                className={`mt-3 rounded-2xl border p-3 ${
+                  wasteAwayStatus
+                    ? 'border-emerald-500/40 bg-emerald-500/15'
+                    : 'border-amber-400/50 bg-amber-400/10'
+                }`}
+              >
+                <div
+                  className={`text-[11px] font-black uppercase tracking-[0.14em] ${
+                    wasteAwayStatus ? 'text-emerald-300' : 'text-amber-300'
+                  }`}
+                >
+                  Waste away
+                </div>
+                <div className="mt-1 text-sm font-black leading-5 text-white sm:text-base">
+                  {wasteAwayStatus || 'Not selected — check with Kelly or customer'}
+                </div>
+              </div>
             </div>
             <Link href="/today" className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-white px-4 text-sm font-black text-zinc-950 sm:w-auto">Back to today</Link>
           </div>
