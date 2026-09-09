@@ -17,21 +17,45 @@ jobs:
       - name: Dispatch due quote reminders every minute
         shell: bash
         run: |
-          set -euo pipefail
+          set -u -o pipefail
+
+          successful_dispatches=0
 
           for attempt in 1 2 3 4 5; do
             response="$(curl --fail --silent --show-error \
+              --retry 2 \
+              --retry-delay 5 \
+              --retry-all-errors \
               -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=furlads-quote-reminders")"
-            token="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=furlads-quote-reminders")" || response=""
 
-            curl --fail --silent --show-error \
+            if [ -n "$response" ]; then
+              token="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' 2>/dev/null || true)"
+            else
+              token=""
+            fi
+
+            if [ -n "$token" ] && curl --fail --silent --show-error \
+              --retry 2 \
+              --retry-delay 5 \
+              --retry-all-errors \
               --request POST \
               --header "Authorization: Bearer ${token}" \
               --header "Content-Type: application/json" \
-              https://app.furlads.com/api/cron/alerts/github
+              https://app.furlads.com/api/cron/alerts/github; then
+              successful_dispatches=$((successful_dispatches + 1))
+            else
+              echo "Dispatch attempt ${attempt} failed after retries; continuing so a temporary outage does not abort the whole run."
+            fi
 
             if [ "$attempt" -lt 5 ]; then
               sleep 60
             fi
           done
+
+          if [ "$successful_dispatches" -eq 0 ]; then
+            echo "All five dispatch attempts failed."
+            exit 1
+          fi
+
+          echo "${successful_dispatches} of 5 dispatch attempts succeeded."
