@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useParams } from 'next/navigation'
 
 type Job = {
@@ -29,12 +28,58 @@ function getWasteAwayStatus(jobs: Job[], customerId: number): WasteAwayStatus {
   return null
 }
 
+function findAddressCard() {
+  const headings = Array.from(document.querySelectorAll('h2'))
+  const customerDetailsHeading = headings.find(
+    (heading) => heading.textContent?.trim() === 'Customer Details'
+  )
+  const section = customerDetailsHeading?.closest('section')
+  if (!section) return null
+
+  const labels = Array.from(section.querySelectorAll('div'))
+  const addressLabel = labels.find(
+    (element) => element.textContent?.trim() === 'Address'
+  )
+
+  return addressLabel?.parentElement || null
+}
+
+function buildWasteAwayBanner(status: WasteAwayStatus) {
+  const selected = status !== null
+  const banner = document.createElement('div')
+  banner.dataset.customerWasteAway = 'true'
+  banner.style.gridColumn = '1 / -1'
+  banner.style.background = selected ? '#ecfdf3' : '#fff8d9'
+  banner.style.border = selected ? '1px solid #86efac' : '1px solid #ffe27a'
+  banner.style.borderRadius = '12px'
+  banner.style.padding = '12px'
+
+  const label = document.createElement('div')
+  label.textContent = 'Waste Away'
+  label.style.fontSize = '12px'
+  label.style.fontWeight = '800'
+  label.style.color = selected ? '#166534' : '#6a5600'
+  label.style.marginBottom = '6px'
+  label.style.textTransform = 'uppercase'
+  label.style.letterSpacing = '0.3px'
+
+  const value = document.createElement('div')
+  value.textContent = selected
+    ? status
+    : 'Not selected — check with Kelly or customer'
+  value.style.fontSize = '15px'
+  value.style.fontWeight = '800'
+  value.style.color = selected ? '#14532d' : '#5f4b00'
+
+  banner.append(label, value)
+  return banner
+}
+
 export default function CustomerWasteAway() {
   const params = useParams()
   const customerId = useMemo(() => Number(params.id), [params.id])
   const [status, setStatus] = useState<WasteAwayStatus>(null)
   const [loaded, setLoaded] = useState(false)
-  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -63,81 +108,36 @@ export default function CustomerWasteAway() {
   }, [customerId])
 
   useEffect(() => {
-    let target: HTMLElement | null = null
+    if (!loaded) return
 
-    function findAddressCard() {
-      const headings = Array.from(document.querySelectorAll('h2'))
-      const customerDetailsHeading = headings.find(
-        (heading) => heading.textContent?.trim() === 'Customer Details'
-      )
-      const section = customerDetailsHeading?.closest('section')
-      if (!section) return
+    let banner: HTMLDivElement | null = null
 
-      const labels = Array.from(section.querySelectorAll('div'))
-      const addressLabel = labels.find(
-        (element) => element.textContent?.trim() === 'Address'
-      )
-      const addressCard = addressLabel?.parentElement
-      if (!addressCard || !addressCard.parentElement) return
+    function mountBanner() {
+      document.querySelector('[data-customer-waste-away="true"]')?.remove()
 
-      target = document.createElement('div')
-      target.dataset.customerWasteAway = 'true'
-      target.style.gridColumn = '1 / -1'
-      addressCard.insertAdjacentElement('afterend', target)
-      setPortalTarget(target)
+      const addressCard = findAddressCard()
+      if (!addressCard) return false
+
+      banner = buildWasteAwayBanner(status)
+      addressCard.insertAdjacentElement('afterend', banner)
+      return true
     }
 
-    findAddressCard()
-    if (target) return () => target?.remove()
+    if (mountBanner()) {
+      return () => banner?.remove()
+    }
 
     const observer = new MutationObserver(() => {
-      if (!target) findAddressCard()
-      if (target) observer.disconnect()
+      if (mountBanner()) observer.disconnect()
     })
 
     observer.observe(document.body, { childList: true, subtree: true })
 
     return () => {
       observer.disconnect()
-      target?.remove()
+      banner?.remove()
     }
-  }, [])
+  }, [loaded, status])
 
-  if (!loaded || !portalTarget) return null
-
-  const selected = status !== null
-
-  return createPortal(
-    <div
-      style={{
-        background: selected ? '#ecfdf3' : '#fff8d9',
-        border: selected ? '1px solid #86efac' : '1px solid #ffe27a',
-        borderRadius: 12,
-        padding: 12,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 800,
-          color: selected ? '#166534' : '#6a5600',
-          marginBottom: 6,
-          textTransform: 'uppercase',
-          letterSpacing: 0.3,
-        }}
-      >
-        Waste Away
-      </div>
-      <div
-        style={{
-          fontSize: 15,
-          fontWeight: 800,
-          color: selected ? '#14532d' : '#5f4b00',
-        }}
-      >
-        {selected ? status : 'Not selected — check with Kelly or customer'}
-      </div>
-    </div>,
-    portalTarget
-  )
+  return null
 }
