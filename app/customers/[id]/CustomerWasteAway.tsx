@@ -82,6 +82,7 @@ export default function CustomerWasteAway() {
 
       target = document.createElement('div')
       target.dataset.customerWasteAway = 'true'
+      target.style.gridColumn = '1 / -1'
       addressCard.insertAdjacentElement('afterend', target)
       setPortalTarget(target)
     }
@@ -109,12 +110,10 @@ export default function CustomerWasteAway() {
   return createPortal(
     <div
       style={{
-        marginTop: 12,
         background: selected ? '#ecfdf3' : '#fff8d9',
         border: selected ? '1px solid #86efac' : '1px solid #ffe27a',
         borderRadius: 12,
         padding: 12,
-        gridColumn: '1 / -1',
       }}
     >
       <div
